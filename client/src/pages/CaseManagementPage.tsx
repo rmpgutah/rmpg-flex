@@ -6,10 +6,11 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link,
+  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link, ExternalLink,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -89,7 +90,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
 
 // ── Reusable LinkedEntityPanel for each entity tab ──
 function LinkedEntityPanel({
-  items, columns, entityType, caseId, onRefresh, searchEndpoint, searchFields,
+  items, columns, entityType, caseId, onRefresh, searchEndpoint, searchFields, onNavigate,
 }: {
   items: any[];
   columns: { key: string; label: string; render?: (val: any, row: any) => React.ReactNode }[];
@@ -98,6 +99,7 @@ function LinkedEntityPanel({
   onRefresh: () => void;
   searchEndpoint: string;
   searchFields: string[];
+  onNavigate?: (item: any) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -162,14 +164,19 @@ function LinkedEntityPanel({
             </thead>
             <tbody>
               {items.map((item: any, idx: number) => (
-                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={item.id || idx} className={`border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors ${onNavigate ? 'cursor-pointer' : ''}`} onClick={() => onNavigate?.(item)}>
                   {columns.map(col => (
                     <td key={col.key} className="px-2 py-1.5 text-rmpg-300">
                       {col.render ? col.render(item[col.key], item) : (item[col.key] ?? '—')}
                     </td>
                   ))}
-                  <td className="px-2 py-1.5 text-right">
-                    <button type="button" onClick={() => handleUnlink(item.id)} className="text-red-400 hover:text-red-300 text-[9px] font-mono uppercase">
+                  <td className="px-2 py-1.5 text-right flex items-center justify-end gap-2">
+                    {onNavigate && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); onNavigate(item); }} className="text-brand-300 hover:text-brand-200 text-[9px] font-mono uppercase flex items-center gap-0.5">
+                        <ExternalLink style={{ width: 9, height: 9 }} /> View
+                      </button>
+                    )}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUnlink(item.id); }} className="text-red-400 hover:text-red-300 text-[9px] font-mono uppercase">
                       Unlink
                     </button>
                   </td>
@@ -364,6 +371,7 @@ const timeAgo = (date: string): string => {
 
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
@@ -934,6 +942,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/dispatch/calls"
                   searchFields={['call_number', 'incident_type', 'location_address']}
+                  onNavigate={(item) => navigate(`/dispatch?callId=${item.id}`)}
                 />
               )}
 
@@ -952,6 +961,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/incidents"
                   searchFields={['incident_number', 'incident_type', 'location']}
+                  onNavigate={(item) => navigate(`/incidents?id=${item.id}`)}
                 />
               )}
 
@@ -969,6 +979,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/persons"
                   searchFields={['last_name', 'first_name', 'date_of_birth']}
+                  onNavigate={(item) => navigate(`/records?tab=persons&personId=${item.id}`)}
                 />
               )}
 
@@ -988,6 +999,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/vehicles"
                   searchFields={['plate_number', 'make', 'model', 'color']}
+                  onNavigate={(item) => navigate(`/records?tab=vehicles&vehicleId=${item.id}`)}
                 />
               )}
 
@@ -1006,6 +1018,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/properties"
                   searchFields={['description', 'serial_number', 'property_type']}
+                  onNavigate={(item) => navigate(`/records?tab=properties&propertyId=${item.id}`)}
                 />
               )}
 
@@ -1024,6 +1037,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/evidence"
                   searchFields={['evidence_number', 'description', 'evidence_type']}
+                  onNavigate={(item) => navigate(`/evidence?id=${item.id}`)}
                 />
               )}
 
@@ -1042,6 +1056,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/warrants"
                   searchFields={['warrant_number', 'subject_name', 'warrant_type']}
+                  onNavigate={(item) => navigate(`/warrants?id=${item.id}`)}
                 />
               )}
 
@@ -1060,6 +1075,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/citations"
                   searchFields={['citation_number', 'violation', 'violator_name']}
+                  onNavigate={(item) => navigate(`/citations?id=${item.id}`)}
                 />
               )}
 
