@@ -1197,6 +1197,21 @@ export default function DispatchPage() {
       setShowNewCallModal(false);
       setTemplateInitialData(undefined);
       addToast(`Call ${newCall.call_number} created`, 'success');
+      // After successful call creation, asynchronously analyze for priority suggestion
+      try {
+        const analysis = await apiFetch<any>('/ai/analyze', {
+          method: 'POST',
+          body: JSON.stringify({
+            call_id: newCall.id,
+            incident_type: newCall.incident_type,
+            description: newCall.description,
+            location: newCall.location,
+          }),
+        });
+        if (analysis?.suggestedPriority && analysis.suggestedPriority !== newCall.priority) {
+          addToast(`AI suggests priority ${analysis.suggestedPriority} for this call`, 'info');
+        }
+      } catch { /* AI analysis is non-critical */ }
     } catch (err: any) {
       console.error('Failed to create call:', err);
       addToast(err?.message || 'Failed to create call', 'error');
@@ -3445,6 +3460,25 @@ export default function DispatchPage() {
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e80' }} />
                         LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
                       </span>
+                    )}
+                    {/* Create Citation from this call */}
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const params = new URLSearchParams();
+                          if (selectedCall.location) params.set('location', selectedCall.location);
+                          if (selectedCall.latitude) params.set('lat', String(selectedCall.latitude));
+                          if (selectedCall.longitude) params.set('lng', String(selectedCall.longitude));
+                          params.set('call_id', selectedCall.id);
+                          params.set('call_number', selectedCall.call_number);
+                          navigate(`/citations?create=true&${params.toString()}`);
+                        }}
+                        className="toolbar-btn text-[9px]"
+                        title="Create citation from this call"
+                      >
+                        <FileText style={{ width: 10, height: 10 }} /> Citation
+                      </button>
                     )}
                     {/* Archive — available on any non-archived status */}
                     {!isEditing && selectedCall.status !== 'archived' && (
