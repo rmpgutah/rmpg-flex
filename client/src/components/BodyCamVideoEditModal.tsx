@@ -36,7 +36,7 @@ const CLASSIFICATIONS: { value: VideoClassification; label: string }[] = [
 const RETENTION_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'archived', label: 'Archived' },
-  { value: 'pending_review', label: 'Pending Review' },
+  { value: 'pending_deletion', label: 'Pending Deletion' },
 ];
 
 const INTERACTION_TYPES: { value: BwcInteractionType; label: string }[] = [
