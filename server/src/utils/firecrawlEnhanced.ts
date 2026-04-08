@@ -95,13 +95,13 @@ export function extractContactInfo(html: string): {
   // Extract social media links using cheerio
   const socialLinks: { platform: string; url: string }[] = [];
   const socialPatterns: [string, RegExp][] = [
-    ['linkedin', /linkedin\.com/i],
-    ['twitter', /(?:twitter|x)\.com/i],
-    ['facebook', /facebook\.com/i],
-    ['instagram', /instagram\.com/i],
-    ['youtube', /youtube\.com/i],
-    ['github', /github\.com/i],
-    ['tiktok', /tiktok\.com/i],
+    ['linkedin', /(?:\/\/|\.)\blinkedin\.com/i],
+    ['twitter', /(?:\/\/|\.)\b(?:twitter|x)\.com/i],
+    ['facebook', /(?:\/\/|\.)\bfacebook\.com/i],
+    ['instagram', /(?:\/\/|\.)\binstagram\.com/i],
+    ['youtube', /(?:\/\/|\.)\byoutube\.com/i],
+    ['github', /(?:\/\/|\.)\bgithub\.com/i],
+    ['tiktok', /(?:\/\/|\.)\btiktok\.com/i],
   ];
 
   $('a[href]').each((_i, el) => {
@@ -214,13 +214,13 @@ export function extractBusinessInfo(
 }
 
 function detectSocialPlatform(url: string): string | null {
-  if (/linkedin\.com/i.test(url)) return 'linkedin';
-  if (/(?:twitter|x)\.com/i.test(url)) return 'twitter';
-  if (/facebook\.com/i.test(url)) return 'facebook';
-  if (/instagram\.com/i.test(url)) return 'instagram';
-  if (/youtube\.com/i.test(url)) return 'youtube';
-  if (/github\.com/i.test(url)) return 'github';
-  if (/tiktok\.com/i.test(url)) return 'tiktok';
+  if (/(?:\/\/|\.)\blinkedin\.com/i.test(url)) return 'linkedin';
+  if (/(?:\/\/|\.)\b(?:twitter|x)\.com/i.test(url)) return 'twitter';
+  if (/(?:\/\/|\.)\bfacebook\.com/i.test(url)) return 'facebook';
+  if (/(?:\/\/|\.)\binstagram\.com/i.test(url)) return 'instagram';
+  if (/(?:\/\/|\.)\byoutube\.com/i.test(url)) return 'youtube';
+  if (/(?:\/\/|\.)\bgithub\.com/i.test(url)) return 'github';
+  if (/(?:\/\/|\.)\btiktok\.com/i.test(url)) return 'tiktok';
   return null;
 }
 
