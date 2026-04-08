@@ -433,8 +433,6 @@ function createTables(): void {
       vessel_owner TEXT,
       updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
-    CREATE INDEX IF NOT EXISTS idx_ofac_sdn_name ON ofac_sdn_entries(sdn_name COLLATE NOCASE);
-    CREATE INDEX IF NOT EXISTS idx_ofac_sdn_type ON ofac_sdn_entries(sdn_type);
 
     CREATE TABLE IF NOT EXISTS ofac_sdn_aliases (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1422,9 +1420,18 @@ function createTables(): void {
  * Uses try/catch per ALTER TABLE so it's idempotent (won't fail if column already exists).
  */
 function migrateSchema(): void {
+  const isValidIdentifier = (value: string): boolean => /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+  const quoteIdentifier = (value: string): string => `"${value.replace(/"/g, '""')}"`;
+  const isValidTypeDef = (value: string): boolean =>
+    /^(TEXT|INTEGER|REAL|BLOB|NUMERIC)(\s+(NOT NULL|UNIQUE|PRIMARY KEY))*$/.test(value.trim());
+
   const addCol = (table: string, col: string, typedef: string) => {
+    if (!isValidIdentifier(table) || !isValidIdentifier(col) || !isValidTypeDef(typedef)) {
+      throw new Error(`Invalid schema migration arguments: table=${table}, col=${col}, typedef=${typedef}`);
+    }
+
     try {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${typedef}`);
+      db.exec(`ALTER TABLE ${quoteIdentifier(table)} ADD COLUMN ${quoteIdentifier(col)} ${typedef.trim()}`);
     } catch (e) {
       // Column already exists — safe to ignore
     }
@@ -1655,7 +1662,13 @@ function migrateSchema(): void {
       `);
       // Copy existing data (use PRAGMA to get actual column list)
       const cfsCols = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
-      const cfsColNames = cfsCols.map((c: any) => c.name).join(', ');
+      const safeIdentifier = (name: string): string => {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+          throw new Error(`Unsafe column name in calls_for_service schema: ${name}`);
+        }
+        return `"${name.replace(/"/g, '""')}"`;
+      };
+      const cfsColNames = cfsCols.map((c: any) => safeIdentifier(String(c.name))).join(', ');
       db.exec(`INSERT INTO calls_for_service_new (${cfsColNames}) SELECT ${cfsColNames} FROM calls_for_service`);
       db.exec(`DROP TABLE calls_for_service`);
       db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
@@ -2880,7 +2893,15 @@ function migrateSchema(): void {
     console.log(`[migrate] ${breadcrumbsNeedingGeocode.cnt} breadcrumbs need road/cross-street data — backfilling async...`);
 
     // Kick off async backfill after a short delay to let the server finish starting
-    setTimeout(() => backfillBreadcrumbRoads(), 10_000);
+    setTimeout(() => {
+      try {
+        Promise.resolve(backfillBreadcrumbRoads()).catch((err) => {
+          console.error('[migrate] Async breadcrumb road/cross-street backfill failed:', err);
+        });
+      } catch (err) {
+        console.error('[migrate] Async breadcrumb road/cross-street backfill failed:', err);
+      }
+    }, 10_000);
   }
 
   // ── Backfill beat/zone/sector for calls & incidents with GPS but no beat ──
@@ -6096,17 +6117,17 @@ function seedData(): void {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
     const randomPassword = crypto.randomBytes(16).toString('hex');
-    const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
+    const hash = (pw: string) => bcryptjs.hashSync(pw, 12);
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
     `).run('admin', hash(randomPassword), 'System Administrator', 'admin@rmpgsecurity.com', 'admin', 'A001', '801-555-0100', now, now, now);
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║  INITIAL ADMIN CREDENTIALS                      ║');
-    console.log(`║  Username: admin                                 ║`);
-    console.log(`║  Password: ${randomPassword}        ║`);
-    console.log('║  You MUST change this password on first login.   ║');
+    console.log('║  INITIAL ADMIN ACCOUNT CREATED                  ║');
+    console.log('║  Username: admin                                ║');
+    console.log('║  Initial password generated securely (not shown).║');
+    console.log('║  You MUST change this password on first login.  ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
   }
