@@ -11,6 +11,19 @@ import { config } from '../config';
 
 const router = Router();
 
+// ── SQLite binding sanitizer ──
+// SQLite can only bind numbers, strings, bigints, buffers, and null.
+// Booleans (true/false) from form checkboxes must be converted to 1/0.
+// Objects/arrays must be JSON-stringified or nullified.
+function sqlSafe(v: any): string | number | bigint | Buffer | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  if (typeof v === 'number' || typeof v === 'string' || typeof v === 'bigint') return v;
+  if (Buffer.isBuffer(v)) return v;
+  if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
 // ── Encryption helper for API key decryption ──
 function decryptApiKey(stored: string): string {
   const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
@@ -497,7 +510,7 @@ router.post('/persons', (req: Request, res: Response) => {
     if (personEnhanced.length > 0) {
       const setClauses = personEnhanced.map(([k]) => `${k} = ?`).join(', ');
       const setValues = personEnhanced.map(([, v]) => v);
-      db.prepare(`UPDATE persons SET ${setClauses} WHERE id = ?`).run(...setValues, result.lastInsertRowid);
+      db.prepare(`UPDATE persons SET ${setClauses} WHERE id = ?`).run(...setValues.map(sqlSafe), result.lastInsertRowid);
     }
 
     // Auto-screen against OFAC sanctions BEFORE returning response
@@ -626,7 +639,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       fields.push("updated_at = ?");
       values.push(localNow());
       values.push(req.params.id);
-      db.prepare(`UPDATE persons SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      db.prepare(`UPDATE persons SET ${fields.join(', ')} WHERE id = ?`).run(...values.map(sqlSafe));
     }
 
     // Activity log
@@ -961,7 +974,7 @@ router.post('/vehicles', (req: Request, res: Response) => {
     if (vehEnhanced.length > 0) {
       const setClauses = vehEnhanced.map(([k]) => `${k} = ?`).join(', ');
       const setValues = vehEnhanced.map(([, v]) => v);
-      db.prepare(`UPDATE vehicles_records SET ${setClauses} WHERE id = ?`).run(...setValues, result.lastInsertRowid);
+      db.prepare(`UPDATE vehicles_records SET ${setClauses} WHERE id = ?`).run(...setValues.map(sqlSafe), result.lastInsertRowid);
     }
 
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
@@ -1076,7 +1089,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       fields.push("updated_at = ?");
       values.push(localNow());
       values.push(req.params.id);
-      db.prepare(`UPDATE vehicles_records SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      db.prepare(`UPDATE vehicles_records SET ${fields.join(', ')} WHERE id = ?`).run(...values.map(sqlSafe));
     }
 
     // Activity log
@@ -1323,7 +1336,7 @@ router.post('/properties', (req: Request, res: Response) => {
     if (propEnhanced.length > 0) {
       const setClauses = propEnhanced.map(([k]) => `${k} = ?`).join(', ');
       const setValues = propEnhanced.map(([, v]) => v);
-      db.prepare(`UPDATE properties SET ${setClauses} WHERE id = ?`).run(...setValues, result.lastInsertRowid);
+      db.prepare(`UPDATE properties SET ${setClauses} WHERE id = ?`).run(...setValues.map(sqlSafe), result.lastInsertRowid);
     }
 
     // Activity log
@@ -2258,7 +2271,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       pFields.push("updated_at = ?");
       pValues.push(localNow());
       pValues.push(req.params.id);
-      db.prepare(`UPDATE properties SET ${pFields.join(', ')} WHERE id = ?`).run(...pValues);
+      db.prepare(`UPDATE properties SET ${pFields.join(', ')} WHERE id = ?`).run(...pValues.map(sqlSafe));
     }
 
     // Activity log
