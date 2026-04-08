@@ -503,7 +503,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
   const baseBoxH = useReadableText ? 3.6 : 3;
   const displayText = isEmpty ? 'N/A' : useReadableText ? sanitized : sanitized.toUpperCase();
-  doc.setFont(useReadableText ? 'helvetica' : 'courier', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
@@ -720,7 +720,7 @@ export function addCautionBlock(
 
   const innerPad = 2;
   const maxW = width - innerPad * 2;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allLines = wordWrapText(doc, sanitizePdfText(cautionText), maxW - 1);
   const lines = allLines.slice(0, 6);
@@ -746,7 +746,7 @@ export function addCautionBlock(
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
 
   // Text content
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(80, 40, 0);
   let textY = y + 6;
