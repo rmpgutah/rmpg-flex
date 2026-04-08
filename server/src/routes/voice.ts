@@ -17,7 +17,14 @@ router.use(authenticateToken);
 // ─── Multer for audio upload (max 5MB) ───────────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5, parts: 10, fieldSize: 100 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('audio/') || file.mimetype === 'application/octet-stream') {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: audio formats`));
+    }
+  },
 });
 
 // ─── Rate limiting (10 commands/min per user) ────────
