@@ -823,7 +823,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 // CITATION VIOLATIONS — Multiple violations per citation
 // ════════════════════════════════════════════════════════════
 
-router.get('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/violations', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const violations = db.prepare(`
@@ -840,7 +840,7 @@ router.get('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor'
   }
 });
 
-router.post('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { statute_id, statute_citation, violation_description, offense_level, fine_amount, speed_recorded, speed_limit, notes } = req.body;
@@ -863,7 +863,7 @@ router.post('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor
   }
 });
 
-router.put('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/violations/:violationId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const fields = ['statute_id', 'statute_citation', 'violation_description', 'offense_level', 'fine_amount', 'speed_recorded', 'speed_limit', 'plea', 'verdict', 'disposition', 'disposition_date', 'notes'];
@@ -883,7 +883,7 @@ router.put('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'man
   } catch { res.status(500).json({ error: 'Failed to update violation' }); }
 });
 
-router.delete('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/violations/:violationId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM citation_violations WHERE id = ? AND citation_id = ?').run(req.params.violationId, req.params.id);
@@ -939,7 +939,7 @@ router.post('/batch/status', requireRole('admin', 'manager', 'supervisor'), (req
 // CITATION FULL — Aggregated view with violations + payments
 // ════════════════════════════════════════════════════════════
 
-router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
