@@ -506,8 +506,10 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
     const rows = db.prepare(`
       SELECT fi.fi_number, fi.subject_first_name, fi.subject_last_name, fi.subject_dob,
              fi.location,
+             fi.latitude, fi.longitude,
              fi.contact_reason AS reason,
-             fi.action_taken AS status,
+             fi.action_taken AS disposition,
+             fi.status,
              u.full_name AS officer_name,
              fi.narrative AS notes,
              fi.created_at
@@ -516,11 +518,13 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       ORDER BY fi.created_at DESC
       LIMIT 10000
     `).all() as any[];
-    const headers = ['FI #', 'First Name', 'Last Name', 'DOB', 'Location', 'Reason', 'Status', 'Officer', 'Notes', 'Created'];
+    const headers = ['FI #', 'First Name', 'Last Name', 'DOB', 'Location', 'Latitude', 'Longitude', 'Reason', 'Disposition', 'Status', 'Officer', 'Notes', 'Created'];
     const csvRows = rows.map((r: any) => [
       r.fi_number, r.subject_first_name, r.subject_last_name, r.subject_dob,
-      (r.location || '').replace(/"/g, '""'), (r.reason || '').replace(/"/g, '""'),
-      r.status, r.officer_name, (r.notes || '').replace(/"/g, '""'), r.created_at,
+      (r.location || '').replace(/"/g, '""'), r.latitude, r.longitude,
+      (r.reason || '').replace(/"/g, '""'), r.disposition, r.status,
+      r.officer_name, (r.notes || '').replace(/"/g, '""'),
+      r.created_at,
     ]);
     const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
