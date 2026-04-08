@@ -282,7 +282,7 @@ export default function MobileDrawer({
       <div
         ref={drawerRef}
         className="absolute top-0 left-0 bottom-0 mobile-drawer open"
-        style={{ width: 'min(85vw, 320px)', willChange: 'transform' }}
+        style={{ width: 'min(85vw, 340px)', willChange: 'transform' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

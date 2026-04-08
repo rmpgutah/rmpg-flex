@@ -1952,10 +1952,10 @@ body.fx-noise::after {
   top: 0;
   left: 0;
   bottom: 0;
-  width: min(85vw, 320px);
+  width: min(85vw, 340px);
   z-index: 9999;
   background: var(--surface-raised);
-  border-right: 1px solid #222222;
+  border-right: 1px solid var(--border-default);
   transform: translateX(-100%);
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
@@ -1966,12 +1966,12 @@ body.fx-noise::after {
   transform: translateX(0);
 }
 
-/* --- Mobile Header (48px compact top bar) --- */
+/* --- Mobile Header (56px compact top bar) --- */
 .mobile-header {
-  height: 48px;
+  height: 56px;
   padding: 0 8px;
   background: var(--surface-raised);
-  border-bottom: 1px solid #222222;
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -2102,11 +2102,11 @@ body.fx-noise::after {
 /* --- Swipe gesture area (left edge for opening drawer) --- */
 .mobile-swipe-edge {
   position: fixed;
-  top: 48px; /* below mobile header */
+  top: 56px; /* below mobile header */
   left: 0;
-  width: 20px;
-  height: calc(100dvh - 48px);
-  height: calc(100vh - 48px); /* fallback for older browsers */
+  width: 24px;
+  height: calc(100dvh - 56px);
+  height: calc(100vh - 56px); /* fallback for older browsers */
   z-index: 35;
   touch-action: pan-y;
 }
@@ -2118,7 +2118,17 @@ body.fx-noise::after {
   }
 
   .status-bar {
-    font-size: 9px;
+    font-size: 10px;
+  }
+
+  /* Even more aggressive font floor for tiny screens */
+  html {
+    font-size: 14px;
+  }
+
+  /* Reduce padding slightly to reclaim horizontal space */
+  .p-4 {
+    padding: 10px !important;
   }
 }
 
