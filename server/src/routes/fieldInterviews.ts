@@ -170,6 +170,13 @@ router.post('/', (req: Request, res: Response) => {
     } = req.body;
 
     if (!location) return res.status(400).json({ error: 'Location is required', code: 'MISSING_LOCATION' });
+    if (!subject_first_name?.trim()) return res.status(400).json({ error: 'Subject first name is required', code: 'MISSING_FIRST_NAME' });
+    if (!subject_last_name?.trim()) return res.status(400).json({ error: 'Subject last name is required', code: 'MISSING_LAST_NAME' });
+    if (!contact_reason?.trim()) return res.status(400).json({ error: 'Contact reason is required', code: 'MISSING_REASON' });
+    if (subject_first_name && String(subject_first_name).length > 100) return res.status(400).json({ error: 'Subject first name must be 100 characters or less', code: 'FIRST_NAME_TOO_LONG' });
+    if (subject_last_name && String(subject_last_name).length > 100) return res.status(400).json({ error: 'Subject last name must be 100 characters or less', code: 'LAST_NAME_TOO_LONG' });
+    if (location && String(location).length > 500) return res.status(400).json({ error: 'Location must be 500 characters or less', code: 'LOCATION_TOO_LONG' });
+    if (narrative && String(narrative).length > 50000) return res.status(400).json({ error: 'Narrative must be 50000 characters or less', code: 'NARRATIVE_TOO_LONG' });
 
     // Input sanitization
     const cleanLocation = typeof location === 'string' ? location.trim() : location;

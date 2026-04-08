@@ -2534,6 +2534,7 @@ router.get('/login-geo', authenticateToken, requireRole('admin', 'manager', 'sup
   }
 });
 
+
 // ════════════════════════════════════════════════════════════
 // UPGRADE 4: Security Event Timeline
 // Returns a chronological timeline of all security-relevant

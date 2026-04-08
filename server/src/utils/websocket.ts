@@ -37,8 +37,12 @@ interface WSClient {
   privateCallId: string | null;
   /** Client ID of private call partner */
   privateCallPartner: string | null;
-  /** Channels being scanned (monitored) in addition to the primary radio channel */
-  scanChannels?: string[];
+  /** IP address of the connected client */
+  ip?: string;
+  /** ISO timestamp when the client connected */
+  connectedAt: string;
+  /** Whether client responded to last ping (heartbeat) */
+  isAlive: boolean;
 }
 
 const clients: Map<string, WSClient> = new Map();
@@ -256,6 +260,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     ipConnectionCounts.set(clientIp, currentCount + 1);
 
     const clientId = generateClientId();
+    const clientIp = req.headers['x-forwarded-for']
+      ? String(req.headers['x-forwarded-for']).split(',')[0].trim()
+      : req.socket?.remoteAddress || 'unknown';
     const client: WSClient = {
       ws,
       authenticated: false,
@@ -263,6 +270,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       radioChannel: null,
       privateCallId: null,
       privateCallPartner: null,
+      ip: clientIp,
+      connectedAt: new Date().toISOString(),
+      isAlive: true,
     };
     clients.set(clientId, client);
 
@@ -298,6 +308,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         message: 'URL token authentication is deprecated and will be removed on 2026-04-15. Use message-based auth.',
       }));
     }
+
+    // Heartbeat: mark alive on pong
+    ws.on('pong', () => { client.isAlive = true; });
 
     // Auto-disconnect unauthenticated clients after timeout
     const authTimer = setTimeout(() => {
@@ -467,6 +480,22 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     (ws as any).__isAlive = true;
     ws.on('pong', () => { (ws as any).__isAlive = true; });
   });
+
+  // Heartbeat interval: ping all clients every 30s, terminate unresponsive ones
+  const heartbeatInterval = setInterval(() => {
+    for (const [id, client] of clients) {
+      if (!client.isAlive) {
+        try { client.ws.terminate(); } catch { /* ignore */ }
+        clients.delete(id);
+        continue;
+      }
+      client.isAlive = false;
+      try { client.ws.ping(); } catch { clients.delete(id); }
+    }
+  }, 30000);
+
+  // Clean up heartbeat interval when the server closes
+  wss.on('close', () => { clearInterval(heartbeatInterval); });
 
   return wss;
 }
@@ -929,6 +958,22 @@ export function getConnectedUsers(): { userId: number; username: string; role: s
   });
 
   return users;
+}
+
+export function getConnectedClients(): { userId: number; username: string; role: string; connectedAt: string; ip: string }[] {
+  const result: { userId: number; username: string; role: string; connectedAt: string; ip: string }[] = [];
+  clients.forEach((client) => {
+    if (client.authenticated && client.userId) {
+      result.push({
+        userId: client.userId,
+        username: client.username || 'Unknown',
+        role: client.role || 'unknown',
+        connectedAt: client.connectedAt,
+        ip: client.ip || 'unknown',
+      });
+    }
+  });
+  return result;
 }
 
 // ─── Radio System ─────────────────────────────────────────────

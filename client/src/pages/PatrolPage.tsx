@@ -715,14 +715,14 @@ const PatrolPage: React.FC = () => {
         <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
           <div className="flex items-center justify-between mb-1">
             <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_mi} mi total</span>
-            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300"><X className="w-3 h-3" /></button>
+            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-blue-500 hover:text-blue-300"><X className="w-3 h-3" /></button>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
               <div key={cp.id} className="flex gap-2">
                 <span className="text-gray-500 w-4">{i + 1}.</span>
                 <span className="text-white">{cp.name}</span>
-                <span className="text-gray-500 ml-auto">{cp.distance_from_previous_mi} mi</span>
+                <span className="text-blue-500 ml-auto">{cp.distance_from_previous_mi} mi</span>
               </div>
             ))}
           </div>

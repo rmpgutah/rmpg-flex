@@ -31,6 +31,7 @@ import AlertBanner from '../../components/AlertBanner';
 import { useToast } from '../../components/ToastProvider';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CriminalHistorySection from '../../components/CriminalHistorySection';
+import { useNavigate } from 'react-router-dom';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
 import PersonHistoryPanel from '../../components/PersonHistoryPanel';
 import CollapsibleSection from '../../components/CollapsibleSection';
@@ -204,9 +205,8 @@ export interface PersonsTabState {
   closeModal: () => void;
   // Alerts
   personAlerts: RecordAlert[];
-  // Warrant count
+  // Warrants
   warrantCount: number;
-  // Navigation
   navigate: ReturnType<typeof useNavigate>;
   // SSN
   ssnRevealed: boolean;
@@ -253,8 +253,6 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   // Warrant count for selected person
   const [warrantCount, setWarrantCount] = useState(0);
-
-  // Navigation
   const navigate = useNavigate();
 
   // SSN reveal state
@@ -626,7 +624,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
     selectedPerson, personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
-    linkRefreshKey, openLinkModal, fetchPersons,
+    linkRefreshKey, openLinkModal,
   } = state;
   const { user } = useAuth();
   const { addToast } = useToast();

@@ -358,6 +358,16 @@ export default function DashboardPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
+  // ═══ Shift Summary (units + calls overview) ═══
+  const [shiftSummary, setShiftSummary] = useState<{
+    officersOnDuty: number;
+    officersTotal: number;
+    unitsAvailable: number;
+    unitsTotal: number;
+    callsThisShift: number;
+    avgResponseMin: number | null;
+  } | null>(null);
+
   // ═══ Dashboard widget states (Features 31-43) ═══
   const [shiftComparison, setShiftComparison] = useState<any>(null);
   const [clearanceRate, setClearanceRate] = useState<any>(null);
@@ -474,7 +484,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, units, dStats] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -484,6 +494,8 @@ export default function DashboardPage() {
       safe<any>('/admin/shift-stats'),
       safe<any>('/admin/upcoming-court-dates?days=30'),
       safe<any>('/admin/expiring-certifications?days=30'),
+      safe<any[]>('/dispatch/units'),
+      safe<any>('/dispatch/dashboard/stats'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -494,6 +506,17 @@ export default function DashboardPage() {
     if (ss) setShiftStats(ss);
     if (cd) setCourtDatesCount(cd.count ?? 0);
     if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
+    // Shift Summary card data
+    const allUnits = Array.isArray(units) ? units : [];
+    const onDuty = allUnits.filter(u => u.status !== 'off_duty' && u.status !== 'out_of_service');
+    setShiftSummary({
+      officersOnDuty: onDuty.length,
+      officersTotal: allUnits.length,
+      unitsAvailable: allUnits.filter(u => u.status === 'available').length,
+      unitsTotal: allUnits.length,
+      callsThisShift: dStats?.active_calls ?? 0,
+      avgResponseMin: dStats?.avg_response_time ?? null,
+    });
   }, []);
 
   useEffect(() => {
@@ -653,6 +676,33 @@ export default function DashboardPage() {
           trend={stats.avg_response_time_minutes ? 'down' : 'flat'}
           onClick={() => navigate('/reports')}
         />
+      </div>
+
+      {/* Shift Summary Card */}
+      <div className="panel-inset bg-surface-sunken p-3 rounded-sm" role="region" aria-label="Shift summary">
+        <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 flex items-center gap-1">
+          <Shield className="w-3 h-3 text-brand-400" /> Shift Summary
+        </div>
+        <div className={`grid ${isMobile ? 'grid-cols-2 gap-3' : 'grid-cols-4 gap-3'} text-center`}>
+          <div>
+            <div className="text-lg font-bold font-mono text-white">{shiftSummary?.officersOnDuty ?? '\u2014'}</div>
+            <div className="text-[9px] text-rmpg-400">On Duty</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold font-mono text-green-400">{shiftSummary?.unitsAvailable ?? '\u2014'}</div>
+            <div className="text-[9px] text-rmpg-400">Available</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold font-mono text-amber-400">{shiftSummary?.callsThisShift ?? '\u2014'}</div>
+            <div className="text-[9px] text-rmpg-400">Active Calls</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold font-mono text-rmpg-200">
+              {shiftSummary?.avgResponseMin != null ? `${shiftSummary.avgResponseMin}m` : '\u2014'}
+            </div>
+            <div className="text-[9px] text-rmpg-400">Avg Response</div>
+          </div>
+        </div>
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}

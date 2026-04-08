@@ -599,7 +599,7 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
-      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl shadow-black/40 animate-in zoom-in-95 duration-200">
         {/* ─── Header ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505]">
           <div className="flex items-center gap-2">
@@ -610,12 +610,12 @@ export default function ServeRoutePlanner({
             </span>
             {/* Officer selector (Step 3.1) */}
             {officers && officers.length > 0 && (
-              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#222222]">
+              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#1e3048]">
                 <User size={12} className="text-rmpg-400" />
                 <select
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
-                  className="px-2 py-0.5 text-[11px] bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="px-2 py-0.5 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                   aria-label="Select officer for route"
                 >
                   {officers.map(o => (
@@ -651,14 +651,14 @@ export default function ServeRoutePlanner({
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={selectAll}
-                  className="text-[10px] text-gray-400 hover:text-gray-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
+                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                 >
                   Select All
                 </button>
                 <span className="text-rmpg-600">|</span>
                 <button type="button"
                   onClick={deselectAll}
-                  className="text-[10px] text-gray-400 hover:text-gray-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
+                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                 >
                   Deselect All
                 </button>
@@ -709,7 +709,7 @@ export default function ServeRoutePlanner({
 
                     {/* Order Number */}
                     <span className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold text-[#d4a017] tabular-nums"
-                      style={{ backgroundColor: stop.selected ? markerColor(stop.job.status) : '#444444', boxShadow: stop.selected ? `0 0 6px ${markerColor(stop.job.status)}80` : 'none' }}
+                      style={{ backgroundColor: stop.selected ? markerColor(stop.job.status) : '#374151', boxShadow: stop.selected ? `0 0 6px ${markerColor(stop.job.status)}80` : 'none' }}
                     >
                       {idx + 1}
                     </span>
@@ -734,14 +734,14 @@ export default function ServeRoutePlanner({
                       <button type="button"
                         onClick={() => moveStop(idx, -1)}
                         disabled={idx === 0}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                       >
                         <ChevronUp size={12} />
                       </button>
                       <button type="button"
                         onClick={() => moveStop(idx, 1)}
                         disabled={idx === stops.length - 1}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 rounded-[2px]"
                       >
                         <ChevronDown size={12} />
                       </button>

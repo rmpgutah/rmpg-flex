@@ -77,6 +77,46 @@ export interface CodeEntry {
  * Draw a single form cell: bordered rectangle with tiny label
  * at top-left inside the cell, value text below.
  */
+/** Line height multiplier for form cell value text (mm per line) */
+const CELL_LINE_H = 3;
+
+/**
+ * Measure how many wrapped lines a cell's value text needs at the given width.
+ * Returns the line count (minimum 1). Useful for pre-computing row heights.
+ */
+export function measureCellLines(doc: jsPDF, cell: FormCell, cellW: number): number {
+  if (cell.checkbox || !cell.value) return 1;
+  const pad = SPACING.FORM_CELL_PAD;
+  const maxW = cellW - 2 * pad;
+  if (maxW <= 0) return 1;
+  const sanitized = sanitizePdfText(cell.value);
+  if (!sanitized) return 1;
+  doc.setFont('courier', cell.valueBold ? 'bold' : 'normal');
+  doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
+  const lines = wordWrapText(doc, sanitized.toUpperCase(), maxW - 1);
+  return Math.max(1, lines.length);
+}
+
+/**
+ * Compute the minimum row height needed for a set of cells at given total width.
+ * Accounts for label strip + wrapped value lines.
+ */
+export function computeRowHeight(doc: jsPDF, cells: FormCell[], totalW: number): number {
+  if (!cells || cells.length === 0) return SPACING.FORM_CELL_H;
+  const totalRatio = cells.reduce((sum, c) => sum + (c.ratio || 1), 0) || 1;
+  let maxLines = 1;
+  for (const cell of cells) {
+    const ratio = cell.ratio || 1;
+    const cellW = (ratio / totalRatio) * totalW;
+    const lines = measureCellLines(doc, cell, cellW);
+    if (lines > maxLines) maxLines = lines;
+  }
+  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.3;
+  const pad = SPACING.FORM_CELL_PAD;
+  const neededH = labelStripH + pad + maxLines * CELL_LINE_H + pad;
+  return Math.max(SPACING.FORM_CELL_H, neededH);
+}
+
 export function drawFormCell(
   doc: jsPDF,
   cell: FormCell,
@@ -90,25 +130,25 @@ export function drawFormCell(
   // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
   if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
-  // Cell borders drawn by drawFormRow (shared edges prevent double-lines)
+  // No cell border — clean borderless style matching CFS report
 
   // Label (Helvetica Bold, dark gray — above value)
   const labelBaseY = y + pad + 1.2;
   if (cell.label) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setFontSize(5.5); // 5.5pt labels matching CFS addFieldPair style
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     // Strip numbered prefix patterns like "1. ", "12. " from labels
     const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
     doc.text(cleanLabel, x + pad, labelBaseY);
   }
 
-  // Value area starts below label strip — 2mm gap between label and value
-  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.3; // Tight gap
+  // Value area starts below label strip
+  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.3;
   const valueAreaTop = y + labelStripH + pad;
   const valueAreaH = h - labelStripH - pad;
 
-  // Value (Courier, black — centered in value area)
+  // Value (Courier, black — word-wrapped within cell bounds)
   if (cell.checkbox) {
     // Render checkbox square centered vertically in value area
     const cbSize = 2.8;
@@ -122,7 +162,7 @@ export function drawFormCell(
       doc.line(cbX + 0.5, cbY + 1.4, cbX + 1.1, cbY + 2.3);
       doc.line(cbX + 1.1, cbY + 2.3, cbX + 2.3, cbY + 0.5);
     }
-    // Label text after checkbox
+    // Label text after checkbox — Courier
     if (cell.value) {
       doc.setFont('courier', 'normal');
       doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
@@ -131,28 +171,40 @@ export function drawFormCell(
     }
   } else if (cell.value) {
     doc.setFont('courier', cell.valueBold ? 'bold' : 'normal');
-    doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
+    const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
+    doc.setFontSize(fontSize);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-    // Center value text baseline in the value area
-    const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
-    const textH = fontSize * 0.35;  // Approximate cap height in mm
-    const valueY = valueAreaTop + (valueAreaH + textH) / 2;
     const maxW = w - 2 * pad;
-
     const displayVal = cell.value.toUpperCase();
-    if (cell.align === 'center') {
-      doc.text(displayVal, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
-    } else if (cell.align === 'right') {
-      doc.text(displayVal, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
-    } else {
-      doc.text(displayVal, x + pad, valueY, { maxWidth: maxW });
+
+    // Word-wrap manually to stay within cell bounds (no jsPDF maxWidth overflow)
+    const lines = wordWrapText(doc, displayVal, maxW - 1);
+    const lineH = CELL_LINE_H;
+    const textBlockH = lines.length * lineH;
+    // Vertically center the text block in the value area
+    const startY = valueAreaTop + Math.max(0, (valueAreaH - textBlockH) / 2) + lineH * 0.72;
+
+    for (let li = 0; li < lines.length; li++) {
+      const lineY = startY + li * lineH;
+      // Stop rendering if line would exceed cell bottom
+      if (lineY > y + h + 0.5) break;
+      const line = lines[li];
+      if (cell.align === 'center') {
+        doc.text(line, x + w / 2, lineY, { align: 'center' });
+      } else if (cell.align === 'right') {
+        doc.text(line, x + w - pad, lineY, { align: 'right' });
+      } else {
+        doc.text(line, x + pad, lineY);
+      }
     }
   }
 }
 
 /**
  * Draw a row of adjacent form cells, distributing width by ratio.
+ * Row height auto-expands to fit the tallest cell's wrapped text.
+ * An explicit rowH overrides auto-sizing (minimum enforced).
  * Returns the Y position after the row.
  */
 export function drawFormRow(
@@ -164,7 +216,9 @@ export function drawFormRow(
   rowH?: number,
 ): number {
   if (!cells || cells.length === 0) return y + (rowH || SPACING.FORM_CELL_H);
-  const h = rowH || SPACING.FORM_CELL_H;
+  // Auto-compute row height from cell content; explicit rowH sets a minimum
+  const autoH = computeRowHeight(doc, cells, totalW);
+  const h = rowH ? Math.max(rowH, autoH) : autoH;
   const totalRatio = cells.reduce((sum, c) => sum + (c.ratio || 1), 0) || 1;
 
   // Draw outer row border (single shared edge — no doubles)
@@ -202,12 +256,11 @@ export function drawFormGrid(
   totalW: number,
   opts?: { outerBorder?: boolean },
 ): number {
-  const startY = y;
   let curY = y;
 
   for (const row of rows) {
-    const h = row.height || SPACING.FORM_CELL_H;
-    curY = drawFormRow(doc, row.cells, x, curY, totalW, h);
+    // Pass explicit row.height as minimum; drawFormRow auto-expands if text needs more
+    curY = drawFormRow(doc, row.cells, x, curY, totalW, row.height);
   }
 
   return curY;
@@ -319,6 +372,8 @@ export function drawCheckboxGrid(
   // Account for last row
   curY += rowH;
 
+  // No outer border — clean borderless style matching CFS report
+
   return curY;
 }
 
@@ -377,6 +432,8 @@ export function drawCodeReferenceTable(
 
   curY += rowH;
 
+  // No outer border — clean borderless style matching CFS report
+
   return curY;
 }
 
@@ -411,12 +468,12 @@ export function drawFormSection(
     ? pageW - 2 * LAYOUT.PAGE_MARGIN
     : getGridContentWidth(doc);
 
-  // Calculate total section height (include banner if applicable)
-  // Banner: 5mm dark header bar matching CFS openAutoSection style
+  // Calculate total section height using dynamic row heights (include banner if applicable)
   const bannerH = useBanner ? 4 : 0;
   let totalH = bannerH;
   for (const row of config.rows) {
-    totalH += row.height || SPACING.FORM_CELL_H;
+    const autoH = computeRowHeight(doc, row.cells, gridW);
+    totalH += row.height ? Math.max(row.height, autoH) : autoH;
   }
 
   // Check if section fits on current page
@@ -434,7 +491,7 @@ export function drawFormSection(
 
   if (useBanner) {
     // ── Draw horizontal banner (matches openAutoSection header style) ──
-    // Dark fill (#2e2e2e equivalent) matching CFS section headers
+    // Dark fill (#2a3e58 equivalent) matching CFS section headers
     const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
     doc.setFillColor(...bgColor);
     doc.rect(gridX, curY, gridW, bannerH, 'F');
@@ -449,7 +506,7 @@ export function drawFormSection(
     const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textY = curY + (bannerH + bannerCapH) / 2;
     doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
-    curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
+    curY += bannerH + 1; // 1mm gap between banner and first grid row (tight)
   }
 
   // Draw grid rows
@@ -461,7 +518,9 @@ export function drawFormSection(
   }
 
   if (useBanner) {
-    // No extra enclosing border — rows already have shared-edge borders
+    // Enclosing section border around entire section (banner + grid + afterGrid)
+    const totalH = curY - sectionStartY;
+    // No enclosing section border — clean borderless style
   } else {
     // Draw sidebar tab spanning the full section height (legacy mode)
     const sectionH = curY - sectionStartY;

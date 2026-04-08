@@ -48,7 +48,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 
 // ============================================================
@@ -448,6 +448,7 @@ const timeAgo = (date: string): string => {
 };
 
 export default function WarrantsPage() {
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -476,7 +477,6 @@ export default function WarrantsPage() {
   const [priorityWarrants, setPriorityWarrants] = useState<PriorityWarrant[]>([]);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [dashSearch, setDashSearch] = useState('');
-  const [expiringCount, setExpiringCount] = useState<number | null>(null);
   const [summaryReportOpen, setSummaryReportOpen] = useState(false);
   const [summaryFrom, setSummaryFrom] = useState('');
   const [summaryTo, setSummaryTo] = useState('');
@@ -606,6 +606,34 @@ export default function WarrantsPage() {
   const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
   const [addingToLocal, setAddingToLocal] = useState(false);
   const [addedToLocal, setAddedToLocal] = useState(false);
+
+  // Utah warrant detail modal
+  const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
+  const [addingToLocal, setAddingToLocal] = useState(false);
+  const [addedToLocal, setAddedToLocal] = useState(false);
+
+  // ============================================================
+  // UNIFIED SEARCH TAB STATE
+  // ============================================================
+  const [uniSearchFirst, setUniSearchFirst] = useState('');
+  const [uniSearchLast, setUniSearchLast] = useState('');
+  const [uniSearchDob, setUniSearchDob] = useState('');
+  const [uniSearchWarrantNum, setUniSearchWarrantNum] = useState('');
+  const [uniSearchCourt, setUniSearchCourt] = useState('');
+  const [uniSearchSource, setUniSearchSource] = useState('');
+  const [uniSearchOffenseLevel, setUniSearchOffenseLevel] = useState('');
+  const [uniSearchStatus, setUniSearchStatus] = useState('');
+  const [uniSearchType, setUniSearchType] = useState('');
+  const [uniSearchCharge, setUniSearchCharge] = useState('');
+  const [uniSearchDateFrom, setUniSearchDateFrom] = useState('');
+  const [uniSearchDateTo, setUniSearchDateTo] = useState('');
+  const [uniSearching, setUniSearching] = useState(false);
+  const [uniResults, setUniResults] = useState<UnifiedSearchResults | null>(null);
+  const [uniAdvancedOpen, setUniAdvancedOpen] = useState(false);
+  const [uniSearchHistory, setUniSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
+  const [nameTypeahead, setNameTypeahead] = useState<Person[]>([]);
+  const [nameTypeaheadLoading, setNameTypeaheadLoading] = useState(false);
+  const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ============================================================
   // WATCH LIST TAB STATE
@@ -916,6 +944,144 @@ export default function WarrantsPage() {
     setTimeout(() => runUnifiedSearch(), 100);
   }, [utahDetailWarrant, runUnifiedSearch]);
 
+  // ── Unified Search ──
+  const runUnifiedSearch = useCallback(async () => {
+    if (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim()) return;
+    setUniSearching(true);
+    try {
+      const body: Record<string, string> = {};
+      if (uniSearchFirst.trim()) body.firstName = uniSearchFirst.trim();
+      if (uniSearchLast.trim()) body.lastName = uniSearchLast.trim();
+      if (uniSearchDob.trim()) body.dob = uniSearchDob.trim();
+      if (uniSearchWarrantNum.trim()) body.warrantNumber = uniSearchWarrantNum.trim();
+      if (uniSearchCourt.trim()) body.court = uniSearchCourt.trim();
+      if (uniSearchSource) body.source = uniSearchSource;
+      if (uniSearchOffenseLevel) body.offenseLevel = uniSearchOffenseLevel;
+      if (uniSearchStatus) body.status = uniSearchStatus;
+      if (uniSearchType) body.type = uniSearchType;
+      if (uniSearchCharge.trim()) body.chargeKeyword = uniSearchCharge.trim();
+      if (uniSearchDateFrom) body.dateFrom = uniSearchDateFrom;
+      if (uniSearchDateTo) body.dateTo = uniSearchDateTo;
+
+      const res = await apiFetch<UnifiedSearchResults>('/warrants/search-all', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      setUniResults(res);
+      if (uniSearchFirst.trim() && uniSearchLast.trim()) {
+        setUniSearchHistory(prev => [
+          { first: uniSearchFirst.trim(), last: uniSearchLast.trim(), hits: res.meta.totalHits, at: new Date().toISOString() },
+          ...prev.filter(h => !(h.first === uniSearchFirst.trim() && h.last === uniSearchLast.trim())),
+        ].slice(0, 10));
+      }
+    } finally { setUniSearching(false); }
+  }, [uniSearchFirst, uniSearchLast, uniSearchDob, uniSearchWarrantNum, uniSearchCourt,
+      uniSearchSource, uniSearchOffenseLevel, uniSearchStatus, uniSearchType,
+      uniSearchCharge, uniSearchDateFrom, uniSearchDateTo]);
+
+  // ── Typeahead for unified search name fields ──
+  useEffect(() => {
+    if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+    const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
+    if (query.length < 2) { setNameTypeahead([]); return; }
+    typeaheadTimer.current = setTimeout(async () => {
+      setNameTypeaheadLoading(true);
+      try {
+        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(query)}&limit=8`);
+        setNameTypeahead(res.data || []);
+      } finally { setNameTypeaheadLoading(false); }
+    }, 300);
+    return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
+  }, [uniSearchFirst, uniSearchLast]);
+
+  // ── Utah Warrant Detail Modal Handlers ──
+
+  const openUtahDetail = useCallback((w: UtahWarrantResult, source: 'utah' | 'local' | 'scraped') => {
+    setUtahDetailWarrant({ ...w, _source: source });
+    setAddedToLocal(false);
+  }, []);
+
+  const handleUtahPrint = useCallback(async () => {
+    if (!utahDetailWarrant) return;
+    const w = utahDetailWarrant;
+    const pdfData: WarrantPdfData = {
+      warrant_number: w.case_id || w.warrant_id || w.utah_warrant_id || 'UTAH-SEARCH',
+      type: w.warrant_type || 'arrest',
+      status: w.status || 'active',
+      offense_level: w.offense_level || '',
+      charge_description: w.charges || w.charge_description || '',
+      subject_first_name: w.first_name || '',
+      subject_last_name: w.last_name || '',
+      subject_dob: '',
+      subject_gender: '',
+      subject_race: '',
+      subject_height: '',
+      subject_weight: '',
+      subject_hair_color: '',
+      subject_eye_color: '',
+      subject_address: w.city || '',
+      issuing_court: w.court_name || '',
+      issuing_judge: '',
+      bail_amount: w.bail_amount ?? undefined,
+      expires_at: '',
+      entered_by_name: '',
+      created_at: w.issue_date || new Date().toISOString(),
+      notes: `Source: ${w._source === 'utah' ? 'Utah State Warrants API' : w._source === 'scraped' ? `Multi-Source (${w.source_key || 'scraped'})` : 'Local System'}\nSearch Date: ${new Date().toLocaleString()}`,
+      // Extended fields for source/verification
+      county: w.city || '',
+      case_number: w.case_id || '',
+      filing_date: w.issue_date || '',
+      data_source: w._source === 'utah' ? 'Utah State Warrants API (warrants.utah.gov)' : w._source === 'scraped' ? `Multi-Source Database (${w.source_key || 'scraped'})` : 'RMPG Local System',
+      search_date: new Date().toLocaleString(),
+    };
+    try {
+      await downloadRecordPdf('warrant', pdfData, pdfData.warrant_number);
+    } catch (err) {
+      console.error('Warrant PDF failed:', err);
+    }
+  }, [utahDetailWarrant]);
+
+  const handleAddToLocal = useCallback(async () => {
+    if (!utahDetailWarrant || addingToLocal) return;
+    setAddingToLocal(true);
+    try {
+      const w = utahDetailWarrant;
+      await apiFetch('/warrants/ingest-utah', {
+        method: 'POST',
+        body: JSON.stringify({
+          warrants: [{
+            utah_warrant_id: w.utah_warrant_id || w.warrant_id || `manual-${Date.now()}`,
+            charges: w.charges || w.charge_description || 'Utah warrant',
+            court_name: w.court_name || null,
+            first_name: w.first_name,
+            last_name: w.last_name,
+            bail_amount: w.bail_amount,
+            offense_level: w.offense_level,
+            case_id: w.case_id,
+            issue_date: w.issue_date,
+          }],
+        }),
+      });
+      setAddedToLocal(true);
+      // Refresh warrants list if on warrants tab
+      fetchWarrants({ silent: true });
+    } catch (err: any) {
+      setError(err?.message || 'Failed to add to local records');
+    } finally {
+      setAddingToLocal(false);
+    }
+  }, [utahDetailWarrant, addingToLocal, fetchWarrants]);
+
+  const handleCheckPerson = useCallback(() => {
+    if (!utahDetailWarrant) return;
+    // Switch to unified search with this person's name
+    setUniSearchFirst(utahDetailWarrant.first_name);
+    setUniSearchLast(utahDetailWarrant.last_name);
+    setUtahDetailWarrant(null);
+    setActiveTab('search-all');
+    setTimeout(() => runUnifiedSearch(), 100);
+  }, [utahDetailWarrant, runUnifiedSearch]);
+
   // ── Auto-Poll Status ──
   const fetchAutoPollStatus = useCallback(async () => {
     setAutoPollLoading(true);
@@ -934,6 +1100,62 @@ export default function WarrantsPage() {
     if (activeTab !== 'watch') return;
     fetchAutoPollStatus();
   }, [activeTab, fetchAutoPollStatus]);
+
+  // Watch Map initialization
+  useEffect(() => {
+    if (!watchMapOpen || !watchMapRef.current) return;
+    if (watchMapInstance.current) return; // already initialized
+
+    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string || '';
+    if (!apiKey) return;
+
+    let cancelled = false;
+    loadGoogleMaps(apiKey).then(() => {
+      if (cancelled || !watchMapRef.current) return;
+      const map = new google.maps.Map(watchMapRef.current, {
+        center: { lat: 40.76, lng: -111.89 },
+        zoom: 11,
+        styles: DARK_MAP_STYLE,
+        disableDefaultUI: true,
+        zoomControl: true,
+      });
+      watchMapInstance.current = map;
+
+      // Add markers for flagged persons with addresses
+      if (autoPollStatus?.flaggedPersons) {
+        const geocoder = new google.maps.Geocoder();
+        autoPollStatus.flaggedPersons.forEach((p) => {
+          if (!p.address) return;
+          geocoder.geocode({ address: p.address }, (results, status) => {
+            if (cancelled) return;
+            if (status === 'OK' && results && results[0]) {
+              const marker = new google.maps.Marker({
+                position: results[0].geometry.location,
+                map,
+                title: `${p.last_name}, ${p.first_name}`,
+                icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  fillColor: p.warrant_severity === 'felony' ? '#ef4444' : p.warrant_severity === 'misdemeanor' ? '#f59e0b' : '#6b7280',
+                  fillOpacity: 0.9,
+                  strokeColor: '#fff',
+                  strokeWeight: 1,
+                  scale: 8,
+                },
+              });
+              marker.addListener('click', () => {
+                document.getElementById('watch-person-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              });
+            }
+          });
+        });
+      }
+    }).catch(() => { /* Google Maps load failed silently */ });
+
+    return () => {
+      cancelled = true;
+      watchMapInstance.current = null;
+    };
+  }, [watchMapOpen, autoPollStatus?.flaggedPersons]);
 
   const fetchCoverage = useCallback(async () => {
     setCoverageLoading(true);
@@ -1960,7 +2182,13 @@ export default function WarrantsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
                         <span className="text-rmpg-400">Name</span>
-                        <div className="text-white font-bold">{selectedWarrant.subject_name}</div>
+                        {selectedWarrant.subject_person_id ? (
+                          <button type="button" onClick={() => navigate(`/records?tab=persons&personId=${selectedWarrant.subject_person_id}`)} className="text-white font-bold hover:text-brand-400 underline underline-offset-2 decoration-rmpg-500 hover:decoration-brand-400 transition-colors text-left">
+                            {selectedWarrant.subject_name}
+                          </button>
+                        ) : (
+                          <div className="text-white font-bold">{selectedWarrant.subject_name}</div>
+                        )}
                       </div>
                       {selectedWarrant.subject_dob && (
                         <div>
@@ -2111,9 +2339,6 @@ export default function WarrantsPage() {
                       placeholder="First name..."
                       value={uniSearchFirst}
                       onChange={(e) => setUniSearchFirst(e.target.value)}
-                      onFocus={() => setNameFieldFocused(true)}
-                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
-                      autoComplete="off"
                       autoFocus
                     />
                   </div>
@@ -2125,9 +2350,6 @@ export default function WarrantsPage() {
                       placeholder="Last name..."
                       value={uniSearchLast}
                       onChange={(e) => setUniSearchLast(e.target.value)}
-                      onFocus={() => setNameFieldFocused(true)}
-                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
-                      autoComplete="off"
                     />
                   </div>
                   <div className="w-[140px]">
@@ -2139,9 +2361,9 @@ export default function WarrantsPage() {
                       onChange={(e) => setUniSearchDob(e.target.value)}
                     />
                   </div>
-                  {/* Typeahead dropdown — only visible when name fields are focused */}
-                  {nameTypeahead.length > 0 && nameFieldFocused && (
-                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-[var(--border-strong)] shadow-lg max-h-48 overflow-auto">
+                  {/* Typeahead dropdown */}
+                  {nameTypeahead.length > 0 && (
+                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-surface-border shadow-lg max-h-48 overflow-auto">
                       {nameTypeaheadLoading && (
                         <div className="p-2 text-[10px] text-rmpg-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
                       )}
@@ -2536,7 +2758,7 @@ export default function WarrantsPage() {
                     onClick={async () => {
                       if (!autoPollStatus?.flaggedPersons?.length) return;
                       try {
-                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets, setGenerationTimestamp } = await import('../utils/pdfGenerator');
                         const branding = await fetchPdfBranding();
                         setActiveBranding(branding);
                         await loadPdfAssets();
@@ -2603,7 +2825,7 @@ export default function WarrantsPage() {
                   </div>
                 )}
 
-                {/* Flagged Persons -- Rich Cards */}
+                {/* Flagged Persons — Rich Cards */}
                 {autoPollStatus.flaggedPersons.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -2773,7 +2995,7 @@ export default function WarrantsPage() {
                                     subject_address: p.address || undefined,
                                     subject_photo_url: p.photo_url || undefined,
                                     charge_description: allWarrants[0]?.charge_description || allUtah[0]?.charges || '',
-                                    offense_level: allWarrants[0]?.offense_level as any || undefined,
+                                    offense_level: allWarrants[0]?.offense_level as any || null,
                                     bail_amount: allWarrants[0]?.bail_amount || undefined,
                                     issuing_court: allWarrants[0]?.issuing_court || allUtah[0]?.court_name || undefined,
                                     issuing_judge: undefined,
@@ -2882,7 +3104,7 @@ export default function WarrantsPage() {
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
       {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {/* Coverage Section */}
             {coverageLoading ? (
@@ -3509,18 +3731,18 @@ export default function WarrantsPage() {
       {utahDetailWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setUtahDetailWarrant(null)}>
           <div
-            className="bg-[#050505] border border-[#222222] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
+            className="bg-[#0d1520] border border-[#1e3048] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222222] bg-[#0a0a0a]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048] bg-[#141e2b]">
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <span className="text-base font-bold text-white truncate">
                   {utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}
                 </span>
                 <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border flex-shrink-0 ${
                   utahDetailWarrant._source === 'utah' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                  utahDetailWarrant._source === 'local' ? 'bg-gray-900/50 text-gray-400 border-gray-700/50' :
+                  utahDetailWarrant._source === 'local' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50' :
                   'bg-amber-900/50 text-amber-400 border-amber-700/50'
                 }`}>
                   {utahDetailWarrant._source === 'utah' ? 'UTAH STATE' : utahDetailWarrant._source === 'local' ? 'LOCAL' : 'SCRAPED'}
@@ -3534,10 +3756,10 @@ export default function WarrantsPage() {
             <div className="p-4 space-y-4">
               {/* SUBJECT INFORMATION */}
               <div>
-                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Subject Information</span>
                 </div>
-                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Full Name</span>
@@ -3561,10 +3783,10 @@ export default function WarrantsPage() {
 
               {/* WARRANT DETAILS */}
               <div>
-                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Warrant Details</span>
                 </div>
-                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     {(utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id) && (
                       <div>
@@ -3594,7 +3816,7 @@ export default function WarrantsPage() {
                             utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                             utahDetailWarrant.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                             'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                          }`}>{(utahDetailWarrant.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          }`}>{utahDetailWarrant.offense_level}</span>
                         </div>
                       </div>
                     )}
@@ -3618,10 +3840,10 @@ export default function WarrantsPage() {
               {/* COURT INFORMATION */}
               {(utahDetailWarrant.court_name || utahDetailWarrant.case_id || utahDetailWarrant.issue_date) && (
                 <div>
-                  <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
+                  <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                     <span className="text-[10px] font-bold text-white uppercase tracking-widest">Court Information</span>
                   </div>
-                  <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
+                  <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                       {utahDetailWarrant.court_name && (
                         <div>
@@ -3652,10 +3874,10 @@ export default function WarrantsPage() {
 
               {/* SOURCE / VERIFICATION */}
               <div>
-                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Source / Verification</span>
                 </div>
-                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Data Source</span>
@@ -3681,7 +3903,7 @@ export default function WarrantsPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#222222] bg-[#0a0a0a] flex-wrap">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#1e3048] bg-[#141e2b] flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"

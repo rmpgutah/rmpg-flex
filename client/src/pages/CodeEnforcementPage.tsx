@@ -22,8 +22,6 @@ import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr } from '../utils/dateUtils';
-import { formatAddressDisplay } from '../utils/statusLabels';
-import EmptyState from '../components/EmptyState';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },

@@ -17,7 +17,7 @@ interface UseMapResponseRadiusReturn {
 }
 
 // ─── Ring definitions ───────────────────────────────────────
-// 30 mph = ~48.28 km/h = ~804.67 m/min
+// 30 mph average response speed = ~804.67 m/min
 
 const RINGS = [
   { minutes: 2,  radiusMeters: 1609,  fillColor: '#22c55e', strokeColor: '#22c55e', fillOpacity: 0.08, label: '2 min' },

@@ -22,6 +22,7 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
+  formSectionPageBreak,
   sanitizePdfText,
 } from './pdfGenerator';
 import {
@@ -441,7 +442,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
       { label: 'RESULT', x: cols[4] },
       { label: 'NOTES', x: cols[5] },
     ];
-    const rows = data.attempts.map(a => [
+    const rows = (data.attempts || []).map(a => [
       String(a.number),
       sanitizePdfText(a.date || '').toUpperCase(),
       sanitizePdfText(a.time || '').toUpperCase(),
@@ -456,7 +457,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Photos from attempts ──
-  for (const attempt of data.attempts) {
+  for (const attempt of (data.attempts || [])) {
     if (attempt.photos && attempt.photos.length > 0) {
       y = checkPageBreak(doc, y, 40);
       const sec = openAutoSection(doc, `Attempt #${attempt.number} Photos`, y);
@@ -472,22 +473,23 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     const sec = openAutoSection(doc, 'Skip Trace Summary', y);
     y = sec.contentY;
 
-    for (const trace of data.skipTraces) {
+    for (const trace of (data.skipTraces || [])) {
       y = checkPageBreak(doc, y, 20);
       const rowY = y;
-      addFieldPair(doc, 'Date', trace.date, lx, rowY, hfw);
-      y = addFieldPair(doc, 'Search Type', trace.searchType, rx, rowY, hfw);
+      const yL = addFieldPair(doc, 'Date', trace.date, lx, rowY, hfw);
+      const yR = addFieldPair(doc, 'Search Type', trace.searchType, rx, rowY, hfw);
+      y = Math.max(yL, yR);
       y += SPACING.SM;
       y = addFieldPair(doc, 'Addresses Found', String(trace.addressesFound), lx, y, hfw);
       y += SPACING.SM;
 
-      if (trace.addressesTried.length > 0) {
-        y = addFieldPair(doc, 'Addresses Tried', trace.addressesTried.map(a => sanitizePdfText(a)).join('; '), lx, y, ffw);
+      if ((trace.addressesTried || []).length > 0) {
+        y = addFieldPair(doc, 'Addresses Tried', (trace.addressesTried || []).map(a => sanitizePdfText(a)).join('; '), lx, y, ffw);
         y += SPACING.SM;
       }
 
       // Separator between traces
-      if (data.skipTraces!.indexOf(trace) < data.skipTraces!.length - 1) {
+      if ((data.skipTraces || []).indexOf(trace) < (data.skipTraces || []).length - 1) {
         doc.setDrawColor(...COLOR.BORDER_TABLE);
         doc.setLineWidth(BORDER.TABLE_ROW);
         doc.line(lx, y, lx + ffw, y);
@@ -599,21 +601,26 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   }
 
   // ── Summary Statistics ──
-  const served = data.jobs.filter(j => j.result.toLowerCase() === 'served').length;
-  const failed = data.jobs.filter(j => ['failed', 'unable'].some(s => j.result.toLowerCase().includes(s))).length;
-  const pending = data.jobs.filter(j => j.result.toLowerCase() === 'pending').length;
+  const jobs = data.jobs || [];
+  const served = jobs.filter(j => (j.result || '').toLowerCase() === 'served').length;
+  const failed = jobs.filter(j => ['failed', 'unable'].some(s => (j.result || '').toLowerCase().includes(s))).length;
+  const pending = jobs.filter(j => (j.result || '').toLowerCase() === 'pending').length;
 
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Summary Statistics', y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '4. Total Jobs', String(data.jobs.length), lx, y, hfw);
-    const fy2 = addFieldPair(doc, '5. Served', String(served), rx, y, hfw);
-    y = Math.max(fy1, fy2);
-    const fy3 = addFieldPair(doc, '6. Failed', String(failed), lx, y, hfw);
-    const fy4 = addFieldPair(doc, '7. Pending', String(pending), rx, y, hfw);
-    y = Math.max(fy3, fy4);
-    y = addFieldPair(doc, '8. Miles Driven', data.totalMileage.toFixed(1), lx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SUMMARY' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '4. TOTAL JOBS', value: String(jobs.length), ratio: 1, align: 'center', valueBold: true },
+        { label: '5. SERVED', value: String(served), ratio: 1, align: 'center' },
+        { label: '6. FAILED', value: String(failed), ratio: 1, align: 'center' },
+        { label: '7. PENDING', value: String(pending), ratio: 1, align: 'center' },
+        { label: '8. MILES DRIVEN', value: (data.totalMileage ?? 0).toFixed(1), ratio: 1, align: 'center' },
+      ]},
+    ],
+    y,
+  });
 
   // ── Job Details Table ──
   y = checkPageBreak(doc, y, 30);
@@ -631,8 +638,8 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     ];
 
     // Group jobs by client name
-    const clientGroups = new Map<string, typeof data.jobs>();
-    for (const job of data.jobs) {
+    const clientGroups = new Map<string, typeof jobs>();
+    for (const job of jobs) {
       const client = job.clientName || 'Unassigned';
       if (!clientGroups.has(client)) clientGroups.set(client, []);
       clientGroups.get(client)!.push(job);
@@ -664,8 +671,9 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Route Efficiency', y);
     y = sec.contentY;
     const rowY = y;
-    addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned.toFixed(1), lx, rowY, hfw);
-    y = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual.toFixed(1), rx, rowY, hfw);
+    const yL2 = addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned.toFixed(1), lx, rowY, hfw);
+    const yR2 = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual.toFixed(1), rx, rowY, hfw);
+    y = Math.max(yL2, yR2);
     y += SPACING.SM;
 
     const efficiency = data.routeEfficiency.planned > 0

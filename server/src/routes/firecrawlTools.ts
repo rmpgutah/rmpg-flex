@@ -21,16 +21,6 @@ import TurndownService from 'turndown';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 import config from '../config';
-import multer from 'multer';
-import fs from 'fs';
-
-// PDF upload middleware — 50MB max, temp dir
-const pdfUpload = multer({ dest: '/tmp/rmpg-pdf-uploads', limits: { fileSize: 50 * 1024 * 1024 } });
-
-function safeJsonParse(val: string | null | undefined, fallback: any = null): any {
-  if (!val) return fallback;
-  try { return JSON.parse(val); } catch { return fallback; }
-}
 
 const router = Router();
 router.use(authenticate);
@@ -868,81 +858,11 @@ function initTables(): void {
       created_at TEXT NOT NULL
     )
   `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS firecrawl_support_bots (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      website_url TEXT,
-      system_prompt TEXT,
-      knowledge_base_url TEXT,
-      auto_respond INTEGER DEFAULT 0,
-      max_tokens INTEGER DEFAULT 500,
-      status TEXT DEFAULT 'active',
-      total_conversations INTEGER DEFAULT 0,
-      created_by INTEGER,
-      created_at TEXT,
-      updated_at TEXT
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS firecrawl_trend_crons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      query TEXT NOT NULL,
-      schedule_cron TEXT DEFAULT '0 */6 * * *',
-      notify_email TEXT,
-      last_run_at TEXT,
-      next_run_at TEXT,
-      total_runs INTEGER DEFAULT 0,
-      is_active INTEGER DEFAULT 1,
-      created_by INTEGER,
-      created_at TEXT,
-      updated_at TEXT
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS firecrawl_migrations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      source_url TEXT NOT NULL,
-      target_format TEXT DEFAULT 'markdown',
-      pages_crawled INTEGER DEFAULT 0,
-      pages_total INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'pending',
-      output_path TEXT,
-      error_message TEXT,
-      created_by INTEGER,
-      created_at TEXT,
-      completed_at TEXT
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS firecrawl_code_repos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      repo_url TEXT NOT NULL,
-      repo_name TEXT,
-      analysis_type TEXT DEFAULT 'full',
-      language TEXT,
-      total_files INTEGER DEFAULT 0,
-      total_lines INTEGER DEFAULT 0,
-      issues_found INTEGER DEFAULT 0,
-      summary TEXT,
-      analysis_json TEXT,
-      status TEXT DEFAULT 'pending',
-      created_by INTEGER,
-      created_at TEXT,
-      completed_at TEXT
-    )
-  `);
 }
 
 // Initialize tables on module load
-try { initTables(); } catch {
-  // Tables will be created lazily on first request via ensureTables()
+try { initTables(); } catch (e) {
+  console.error('[FirecrawlTools] Table init deferred — DB may not be ready yet:', (e as Error).message);
 }
 
 // Helper to ensure tables exist (called on first request if init failed)
@@ -1150,7 +1070,7 @@ router.post(
       let error: string | null = null;
 
       try {
-        const keywords: string[] = safeJsonParse(scout.keywords, []);
+        const keywords: string[] = scout.keywords ? JSON.parse(scout.keywords) : [];
 
         if (scout.query) {
           // Use search for query-based scouts
@@ -1613,7 +1533,7 @@ router.post(
       if (!monitor) { res.status(404).json({ error: 'Brand monitor not found' }); return; }
 
       const now = localNow();
-      const keywords: string[] = safeJsonParse(monitor.keywords, []);
+      const keywords: string[] = monitor.keywords ? JSON.parse(monitor.keywords) : [];
       const searchQuery = [monitor.brand_name, ...keywords].join(' ');
 
       // Search for brand mentions
@@ -1645,7 +1565,7 @@ router.post(
       }
 
       // Also scrape competitor URLs if configured
-      const competitorUrls: string[] = safeJsonParse(monitor.competitor_urls, []);
+      const competitorUrls: string[] = monitor.competitor_urls ? JSON.parse(monitor.competitor_urls) : [];
       for (const compUrl of competitorUrls) {
         try {
           const scrapeResult = await firecrawlScrape({
@@ -1957,7 +1877,7 @@ router.post(
       const workflow = db.prepare('SELECT * FROM firecrawl_workflows WHERE id = ?').get(id) as any;
       if (!workflow) { res.status(404).json({ error: 'Workflow not found' }); return; }
 
-      const steps: Array<{ type: string; url?: string; query?: string; extract_schema?: Record<string, unknown> }> = safeJsonParse(workflow.steps, []);
+      const steps: Array<{ type: string; url?: string; query?: string; extract_schema?: Record<string, unknown> }> = JSON.parse(workflow.steps);
       const now = localNow();
 
       // Create run record
@@ -3361,107 +3281,6 @@ router.get(
 // 14. PDF Inspector
 // ═════════════════════════════════════════════════════════════
 
-// ── POST /pdf-inspect/upload — Upload a PDF file for inspection ──
-
-router.post(
-  '/pdf-inspect/upload',
-  requireRole('admin', 'manager'),
-  pdfUpload.single('file'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
-
-    try {
-      const pdfParse = (await import('pdf-parse')).default;
-      const buffer = fs.readFileSync(req.file.path);
-      const parsed = await pdfParse(buffer);
-      const content = parsed.text || '';
-
-      // Clean up uploaded file
-      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
-
-      const contentLower = content.toLowerCase();
-      const pageCountEstimate = parsed.numpages || Math.max(1, Math.round(content.length / 3000));
-      const lineCount = content.split('\n').length;
-      const avgLineLength = content.length / Math.max(lineCount, 1);
-      const isScanned = content.length < 200 || avgLineLength < 10;
-      const hasText = content.trim().length > 50;
-
-      // Classification
-      let classification: 'report' | 'form' | 'contract' | 'invoice' | 'legal' | 'other' = 'other';
-      if (contentLower.includes('invoice') || contentLower.includes('bill to') || contentLower.includes('amount due')) classification = 'invoice';
-      else if (contentLower.includes('agreement') || contentLower.includes('hereby agree') || contentLower.includes('terms and conditions')) classification = 'contract';
-      else if (contentLower.includes('court') || contentLower.includes('plaintiff') || contentLower.includes('defendant') || contentLower.includes('statute')) classification = 'legal';
-      else if (contentLower.includes('fill in') || contentLower.includes('signature:') || contentLower.includes('date:___')) classification = 'form';
-      else if (contentLower.includes('report') || contentLower.includes('executive summary') || contentLower.includes('findings')) classification = 'report';
-
-      // Extract entities
-      const dateMatches = content.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g) || [];
-      const isoDateMatches = content.match(/\b\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\b/g) || [];
-      const writtenDateMatches = content.match(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/gi) || [];
-      const amountMatches = content.match(/\$[\d,]+(?:\.\d{2})?/g) || [];
-      const phoneMatches = content.match(/(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
-      const emailMatches = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-      const nameMatches = content.match(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g) || [];
-      const addrMatches = content.match(/\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Way|Ct|Pl|Cir|Pkwy|Hwy)[.,]?\s+(?:[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)?,?\s*[A-Z]{2}\s+\d{5}/g) || [];
-      const caseMatches = content.match(/(?:Case|Docket|Ref|No\.?|#)\s*:?\s*[\w-]{4,20}/gi) || [];
-
-      const extractedEntities = {
-        names: [...new Set(nameMatches)].slice(0, 20),
-        dates: [...new Set([...dateMatches, ...isoDateMatches, ...writtenDateMatches])].slice(0, 20),
-        amounts: [...new Set(amountMatches)].slice(0, 20),
-        phones: [...new Set(phoneMatches)].slice(0, 15),
-        emails: [...new Set(emailMatches)].slice(0, 15),
-        addresses: [...new Set(addrMatches)].slice(0, 10),
-        caseNumbers: [...new Set(caseMatches)].slice(0, 10),
-      };
-
-      const headers = content.match(/^#{1,3}\s+.+$/gm) || content.match(/^[A-Z][A-Z\s]{3,}$/gm) || [];
-      const keySections = headers.slice(0, 20).map((h: string) => h.replace(/^#+\s+/, '').trim());
-      const summary = content.substring(0, 500).replace(/\n{2,}/g, ' ').trim();
-      const wordCount = content.split(/\s+/).filter(Boolean).length;
-
-      // Store in DB
-      const db = getDb();
-      const now = localNow();
-      const filename = req.file.originalname || 'uploaded.pdf';
-      const insertResult = db.prepare(`
-        INSERT INTO firecrawl_pdf_inspections (url, page_count_estimate, is_scanned, has_text, classification, summary, key_sections, extracted_entities, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        `upload://${filename}`, pageCountEstimate, isScanned ? 1 : 0, hasText ? 1 : 0,
-        classification, summary, JSON.stringify(keySections), JSON.stringify(extractedEntities),
-        (req as any).user?.id || (req as any).user?.userId, now,
-      );
-
-      auditLog(req, 'CREATE', 'firecrawl_pdf_inspections', Number(insertResult.lastInsertRowid), `PDF upload inspect: ${filename}`);
-
-      res.json({
-        id: Number(insertResult.lastInsertRowid),
-        url: `upload://${filename}`,
-        filename,
-        page_count_estimate: pageCountEstimate,
-        is_scanned: isScanned,
-        has_text: hasText,
-        classification,
-        summary,
-        key_sections: keySections,
-        extracted_entities: extractedEntities,
-        word_count: wordCount,
-        character_count: content.length,
-        full_text: content.substring(0, 100000),
-        pdf_info: parsed.info || {},
-      });
-    } catch (err: any) {
-      // Clean up file on error
-      try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch { /* ignore */ }
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] PDF upload inspect error:', msg);
-      res.status(500).json({ error: 'PDF processing failed', detail: msg });
-    }
-  },
-);
-
 // ── POST /pdf-inspect — Inspect/classify a PDF URL ──────────
 
 router.post(
@@ -3476,35 +3295,14 @@ router.post(
     }
 
     try {
-      // Reject local file:// URLs — server can't access client's local files
-      if (url.trim().startsWith('file://')) {
-        res.status(400).json({ error: 'Cannot inspect local files. Upload the PDF or provide a web URL (https://).', code: 'LOCAL_FILE_NOT_SUPPORTED' }); return;
-      }
+      // Scrape the PDF
+      const scrapeResult = await firecrawlScrape({
+        url: url.trim(),
+        formats: ['markdown'],
+        onlyMainContent: false,
+      });
 
-      let content = '';
-      const isPdf = url.trim().toLowerCase().endsWith('.pdf') || url.includes('application/pdf');
-
-      // For PDF URLs, use pdf-parse for proper text extraction
-      if (isPdf) {
-        try {
-          const pdfParse = (await import('pdf-parse')).default;
-          const pdfRes = await fetch(url.trim(), { signal: AbortSignal.timeout(30_000) });
-          if (pdfRes.ok) {
-            const buffer = Buffer.from(await pdfRes.arrayBuffer());
-            const parsed = await pdfParse(buffer);
-            content = parsed.text || '';
-          }
-        } catch (pdfErr) {
-          console.warn('[PDF Inspect] pdf-parse failed, falling back to scrape:', pdfErr);
-        }
-      }
-
-      // Fallback to Firecrawl scrape
-      if (!content) {
-        const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
-        content = (scrapeResult.data as any)?.markdown || '';
-      }
-
+      const content = (scrapeResult.data as any)?.markdown || '';
       const contentLower = content.toLowerCase();
 
       // Estimate page count (~3000 chars per page)
@@ -3554,29 +3352,10 @@ router.post(
       const uniqueNames = [...new Set(nameMatches)].slice(0, 20) as string[];
       names.push(...uniqueNames);
 
-      // Phone numbers
-      const phoneMatches = content.match(/(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
-      const phones = [...new Set(phoneMatches)].slice(0, 15);
-
-      // Email addresses
-      const emailMatches = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-      const emails = [...new Set(emailMatches)].slice(0, 15);
-
-      // Addresses (street pattern)
-      const addrMatches = content.match(/\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Way|Ct|Pl|Cir|Pkwy|Hwy)[.,]?\s+(?:[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)?,?\s*[A-Z]{2}\s+\d{5}/g) || [];
-      const addresses = [...new Set(addrMatches)].slice(0, 10);
-
-      // Case/reference numbers
-      const caseMatches = content.match(/(?:Case|Docket|Ref|No\.?|#)\s*:?\s*[\w-]{4,20}/gi) || [];
-      const caseNumbers = [...new Set(caseMatches)].slice(0, 10);
-
       // Summary
       const summary = content.substring(0, 500).replace(/\n{2,}/g, ' ').trim();
 
-      // Word count and character count
-      const wordCount = content.split(/\s+/).filter(Boolean).length;
-
-      const extractedEntities = { names, dates, amounts, phones, emails, addresses, caseNumbers };
+      const extractedEntities = { names, dates, amounts };
 
       // Store in DB
       const db = getDb();
@@ -3602,9 +3381,6 @@ router.post(
         summary,
         key_sections: keySections,
         extracted_entities: extractedEntities,
-        word_count: wordCount,
-        character_count: content.length,
-        full_text: content.substring(0, 100000),
       });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -3700,7 +3476,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_graphs ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, config: safeJsonParse(r.config) })));
+      res.json(rows.map((r: any) => ({ ...r, config: r.config ? JSON.parse(r.config) : null })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -3985,7 +3761,7 @@ router.get(
       const db = getDb();
       const id = Number(req.params.id);
       const rows = db.prepare('SELECT * FROM firecrawl_connector_syncs WHERE connector_id = ? ORDER BY created_at DESC LIMIT 50').all(id);
-      res.json(rows.map((r: any) => ({ ...r, data: safeJsonParse(r.data) })));
+      res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : null })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -4091,8 +3867,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_rag_evals ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        test_questions: safeJsonParse(r.test_questions, []),
-        evaluations: safeJsonParse(r.evaluations, []),
+        test_questions: r.test_questions ? JSON.parse(r.test_questions) : [],
+        evaluations: r.evaluations ? JSON.parse(r.evaluations) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4202,8 +3978,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_trend_scans ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        keywords: safeJsonParse(r.keywords, []),
-        trends: safeJsonParse(r.trends, []),
+        keywords: r.keywords ? JSON.parse(r.keywords) : [],
+        trends: r.trends ? JSON.parse(r.trends) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4330,8 +4106,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_gen_ui ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        structure: safeJsonParse(r.structure),
-        tailwind_classes: safeJsonParse(r.tailwind_classes, []),
+        structure: r.structure ? JSON.parse(r.structure) : null,
+        tailwind_classes: r.tailwind_classes ? JSON.parse(r.tailwind_classes) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4424,8 +4200,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_qa_clusters ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        questions: safeJsonParse(r.questions, []),
-        clusters: safeJsonParse(r.clusters, []),
+        questions: r.questions ? JSON.parse(r.questions) : [],
+        clusters: r.clusters ? JSON.parse(r.clusters) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4551,8 +4327,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_extractions ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        schema: safeJsonParse(r.schema),
-        extracted: safeJsonParse(r.extracted),
+        schema: r.schema ? JSON.parse(r.schema) : null,
+        extracted: r.extracted ? JSON.parse(r.extracted) : null,
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4765,7 +4541,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_coupon_searches ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, coupons: safeJsonParse(r.coupons, []) })));
+      res.json(rows.map((r: any) => ({ ...r, coupons: r.coupons ? JSON.parse(r.coupons) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -4915,12 +4691,12 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_brand_analyses ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        colors: safeJsonParse(r.colors, []),
-        fonts: safeJsonParse(r.fonts, []),
-        tone_keywords: safeJsonParse(r.tone_keywords, []),
-        social_profiles: safeJsonParse(r.social_profiles, []),
-        competitors: safeJsonParse(r.competitors, []),
-        extension_suggestions: safeJsonParse(r.extension_suggestions, []),
+        colors: r.colors ? JSON.parse(r.colors) : [],
+        fonts: r.fonts ? JSON.parse(r.fonts) : [],
+        tone_keywords: r.tone_keywords ? JSON.parse(r.tone_keywords) : [],
+        social_profiles: r.social_profiles ? JSON.parse(r.social_profiles) : [],
+        competitors: r.competitors ? JSON.parse(r.competitors) : [],
+        extension_suggestions: r.extension_suggestions ? JSON.parse(r.extension_suggestions) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -5113,7 +4889,7 @@ router.get(
       const rows = category
         ? db.prepare('SELECT * FROM firecrawl_examples WHERE category = ? ORDER BY created_at DESC').all(category)
         : db.prepare('SELECT * FROM firecrawl_examples ORDER BY created_at DESC').all();
-      res.json(rows.map((r: any) => ({ ...r, config: safeJsonParse(r.config, {}) })));
+      res.json(rows.map((r: any) => ({ ...r, config: r.config ? JSON.parse(r.config) : {} })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5136,7 +4912,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_examples WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Example not found' }); return; }
-      res.json({ ...row, config: safeJsonParse(row.config, {}) });
+      res.json({ ...row, config: row.config ? JSON.parse(row.config) : {} });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5184,7 +4960,7 @@ router.post(
       const example = db.prepare('SELECT * FROM firecrawl_examples WHERE id = ?').get(id) as any;
       if (!example) { res.status(404).json({ error: 'Example not found' }); return; }
 
-      const config = safeJsonParse(example.config, {});
+      const config = JSON.parse(example.config || '{}');
       let result: any;
 
       if (config.type === 'search' && config.query) {
@@ -5389,7 +5165,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, name, source_urls, system_prompt, welcome_message, page_count, created_by, created_at, updated_at FROM firecrawl_mendable_bots ORDER BY created_at DESC').all();
-      res.json(rows.map((r: any) => ({ ...r, source_urls: safeJsonParse(r.source_urls, []) })));
+      res.json(rows.map((r: any) => ({ ...r, source_urls: r.source_urls ? JSON.parse(r.source_urls) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5558,8 +5334,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_news_searches ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        sources: safeJsonParse(r.sources, []),
-        articles: safeJsonParse(r.articles, []),
+        sources: r.sources ? JSON.parse(r.sources) : [],
+        articles: r.articles ? JSON.parse(r.articles) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -5705,7 +5481,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_drafts WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Draft not found' }); return; }
-      res.json({ ...row, sources_used: safeJsonParse(row.sources_used, []) });
+      res.json({ ...row, sources_used: row.sources_used ? JSON.parse(row.sources_used) : [] });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5792,7 +5568,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_slack_config ORDER BY id DESC LIMIT 1').get() as any;
       if (!row) { res.json({ configured: false }); return; }
-      res.json({ ...row, notify_on: safeJsonParse(row.notify_on, []) });
+      res.json({ ...row, notify_on: row.notify_on ? JSON.parse(row.notify_on) : [] });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5902,7 +5678,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_discord_config ORDER BY id DESC LIMIT 1').get() as any;
       if (!row) { res.json({ configured: false }); return; }
-      res.json({ ...row, notify_on: safeJsonParse(row.notify_on, []) });
+      res.json({ ...row, notify_on: row.notify_on ? JSON.parse(row.notify_on) : [] });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6026,7 +5802,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_agents ORDER BY created_at DESC').all();
-      res.json(rows.map((r: any) => ({ ...r, tools: safeJsonParse(r.tools, []) })));
+      res.json(rows.map((r: any) => ({ ...r, tools: r.tools ? JSON.parse(r.tools) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6050,7 +5826,7 @@ router.post(
       const agent = db.prepare('SELECT * FROM firecrawl_agents WHERE id = ?').get(id) as any;
       if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
 
-      const agentTools = safeJsonParse(agent.tools, []) as string[];
+      const agentTools = JSON.parse(agent.tools || '[]') as string[];
       const maxSteps = agent.max_steps || 10;
       const steps: any[] = [];
       let currentUrl = agent.initial_url || '';
@@ -6135,7 +5911,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_agent_runs WHERE agent_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
-      res.json(rows.map((r: any) => ({ ...r, steps: safeJsonParse(r.steps, []) })));
+      res.json(rows.map((r: any) => ({ ...r, steps: r.steps ? JSON.parse(r.steps) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6171,64 +5947,6 @@ router.delete(
 // ═════════════════════════════════════════════════════════════
 // 34. MinerU Document Extraction
 // ═════════════════════════════════════════════════════════════
-
-// ── POST /doc-extract/upload — Upload document for extraction ──
-
-router.post(
-  '/doc-extract/upload',
-  requireRole('admin', 'manager'),
-  pdfUpload.single('file'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    if (!req.file) { res.status(400).json({ error: 'File is required' }); return; }
-
-    const { output_format } = req.body as { output_format?: string };
-    const format = ['markdown', 'json', 'text'].includes(output_format || '') ? output_format! : 'markdown';
-
-    try {
-      const pdfParse = (await import('pdf-parse')).default;
-      const buffer = fs.readFileSync(req.file.path);
-      const parsed = await pdfParse(buffer);
-      const rawText = parsed.text || '';
-
-      // Clean up
-      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
-
-      let content = rawText;
-      if (format === 'json') {
-        content = JSON.stringify({ title: parsed.info?.Title || '', sections: rawText.split(/\n{2,}/).map((s: string) => s.trim()).filter(Boolean) });
-      } else if (format === 'text') {
-        content = rawText.replace(/[#*_\[\]()]/g, '').replace(/\n{3,}/g, '\n\n');
-      }
-
-      const metadata = {
-        title: parsed.info?.Title || '',
-        author: parsed.info?.Author || '',
-        pages: parsed.numpages || 0,
-      };
-
-      const db = getDb();
-      const now = localNow();
-      const filename = req.file.originalname || 'uploaded.pdf';
-      const result = db.prepare(`
-        INSERT INTO firecrawl_doc_extractions (url, content, format, tables, images_found, metadata, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        `upload://${filename}`, content, format, '[]', 0,
-        JSON.stringify(metadata),
-        (req as any).user?.id || (req as any).user?.userId, now,
-      );
-
-      auditLog(req, 'CREATE', 'firecrawl_doc_extractions', Number(result.lastInsertRowid), `Doc upload extract: ${filename}`);
-
-      res.json({ url: `upload://${filename}`, filename, content, format, tables: [], images_found: 0, metadata });
-    } catch (err: any) {
-      try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch { /* ignore */ }
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'Document extraction failed', detail: msg });
-    }
-  },
-);
 
 // ── POST /doc-extract — Extract structured content from URL ──
 
@@ -6329,7 +6047,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, url, format, images_found, metadata, created_by, created_at FROM firecrawl_doc_extractions ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, metadata: safeJsonParse(r.metadata, {}) })));
+      res.json(rows.map((r: any) => ({ ...r, metadata: r.metadata ? JSON.parse(r.metadata) : {} })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6464,8 +6182,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_job_matches ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-        criteria: safeJsonParse(r.criteria, {}),
-        matches: safeJsonParse(r.matches, []),
+        criteria: r.criteria ? JSON.parse(r.criteria) : {},
+        matches: r.matches ? JSON.parse(r.matches) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -6683,7 +6401,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_crawl_jobs WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Crawl job not found' }); return; }
-      res.json({ ...row, pages: safeJsonParse(row.pages, []), include_paths: safeJsonParse(row.include_paths, []), exclude_paths: safeJsonParse(row.exclude_paths, []) });
+      res.json({ ...row, pages: row.pages ? JSON.parse(row.pages) : [], include_paths: row.include_paths ? JSON.parse(row.include_paths) : [], exclude_paths: row.exclude_paths ? JSON.parse(row.exclude_paths) : [] });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6799,7 +6517,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_cli_history ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, args: safeJsonParse(r.args, {}), result: safeJsonParse(r.result) })));
+      res.json(rows.map((r: any) => ({ ...r, args: r.args ? JSON.parse(r.args) : {}, result: r.result ? JSON.parse(r.result) : null })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6891,7 +6609,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_grok_enrichments ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, data: safeJsonParse(r.data, {}) })));
+      res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : {} })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7016,7 +6734,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_n8n_workflows ORDER BY created_at DESC').all();
-      res.json(rows.map((r: any) => ({ ...r, nodes: safeJsonParse(r.nodes, []) })));
+      res.json(rows.map((r: any) => ({ ...r, nodes: r.nodes ? JSON.parse(r.nodes) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7040,7 +6758,7 @@ router.post(
       const workflow = db.prepare('SELECT * FROM firecrawl_n8n_workflows WHERE id = ?').get(id) as any;
       if (!workflow) { res.status(404).json({ error: 'Workflow not found' }); return; }
 
-      const nodes = safeJsonParse(workflow.nodes, []) as { type: string; config: any }[];
+      const nodes = JSON.parse(workflow.nodes || '[]') as { type: string; config: any }[];
       const now = localNow();
       const nodeResults: any[] = [];
       let lastOutput: any = null;
@@ -7093,7 +6811,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_n8n_runs WHERE workflow_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
-      res.json(rows.map((r: any) => ({ ...r, node_results: safeJsonParse(r.node_results, []) })));
+      res.json(rows.map((r: any) => ({ ...r, node_results: r.node_results ? JSON.parse(r.node_results) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7192,7 +6910,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, name, urls, page_count, created_by, created_at FROM firecrawl_mendable_indexes ORDER BY created_at DESC').all();
-      res.json(rows.map((r: any) => ({ ...r, urls: safeJsonParse(r.urls, []) })));
+      res.json(rows.map((r: any) => ({ ...r, urls: r.urls ? JSON.parse(r.urls) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7222,7 +6940,7 @@ router.post(
       if (!index) { res.status(404).json({ error: 'Index not found' }); return; }
 
       const content = index.scraped_content || '';
-      const urls: string[] = safeJsonParse(index.urls, []);
+      const urls: string[] = index.urls ? JSON.parse(index.urls) : [];
       const queryLower = question.trim().toLowerCase();
 
       // Simple keyword-based relevance scoring
@@ -7348,7 +7066,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_code_analyses ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, languages: safeJsonParse(r.languages, []) })));
+      res.json(rows.map((r: any) => ({ ...r, languages: r.languages ? JSON.parse(r.languages) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7431,7 +7149,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_skill_generations ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, generated_skill: safeJsonParse(r.generated_skill, {}) })));
+      res.json(rows.map((r: any) => ({ ...r, generated_skill: r.generated_skill ? JSON.parse(r.generated_skill) : {} })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7519,7 +7237,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_pipelines ORDER BY created_at DESC').all();
-      res.json(rows.map((r: any) => ({ ...r, steps: safeJsonParse(r.steps, []) })));
+      res.json(rows.map((r: any) => ({ ...r, steps: r.steps ? JSON.parse(r.steps) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7545,7 +7263,7 @@ router.post(
       const pipeline = db.prepare('SELECT * FROM firecrawl_pipelines WHERE id = ?').get(id) as any;
       if (!pipeline) { res.status(404).json({ error: 'Pipeline not found' }); return; }
 
-      const steps = safeJsonParse(pipeline.steps, []) as { type: string; config: any }[];
+      const steps = JSON.parse(pipeline.steps || '[]') as { type: string; config: any }[];
       const now = localNow();
       const stepResults: any[] = [];
       let currentData: any = input_text || '';
@@ -7556,47 +7274,6 @@ router.post(
             const scrapeResult = await firecrawlScrape({ url: input_url.trim(), formats: ['markdown'], onlyMainContent: true });
             currentData = (scrapeResult.data as any)?.markdown || '';
             stepResults.push({ type: 'ingest', status: 'success', content_length: currentData.length });
-          } else if (step.type === 'extract') {
-            // Extract structured data from URL or current content
-            const extractUrl = step.config?.url || input_url;
-            if (extractUrl) {
-              const scrapeResult = await firecrawlScrape({ url: extractUrl.trim(), formats: ['markdown'], onlyMainContent: true });
-              const md = (scrapeResult.data as any)?.markdown || '';
-              currentData = md;
-              // Extract metadata too
-              const metadata = (scrapeResult.data as any)?.metadata || {};
-              stepResults.push({
-                type: 'extract', status: 'success',
-                url: extractUrl,
-                content_length: md.length,
-                title: metadata.title || '',
-                description: metadata.description || '',
-                content_preview: md.substring(0, 500),
-              });
-            } else {
-              stepResults.push({ type: 'extract', status: 'skipped', reason: 'No URL provided' });
-            }
-          } else if (step.type === 'scrape') {
-            // Alias for ingest/extract
-            const scrapeUrl = step.config?.url || input_url;
-            if (scrapeUrl) {
-              const scrapeResult = await firecrawlScrape({ url: scrapeUrl.trim(), formats: ['markdown'], onlyMainContent: true });
-              currentData = (scrapeResult.data as any)?.markdown || '';
-              stepResults.push({ type: 'scrape', status: 'success', url: scrapeUrl, content_length: currentData.length });
-            } else {
-              stepResults.push({ type: 'scrape', status: 'skipped', reason: 'No URL' });
-            }
-          } else if (step.type === 'search') {
-            // Web search step
-            const query = step.config?.query || input_text;
-            if (query) {
-              const searchResult = await firecrawlSearch({ query, limit: 5 });
-              const results = (searchResult.data || []).map((r: any) => ({ url: r.url, title: r.title, snippet: r.description }));
-              currentData = JSON.stringify(results);
-              stepResults.push({ type: 'search', status: 'success', query, results_count: results.length, results });
-            } else {
-              stepResults.push({ type: 'search', status: 'skipped', reason: 'No query' });
-            }
           } else if (step.type === 'transform') {
             stepResults.push({ type: 'transform', status: 'success', applied: true, config: step.config });
           } else if (step.type === 'filter') {
@@ -7640,7 +7317,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_pipeline_runs WHERE pipeline_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
-      res.json(rows.map((r: any) => ({ ...r, input: safeJsonParse(r.input, {}), step_results: safeJsonParse(r.step_results, []) })));
+      res.json(rows.map((r: any) => ({ ...r, input: r.input ? JSON.parse(r.input) : {}, step_results: r.step_results ? JSON.parse(r.step_results) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7801,7 +7478,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_ai_chat_history ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, context_used: !!r.context_used, sources: safeJsonParse(r.sources, []) })));
+      res.json(rows.map((r: any) => ({ ...r, context_used: !!r.context_used, sources: r.sources ? JSON.parse(r.sources) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7813,61 +7490,6 @@ router.get(
 // ═════════════════════════════════════════════════════════════
 // 49. LoPDF — PDF Manipulation
 // ═════════════════════════════════════════════════════════════
-
-// ── POST /pdf-manipulate/upload — Upload PDF for manipulation ──
-
-router.post(
-  '/pdf-manipulate/upload',
-  requireRole('admin', 'manager'),
-  pdfUpload.single('file'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
-
-    const { operations } = req.body as { operations?: string };
-    const ops = operations ? (typeof operations === 'string' ? JSON.parse(operations) : operations) : ['extract_text', 'count_pages'];
-    const validOps = ['extract_text', 'count_pages', 'extract_links', 'get_metadata'];
-    const filteredOps = (Array.isArray(ops) ? ops : []).filter((o: string) => validOps.includes(o));
-
-    try {
-      const pdfParse = (await import('pdf-parse')).default;
-      const buffer = fs.readFileSync(req.file.path);
-      const parsed = await pdfParse(buffer);
-      const md = parsed.text || '';
-      const metadata = { title: parsed.info?.Title || null, author: parsed.info?.Author || null, pages: parsed.numpages || 0 };
-
-      // Clean up
-      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
-
-      const results: any = {};
-      if (filteredOps.includes('extract_text')) results.text = md.substring(0, 50000);
-      if (filteredOps.includes('count_pages')) results.page_count = parsed.numpages || Math.max(1, Math.ceil(md.length / 3000));
-      if (filteredOps.includes('extract_links')) {
-        const linkMatches = md.match(/https?:\/\/[^\s)]+/g) || [];
-        results.links = [...new Set(linkMatches)].slice(0, 50);
-      }
-      if (filteredOps.includes('get_metadata')) results.metadata = metadata;
-
-      const db = getDb();
-      const now = localNow();
-      const filename = req.file.originalname || 'uploaded.pdf';
-      const dbResult = db.prepare(`
-        INSERT INTO firecrawl_pdf_operations (url, operations, results, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(
-        `upload://${filename}`, JSON.stringify(filteredOps), JSON.stringify(results),
-        (req as any).user?.id || (req as any).user?.userId, now,
-      );
-
-      auditLog(req, 'CREATE', 'firecrawl_pdf_operations', Number(dbResult.lastInsertRowid), `PDF upload ops: ${filename}`);
-      res.json({ url: `upload://${filename}`, filename, results });
-    } catch (err: any) {
-      try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch { /* ignore */ }
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'PDF processing failed', detail: msg });
-    }
-  },
-);
 
 // ── POST /pdf-manipulate — Analyze/manipulate a PDF URL ───────
 
@@ -7892,33 +7514,10 @@ router.post(
     }
 
     try {
-      let md = '';
-      let metadata: any = {};
-
-      // For PDF URLs, fetch the raw PDF and use pdf-parse for text extraction
-      const isPdf = url.trim().toLowerCase().endsWith('.pdf') || url.includes('/pdf') || url.includes('application/pdf');
-      if (isPdf) {
-        try {
-          const pdfParse = (await import('pdf-parse')).default;
-          const pdfRes = await fetch(url.trim(), { signal: AbortSignal.timeout(30_000) });
-          if (pdfRes.ok) {
-            const buffer = Buffer.from(await pdfRes.arrayBuffer());
-            const parsed = await pdfParse(buffer);
-            md = parsed.text || '';
-            metadata = { title: parsed.info?.Title || null, author: parsed.info?.Author || null, pages: parsed.numpages || 0 };
-          }
-        } catch (pdfErr) {
-          console.warn('[PDF Tools] pdf-parse failed, falling back to scrape:', pdfErr);
-        }
-      }
-
-      // Fallback to Firecrawl scrape if PDF parse didn't produce text
-      if (!md) {
-        const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
-        const data = scrapeResult.data as any;
-        md = data?.markdown || '';
-        metadata = data?.metadata || {};
-      }
+      const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
+      const data = scrapeResult.data as any;
+      const md = data?.markdown || '';
+      const metadata = data?.metadata || {};
 
       const results: any = {};
 
@@ -7967,7 +7566,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, url, operations, created_by, created_at FROM firecrawl_pdf_operations ORDER BY created_at DESC LIMIT 100').all();
-      res.json(rows.map((r: any) => ({ ...r, operations: safeJsonParse(r.operations, []) })));
+      res.json(rows.map((r: any) => ({ ...r, operations: r.operations ? JSON.parse(r.operations) : [] })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -8070,8 +7669,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_assistant_chats ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r, search_web: !!r.search_web, web_searched: !!r.web_searched,
-        context_urls: safeJsonParse(r.context_urls, []),
-        sources_used: safeJsonParse(r.sources_used, []),
+        context_urls: r.context_urls ? JSON.parse(r.context_urls) : [],
+        sources_used: r.sources_used ? JSON.parse(r.sources_used) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -8155,12 +7754,6 @@ router.post('/leads/search', requireRole('admin', 'manager'), async (req: Reques
       if (!getRes.ok) {
         const errText = await getRes.text().catch(() => '');
         console.error(`[LeadGen] API error (${getRes.status}):`, errText.slice(0, 300));
-        if (getRes.status === 429) {
-          res.status(429).json({ error: 'Lead Generation API rate limit exceeded. Wait and retry, or upgrade your RapidAPI plan.', code: 'LEADGEN_RATE_LIMITED' }); return;
-        }
-        if (getRes.status === 403) {
-          res.status(503).json({ error: 'Lead Generation API subscription expired or access denied. Check your RapidAPI subscription.', code: 'LEADGEN_SUBSCRIPTION_EXPIRED' }); return;
-        }
         res.status(502).json({ error: `Lead Generation API returned ${getRes.status}`, detail: errText.slice(0, 200) }); return;
       }
 
@@ -8195,738 +7788,5 @@ router.get('/leads/config', requireRole('admin', 'manager'), (_req: Request, res
     res.json({ configured: false });
   }
 });
-
-// ══════════════════════════════════════════════════════════════
-// Customer Support Bot Routes (ai-customer-support-bot)
-// ══════════════════════════════════════════════════════════════
-
-// ── POST /support-bots — Create a support bot ────────────────
-router.post(
-  '/support-bots',
-  requireRole('admin', 'manager'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    const { name, website_url, system_prompt, knowledge_base_url, auto_respond, max_tokens } = req.body as {
-      name?: string; website_url?: string; system_prompt?: string;
-      knowledge_base_url?: string; auto_respond?: boolean; max_tokens?: number;
-    };
-
-    if (!name || typeof name !== 'string' || !name.trim()) {
-      res.status(400).json({ error: 'name is required' }); return;
-    }
-
-    try {
-      const db = getDb();
-      const now = localNow();
-      const result = db.prepare(`
-        INSERT INTO firecrawl_support_bots (name, website_url, system_prompt, knowledge_base_url, auto_respond, max_tokens, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        name.trim(), website_url?.trim() || null, system_prompt?.trim() || null,
-        knowledge_base_url?.trim() || null, auto_respond ? 1 : 0, max_tokens || 500,
-        (req as any).user?.id || (req as any).user?.userId, now, now,
-      );
-      const id = Number(result.lastInsertRowid);
-      auditLog(req, 'CREATE', 'firecrawl_support_bots', id, `Created support bot: ${name.trim()}`);
-      const row = db.prepare('SELECT * FROM firecrawl_support_bots WHERE id = ?').get(id);
-      res.status(201).json(row);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Create support bot error:', msg);
-      res.status(500).json({ error: 'Failed to create support bot', detail: msg });
-    }
-  },
-);
-
-// ── GET /support-bots — List all support bots ────────────────
-router.get(
-  '/support-bots',
-  requireRole('admin', 'manager'),
-  (_req: Request, res: Response) => {
-    ensureTables();
-    try {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM firecrawl_support_bots ORDER BY created_at DESC').all();
-      res.json(rows);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'Failed to list support bots', detail: msg });
-    }
-  },
-);
-
-// ── PUT /support-bots/:id — Update a support bot ─────────────
-router.put(
-  '/support-bots/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    const { name, website_url, system_prompt, knowledge_base_url, auto_respond, max_tokens, status } = req.body as {
-      name?: string; website_url?: string; system_prompt?: string;
-      knowledge_base_url?: string; auto_respond?: boolean; max_tokens?: number; status?: string;
-    };
-
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT id FROM firecrawl_support_bots WHERE id = ?').get(id);
-      if (!existing) { res.status(404).json({ error: 'Support bot not found' }); return; }
-
-      const now = localNow();
-      db.prepare(`
-        UPDATE firecrawl_support_bots SET
-          name = COALESCE(?, name),
-          website_url = COALESCE(?, website_url),
-          system_prompt = COALESCE(?, system_prompt),
-          knowledge_base_url = COALESCE(?, knowledge_base_url),
-          auto_respond = COALESCE(?, auto_respond),
-          max_tokens = COALESCE(?, max_tokens),
-          status = COALESCE(?, status),
-          updated_at = ?
-        WHERE id = ?
-      `).run(
-        name?.trim() || null, website_url?.trim() || null, system_prompt?.trim() || null,
-        knowledge_base_url?.trim() || null, auto_respond != null ? (auto_respond ? 1 : 0) : null,
-        max_tokens || null, status?.trim() || null, now, id,
-      );
-      auditLog(req, 'UPDATE', 'firecrawl_support_bots', id, `Updated support bot #${id}`);
-      const row = db.prepare('SELECT * FROM firecrawl_support_bots WHERE id = ?').get(id);
-      res.json(row);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Update support bot error:', msg);
-      res.status(500).json({ error: 'Failed to update support bot', detail: msg });
-    }
-  },
-);
-
-// ── DELETE /support-bots/:id — Delete a support bot ──────────
-router.delete(
-  '/support-bots/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT id FROM firecrawl_support_bots WHERE id = ?').get(id);
-      if (!existing) { res.status(404).json({ error: 'Support bot not found' }); return; }
-
-      db.prepare('DELETE FROM firecrawl_support_bots WHERE id = ?').run(id);
-      auditLog(req, 'DELETE', 'firecrawl_support_bots', id, `Deleted support bot #${id}`);
-      res.json({ success: true });
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Delete support bot error:', msg);
-      res.status(500).json({ error: 'Failed to delete support bot', detail: msg });
-    }
-  },
-);
-
-// ── POST /support-bots/:id/chat — Chat with a support bot ────
-router.post(
-  '/support-bots/:id/chat',
-  requireRole('admin', 'manager', 'officer'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    const { message } = req.body as { message?: string };
-    if (!message || !message.trim()) { res.status(400).json({ error: 'message is required' }); return; }
-
-    try {
-      const db = getDb();
-      const bot = db.prepare('SELECT * FROM firecrawl_support_bots WHERE id = ?').get(id) as any;
-      if (!bot) { res.status(404).json({ error: 'Support bot not found' }); return; }
-
-      // Scrape knowledge base if URL provided
-      let knowledgeContext = '';
-      if (bot.knowledge_base_url) {
-        try {
-          const scraped = await firecrawlScrape({ url: bot.knowledge_base_url, formats: ['markdown'] });
-          knowledgeContext = (scraped as any)?.markdown?.slice(0, 4000) || '';
-        } catch { /* knowledge base unavailable, continue without */ }
-      }
-
-      // Build response using scraped knowledge
-      const response = knowledgeContext
-        ? `Based on the knowledge base: ${knowledgeContext.slice(0, 500)}...\n\nRegarding "${message.trim()}": Please refer to the scraped content above for details.`
-        : `I'm a support bot for ${bot.name}. Your question: "${message.trim()}" — Knowledge base not yet configured.`;
-
-      // Increment conversation count
-      db.prepare('UPDATE firecrawl_support_bots SET total_conversations = total_conversations + 1, updated_at = ? WHERE id = ?')
-        .run(localNow(), id);
-
-      res.json({ success: true, response, bot_name: bot.name });
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Support bot chat error:', msg);
-      res.status(500).json({ error: 'Chat failed', detail: msg });
-    }
-  },
-);
-
-// ══════════════════════════════════════════════════════════════
-// TrendCron Routes (scheduled trend scans)
-// ══════════════════════════════════════════════════════════════
-
-// ── POST /trend-crons — Create a trend cron ──────────────────
-router.post(
-  '/trend-crons',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const { name, query, schedule_cron, notify_email } = req.body as {
-      name?: string; query?: string; schedule_cron?: string; notify_email?: string;
-    };
-
-    if (!name || !name.trim()) { res.status(400).json({ error: 'name is required' }); return; }
-    if (!query || !query.trim()) { res.status(400).json({ error: 'query is required' }); return; }
-
-    try {
-      const db = getDb();
-      const now = localNow();
-      const result = db.prepare(`
-        INSERT INTO firecrawl_trend_crons (name, query, schedule_cron, notify_email, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        name.trim(), query.trim(), schedule_cron?.trim() || '0 */6 * * *',
-        notify_email?.trim() || null,
-        (req as any).user?.id || (req as any).user?.userId, now, now,
-      );
-      const id = Number(result.lastInsertRowid);
-      auditLog(req, 'CREATE', 'firecrawl_trend_crons', id, `Created trend cron: ${name.trim()}`);
-      const row = db.prepare('SELECT * FROM firecrawl_trend_crons WHERE id = ?').get(id);
-      res.status(201).json(row);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Create trend cron error:', msg);
-      res.status(500).json({ error: 'Failed to create trend cron', detail: msg });
-    }
-  },
-);
-
-// ── GET /trend-crons — List all trend crons ──────────────────
-router.get(
-  '/trend-crons',
-  requireRole('admin', 'manager'),
-  (_req: Request, res: Response) => {
-    ensureTables();
-    try {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM firecrawl_trend_crons ORDER BY created_at DESC').all();
-      res.json(rows);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'Failed to list trend crons', detail: msg });
-    }
-  },
-);
-
-// ── PUT /trend-crons/:id — Update a trend cron ──────────────
-router.put(
-  '/trend-crons/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    const { name, query, schedule_cron, notify_email, is_active } = req.body as {
-      name?: string; query?: string; schedule_cron?: string; notify_email?: string; is_active?: boolean;
-    };
-
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT id FROM firecrawl_trend_crons WHERE id = ?').get(id);
-      if (!existing) { res.status(404).json({ error: 'Trend cron not found' }); return; }
-
-      const now = localNow();
-      db.prepare(`
-        UPDATE firecrawl_trend_crons SET
-          name = COALESCE(?, name),
-          query = COALESCE(?, query),
-          schedule_cron = COALESCE(?, schedule_cron),
-          notify_email = COALESCE(?, notify_email),
-          is_active = COALESCE(?, is_active),
-          updated_at = ?
-        WHERE id = ?
-      `).run(
-        name?.trim() || null, query?.trim() || null, schedule_cron?.trim() || null,
-        notify_email?.trim() || null, is_active != null ? (is_active ? 1 : 0) : null, now, id,
-      );
-      auditLog(req, 'UPDATE', 'firecrawl_trend_crons', id, `Updated trend cron #${id}`);
-      const row = db.prepare('SELECT * FROM firecrawl_trend_crons WHERE id = ?').get(id);
-      res.json(row);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Update trend cron error:', msg);
-      res.status(500).json({ error: 'Failed to update trend cron', detail: msg });
-    }
-  },
-);
-
-// ── DELETE /trend-crons/:id — Delete a trend cron ────────────
-router.delete(
-  '/trend-crons/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT id FROM firecrawl_trend_crons WHERE id = ?').get(id);
-      if (!existing) { res.status(404).json({ error: 'Trend cron not found' }); return; }
-
-      db.prepare('DELETE FROM firecrawl_trend_crons WHERE id = ?').run(id);
-      auditLog(req, 'DELETE', 'firecrawl_trend_crons', id, `Deleted trend cron #${id}`);
-      res.json({ success: true });
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Delete trend cron error:', msg);
-      res.status(500).json({ error: 'Failed to delete trend cron', detail: msg });
-    }
-  },
-);
-
-// ── POST /trend-crons/:id/run — Manually run a trend cron ────
-router.post(
-  '/trend-crons/:id/run',
-  requireRole('admin', 'manager'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    try {
-      const db = getDb();
-      const cron = db.prepare('SELECT * FROM firecrawl_trend_crons WHERE id = ?').get(id) as any;
-      if (!cron) { res.status(404).json({ error: 'Trend cron not found' }); return; }
-
-      // Perform search using Firecrawl
-      let results: any = null;
-      try {
-        results = await firecrawlSearch({ query: cron.query, limit: 10 });
-      } catch (e) {
-        if (e instanceof FirecrawlUnavailableError) {
-          return handleFirecrawlError(e, res);
-        }
-        results = { error: (e as Error).message };
-      }
-
-      const now = localNow();
-      db.prepare(`
-        UPDATE firecrawl_trend_crons SET
-          last_run_at = ?, total_runs = total_runs + 1, updated_at = ?
-        WHERE id = ?
-      `).run(now, now, id);
-
-      auditLog(req, 'RUN', 'firecrawl_trend_crons', id, `Manually ran trend cron: ${cron.name}`);
-      res.json({ success: true, results, ran_at: now });
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Run trend cron error:', msg);
-      res.status(500).json({ error: 'Failed to run trend cron', detail: msg });
-    }
-  },
-);
-
-// ══════════════════════════════════════════════════════════════
-// Site Migrator Routes (firecrawl-migrator)
-// ══════════════════════════════════════════════════════════════
-
-// ── POST /migrations — Start a site migration ────────────────
-router.post(
-  '/migrations',
-  requireRole('admin', 'manager'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    const { name, source_url, target_format } = req.body as {
-      name?: string; source_url?: string; target_format?: string;
-    };
-
-    if (!name || !name.trim()) { res.status(400).json({ error: 'name is required' }); return; }
-    if (!source_url || !source_url.trim()) { res.status(400).json({ error: 'source_url is required' }); return; }
-
-    try {
-      const db = getDb();
-      const now = localNow();
-      const result = db.prepare(`
-        INSERT INTO firecrawl_migrations (name, source_url, target_format, status, created_by, created_at)
-        VALUES (?, ?, ?, 'running', ?, ?)
-      `).run(
-        name.trim(), source_url.trim(), target_format?.trim() || 'markdown',
-        (req as any).user?.id || (req as any).user?.userId, now,
-      );
-      const id = Number(result.lastInsertRowid);
-
-      // Start migration by scraping the source URL
-      let migrationResult: any = null;
-      try {
-        migrationResult = await firecrawlScrape({ url: source_url.trim(), formats: ['markdown', 'html'] });
-        const pagesTotal = 1;
-        db.prepare(`
-          UPDATE firecrawl_migrations SET
-            status = 'completed', pages_crawled = ?, pages_total = ?, completed_at = ?
-          WHERE id = ?
-        `).run(pagesTotal, pagesTotal, localNow(), id);
-      } catch (e) {
-        const errMsg = (e as Error).message;
-        db.prepare('UPDATE firecrawl_migrations SET status = ?, error_message = ? WHERE id = ?')
-          .run('failed', errMsg, id);
-      }
-
-      auditLog(req, 'CREATE', 'firecrawl_migrations', id, `Started migration: ${name.trim()}`);
-      const row = db.prepare('SELECT * FROM firecrawl_migrations WHERE id = ?').get(id);
-      res.status(201).json(row);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Create migration error:', msg);
-      res.status(500).json({ error: 'Failed to start migration', detail: msg });
-    }
-  },
-);
-
-// ── GET /migrations — List all migrations ────────────────────
-router.get(
-  '/migrations',
-  requireRole('admin', 'manager'),
-  (_req: Request, res: Response) => {
-    ensureTables();
-    try {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM firecrawl_migrations ORDER BY created_at DESC').all();
-      res.json(rows);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'Failed to list migrations', detail: msg });
-    }
-  },
-);
-
-// ── GET /migrations/:id — Get migration detail ──────────────
-router.get(
-  '/migrations/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    try {
-      const db = getDb();
-      const row = db.prepare('SELECT * FROM firecrawl_migrations WHERE id = ?').get(id);
-      if (!row) { res.status(404).json({ error: 'Migration not found' }); return; }
-      res.json(row);
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'Failed to get migration', detail: msg });
-    }
-  },
-);
-
-// ── DELETE /migrations/:id — Delete a migration ─────────────
-router.delete(
-  '/migrations/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT id FROM firecrawl_migrations WHERE id = ?').get(id);
-      if (!existing) { res.status(404).json({ error: 'Migration not found' }); return; }
-
-      db.prepare('DELETE FROM firecrawl_migrations WHERE id = ?').run(id);
-      auditLog(req, 'DELETE', 'firecrawl_migrations', id, `Deleted migration #${id}`);
-      res.json({ success: true });
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Delete migration error:', msg);
-      res.status(500).json({ error: 'Failed to delete migration', detail: msg });
-    }
-  },
-);
-
-// ══════════════════════════════════════════════════════════════
-// Code Analyzer Routes (opencode-firecrawl)
-// ══════════════════════════════════════════════════════════════
-
-// ── POST /code-repos — Analyze a code repository ────────────
-router.post(
-  '/code-repos',
-  requireRole('admin', 'manager'),
-  async (req: Request, res: Response) => {
-    ensureTables();
-    const { repo_url, repo_name, analysis_type, language } = req.body as {
-      repo_url?: string; repo_name?: string; analysis_type?: string; language?: string;
-    };
-
-    if (!repo_url || !repo_url.trim()) { res.status(400).json({ error: 'repo_url is required' }); return; }
-
-    try {
-      const db = getDb();
-      const now = localNow();
-      const result = db.prepare(`
-        INSERT INTO firecrawl_code_repos (repo_url, repo_name, analysis_type, language, status, created_by, created_at)
-        VALUES (?, ?, ?, ?, 'running', ?, ?)
-      `).run(
-        repo_url.trim(), repo_name?.trim() || repo_url.trim().split('/').pop() || 'unknown',
-        analysis_type?.trim() || 'full', language?.trim() || null,
-        (req as any).user?.id || (req as any).user?.userId, now,
-      );
-      const id = Number(result.lastInsertRowid);
-
-      // Scrape the repo page for analysis
-      let analysisResult: any = null;
-      try {
-        analysisResult = await firecrawlScrape({ url: repo_url.trim(), formats: ['markdown'] });
-        const markdown = (analysisResult as any)?.markdown || '';
-        const lines = markdown.split('\n').length;
-
-        db.prepare(`
-          UPDATE firecrawl_code_repos SET
-            status = 'completed', total_lines = ?, summary = ?,
-            analysis_json = ?, completed_at = ?
-          WHERE id = ?
-        `).run(
-          lines, markdown.slice(0, 500),
-          JSON.stringify({ content_length: markdown.length, lines }), localNow(), id,
-        );
-      } catch (e) {
-        db.prepare('UPDATE firecrawl_code_repos SET status = ?, summary = ? WHERE id = ?')
-          .run('failed', (e as Error).message, id);
-      }
-
-      auditLog(req, 'CREATE', 'firecrawl_code_repos', id, `Analyzed repo: ${repo_url.trim()}`);
-      const row = db.prepare('SELECT * FROM firecrawl_code_repos WHERE id = ?').get(id);
-      res.status(201).json(parseJsonFields(row, ['analysis_json']));
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Analyze code repo error:', msg);
-      res.status(500).json({ error: 'Failed to analyze repo', detail: msg });
-    }
-  },
-);
-
-// ── GET /code-repos — List all code analyses ────────────────
-router.get(
-  '/code-repos',
-  requireRole('admin', 'manager'),
-  (_req: Request, res: Response) => {
-    ensureTables();
-    try {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM firecrawl_code_repos ORDER BY created_at DESC').all();
-      res.json(parseJsonRows(rows, ['analysis_json']));
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'Failed to list code repos', detail: msg });
-    }
-  },
-);
-
-// ── GET /code-repos/:id — Get code analysis detail ──────────
-router.get(
-  '/code-repos/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    try {
-      const db = getDb();
-      const row = db.prepare('SELECT * FROM firecrawl_code_repos WHERE id = ?').get(id);
-      if (!row) { res.status(404).json({ error: 'Code repo analysis not found' }); return; }
-      res.json(parseJsonFields(row, ['analysis_json']));
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: 'Failed to get code repo', detail: msg });
-    }
-  },
-);
-
-// ── DELETE /code-repos/:id — Delete a code analysis ─────────
-router.delete(
-  '/code-repos/:id',
-  requireRole('admin', 'manager'),
-  (req: Request, res: Response) => {
-    ensureTables();
-    const id = Number(req.params.id);
-    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
-
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT id FROM firecrawl_code_repos WHERE id = ?').get(id);
-      if (!existing) { res.status(404).json({ error: 'Code repo not found' }); return; }
-
-      db.prepare('DELETE FROM firecrawl_code_repos WHERE id = ?').run(id);
-      auditLog(req, 'DELETE', 'firecrawl_code_repos', id, `Deleted code repo analysis #${id}`);
-      res.json({ success: true });
-    } catch (err: unknown) {
-      if (handleFirecrawlError(err, res)) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[FirecrawlTools] Delete code repo error:', msg);
-      res.status(500).json({ error: 'Failed to delete code repo', detail: msg });
-    }
-  },
-);
-
-// ════════════════════════════════════════════════════════════
-// Convenience alias routes — the FirecrawlTab UI expects
-// plural list endpoints at /observers, /enrichments, /chatbots,
-// /deep-searches, /research, /llmstxt, /trends. The actual
-// routes use different path patterns. These aliases forward
-// to the correct data.
-// ════════════════════════════════════════════════════════════
-
-// GET /observers → alias for /observer/watches
-router.get('/observers', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  ensureTables();
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM firecrawl_observers ORDER BY created_at DESC').all();
-    res.json(parseJsonRows(rows as any[], ['diff_sections', 'key_sections']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list observers'); }
-});
-
-// GET /enrichments → alias for /enrich/history
-router.get('/enrichments', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  ensureTables();
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM firecrawl_enrichments ORDER BY created_at DESC LIMIT 100').all();
-    res.json(parseJsonRows(rows as any[], ['input_data', 'result_data']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list enrichments'); }
-});
-
-// GET /research → list research sessions (POST /research starts a new one)
-router.get('/research', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  ensureTables();
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM firecrawl_research_sessions ORDER BY created_at DESC LIMIT 50').all();
-    res.json(parseJsonRows(rows as any[], ['questions', 'findings', 'sources']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list research'); }
-});
-
-// GET /chatbots → alias for /chatbot (plural)
-router.get('/chatbots', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  ensureTables();
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM firecrawl_chatbots ORDER BY created_at DESC').all();
-    res.json(parseJsonRows(rows as any[], ['source_urls', 'indexed_pages']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list chatbots'); }
-});
-
-// GET /deep-searches → alias for /deep-search/history
-router.get('/deep-searches', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  ensureTables();
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM firecrawl_deep_searches ORDER BY created_at DESC LIMIT 50').all();
-    res.json(parseJsonRows(rows as any[], ['sub_queries', 'findings', 'sources']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list deep searches'); }
-});
-
-// GET /llmstxt → list llmstxt generations
-router.get('/llmstxt', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  ensureTables();
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM firecrawl_llmstxt ORDER BY created_at DESC LIMIT 50').all();
-    res.json(rows);
-  } catch (e: any) { handleFirecrawlError(res, e, 'list llmstxt'); }
-});
-
-// GET /trends → list trend scans
-router.get('/trends', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  ensureTables();
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM firecrawl_trend_scans ORDER BY created_at DESC LIMIT 50').all();
-    res.json(parseJsonRows(rows as any[], ['trending_topics', 'sources']));
-  } catch (e: any) { handleFirecrawlError(res, e, 'list trends'); }
-});
-
-// ════════════════════════════════════════════════════════════
-// Additional alias GET routes — FirecrawlTab expects list
-// endpoints at the base plural path. These map to the
-// corresponding /history or differently-named list routes.
-// ════════════════════════════════════════════════════════════
-
-const aliasRoutes: Array<{ path: string; table: string; jsonFields?: string[] }> = [
-  { path: '/ai-ready', table: 'firecrawl_ai_ready_scans', jsonFields: ['recommendations'] },
-  { path: '/compare', table: 'firecrawl_comparisons', jsonFields: ['differences'] },
-  { path: '/search-engine', table: 'firecrawl_search_engine_queries', jsonFields: ['results'] },
-  { path: '/pdf-inspections', table: 'firecrawl_pdf_inspections', jsonFields: ['key_sections', 'extracted_entities'] },
-  { path: '/rag-evals', table: 'firecrawl_rag_evals', jsonFields: ['questions', 'results'] },
-  { path: '/gen-ui', table: 'firecrawl_gen_ui', jsonFields: ['components'] },
-  { path: '/qa-clusters', table: 'firecrawl_qa_clusters', jsonFields: ['clusters', 'insights'] },
-  { path: '/extractions', table: 'firecrawl_extractions', jsonFields: ['schema', 'extracted_data'] },
-  { path: '/html-conversions', table: 'firecrawl_html_conversions' },
-  { path: '/coupon-searches', table: 'firecrawl_coupon_searches', jsonFields: ['coupons_found'] },
-  { path: '/brand-analyses', table: 'firecrawl_brand_analyses', jsonFields: ['analysis_data'] },
-  { path: '/mcp-config', table: 'firecrawl_mcp_config' },
-  { path: '/llmstxt-v2', table: 'firecrawl_llmstxt_v2' },
-  { path: '/news-searches', table: 'firecrawl_news_searches', jsonFields: ['articles'] },
-  { path: '/slack-config', table: 'firecrawl_slack_config' },
-  { path: '/discord-config', table: 'firecrawl_discord_config' },
-  { path: '/doc-extractions', table: 'firecrawl_doc_extractions', jsonFields: ['extracted_fields'] },
-  { path: '/job-matches', table: 'firecrawl_job_matches', jsonFields: ['matches'] },
-  { path: '/mhtml-conversions', table: 'firecrawl_mhtml_conversions' },
-  { path: '/crawl-jobs', table: 'firecrawl_crawl_jobs', jsonFields: ['pages'] },
-  { path: '/cli-history', table: 'firecrawl_cli_history' },
-  { path: '/grok-enrichments', table: 'firecrawl_grok_enrichments', jsonFields: ['result_data'] },
-  { path: '/n8n', table: 'firecrawl_n8n_workflows', jsonFields: ['nodes', 'connections'] },
-  { path: '/mendable-indexes', table: 'firecrawl_mendable_indexes', jsonFields: ['source_urls'] },
-  { path: '/code-analyses', table: 'firecrawl_code_analyses', jsonFields: ['analysis_data'] },
-  { path: '/skill-generations', table: 'firecrawl_skill_generations' },
-  { path: '/ai-chat', table: 'firecrawl_ai_chat_history' },
-  { path: '/pdf-tools', table: 'firecrawl_pdf_operations' },
-  { path: '/assistants', table: 'firecrawl_assistant_chats' },
-  { path: '/console/status', table: 'firecrawl_mcp_logs' },
-];
-
-for (const alias of aliasRoutes) {
-  router.get(alias.path, requireRole('admin', 'manager'), (_req: Request, res: Response) => {
-    ensureTables();
-    try {
-      const db = getDb();
-      const rows = db.prepare(`SELECT * FROM "${alias.table}" ORDER BY created_at DESC LIMIT 100`).all();
-      res.json(alias.jsonFields ? parseJsonRows(rows as any[], alias.jsonFields) : rows);
-    } catch (e: any) {
-      handleFirecrawlError(res, e, `list ${alias.path}`);
-    }
-  });
-}
 
 export default router;

@@ -99,10 +99,10 @@ function formatTime(isoStr: string): string {
   } catch { return isoStr; }
 }
 
-function formatDate(isoStr: string | null): string {
-  if (!isoStr) return 'N/A';
+function formatDate(isoStr: string | null | undefined): string {
+  if (!isoStr) return '-';
   try {
-    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   } catch { return isoStr; }
 }
 
@@ -190,7 +190,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     // Footer on ALL pages
     const footerH = 8;
     const footerY = pageH - footerH;
-    doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
+    doc.setFillColor(240, 240, 245);
     doc.rect(0, footerY, pageW, footerH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
@@ -343,7 +343,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // ── Per-Unit Summary Cards ─────────────────────────
   drawSectionHeader('Unit Summary');
 
-  for (const trail of data.trails) {
+  for (const trail of (data.trails || [])) {
     ensureSpace(25);
 
     // Unit header line — light bg with accent left edge
@@ -378,7 +378,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       `MOVING: ${stats.moving_points} (${movingPct}%)`,
       `MAX SPEED: ${stats.max_speed_mph} MPH`,
       `AVG SPEED: ${stats.avg_speed_mph} MPH`,
-      `CALLS: ${trail.response_segments.length}`,
+      `CALLS: ${(trail.response_segments || []).length}`,
       `ZONES: ${zonesCount}`,
       ...(sourceStr ? [`SOURCES: ${sourceStr}`] : []),
     ];
@@ -398,7 +398,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // Detail Pages — per-unit breadcrumb table
   // ════════════════════════════════════════════════════════
 
-  for (const trail of data.trails) {
+  for (const trail of (data.trails || [])) {
     newPage();
 
     // Section header — light bg
@@ -439,10 +439,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     // Sample points for readability — if > 300 points, sample every Nth
     const maxRows = 300;
-    const sampleRate = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
+    const trailPoints = trail.points || [];
+    const sampleRate = trailPoints.length > maxRows ? Math.ceil(trailPoints.length / maxRows) : 1;
 
-    for (let i = 0; i < trail.points.length; i += sampleRate) {
-      const pt = trail.points[i];
+    for (let i = 0; i < trailPoints.length; i += sampleRate) {
+      const pt = trailPoints[i];
 
       ensureSpace(5);
       if (yPos === margin + 18) {
@@ -471,16 +472,16 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         beatCode.toUpperCase(),                                          // Beat
         sector.toUpperCase(),                                            // Sector
         (typeof zoneParts === 'string' ? zoneParts : String(zoneParts)).toUpperCase(), // Zone
-        (pt.road_name || 'N/A').toUpperCase(),                             // Road
-        (pt.nearest_intersection || 'N/A').toUpperCase(),                  // Cross St
-        pt.speed_mph != null ? `${pt.speed_mph}` : 'N/A',                // Speed
-        (pt.heading_cardinal || 'N/A').toUpperCase(),                      // Heading
+        (pt.road_name || '-').toUpperCase(),                             // Road
+        (pt.nearest_intersection || '-').toUpperCase(),                  // Cross St
+        pt.speed_mph != null ? `${pt.speed_mph}` : '-',                // Speed
+        (pt.heading_cardinal || '-').toUpperCase(),                      // Heading
         (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
-        (pt.status || 'N/A').replace(/_/g, ' ').toUpperCase(),            // Status
-        (pt.current_call_number || 'N/A').toUpperCase(),                   // Call #
-        (pt.current_call_type || 'N/A').replace(/_/g, ' ').toUpperCase(), // Call Type
-        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : 'N/A',  // Dist
-        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : 'N/A',  // Lat/Lng
+        (pt.status || '-').replace(/_/g, ' ').toUpperCase(),            // Status
+        (pt.current_call_number || '-').toUpperCase(),                   // Call #
+        (pt.current_call_type || '-').replace(/_/g, ' ').toUpperCase(), // Call Type
+        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',  // Dist
+        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : '-',  // Lat/Lng
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
@@ -495,12 +496,13 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       yPos += 2;
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.setFontSize(5.5);
-      doc.text(`* Showing every ${sampleRate}${sampleRate === 2 ? 'nd' : sampleRate === 3 ? 'rd' : 'th'} point (${trail.points.length} total breadcrumbs)`, margin, yPos);
+      doc.text(`* Showing every ${sampleRate}${sampleRate === 2 ? 'nd' : sampleRate === 3 ? 'rd' : 'th'} point (${trailPoints.length} total breadcrumbs)`, margin, yPos);
       yPos += 5;
     }
 
     // ── Response Time Segments ──────────────────────────
-    if (trail.response_segments.length > 0) {
+    const responseSegs = trail.response_segments || [];
+    if (responseSegs.length > 0) {
       ensureSpace(30); // header (10) + col headers (6) + at least 2 rows (10)
       drawSectionHeader('Response Time Segments');
 
@@ -524,8 +526,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-      for (let si = 0; si < trail.response_segments.length; si++) {
-        const seg = trail.response_segments[si];
+      for (let si = 0; si < responseSegs.length; si++) {
+        const seg = responseSegs[si];
         ensureSpace(5);
 
         if (si % 2 === 0) {
@@ -535,13 +537,13 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let rxOff = margin;
         const rRowData = [
-          (seg.call_number || 'N/A').toUpperCase(),
-          (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
+          (seg.call_number || '-').toUpperCase(),
+          (seg.incident_type || '-').replace(/_/g, ' ').toUpperCase(),
           `P${seg.priority}`.toUpperCase(),
-          seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
-          seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
-          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',
-          seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : 'N/A',
+          seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : '-',
+          seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : '-',
+          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : '-',
+          seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : '-',
           String(seg.breadcrumb_count || 0),
         ];
 
@@ -590,9 +592,9 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let zxOff = margin;
         const zRowData = [
-          (beatId || 'N/A').toUpperCase(),
-          (zone.beat_code || 'N/A').toUpperCase(),
-          (zone.city || 'N/A').toUpperCase(),
+          (beatId || '-').toUpperCase(),
+          (zone.beat_code || '-').toUpperCase(),
+          (zone.city || '-').toUpperCase(),
           String(zone.point_count || 0),
           formatDuration(zone.time_seconds || 0).toUpperCase(),
           `${zone.percentage || 0}%`,
@@ -622,7 +624,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
   // ── Save the PDF ─────────────────────────────────────
   const dateStr = localToday().replace(/-/g, '');
-  const firstCallSign = data.trails[0]?.call_sign || 'ALL';
+  const firstCallSign = (data.trails || [])[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
   } catch (err) {
