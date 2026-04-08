@@ -11,6 +11,7 @@ import {
   DIRECTION_OPTIONS,
 } from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
@@ -271,6 +272,45 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const onCloseRef = useRef(handleClose);
   onCloseRef.current = handleClose;
 
+  // Body scroll lock — prevent background scrolling when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.top = `-${scrollY}px`;
+    }
+    return () => {
+      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.top = '';
+      if (scrollY > 0) window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
+
+  // Adjust modal height when iOS keyboard appears
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const handleResize = () => {
+      const keyboardHeight = window.innerHeight - vv.height;
+      const modalEl = document.querySelector('[data-modal-content]');
+      if (modalEl && keyboardHeight > 100) {
+        (modalEl as HTMLElement).style.maxHeight = `${vv.height * 0.7}px`;
+      } else if (modalEl) {
+        (modalEl as HTMLElement).style.maxHeight = '';
+      }
+    };
+
+    vv.addEventListener('resize', handleResize);
+    return () => vv.removeEventListener('resize', handleResize);
+  }, [isOpen]);
+
   // Focus trap — only re-run on open/close transitions
   useEffect(() => {
     if (!isOpen) return;
@@ -360,14 +400,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} onClick={isSubmitting ? undefined : handleClose} style={{ touchAction: 'manipulation' }}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={isSubmitting ? undefined : handleClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" role="presentation" />
 
       {/* 78: Modal with deeper shadow for elevation */}
-      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }}>
+      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">
@@ -379,8 +419,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               onClick={() => setMode(m => m === 'quick' ? 'full' : 'quick')}
               className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border transition-colors flex items-center gap-1"
               style={{
-                borderColor: mode === 'quick' ? '#d4a017' : '#3a5070',
-                color: mode === 'quick' ? '#d4a017' : '#8899aa',
+                borderColor: mode === 'quick' ? '#d4a017' : '#383838',
+                color: mode === 'quick' ? '#d4a017' : '#888888',
                 background: mode === 'quick' ? 'rgba(212,160,23,0.1)' : 'transparent',
               }}
             >
@@ -395,9 +435,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <button type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
-            aria-label="Close modal">
-            <X className="w-4 h-4" />
+            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
+            style={{ touchAction: 'manipulation' }}
+            aria-label="Close">
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
 
@@ -414,7 +455,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
         {/* Form */}
         {/* 81: Form with dark scrollbar; 82: Increased padding for readability */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto scrollbar-dark">
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70dvh] sm:max-h-[70vh] overflow-y-auto scrollbar-dark" data-modal-content>
           {/* Row 1: Type + Source */}
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div>
@@ -537,7 +578,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Phone</label>
-                  <input type="text" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', e.target.value)} />
+                  <input type="text" inputMode="tel" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Billing Code</label>
@@ -611,10 +652,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Phone</label>
               <input
                 type="text"
+                inputMode="tel"
                 className="input-dark"
                 placeholder="(801) 555-0000"
                 value={formData.caller_phone}
-                onChange={(e) => update('caller_phone', e.target.value)}
+                onChange={(e) => update('caller_phone', formatPhoneInput(e.target.value))}
               />
             </div>
             {mode === 'full' && (
@@ -682,6 +724,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               }}
               required
             />
+            {/* Address validation hint — zip code check */}
+            {formData.location.length > 5 && (
+              <div className="flex items-center gap-1 mt-0.5 text-[9px]">
+                {/\b\d{5}(-\d{4})?\b/.test(formData.location)
+                  ? <span className="text-green-400">&#10003; Address includes zip code</span>
+                  : <span className="text-amber-400">&#9888; No zip code detected — consider adding one</span>}
+              </div>
+            )}
             {/* Premise History — auto-checks when address has 3+ chars */}
             <PremiseHistory address={formData.location} compact />
             {/* Duplicate Call Warning — flags active calls at same address */}
@@ -1125,7 +1175,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           )}
 
           {/* 83: Actions bar with sticky bottom positioning */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700 sticky bottom-0 bg-surface-base pb-1">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700 sticky bottom-0 bg-surface-base pb-1" style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0.25rem))' }}>
             {/* 84: Cancel button with explicit aria-label */}
             <button type="button" onClick={onClose} disabled={isSubmitting} className="toolbar-btn" aria-label="Cancel and close">
               Cancel

@@ -24,7 +24,7 @@ import { safeDateStr } from '../utils/dateUtils';
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
 
 const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; color: string; description: string }[] = [
-  { id: 'name', label: 'By Name', icon: User, color: '#60a5fa', description: 'Search by full name (first and last)' },
+  { id: 'name', label: 'By Name', icon: User, color: '#aaaaaa', description: 'Search by full name (first and last)' },
   { id: 'address', label: 'By Address', icon: MapPin, color: '#34d399', description: 'Search by street address' },
   { id: 'nameaddress', label: 'Name + Address', icon: Search, color: '#a78bfa', description: 'Search by name and address combined' },
   { id: 'phone', label: 'By Phone', icon: Phone, color: '#f59e0b', description: 'Reverse phone lookup' },
@@ -198,7 +198,7 @@ export default function SkipTracerPage() {
   const renderCopyButton = (text: string, label: string) => (
     <button type="button"
       onClick={(e) => { e.stopPropagation(); copy(text, label); }}
-      className="ml-1 text-rmpg-600 hover:text-blue-400 transition-colors"
+      className="ml-1 text-rmpg-600 hover:text-gray-400 transition-colors"
       title={`Copy ${label}`}
     >
       {copied === label ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
@@ -230,7 +230,7 @@ export default function SkipTracerPage() {
         {/* ─── Left Panel: Search Form ──────────────────────── */}
         <div
           className={`${isMobile ? 'flex-shrink-0' : 'w-80'} overflow-y-auto border-r border-rmpg-700`}
-          style={{ background: '#0d1520' }}
+          style={{ background: '#050505' }}
         >
           {/* Search Mode Selector */}
           <div className="p-3 space-y-3">
@@ -264,7 +264,7 @@ export default function SkipTracerPage() {
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
                     placeholder="e.g. John Smith"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -281,7 +281,7 @@ export default function SkipTracerPage() {
                     value={addressQuery}
                     onChange={(e) => setAddressQuery(e.target.value)}
                     placeholder="e.g. 123 Main St, Anytown, UT"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus={mode === 'address'}
                   />
@@ -298,7 +298,7 @@ export default function SkipTracerPage() {
                     value={phoneQuery}
                     onChange={(e) => setPhoneQuery(e.target.value)}
                     placeholder="e.g. 801-555-1234"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -315,7 +315,7 @@ export default function SkipTracerPage() {
                     value={emailQuery}
                     onChange={(e) => setEmailQuery(e.target.value)}
                     placeholder="e.g. john@example.com"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -413,13 +413,13 @@ export default function SkipTracerPage() {
                     onClick={() => setSelected(person)}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
-                        ? 'bg-blue-900/20 border-l-2 border-l-blue-500'
+                        ? 'bg-gray-900/20 border-l-2 border-l-blue-500'
                         : 'hover:bg-surface-base border-l-2 border-l-transparent'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
-                        <User className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-rmpg-100 truncate">{name}</div>
                           <div className="text-[9px] text-rmpg-500">
@@ -458,7 +458,7 @@ export default function SkipTracerPage() {
               <div className="panel-beveled bg-surface-base p-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-                    <User className="w-5 h-5 text-blue-400" />
+                    <User className="w-5 h-5 text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h2 className="text-sm font-bold text-white tracking-wider uppercase truncate">
@@ -520,7 +520,7 @@ export default function SkipTracerPage() {
           {/* Person Detail (from ID lookup) */}
           {personDetail && (
             <div className="mt-4 panel-beveled bg-surface-base p-4 space-y-1 animate-fade-in">
-              <div className="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-2">Extended Person Details</div>
+              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Extended Person Details</div>
               {renderAllFields(personDetail, renderFieldRow)}
               <details className="mt-3">
                 <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300">Raw Response</summary>
@@ -586,7 +586,7 @@ function renderArraySection(
               <span className="text-[11px] text-rmpg-200 font-mono">{item}</span>
               <button type="button"
                 onClick={() => copy(item, `${title}-${idx}`)}
-                className="text-rmpg-600 hover:text-blue-400"
+                className="text-rmpg-600 hover:text-gray-400"
               >
                 {copied === `${title}-${idx}` ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
               </button>

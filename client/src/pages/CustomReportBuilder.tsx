@@ -176,7 +176,7 @@ export default function CustomReportBuilder() {
       </PanelTitleBar>}
 
       {/* Step indicators */}
-      <div className={`flex items-center ${isMobile ? 'px-2 py-1.5 overflow-x-auto' : 'px-4 py-2'} border-b border-rmpg-700/50 flex-shrink-0`} style={{ background: '#0f1a28' }}>
+      <div className={`flex items-center ${isMobile ? 'px-2 py-1.5 overflow-x-auto' : 'px-4 py-2'} border-b border-rmpg-700/50 flex-shrink-0`} style={{ background: '#080808' }}>
         {steps.map((s, i) => (
           <React.Fragment key={s.id}>
             {i > 0 && <ChevronRight className="w-3 h-3 text-rmpg-600 mx-1" />}
@@ -325,7 +325,7 @@ export default function CustomReportBuilder() {
                 </button>
               </div>
             </div>
-            <div className={`overflow-auto ${isMobile ? 'max-h-[calc(100vh-200px)] -mx-3' : 'max-h-[calc(100vh-260px)]'}`}>
+            <div className={`overflow-auto ${isMobile ? 'max-h-[calc(100dvh-200px)] -mx-3' : 'max-h-[calc(100dvh-260px)]'}`}>
               <table className={`w-full text-[10px] border-collapse ${isMobile ? 'min-w-[600px]' : ''}`}>
                 <thead>
                   <tr>

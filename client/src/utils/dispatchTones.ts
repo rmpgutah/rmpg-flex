@@ -6,7 +6,7 @@
 // Respects the user's sound toggle (localStorage 'rmpg-sound').
 // ============================================================
 
-type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert';
+type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert' | 'chirp' | 'double_chirp' | 'descending' | 'p1_alert' | 'panic_continuous';
 
 let audioCtx: AudioContext | null = null;
 
@@ -144,6 +144,95 @@ const PROFILES: Record<ToneType, ToneProfile> = {
       { freq: 1000, start: 0.50, dur: 0.09 },
       { freq: 800,  start: 0.60, dur: 0.09 },
       { freq: 1000, start: 0.70, dur: 0.09 },
+    ],
+  },
+
+  // ── Chirp: Brief MDT acknowledgment chirp ──────────────────
+  // Single quick rising pip — used for unit en route confirmation.
+  // 800 Hz → 1200 Hz sweep in 60ms. Minimal and non-intrusive.
+  chirp: {
+    type: 'sine',
+    gain: 0.20,
+    steps: [
+      { freq: 800,  start: 0,    dur: 0.03 },
+      { freq: 1200, start: 0.03, dur: 0.03 },
+    ],
+  },
+
+  // ── Double Chirp: Unit on scene confirmation ───────────────
+  // Two quick rising pips with 80ms gap — confirms arrival.
+  // Slightly louder than single chirp for emphasis.
+  double_chirp: {
+    type: 'sine',
+    gain: 0.22,
+    steps: [
+      { freq: 800,  start: 0,    dur: 0.03 },
+      { freq: 1200, start: 0.03, dur: 0.03 },
+      { freq: 800,  start: 0.14, dur: 0.03 },
+      { freq: 1200, start: 0.17, dur: 0.03 },
+    ],
+  },
+
+  // ── Descending: Call cleared / closed tone ─────────────────
+  // C6 → A5 → F5 descending minor arpeggio (1047 → 880 → 698 Hz).
+  // Each note 80ms. Universally recognized "task complete" feel.
+  descending: {
+    type: 'sine',
+    gain: 0.18,
+    steps: [
+      { freq: 1047, start: 0,    dur: 0.08 },
+      { freq: 880,  start: 0.10, dur: 0.08 },
+      { freq: 698,  start: 0.20, dur: 0.10 },
+    ],
+  },
+
+  // ── P1 Alert: Double high-low-high emergency attention tone ─
+  // For Priority 1 calls — two cycles of 1200 / 800 / 1200 Hz
+  // sweep creating an unmistakable siren-like warble. Louder gain.
+  p1_alert: {
+    type: 'sine',
+    gain: 0.35,
+    steps: [
+      { freq: 1200, start: 0,    dur: 0.10 },
+      { freq: 800,  start: 0.12, dur: 0.10 },
+      { freq: 1200, start: 0.24, dur: 0.10 },
+      { freq: 800,  start: 0.40, dur: 0.10 },
+      { freq: 1200, start: 0.52, dur: 0.10 },
+      { freq: 800,  start: 0.64, dur: 0.10 },
+    ],
+  },
+
+  // ── Panic Continuous: Extended alarm for panic events ───────
+  // 12 rapid warble cycles (~2.5 seconds) — impossible to ignore.
+  // Used exclusively for panic button activations.
+  panic_continuous: {
+    type: 'sine',
+    gain: 0.35,
+    steps: [
+      { freq: 800,  start: 0,    dur: 0.09 },
+      { freq: 1100, start: 0.10, dur: 0.09 },
+      { freq: 800,  start: 0.20, dur: 0.09 },
+      { freq: 1100, start: 0.30, dur: 0.09 },
+      { freq: 800,  start: 0.40, dur: 0.09 },
+      { freq: 1100, start: 0.50, dur: 0.09 },
+      { freq: 800,  start: 0.60, dur: 0.09 },
+      { freq: 1100, start: 0.70, dur: 0.09 },
+      { freq: 800,  start: 0.80, dur: 0.09 },
+      { freq: 1100, start: 0.90, dur: 0.09 },
+      { freq: 800,  start: 1.00, dur: 0.09 },
+      { freq: 1100, start: 1.10, dur: 0.09 },
+      { freq: 800,  start: 1.20, dur: 0.09 },
+      { freq: 1100, start: 1.30, dur: 0.09 },
+      { freq: 800,  start: 1.40, dur: 0.09 },
+      { freq: 1100, start: 1.50, dur: 0.09 },
+      { freq: 800,  start: 1.60, dur: 0.09 },
+      { freq: 1100, start: 1.70, dur: 0.09 },
+      { freq: 800,  start: 1.80, dur: 0.09 },
+      { freq: 1100, start: 1.90, dur: 0.09 },
+      { freq: 800,  start: 2.00, dur: 0.09 },
+      { freq: 1100, start: 2.10, dur: 0.09 },
+      { freq: 800,  start: 2.20, dur: 0.09 },
+      { freq: 1100, start: 2.30, dur: 0.09 },
     ],
   },
 

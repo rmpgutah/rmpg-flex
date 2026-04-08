@@ -15,53 +15,72 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
 import MapPage from './pages/map';
+// Lazy import with auto-retry on chunk load failure (stale cache after deploys)
+function lazyRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>,
+): React.LazyExoticComponent<T> {
+  return lazy(() => factory().catch(() => {
+    // Force reload from server on chunk failure (once per session per module)
+    return new Promise<{ default: T }>((resolve, reject) => {
+      const reloaded = sessionStorage.getItem('rmpg_chunk_reload');
+      if (!reloaded || Date.now() - parseInt(reloaded) > 30000) {
+        sessionStorage.setItem('rmpg_chunk_reload', String(Date.now()));
+        window.location.reload();
+      }
+      reject(new Error('Chunk load failed — page will reload'));
+    });
+  }));
+}
+
 // Lazy-loaded pages (less frequently accessed)
-const IncidentsPage = lazy(() => import('./pages/IncidentsPage'));
-const RecordsPage = lazy(() => import('./pages/RecordsPage'));
-const PersonnelPage = lazy(() => import('./pages/personnel'));
-const CommunicationsPage = lazy(() => import('./pages/CommunicationsPage'));
-const ReportsPage = lazy(() => import('./pages/ReportsPage'));
-const AdminPage = lazy(() => import('./pages/AdminPage'));
-const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
-const PatrolPage = lazy(() => import('./pages/PatrolPage'));
-const FleetPage = lazy(() => import('./pages/fleet'));
-const WarrantsPage = lazy(() => import('./pages/WarrantsPage'));
-const NationalWarrantSearchPage = lazy(() => import('./pages/NationalWarrantSearchPage'));
-const CitationsPage = lazy(() => import('./pages/CitationsPage'));
-const FieldInterviewsPage = lazy(() => import('./pages/FieldInterviewsPage'));
-const TrespassOrdersPage = lazy(() => import('./pages/TrespassOrdersPage'));
-const RadioPage = lazy(() => import('./pages/RadioPage'));
-const MdtPage = lazy(() => import('./pages/MdtPage'));
-const ShiftPlansPage = lazy(() => import('./pages/ShiftPlansPage'));
-const StatuteAnalyticsPage = lazy(() => import('./pages/StatuteAnalyticsPage'));
-const CustomReportBuilder = lazy(() => import('./pages/CustomReportBuilder'));
-const CriminalHistoryPage = lazy(() => import('./pages/CriminalHistoryPage'));
-const EvidencePropertyPage = lazy(() => import('./pages/EvidencePropertyPage'));
-const CaseManagementPage = lazy(() => import('./pages/CaseManagementPage'));
-const CrimeAnalysisPage = lazy(() => import('./pages/CrimeAnalysisPage'));
-const CodeEnforcementPage = lazy(() => import('./pages/CodeEnforcementPage'));
-const CourtTrackerPage = lazy(() => import('./pages/CourtTrackerPage'));
-const DailyActivityReportsPage = lazy(() => import('./pages/DailyActivityReportsPage'));
-const OffenderRegistryPage = lazy(() => import('./pages/OffenderRegistryPage'));
-const SexOffenderRegistryPage = lazy(() => import('./pages/SexOffenderRegistryPage'));
-const NcicPage = lazy(() => import('./pages/NcicPage'));
-const DlSearchPage = lazy(() => import('./pages/DlSearchPage'));
-const BodyCamerasPage = lazy(() => import('./pages/BodyCamerasPage'));
-const DashCamerasPage = lazy(() => import('./pages/DashCamerasPage'));
-const TrainingDocsPage = lazy(() => import('./pages/TrainingDocsPage'));
-const TrainingPage = lazy(() => import('./pages/TrainingPage'));
-const ForensicsPage = lazy(() => import('./pages/ForensicsPage'));
-const ForensicLabPage = lazy(() => import('./pages/ForensicLabPage'));
-const SkipTracerPage = lazy(() => import('./pages/SkipTracerPage'));
-const SkipTracerV2Page = lazy(() => import('./pages/skiptracer/SkipTracerV2Page'));
-const ArrestRecordsPage = lazy(() => import('./pages/ArrestRecordsPage'));
-const EmailPage = lazy(() => import('./pages/EmailPage'));
-const CrmPage = lazy(() => import('./pages/CrmPage'));
-const ServePage = lazy(() => import('./pages/ServePage'));
-const WebResearchPage = lazy(() => import('./pages/WebResearchPage'));
-const HRPage = lazy(() => import('./pages/hr/HrPage'));
-const IncidentDetailWindow = lazy(() => import('./pages/detached/IncidentDetailWindow'));
-const RecordDetailWindow = lazy(() => import('./pages/detached/RecordDetailWindow'));
+const IncidentsPage = lazyRetry(() => import('./pages/IncidentsPage'));
+const RecordsPage = lazyRetry(() => import('./pages/RecordsPage'));
+const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
+const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
+const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
+const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
+const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
+const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
+const FleetPage = lazyRetry(() => import('./pages/fleet'));
+const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
+const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarrantSearchPage'));
+const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
+const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
+const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'));
+const RadioPage = lazyRetry(() => import('./pages/RadioPage'));
+const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
+const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
+const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
+const CustomReportBuilder = lazyRetry(() => import('./pages/CustomReportBuilder'));
+const CriminalHistoryPage = lazyRetry(() => import('./pages/CriminalHistoryPage'));
+const EvidencePropertyPage = lazyRetry(() => import('./pages/EvidencePropertyPage'));
+const CaseManagementPage = lazyRetry(() => import('./pages/CaseManagementPage'));
+const CrimeAnalysisPage = lazyRetry(() => import('./pages/CrimeAnalysisPage'));
+const CodeEnforcementPage = lazyRetry(() => import('./pages/CodeEnforcementPage'));
+const CourtTrackerPage = lazyRetry(() => import('./pages/CourtTrackerPage'));
+const DailyActivityReportsPage = lazyRetry(() => import('./pages/DailyActivityReportsPage'));
+const OffenderRegistryPage = lazyRetry(() => import('./pages/OffenderRegistryPage'));
+const SexOffenderRegistryPage = lazyRetry(() => import('./pages/SexOffenderRegistryPage'));
+const NcicPage = lazyRetry(() => import('./pages/NcicPage'));
+const DlSearchPage = lazyRetry(() => import('./pages/DlSearchPage'));
+const BodyCamerasPage = lazyRetry(() => import('./pages/BodyCamerasPage'));
+const DashCamerasPage = lazyRetry(() => import('./pages/DashCamerasPage'));
+const TrainingDocsPage = lazyRetry(() => import('./pages/TrainingDocsPage'));
+const TrainingPage = lazyRetry(() => import('./pages/TrainingPage'));
+const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
+const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
+const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
+const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
+const ArrestRecordsPage = lazyRetry(() => import('./pages/ArrestRecordsPage'));
+const EmailPage = lazyRetry(() => import('./pages/EmailPage'));
+const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
+const ServePage = lazyRetry(() => import('./pages/ServePage'));
+const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
+const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
+const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
+const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
+const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
+const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -73,7 +92,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         <img
           src="/rmpg flex.png"
           alt="RMPG Flex"
-          className="drop-shadow-[0_0_20px_rgba(26,90,158,0.3)]"
+          className="drop-shadow-[0_0_20px_rgba(136,136,136,0.3)]"
           style={{ height: 88, width: 88, objectFit: 'contain' }}
           draggable={false}
         />
@@ -81,13 +100,13 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         {/* Animated scanning line beneath logo */}
         <div
           className="mt-4 mb-3 overflow-hidden"
-          style={{ width: 140, height: 2, background: '#141e2b', borderRadius: 1 }}
+          style={{ width: 140, height: 2, background: '#0a0a0a', borderRadius: 1 }}
         >
           <div
             className="h-full"
             style={{
               width: 48,
-              background: 'linear-gradient(90deg, transparent, #1a5a9e, transparent)',
+              background: 'linear-gradient(90deg, transparent, #888888, transparent)',
               animation: 'scanLine 1.6s ease-in-out infinite',
             }}
           />
@@ -103,14 +122,14 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
         {/* Subtle system label */}
         <div className="flex items-center gap-2 mt-3">
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #1e3048)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #222222)' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
-            style={{ color: 'rgba(26,90,158,0.4)' }}
+            style={{ color: 'rgba(136,136,136,0.4)' }}
           >
             CAD / RMS
           </span>
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #1e3048, transparent)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #222222, transparent)' }} />
         </div>
       </div>
 
@@ -191,6 +210,8 @@ function AppRoutes() {
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
             <Route path="/dispatch" element={<DispatchPage />} />
             <Route path="/map" element={<MapPage />} />
+            <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
+            <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
             <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />

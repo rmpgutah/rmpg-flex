@@ -170,9 +170,9 @@ export function useMapPerimeter(
         icon: {
           path: 'M12 2L4 7v5c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V7l-8-5z',
           scale: 1.0,
-          fillColor: '#3b82f6',
+          fillColor: '#888888',
           fillOpacity: 0.85,
-          strokeColor: '#1e40af',
+          strokeColor: '#555555',
           strokeWeight: 1,
           anchor: new google.maps.Point(12, 22),
         },

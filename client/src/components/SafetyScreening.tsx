@@ -218,7 +218,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                 <div key={w.id} className="flex items-start gap-1.5 text-[10px]">
                   <Scale style={{ width: 10, height: 10, color: '#ef4444', flexShrink: 0, marginTop: 1 }} />
                   <div>
-                    <span className="text-red-400 font-bold uppercase">{w.offense_level}</span>
+                    <span className="text-red-400 font-bold uppercase">{(w.offense_level || '').replace(/_/g, ' ')}</span>
                     <span className="text-rmpg-300 ml-1">{w.charge_description}</span>
                     {w.bail_amount != null && w.bail_amount > 0 && (
                       <span className="text-rmpg-500 ml-1">Bail: ${w.bail_amount.toLocaleString()}</span>
@@ -234,7 +234,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                   <span className="font-bold">Criminal History:</span>
                   {item.criminalHistory.slice(0, 3).map((ch) => (
                     <div key={ch.id} className="ml-4 text-rmpg-300">
-                      {ch.charge} {ch.disposition && `— ${ch.disposition}`}
+                      {ch.charge} {ch.disposition && `— ${ch.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}`}
                     </div>
                   ))}
                   {item.criminalHistory.length > 3 && (

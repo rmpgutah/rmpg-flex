@@ -45,12 +45,12 @@ interface SearchHistoryRow {
 
 // Search type display labels
 const SEARCH_TYPE_LABELS: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  byname: { label: 'Name', icon: User, color: '#60a5fa' },
+  byname: { label: 'Name', icon: User, color: '#aaaaaa' },
   byaddress: { label: 'Address', icon: MapPin, color: '#34d399' },
   bynameandaddress: { label: 'Name + Address', icon: Search, color: '#a78bfa' },
   byphone: { label: 'Phone', icon: Phone, color: '#f59e0b' },
   byemail: { label: 'Email', icon: Mail, color: '#f472b6' },
-  personDetailsByID: { label: 'Person ID', icon: Hash, color: '#818cf8' },
+  personDetailsByID: { label: 'Person ID', icon: Hash, color: '#aaaaaa' },
 };
 
 const timeAgo = (date: string): string => {
@@ -178,8 +178,8 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       <div className="panel-beveled bg-surface-base p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 flex items-center justify-center bg-blue-900/25 border border-blue-700/40" aria-hidden="true">
-              <Search className="w-4 h-4 text-blue-400" />
+            <div className="w-9 h-9 flex items-center justify-center bg-gray-900/25 border border-gray-700/40" aria-hidden="true">
+              <Search className="w-4 h-4 text-gray-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
@@ -204,7 +204,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
               href="https://rapidapi.com/oneapiproject/api/skip-tracing-working-api"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 px-2 py-0.5 text-[9px] text-rmpg-400 hover:text-blue-400 border border-rmpg-700 hover:border-blue-700"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] text-rmpg-400 hover:text-gray-400 border border-rmpg-700 hover:border-gray-700"
             >
               <ExternalLink className="w-3 h-3" /> RapidAPI
             </a>
@@ -230,7 +230,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
               <button type="button"
                 onClick={handleTest}
                 disabled={testing}
-                className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-700/20 text-blue-400 border border-blue-700/50 hover:bg-blue-700/40 disabled:opacity-50"
+                className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-gray-700/20 text-gray-400 border border-gray-700/50 hover:bg-gray-700/40 disabled:opacity-50"
               >
                 {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3 h-3" />}
                 Test Connection
@@ -264,7 +264,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                 href="https://rapidapi.com/oneapiproject/api/skip-tracing-working-api"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
+                className="text-gray-400 hover:underline"
               >
                 RapidAPI
               </a>{' '}
@@ -282,7 +282,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     placeholder="Enter your x-rapidapi-key"
-                    className="w-full bg-surface-sunken border border-rmpg-600 text-white text-xs px-3 py-1.5 pr-8 font-mono focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-600 text-white text-xs px-3 py-1.5 pr-8 font-mono focus:border-gray-500 focus:outline-none"
                   />
                   <button type="button"
                     onClick={() => setShowKey(!showKey)}
@@ -379,7 +379,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
           </div>
           <button type="button"
             onClick={handleLoadHistory}
-            className="text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-wider font-bold"
+            className="text-[10px] text-gray-400 hover:text-gray-300 uppercase tracking-wider font-bold"
           >
             {showHistory ? 'Refresh' : 'Load History'}
           </button>

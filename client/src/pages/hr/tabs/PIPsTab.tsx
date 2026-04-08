@@ -20,7 +20,7 @@ interface PIP {
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
-  extended: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  extended: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   failed: 'bg-red-900/50 text-red-400 border border-red-700/50',
   cancelled: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
 };
@@ -175,7 +175,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[p.status] || STATUS_COLORS.active}`}>{p.status}</span>
+                      <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[p.status] || STATUS_COLORS.active}`}>{(p.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                       <span className="text-xs font-bold text-white">{p.officer_name}</span>
                       {p.status === 'active' && <span className={`text-[10px] ${days <= 7 ? 'text-red-400' : days <= 14 ? 'text-amber-400' : 'text-rmpg-400'}`}><Clock className="w-3 h-3 inline" /> {days}d remaining</span>}
                     </div>

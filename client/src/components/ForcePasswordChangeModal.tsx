@@ -101,16 +101,16 @@ export default function ForcePasswordChangeModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#141e2b',
-          border: '1px solid #1e3048',
-          borderTop: '3px solid #1a5a9e',
+          background: '#0a0a0a',
+          border: '1px solid #222222',
+          borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <Shield style={{ width: 20, height: 20, color: '#1a5a9e' }} />
+            <Shield style={{ width: 20, height: 20, color: '#888888' }} />
             <div className="text-lg font-bold text-white">Password Change Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
@@ -198,7 +198,7 @@ export default function ForcePasswordChangeModal() {
                   {rule.met ? (
                     <Check style={{ width: 10, height: 10, color: '#22c55e', flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle style={{ width: 10, height: 10, color: '#5a6e80', flexShrink: 0 }} />
+                    <AlertCircle style={{ width: 10, height: 10, color: '#666666', flexShrink: 0 }} />
                   )}
                   <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
                     {rule.label}

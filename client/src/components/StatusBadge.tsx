@@ -54,6 +54,8 @@ export interface StatusBadgeProps {
   type?: BadgeType;
   size?: 'sm' | 'md';
   className?: string;
+  /** Tooltip text shown on hover */
+  title?: string;
 }
 
 function getConfig(status: string, type: BadgeType): { label: string; classes: string } | null {
@@ -89,7 +91,7 @@ function getGenericFallback(status: string): { label: string; classes: string } 
   return GENERIC_STATUS_MAP[key] || null;
 }
 
-export default React.memo(function StatusBadge({ status, type, size = 'md', className = '' }: StatusBadgeProps) {
+export default React.memo(function StatusBadge({ status, type, size = 'md', className = '', title }: StatusBadgeProps) {
   const config = type ? getConfig(status, type) : getGenericFallback(status);
 
   {/* 15: Consistent badge sizing with min-width for uniform appearance; 16: Leading-none for tight badges */}
@@ -100,7 +102,7 @@ export default React.memo(function StatusBadge({ status, type, size = 'md', clas
     const label = status.replace(/_/g, ' ');
     {/* 17: Whitespace-nowrap on unknown badges to prevent wrapping */}
     return (
-      <span className={`inline-flex items-center font-bold tracking-wide uppercase whitespace-nowrap panel-beveled ${sizeClasses} bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`} role="status" aria-label={`Status: ${label}`}>
+      <span className={`inline-flex items-center font-bold tracking-wide uppercase whitespace-nowrap panel-beveled ${sizeClasses} bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`} role="status" aria-label={`Status: ${label}`} title={title}>
         {label}
       </span>
     );
@@ -111,6 +113,7 @@ export default React.memo(function StatusBadge({ status, type, size = 'md', clas
       className={`inline-flex items-center font-bold tracking-wide uppercase whitespace-nowrap panel-beveled transition-colors duration-150 ${sizeClasses} ${config.classes} ${className}`}
       role="status"
       aria-label={`Status: ${config.label}`}
+      title={title}
     >
       {config.label}
     </span>

@@ -144,7 +144,7 @@ export function useMapMarkers({
         if (existingMarker) {
           // Update content (status may have changed)
           try { // Fix 1: try/catch around marker operations
-            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
+            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading);
             if (typeof existingMarker.updateContent === 'function') {
               existingMarker.updateContent(newContent);
             } else {
@@ -167,7 +167,7 @@ export function useMapMarkers({
           }
         } else {
           try { // Fix 1: try/catch around each marker creation
-            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
+            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading);
 
             const marker = createMarker({
               map,
@@ -229,7 +229,7 @@ export function useMapMarkers({
         if (!isFinite(call.latitude) || !isFinite(call.longitude)) return;
 
         try { // Fix 1: try/catch per marker
-          const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
+          const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number, call.created_at);
 
           const marker = createMarker({
             map,

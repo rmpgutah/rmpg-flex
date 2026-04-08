@@ -23,7 +23,7 @@ interface UnitRecommendationPanelProps {
 const STATUS_COLORS: Record<string, string> = {
   available: '#22c55e',
   dispatched: '#f59e0b',
-  enroute: '#3b82f6',
+  enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
 };
@@ -77,7 +77,7 @@ export default function UnitRecommendationPanel({
       <div className="unit-rec-list">
         {ranked.map((item: RankedUnit) => {
           const isTopPick = item.rank === 1 && item.unit.status === 'available';
-          const statusColor = STATUS_COLORS[item.unit.status] || '#8a9aaa';
+          const statusColor = STATUS_COLORS[item.unit.status] || '#888888';
 
           return (
             <div
@@ -85,7 +85,7 @@ export default function UnitRecommendationPanel({
               className={`unit-rec-item ${isTopPick ? 'unit-rec-top-pick' : ''}`}
             >
               {/* Rank badge */}
-              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : '#6b7280' }}>
+              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : '#666666' }}>
                 {isTopPick ? (
                   <Star style={{ width: 10, height: 10, fill: '#4ade80' }} />
                 ) : (

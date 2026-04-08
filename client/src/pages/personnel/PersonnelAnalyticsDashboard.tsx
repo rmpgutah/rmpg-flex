@@ -20,15 +20,15 @@ interface Props {
 }
 
 const ROLE_HEX: Record<string, string> = {
-  admin: '#ef4444', manager: '#f59e0b', supervisor: '#3b82f6',
-  officer: '#22c55e', dispatcher: '#a855f7', contract_manager: '#06b6d4',
+  admin: '#ef4444', manager: '#f59e0b', supervisor: '#888888',
+  officer: '#22c55e', dispatcher: '#a855f7', contract_manager: '#22c55e',
 };
 
 const ChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#0d1520', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: '#e5e7eb', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
+    <div style={{ background: '#050505', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
+      <div style={{ color: '#e0e0e0', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
         {payload[0].name}: {payload[0].value}
       </div>
     </div>
@@ -67,7 +67,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
   const trainingBarData = useMemo(() => [
     { name: 'Completed', value: completedTraining, fill: '#22c55e' },
     { name: 'Overdue', value: overdueTraining, fill: '#ef4444' },
-    { name: 'Pending', value: Math.max(0, pendingTraining), fill: '#6b7280' },
+    { name: 'Pending', value: Math.max(0, pendingTraining), fill: '#666666' },
   ], [completedTraining, overdueTraining, pendingTraining]);
 
   // Hours by day for AreaChart (last 7 days)
@@ -180,7 +180,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={roleData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} strokeWidth={0} paddingAngle={2}>
-                    {roleData.map((d, i) => <Cell key={i} fill={ROLE_HEX[d.name] || '#6b7280'} />)}
+                    {roleData.map((d, i) => <Cell key={i} fill={ROLE_HEX[d.name] || '#666666'} />)}
                   </Pie>
                   <Tooltip content={<ChartTooltip />} />
                 </PieChart>
@@ -189,7 +189,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
             <div className="flex-1 space-y-1.5">
               {roleData.map(d => (
                 <div key={d.name} className="flex items-center gap-2 text-xs">
-                  <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || '#6b7280' }} />
+                  <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || '#666666' }} />
                   <span className="text-rmpg-200 capitalize flex-1">{d.name.replace('_', ' ')}</span>
                   <span className="font-mono text-white">{d.value}</span>
                 </div>
@@ -210,8 +210,8 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
           <div className="h-[120px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={trainingBarData} layout="vertical" margin={{ left: 60, right: 10, top: 0, bottom: 0 }}>
-                <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fill: '#d1d5db', fontSize: 10 }} axisLine={false} tickLine={false} width={55} />
+                <XAxis type="number" tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fill: '#cccccc', fontSize: 10 }} axisLine={false} tickLine={false} width={55} />
                 <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                 <Bar dataKey="value" radius={[0, 2, 2, 0]}>
                   {trainingBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
@@ -240,14 +240,14 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
               <AreaChart data={hoursByDay} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
                 <defs>
                   <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#888888" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#888888" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
+                <XAxis dataKey="date" tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="hours" name="Hours" stroke="#3b82f6" fill="url(#hoursGrad)" strokeWidth={2} />
+                <Area type="monotone" dataKey="hours" name="Hours" stroke="#888888" fill="url(#hoursGrad)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -289,10 +289,22 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
   );
 }
 
+interface DutyHoursData {
+  officers: { officer_id: number; officer_name: string; total_hours: number; total_overtime: number; shift_count: number }[];
+  flagged_excessive_hours: { officer_id: number; officer_name: string; total_hours: number }[];
+}
+
+interface CertWarningsData {
+  summary: { expired: number; within_30: number; within_60: number; within_90: number };
+  warnings: { credential_id: number; officer_name: string; credential_type: string; days_until: number; severity: string }[];
+}
+
 function DutyHoursPanel() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<DutyHoursData | null>(null);
   useEffect(() => {
-    apiFetch('/api/personnel/duty-hours?period=14').then((d: any) => d && setData(d)).catch(() => {});
+    apiFetch<DutyHoursData>('/api/personnel/duty-hours?period=14')
+      .then((d) => d && setData(d))
+      .catch((err) => console.warn('[Personnel] Duty hours fetch failed:', err?.message));
   }, []);
   if (!data?.officers?.length) return null;
   const flagged = data.flagged_excessive_hours || [];
@@ -305,7 +317,7 @@ function DutyHoursPanel() {
         )}
       </h4>
       <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
-        {data.officers.slice(0, 10).map((o: any) => (
+        {data.officers.slice(0, 10).map((o) => (
           <div key={o.officer_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200">{o.officer_name}</span>
             <span className="font-mono text-cyan-400">{o.total_hours}h</span>
@@ -319,9 +331,11 @@ function DutyHoursPanel() {
 }
 
 function CertWarningsPanel() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<CertWarningsData | null>(null);
   useEffect(() => {
-    apiFetch('/api/personnel/cert-expiration-warnings').then((d: any) => d && setData(d)).catch(() => {});
+    apiFetch<CertWarningsData>('/api/personnel/cert-expiration-warnings')
+      .then((d) => d && setData(d))
+      .catch((err) => console.warn('[Personnel] Cert warnings fetch failed:', err?.message));
   }, []);
   if (!data?.warnings?.length) return null;
   return (
@@ -333,10 +347,10 @@ function CertWarningsPanel() {
         <div className="text-center p-1 bg-red-900/20 rounded"><span className="text-xs font-bold text-red-400">{data.summary.expired}</span><div className="text-[7px] text-rmpg-500">Expired</div></div>
         <div className="text-center p-1 bg-red-900/10 rounded"><span className="text-xs font-bold text-red-300">{data.summary.within_30}</span><div className="text-[7px] text-rmpg-500">30d</div></div>
         <div className="text-center p-1 bg-amber-900/10 rounded"><span className="text-xs font-bold text-amber-400">{data.summary.within_60}</span><div className="text-[7px] text-rmpg-500">60d</div></div>
-        <div className="text-center p-1 bg-blue-900/10 rounded"><span className="text-xs font-bold text-blue-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
+        <div className="text-center p-1 bg-gray-900/10 rounded"><span className="text-xs font-bold text-gray-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
       </div>
       <div className="space-y-0.5 max-h-[100px] overflow-y-auto">
-        {data.warnings.slice(0, 8).map((w: any) => (
+        {data.warnings.slice(0, 8).map((w) => (
           <div key={w.credential_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200">{w.officer_name}</span>
             <span className="text-rmpg-400">{w.credential_type}</span>

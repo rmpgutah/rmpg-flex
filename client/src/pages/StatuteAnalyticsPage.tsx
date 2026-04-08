@@ -176,10 +176,10 @@ export default function StatuteAnalyticsPage() {
 
       {/* Feature 37: Top Charged Panel */}
       {topCharged.length > 0 && (
-        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs flex-shrink-0">
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs flex-shrink-0">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-blue-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
-            <button type="button" onClick={() => setTopCharged([])} className="text-blue-500 hover:text-blue-300 text-[10px]">Close</button>
+            <span className="text-gray-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
+            <button type="button" onClick={() => setTopCharged([])} className="text-gray-500 hover:text-gray-300 text-[10px]">Close</button>
           </div>
           <div className="max-h-40 overflow-y-auto space-y-0.5">
             {topCharged.map((s, i) => (
@@ -196,7 +196,7 @@ export default function StatuteAnalyticsPage() {
 
       {/* Mobile: day selector */}
       {isMobile && (
-        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#0f1a28', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#080808', borderBottom: '1px solid #222222' }}>
           {[30, 60, 90, 180, 365].map(d => (
             <button type="button"
               key={d}
@@ -301,7 +301,7 @@ export default function StatuteAnalyticsPage() {
                 {byLevel.map((l, i) => {
                   const total = byLevel.reduce((s, e) => s + e.count, 0);
                   const pct = total > 0 ? Math.round((l.count / total) * 100) : 0;
-                  const color = levelColors[l.offense_level] || '#6b7280';
+                  const color = levelColors[l.offense_level] || '#666666';
                   return (
                     <div key={i}>
                       <div className="flex items-center justify-between mb-0.5">
@@ -369,7 +369,7 @@ export default function StatuteAnalyticsPage() {
                     }
                   }
                   return pairs.sort((x, y) => y.score - x.score).slice(0, 8).map((p, i) => (
-                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#1e3048]/50 last:border-0">
+                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#222222]/50 last:border-0">
                       <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.a}</span>
                       <span className="text-[9px] text-rmpg-500">frequently occurs with</span>
                       <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.b}</span>

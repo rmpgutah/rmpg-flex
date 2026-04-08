@@ -9,7 +9,7 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
-import { firecrawlScrape, firecrawlSearch, firecrawlHealthCheck } from '../utils/firecrawlClient';
+import { firecrawlScrape, firecrawlSearch, firecrawlHealthCheck, firecrawlConnectionMode, hasFirecrawlApiKey } from '../utils/firecrawlClient';
 import { upsertLead, type LeadUpsertData } from '../utils/leadScraperBase';
 import { auditLog } from '../utils/auditLogger';
 import { getDb } from '../models/database';
@@ -27,9 +27,11 @@ router.get(
   async (_req: Request, res: Response) => {
     try {
       const connected = await firecrawlHealthCheck();
-      res.json({ connected });
+      const mode = firecrawlConnectionMode();
+      const hasApiKey = hasFirecrawlApiKey();
+      res.json({ connected, mode, hasApiKey });
     } catch {
-      res.json({ connected: false });
+      res.json({ connected: false, mode: 'fallback', hasApiKey: false });
     }
   },
 );

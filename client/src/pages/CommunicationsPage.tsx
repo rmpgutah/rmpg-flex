@@ -698,11 +698,11 @@ export default function CommunicationsPage() {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Communications Center</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -711,7 +711,7 @@ export default function CommunicationsPage() {
       <PanelTitleBar title="COMMUNICATIONS" icon={MessageSquare}>
         {activePanel === 'messages' && (
           <>
-            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#0d1520' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#050505' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
@@ -761,7 +761,7 @@ export default function CommunicationsPage() {
       </PanelTitleBar>
 
       {/* Panel Tabs */}
-      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#0d1520' }}>
+      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#050505' }}>
         <div className="flex gap-1">
           {panels.map((panel) => {
             const Icon = panel.icon;
@@ -804,7 +804,7 @@ export default function CommunicationsPage() {
                 <span className="text-rmpg-500 text-[9px]">
                   {msgPriorityStats.byPriority.map(p => (
                     <span key={p.priority} className={`mr-2 ${p.priority === 'emergency' ? 'text-red-400' : p.priority === 'urgent' ? 'text-amber-400' : 'text-rmpg-400'}`}>
-                      {p.priority}: {p.total}
+                      {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}: {p.total}
                     </span>
                   ))}
                 </span>
@@ -926,7 +926,7 @@ export default function CommunicationsPage() {
                 {selectedThread && (
                   <div className={`${isMobile ? 'w-full' : 'flex-1'} flex flex-col overflow-hidden animate-slide-in-right`}>
                     {/* Thread header */}
-                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
                       <button type="button"
                         onClick={() => setSelectedThreadId(null)}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-400 transition-colors"
@@ -955,7 +955,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Messages in thread */}
-                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent px-4 py-3 space-y-3">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent px-4 py-3 space-y-3">
                       {selectedThread.messages.map((msg, idx) => {
                         const isOwnMessage = msg.from_user_id === currentUserId;
 
@@ -970,9 +970,9 @@ export default function CommunicationsPage() {
                                   <div
                                     className="w-6 h-6 flex items-center justify-center text-[9px] font-bold flex-shrink-0"
                                     style={{
-                                      background: isOwnMessage ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : 'linear-gradient(135deg, #124070, #1a5a9e)',
+                                      background: isOwnMessage ? 'linear-gradient(135deg, #1e40af, #888888)' : 'linear-gradient(135deg, #333333, #888888)',
                                       color: '#fff',
-                                      border: isOwnMessage ? '1px solid #60a5fa' : '1px solid #3b8ad4',
+                                      border: isOwnMessage ? '1px solid #999999' : '1px solid #aaaaaa',
                                       borderRadius: 2,
                                     }}
                                   >
@@ -1037,7 +1037,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Reply compose area */}
-                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
+                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
                       <div className="flex items-center gap-2 mb-2">
                         <Reply className="w-3.5 h-3.5 text-rmpg-400" />
                         <span className="text-[10px] text-rmpg-400 font-medium">
@@ -1086,7 +1086,7 @@ export default function CommunicationsPage() {
 
         {/* BOLOs Panel */}
         {activePanel === 'bolos' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
             {/* New BOLO Form */}
             {showNewBOLO && (
               <form onSubmit={handleCreateBOLO} className="bg-surface-base border border-red-700/40 p-4 animate-fade-in">
@@ -1174,7 +1174,7 @@ export default function CommunicationsPage() {
                   {boloStats.byCategory.slice(0, 2).map((cat) => (
                     <div key={cat.category} className="bg-surface-sunken p-2 text-center">
                       <div className="text-lg font-bold text-rmpg-200">{cat.active_count}</div>
-                      <div className="text-[9px] text-rmpg-400 uppercase">{cat.category}</div>
+                      <div className="text-[9px] text-rmpg-400 uppercase">{(cat.category || '').replace(/_/g, ' ')}</div>
                     </div>
                   ))}
                 </div>
@@ -1225,6 +1225,7 @@ export default function CommunicationsPage() {
                 <div
                   key={bolo.id}
                   className={`panel-beveled p-4 bg-surface-base ${bolo.priority === 'P1' ? 'border-red-700/50 animate-emergency-pulse' : bolo.priority === 'P2' ? 'border-amber-700/40' : ''}`}
+                  style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : bolo.priority === 'P3' ? '#eab308' : '#22c55e' }}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -1305,7 +1306,7 @@ export default function CommunicationsPage() {
                   <span className="text-xs text-rmpg-400">({activities.length} of {activitiesTotal} entries)</span>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                 {activitiesLoading ? (
                   <Spinner label="Loading activity..." />
                 ) : (

@@ -25,7 +25,7 @@ const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e',
   maintenance: '#f59e0b',
   out_of_service: '#ef4444',
-  retired: '#6b7280',
+  retired: '#666666',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
@@ -48,9 +48,9 @@ function parseEquipment(eq: unknown): string[] {
 }
 
 const TYPE_BORDER_COLOR: Record<string, string> = {
-  oil_change: '#3b82f6', tire_rotation: '#06b6d4',
+  oil_change: '#888888', tire_rotation: '#22c55e',
   brake_service: '#ef4444', inspection: '#22c55e',
-  repair: '#f59e0b', other: '#6b7280',
+  repair: '#f59e0b', other: '#666666',
 };
 
 interface Props {
@@ -89,12 +89,20 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Vehicle Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Gauge className="w-3.5 h-3.5 mx-auto text-brand-400 mb-1" />
           <div className="text-sm font-bold font-mono text-brand-400">{detail.current_mileage?.toLocaleString() || '-'}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Mileage</div>
         </div>
+        {/* Fuel efficiency gauge */}
+        {fuelEfficiency?.avg_mpg != null && (
+          <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
+            <Fuel className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: fuelEfficiency.avg_mpg > 20 ? '#22c55e' : fuelEfficiency.avg_mpg > 12 ? '#f59e0b' : '#ef4444' }} />
+            <div className="text-sm font-bold font-mono" style={{ color: fuelEfficiency.avg_mpg > 20 ? '#22c55e' : fuelEfficiency.avg_mpg > 12 ? '#f59e0b' : '#ef4444' }}>{fuelEfficiency.avg_mpg.toFixed(1)}</div>
+            <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
+          </div>
+        )}
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Wrench className="w-3.5 h-3.5 mx-auto text-amber-400 mb-1" />
           <div className="text-sm font-bold font-mono text-amber-400">{maintenance.length}</div>
@@ -108,8 +116,8 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Calendar className="w-3.5 h-3.5 mx-auto text-blue-400 mb-1" />
-          <div className="text-[10px] font-bold font-mono text-blue-400">{formatMilitary(detail.last_service_date)}</div>
+          <Calendar className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
+          <div className="text-[10px] font-bold font-mono text-gray-400">{formatMilitary(detail.last_service_date)}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Service</div>
         </div>
         <div className={`panel-beveled p-2.5 text-center ${
@@ -122,6 +130,31 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           <div className="text-[7px] text-rmpg-500 uppercase">Next Due</div>
         </div>
       </div>
+
+      {/* Mileage Since Last Service */}
+      {(() => {
+        const lastSvcMileage = maintenance.length > 0
+          ? maintenance.reduce((latest, m) => {
+              if (!m.mileage_at_service) return latest;
+              if (!latest || new Date(m.performed_at) > new Date(latest.performed_at)) return m;
+              return latest;
+            }, null as (typeof maintenance[0]) | null)?.mileage_at_service
+          : null;
+        if (lastSvcMileage != null && detail.current_mileage != null) {
+          const diff = detail.current_mileage - lastSvcMileage;
+          const color = diff > 5000 ? '#ef4444' : diff > 3000 ? '#f59e0b' : '#22c55e';
+          return (
+            <div className="panel-beveled p-2 bg-surface-sunken flex items-center gap-2">
+              <Gauge className="w-3.5 h-3.5" style={{ color }} />
+              <span className="text-[10px] text-rmpg-300">Miles since last service:</span>
+              <span className="font-mono font-bold text-sm" style={{ color }}>{diff.toLocaleString()}</span>
+              {diff > 5000 && <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold">SERVICE DUE</span>}
+              {diff > 3000 && diff <= 5000 && <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold">APPROACHING</span>}
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Vehicle Info */}
       <div className="panel-beveled p-3 bg-surface-base">
@@ -140,6 +173,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
             { label: 'VIN', value: detail.vin, mono: true, span: 2 },
             { label: 'Plate', value: detail.plate_number ? `${detail.plate_state || ''} ${detail.plate_number}` : null, mono: true },
             { label: 'Mileage', value: detail.current_mileage?.toLocaleString(), mono: true },
+            { label: 'Age', value: detail.year ? `${new Date().getFullYear() - detail.year} yrs` : null, mono: true },
           ].map((field, i) => (
             <div key={i} className={field.span === 2 ? 'col-span-2' : ''}>
               <div className="text-[9px] text-rmpg-500 uppercase font-semibold tracking-wider">{field.label}</div>
@@ -399,11 +433,11 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           </div>
         ) : (
           <div className="relative">
-            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, #1a5a9e 0%, #2a3e58 30%, #2a3e58 70%, transparent 100%)' }} />
+            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, #888888 0%, #2e2e2e 30%, #2e2e2e 70%, transparent 100%)' }} />
             <div className="space-y-2">
               {maintenance.map((m) => {
                 const typeColors: Record<string, string> = {
-                  oil_change: 'bg-blue-500', tire_rotation: 'bg-cyan-500',
+                  oil_change: 'bg-gray-500', tire_rotation: 'bg-cyan-500',
                   brake_service: 'bg-red-500', inspection: 'bg-green-500',
                   repair: 'bg-amber-500', other: 'bg-rmpg-500',
                 };
@@ -412,7 +446,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                     <div className={`absolute left-1.5 top-2 w-3 h-3 rounded-full border-2 border-surface-base ${typeColors[m.type] || 'bg-rmpg-500'}`} />
                     <div
                       className="flex-1 p-2 bg-surface-sunken border border-rmpg-700"
-                      style={{ borderLeft: `3px solid ${TYPE_BORDER_COLOR[m.type] || '#6b7280'}` }}
+                      style={{ borderLeft: `3px solid ${TYPE_BORDER_COLOR[m.type] || '#666666'}` }}
                     >
                       <div className="flex items-center gap-2 justify-between">
                         <div className="flex items-center gap-2">

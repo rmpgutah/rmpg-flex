@@ -18,6 +18,7 @@ import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { humanizeType, humanizeStatus } from '../utils/statusLabels';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -26,7 +27,7 @@ import type { BodyCamVideo } from '../types';
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
   checked_in: 'bg-green-900/50 text-green-400 border-green-700/50',
-  in_storage: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  in_storage: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   checked_out: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   submitted_to_le: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   pending_disposition: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
@@ -451,7 +452,7 @@ export default function EvidencePropertyPage() {
           <div className="flex gap-3 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
             {[
               { label: 'TOTAL', value: stats.total_items || 0, color: 'text-white' },
-              { label: 'IN STORAGE', value: stats.by_status?.in_storage || 0, color: 'text-blue-400' },
+              { label: 'IN STORAGE', value: stats.by_status?.in_storage || 0, color: 'text-gray-400' },
               { label: 'CHECKED OUT', value: stats.by_status?.checked_out || 0, color: 'text-amber-400' },
               { label: 'PENDING', value: stats.pending_disposition || 0, color: 'text-orange-400' },
             ].map(s => (
@@ -579,7 +580,7 @@ export default function EvidencePropertyPage() {
                 aria-selected={selected?.id === item.id}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono font-bold text-white truncate">
+                  <span className="text-[11px] font-mono font-bold text-white truncate px-1.5 py-0.5" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.06) 2px, rgba(255,255,255,0.06) 4px)', letterSpacing: '0.08em' }}>
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>
@@ -991,8 +992,8 @@ export default function EvidencePropertyPage() {
                       {linkedRecords.incident && (
                         <div className="panel-beveled p-2">
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold">Linked Incident</div>
-                          <div className="text-xs text-white">{linkedRecords.incident.incident_number} — {linkedRecords.incident.incident_type}</div>
-                          <div className="text-[10px] text-rmpg-500">Status: {linkedRecords.incident.status}</div>
+                          <div className="text-xs text-white">{linkedRecords.incident.incident_number} — {humanizeType(linkedRecords.incident.incident_type)}</div>
+                          <div className="text-[10px] text-rmpg-500">Status: {humanizeStatus(linkedRecords.incident.status, 'incident')}</div>
                         </div>
                       )}
                       {linkedRecords.cases?.length > 0 && (
@@ -1000,8 +1001,8 @@ export default function EvidencePropertyPage() {
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Linked Cases ({linkedRecords.cases.length})</div>
                           {linkedRecords.cases.map((c: any) => (
                             <div key={c.id} className="panel-beveled p-2 mb-1">
-                              <div className="text-xs text-white">{c.case_number} — {c.case_type}</div>
-                              <div className="text-[10px] text-rmpg-500">Status: {c.status}</div>
+                              <div className="text-xs text-white">{c.case_number} — {(c.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
+                              <div className="text-[10px] text-rmpg-500">Status: {(c.status || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
                             </div>
                           ))}
                         </div>
@@ -1012,7 +1013,7 @@ export default function EvidencePropertyPage() {
                           {linkedRecords.forensic_cases.map((fc: any) => (
                             <div key={fc.id} className="panel-beveled p-2 mb-1">
                               <div className="text-xs text-white">{fc.lab_number} — {fc.title}</div>
-                              <div className="text-[10px] text-rmpg-500">{fc.case_type} | {fc.status}</div>
+                              <div className="text-[10px] text-rmpg-500">{(fc.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} | {(fc.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
                             </div>
                           ))}
                         </div>

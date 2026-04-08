@@ -45,7 +45,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         height: 48,
         borderRadius: '50%',
         background: 'rgba(13, 21, 32, 0.88)',
-        border: '1px solid #1e3048',
+        border: '1px solid #222222',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -82,17 +82,17 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         {/* #16: North arrow with brighter hover state */}
         <polygon points="20,4 17.5,18 20,16 22.5,18" fill={hovered ? '#e8c44a' : '#d4a017'} opacity={1} />
         {/* South arrow (dim white) */}
-        <polygon points="20,36 17.5,22 20,24 22.5,22" fill="#5a6e80" />
+        <polygon points="20,36 17.5,22 20,24 22.5,22" fill="#666666" />
         {/* East arrow */}
-        <polygon points="36,20 22,17.5 24,20 22,22.5" fill="#5a6e80" />
+        <polygon points="36,20 22,17.5 24,20 22,22.5" fill="#666666" />
         {/* West arrow */}
-        <polygon points="4,20 18,17.5 16,20 18,22.5" fill="#5a6e80" />
+        <polygon points="4,20 18,17.5 16,20 18,22.5" fill="#666666" />
 
         {/* Cardinal letters */}
         <text x="20" y="3.5" textAnchor="middle" fill={hovered ? '#e8c44a' : '#d4a017'} fontSize="5" fontFamily="monospace" fontWeight="bold">N</text>
-        <text x="20" y="39.5" textAnchor="middle" fill="#5a6e80" fontSize="4.5" fontFamily="monospace" fontWeight="bold">S</text>
-        <text x="39" y="21.5" textAnchor="middle" fill="#5a6e80" fontSize="4.5" fontFamily="monospace" fontWeight="bold">E</text>
-        <text x="1" y="21.5" textAnchor="middle" fill="#5a6e80" fontSize="4.5" fontFamily="monospace" fontWeight="bold">W</text>
+        <text x="20" y="39.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">S</text>
+        <text x="39" y="21.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">E</text>
+        <text x="1" y="21.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">W</text>
 
         {/* #17: Center dot with hover glow */}
         <circle cx="20" cy="20" r="2" fill="#d4a017" opacity={hovered ? 1 : 0.75}>

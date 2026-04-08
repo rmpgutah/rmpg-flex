@@ -43,7 +43,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  info: 'text-blue-400 bg-blue-950/30 border-blue-800/40',
+  info: 'text-gray-400 bg-gray-950/30 border-gray-800/40',
   warning: 'text-amber-400 bg-amber-950/30 border-amber-800/40',
   maintenance: 'text-orange-400 bg-orange-950/30 border-orange-800/40',
   update: 'text-green-400 bg-green-950/30 border-green-800/40',
@@ -279,7 +279,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit announcement' : 'New announcement'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto scrollbar-dark" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#162236] sticky top-0 bg-surface-base z-10">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#181818] sticky top-0 bg-surface-base z-10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Announcement' : 'New Announcement'}
               </h3>

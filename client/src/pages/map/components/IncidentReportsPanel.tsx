@@ -31,15 +31,15 @@ interface IncidentReportsPanelProps {
 // ─── Status colors ──────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  draft:        { label: 'Draft',        color: '#9ca3af', bg: '#9ca3af' },
-  submitted:    { label: 'Submitted',    color: '#60a5fa', bg: '#3b82f6' },
+  draft:        { label: 'Draft',        color: '#999999', bg: '#999999' },
+  submitted:    { label: 'Submitted',    color: '#aaaaaa', bg: '#888888' },
   under_review: { label: 'Under Review', color: '#fbbf24', bg: '#f59e0b' },
   approved:     { label: 'Approved',     color: '#4ade80', bg: '#22c55e' },
   returned:     { label: 'Returned',     color: '#f87171', bg: '#ef4444' },
 };
 
 function getStatusStyle(status: string) {
-  return STATUS_CONFIG[status] || { label: status, color: '#9ca3af', bg: '#6b7280' };
+  return STATUS_CONFIG[status] || { label: status, color: '#999999', bg: '#666666' };
 }
 
 // ─── Time-ago helper ────────────────────────────────────────
@@ -109,7 +109,7 @@ export default function IncidentReportsPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
           <FileText size={12} className="text-emerald-400" />
@@ -128,7 +128,7 @@ export default function IncidentReportsPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="toolbar-btn p-1 hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close incident reports panel"
           title="Close"
         >
@@ -144,7 +144,7 @@ export default function IncidentReportsPanel({
             <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">Loading reports...</span>
             <div className="space-y-1 w-full">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: '#0d1520', opacity: 1 - i * 0.2 }} />
+                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: '#050505', opacity: 1 - i * 0.2 }} />
               ))}
             </div>
           </div>
@@ -162,7 +162,7 @@ export default function IncidentReportsPanel({
                       className={`toolbar-btn px-1.5 py-0.5 text-[9px] font-mono transition-all duration-150 active:scale-[0.97] ${
                         days === d
                           ? 'text-emerald-300 bg-emerald-900/40'
-                          : 'text-rmpg-500 hover:bg-[#1a2636]/50'
+                          : 'text-rmpg-500 hover:bg-[#141414]/50'
                       }`}
                       title={`Show last ${d} days`}
                       aria-label={`Show last ${d} days`}
@@ -205,7 +205,7 @@ export default function IncidentReportsPanel({
                         <span className="text-[9px] font-mono w-[60px] text-right" style={{ color: style.color }}>
                           {style.label}
                         </span>
-                        <div className="flex-1 h-1.5 rounded-sm overflow-hidden" style={{ background: '#141e2b' }}>
+                        <div className="flex-1 h-1.5 rounded-sm overflow-hidden" style={{ background: '#0a0a0a' }}>
                           <div
                             className="h-full rounded-sm"
                             style={{ width: `${pct}%`, background: style.bg, opacity: 0.7 }}
@@ -226,8 +226,8 @@ export default function IncidentReportsPanel({
                 {topTypes.map(([type, cnt]) => (
                   <div
                     key={type}
-                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-[#1a2636]/50 transition-colors duration-100"
-                    style={{ background: '#141e2b' }}
+                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-[#141414]/50 transition-colors duration-100"
+                    style={{ background: '#0a0a0a' }}
                   >
                     <span className="text-rmpg-300 truncate">{type}</span>
                     <span className="text-emerald-400 font-bold ml-2 flex-shrink-0">{cnt}</span>
@@ -240,15 +240,15 @@ export default function IncidentReportsPanel({
             {recentReports.length > 0 && (
               <div className="space-y-0.5">
                 <span className="text-[9px] font-mono text-rmpg-500 uppercase">Recent</span>
-                <div className="max-h-[140px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+                <div className="max-h-[140px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                   {recentReports.map((r) => {
                     const ss = getStatusStyle(r.status);
                     const hasCoords = r.latitude != null && r.longitude != null;
                     return (
                       <div
                         key={r.id}
-                        className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-[#1a2636]/50 transition-colors duration-100"
-                        style={{ background: '#0d1520', border: '1px solid #1e2a3a', borderLeft: `2px solid ${ss.bg}` }}
+                        className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-[#141414]/50 transition-colors duration-100"
+                        style={{ background: '#050505', border: '1px solid #1e2a3a', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] font-mono text-rmpg-200 truncate flex items-center gap-1">
@@ -295,7 +295,7 @@ export default function IncidentReportsPanel({
             {/* Info note */}
             <div
               className="flex items-start gap-1.5 px-2 py-1.5 rounded"
-              style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+              style={{ background: '#050505', border: '1px solid #1e2a3a' }}
             >
               <Info size={10} className="text-emerald-500 mt-0.5 shrink-0" />
               <span className="text-[9px] font-mono text-rmpg-500 leading-tight">

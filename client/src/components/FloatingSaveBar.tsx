@@ -45,12 +45,13 @@ export default function FloatingSaveBar({
 
   return (
     <div
-      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-2 px-4 py-2 shadow-2xl animate-slide-in-up"
+      className="fixed left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-2 px-4 py-2 shadow-md animate-slide-in-up"
       style={{
-        background: 'linear-gradient(180deg, #1e3048 0%, #141e2b 100%)',
-        border: '1px solid #3a5070',
-        borderTop: '2px solid #1a5a9e',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(26,90,158,0.2)',
+        bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))',
+        background: 'linear-gradient(180deg, #222222 0%, #0a0a0a 100%)',
+        border: '1px solid #383838',
+        borderTop: '2px solid #888888',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(136,136,136,0.2)',
       }}
     >
       <div className="flex items-center gap-1.5 mr-2">

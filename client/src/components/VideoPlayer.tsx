@@ -16,11 +16,12 @@ import VideoHudOverlay from './VideoHudOverlay';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  video: BodyCamVideo | null;
+  video: BodyCamVideo | any | null;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
-  onEditVideo?: (video: BodyCamVideo) => void;
-  onClassify?: (videoId: number, classification: VideoClassification) => void;
+  onEditVideo?: (video: any) => void;
+  onClassify?: (videoId: any, classification: any) => void;
+  streamEndpoint?: string;
 }
 
 export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
@@ -97,7 +98,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         ref={containerRef}
-        className={`bg-black border border-rmpg-800 rounded-sm shadow-2xl overflow-hidden ${
+        className={`bg-black border border-rmpg-800 rounded-sm shadow-md overflow-hidden ${
           isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
         }`}
         onClick={e => e.stopPropagation()}

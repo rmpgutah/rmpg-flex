@@ -216,6 +216,15 @@ export default function MobileDrawer({
     }
   }, [isOpen]);
 
+  // Android hardware back button — close drawer on back press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePopState = () => { onClose(); };
+    window.history.pushState({ mobileDrawer: true }, '');
+    window.addEventListener('popstate', handlePopState);
+    return () => { window.removeEventListener('popstate', handlePopState); };
+  }, [isOpen, onClose]);
+
   // ─── Swipe-to-close ────────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -266,13 +275,14 @@ export default function MobileDrawer({
       <div
         className="absolute inset-0 mobile-drawer-backdrop open"
         onClick={onClose}
+        style={{ touchAction: 'manipulation' }}
       />
 
       {/* Drawer Panel */}
       <div
         ref={drawerRef}
         className="absolute top-0 left-0 bottom-0 mobile-drawer open"
-        style={{ width: 'min(85vw, 320px)' }}
+        style={{ width: 'min(85vw, 320px)', willChange: 'transform' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -280,15 +290,15 @@ export default function MobileDrawer({
         {/* Blue accent */}
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: 'linear-gradient(90deg, #1a5a9e, #0e3359)' }}
+          style={{ background: 'linear-gradient(90deg, #888888, #1a1a1a)' }}
         />
 
         {/* ── User Header ── */}
         <div
           className="flex items-center gap-3 px-4 py-4"
           style={{
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-            borderBottom: '1px solid #1e3048',
+            background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
+            borderBottom: '1px solid #222222',
           }}
         >
           {/* Avatar */}
@@ -297,15 +307,15 @@ export default function MobileDrawer({
               src={user.profile_image}
               alt={user.first_name}
               className="w-11 h-11 object-cover flex-shrink-0"
-              style={{ border: '2px solid #3a5070' }}
+              style={{ border: '2px solid #383838' }}
             />
           ) : (
             <div
               className="w-11 h-11 flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                background: 'linear-gradient(135deg, #333333, #888888)',
                 color: '#fff',
-                border: '2px solid #3b8ad4',
+                border: '2px solid #aaaaaa',
               }}
             >
               {initials}
@@ -319,11 +329,11 @@ export default function MobileDrawer({
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               {user?.badge_number && (
-                <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-300 border border-rmpg-700">
+                <span className="text-[11px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-300 border border-rmpg-700">
                   {user.badge_number}
                 </span>
               )}
-              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+              <span className="text-[11px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
                 {toDisplayLabel(user?.role || '')}
               </span>
             </div>
@@ -332,7 +342,8 @@ export default function MobileDrawer({
           {/* Close button */}
           <button type="button"
             onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 text-rmpg-400"
+            className="flex items-center justify-center w-11 h-11 text-rmpg-400"
+            aria-label="Close navigation drawer"
           >
             <X style={{ width: 18, height: 18 }} />
           </button>
@@ -353,8 +364,8 @@ export default function MobileDrawer({
               <div key={group.label} className="mb-1">
                 {/* Group label */}
                 <div
-                  className="px-4 py-2 text-[9px] font-bold uppercase tracking-[0.12em] font-mono"
-                  style={{ color: '#5a6e80' }}
+                  className="px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] font-mono"
+                  style={{ color: '#666666' }}
                 >
                   {group.label}
                 </div>
@@ -375,11 +386,11 @@ export default function MobileDrawer({
                       style={{
                         minHeight: 48,
                         background: isActive
-                          ? 'rgba(26, 90, 158, 0.15)'
+                          ? 'rgba(136, 136, 136, 0.15)'
                           : 'transparent',
-                        color: isActive ? '#fff' : '#b0bcc8',
+                        color: isActive ? '#fff' : '#aaaaaa',
                         borderLeft: isActive
-                          ? '3px solid #1a5a9e'
+                          ? '3px solid #888888'
                           : '3px solid transparent',
                       }}
                     >
@@ -405,7 +416,7 @@ export default function MobileDrawer({
         {/* ── Status Footer ── */}
         <div
           className="border-t border-rmpg-700 px-4 py-3"
-          style={{ background: '#0d1520' }}
+          style={{ background: '#050505' }}
         >
           {/* Status indicators row */}
           <div className="flex items-center gap-3 mb-3">
@@ -425,14 +436,14 @@ export default function MobileDrawer({
                 GPS {gpsTracking ? 'ON' : 'OFF'}
               </span>
               {gpsTracking && gpsAccuracy != null && (
-                <span className="text-[9px] font-mono text-rmpg-400">
+                <span className="text-[11px] font-mono text-rmpg-400">
                   ±{Math.round(gpsAccuracy)}m
                 </span>
               )}
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#1e3048' }} />
+            <div className="w-px h-4" style={{ background: '#222222' }} />
 
             {/* WebSocket */}
             <div className="flex items-center gap-1.5">
@@ -448,7 +459,7 @@ export default function MobileDrawer({
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#1e3048' }} />
+            <div className="w-px h-4" style={{ background: '#222222' }} />
 
             {/* Users online */}
             <div className="flex items-center gap-1.5">

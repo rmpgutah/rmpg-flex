@@ -57,6 +57,9 @@ export default function StatsCard({
 }: StatsCardProps) {
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
 
+  const accentHex: Record<string, string> = { blue: '#888888', red: '#dc2626', green: '#22c55e', amber: '#f59e0b', purple: '#a855f7' };
+  const glowHex = accentHex[accent] || accentHex.blue;
+
   return (
     <div
       onClick={onClick}
@@ -65,34 +68,40 @@ export default function StatsCard({
       onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
       aria-label={`${label}: ${value}`}
       className={`
-        relative overflow-hidden p-3 border-l-4 panel-beveled
+        relative overflow-hidden border-l-4 panel-beveled
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}
-        bg-surface-base
-        ${onClick ? 'cursor-pointer hover:bg-surface-raised hover:shadow-lg transition-all duration-200 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.98]' : ''}
+        ${onClick ? 'cursor-pointer hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.99]' : ''}
         ${className}
       `}
+      style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
     >
-      <div className="flex items-start justify-between">
-        <div>
-          {/* 37: Label with wider letter-spacing; value with text-shadow for readability */}
-          <p className="text-[10px] font-bold text-rmpg-400 uppercase mb-1" style={{ letterSpacing: '0.08em' }}>
-            {label}
-          </p>
-          <p className={`text-xl font-bold font-mono tabular-nums ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`} style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>{value}</p>
-        </div>
-        {/* 12: Rounded icon container for visual weight; 13: aria-hidden on decorative icon */}
-        <div className={`p-1.5 rounded-sm panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`}>
-          <Icon className="w-4 h-4" aria-hidden="true" />
-        </div>
-      </div>
+      {/* Top accent glow line */}
+      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${glowHex}40, transparent)` }} />
 
-      {/* 38: Trend row with smoother separator and direction indicator */}
-      {(trend != null || (trendValue != null && trendValue !== '')) && (
-        <div className={`flex items-center gap-1.5 mt-2 pt-1.5 border-t border-rmpg-700/20 ${TREND_COLOR_MAP[trendColor]}`}>
-          <TrendIcon className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
-          {trendValue && <span className="text-[11px] font-medium tabular-nums">{trendValue}</span>}
+      <div className="p-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[9px] font-bold uppercase mb-1.5 tracking-widest" style={{ color: glowHex, letterSpacing: '0.12em' }}>
+              {label}
+            </p>
+            <p className={`text-2xl font-black font-mono tabular-nums ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}
+              style={{ textShadow: `0 0 12px ${glowHex}40, 0 1px 2px rgba(0,0,0,0.5)`, lineHeight: 1 }}>
+              {value}
+            </p>
+          </div>
+          <div className="p-1.5 panel-inset" style={{ background: `${glowHex}15`, border: `1px solid ${glowHex}30` }}>
+            <Icon className="w-5 h-5" style={{ color: glowHex }} aria-hidden="true" />
+          </div>
         </div>
-      )}
+
+        {(trend != null || (trendValue != null && trendValue !== '')) && (
+          <div className={`flex items-center gap-1.5 mt-2.5 pt-1.5 ${TREND_COLOR_MAP[trendColor]}`}
+            style={{ borderTop: '1px solid #22222240' }}>
+            <span className="text-[9px]">&mdash;</span>
+            {trendValue && <span className="text-[10px] font-medium tabular-nums">{trendValue}</span>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

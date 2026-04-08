@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Gavel, Search, Plus, Calendar, Clock, User, MapPin,
+  Gavel, Search, Plus, Calendar, CalendarDays, Clock, User, MapPin,
   X, Save, Loader2, AlertTriangle, CheckCircle, FileText, Scale,
   ChevronLeft, ChevronRight, Upload, Shield, DollarSign, BarChart3,
   BookOpen, AlertCircle, Check, RefreshCw, Users,
@@ -35,7 +35,7 @@ const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
 ];
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
-  arraignment: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  arraignment: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   hearing: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
   trial: 'bg-red-900/50 text-red-400 border-red-700/50',
   sentencing: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
@@ -46,7 +46,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  scheduled: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   confirmed: 'bg-green-900/50 text-green-400 border-green-700/50',
   continued: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   completed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -405,16 +405,17 @@ export default function CourtTrackerPage() {
 
   const displayEvents = activeView === 'upcoming' ? upcoming : events;
 
-  // Feature 9: Deadline countdown with urgency colors
+  // Feature 9: Deadline countdown with urgency badge styles
   const daysUntil = (dateStr: string) => {
     const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (isNaN(d)) return { text: '-', color: 'text-rmpg-500' };
-    if (d < 0) return { text: 'PAST', color: 'text-red-500' };
-    if (d === 0) return { text: 'TODAY', color: 'text-red-400 animate-pulse' };
-    if (d === 1) return { text: 'TOMORROW', color: 'text-orange-400' };
-    if (d <= 3) return { text: `${d} days`, color: 'text-amber-400' };
-    if (d <= 7) return { text: `${d} days`, color: 'text-yellow-400' };
-    return { text: `${d} days`, color: 'text-green-400' };
+    if (isNaN(d)) return { text: '-', color: 'text-rmpg-500', badge: '' };
+    if (d < 0) return { text: `PAST ${Math.abs(d)}d ago`, color: 'text-red-400', badge: 'bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
+    if (d === 0) return { text: 'TODAY', color: 'text-red-400 animate-pulse', badge: 'bg-red-600 text-white px-1.5 py-0.5 rounded-sm font-bold animate-pulse' };
+    if (d === 1) return { text: 'TOMORROW', color: 'text-orange-400', badge: 'bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
+    if (d <= 3) return { text: `${d}d`, color: 'text-amber-400', badge: 'bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
+    if (d <= 7) return { text: `${d}d`, color: 'text-yellow-400', badge: 'bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
+    if (d <= 30) return { text: `${d}d`, color: 'text-green-400', badge: 'text-rmpg-400' };
+    return { text: `${d}d`, color: 'text-green-400', badge: '' };
   };
 
   // Feature 1: Calendar helpers
@@ -446,6 +447,45 @@ export default function CourtTrackerPage() {
       {/* Left Panel */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
+          <button
+            type="button"
+            onClick={() => {
+              const futureEvents = events.filter(e => new Date(e.event_date) >= new Date());
+              if (futureEvents.length === 0) { addToast('No upcoming events to export', 'info'); return; }
+              const icsLines = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//RMPG Flex//Court Tracker//EN',
+              ];
+              for (const event of futureEvents) {
+                const dt = new Date(event.event_date);
+                const dtStr = dt.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                icsLines.push(
+                  'BEGIN:VEVENT',
+                  `DTSTART:${dtStr}`,
+                  `DTEND:${dtStr}`,
+                  `SUMMARY:${(event.event_type || 'Court Event').replace(/,/g, '\\,')} — ${event.court_case_number || ''}`,
+                  `DESCRIPTION:${(event.notes || '').replace(/\n/g, '\\n').replace(/,/g, '\\,')}`,
+                  `LOCATION:${(event.court_name || '').replace(/,/g, '\\,')}`,
+                  `UID:rmpg-court-${event.id}@rmpgutah.us`,
+                  'END:VEVENT'
+                );
+              }
+              icsLines.push('END:VCALENDAR');
+              const blob = new Blob([icsLines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `rmpg-court-events-${new Date().toISOString().slice(0,10)}.ics`;
+              a.click();
+              URL.revokeObjectURL(url);
+              addToast(`Exported ${futureEvents.length} court events`, 'success');
+            }}
+            className="toolbar-btn text-[9px]"
+            title="Export upcoming events to calendar (.ics)"
+          >
+            <CalendarDays style={{ width: 11, height: 11 }} /> Export Calendar
+          </button>
           <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
             <FileText style={{ width: 11, height: 11 }} /> From Citation
           </button>
@@ -486,7 +526,7 @@ export default function CourtTrackerPage() {
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
               <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
             </div>
-            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
+            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none" aria-label="Filter by event type">
               <option value="">All Types</option>
               {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
@@ -495,7 +535,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 1: Calendar View */}
         {activeView === 'calendar' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-2">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-2">
             <div className="flex items-center justify-between mb-2">
               <button type="button" onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1">
                 <ChevronLeft style={{ width: 14, height: 14 }} />
@@ -549,7 +589,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 10: Statistics View */}
         {activeView === 'stats' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-3 space-y-3">
             {statsLoading ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : stats ? (
@@ -613,7 +653,7 @@ export default function CourtTrackerPage() {
 
         {/* Event List (upcoming + list views) */}
         {(activeView === 'upcoming' || activeView === 'list') && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
             {loading && activeView === 'list' ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : displayEvents.length === 0 ? (
@@ -625,7 +665,7 @@ export default function CourtTrackerPage() {
               />
             ) : (
               displayEvents.map(evt => {
-                const countdown = evt.event_date ? daysUntil(evt.event_date) : { text: '-', color: 'text-rmpg-500' };
+                const countdown = evt.event_date ? daysUntil(evt.event_date) : { text: '-', color: 'text-rmpg-500', badge: '' };
                 return (
                   <button type="button"
                     key={evt.id}
@@ -638,8 +678,12 @@ export default function CourtTrackerPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-mono font-bold text-white">{evt.event_number}</span>
                       <div className="flex items-center gap-1">
-                        {/* Feature 9: Countdown with urgency colors */}
-                        <span className={`text-[9px] font-bold ${countdown.color}`}>{countdown.text}</span>
+                        {/* Feature 9: Countdown with urgency badge */}
+                        {countdown.badge ? (
+                          <span className={`text-[8px] ${countdown.badge}`}>{countdown.text}</span>
+                        ) : countdown.text !== '-' ? (
+                          <span className={`text-[9px] font-bold ${countdown.color}`}>{countdown.text}</span>
+                        ) : null}
                         <span className={`text-[9px] px-1.5 py-0.5 border rounded-sm ${EVENT_TYPE_COLORS[evt.event_type] || ''}`}>
                           {evt.event_type.toUpperCase()}
                         </span>
@@ -690,7 +734,7 @@ export default function CourtTrackerPage() {
               )}
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>
@@ -900,19 +944,20 @@ export default function CourtTrackerPage() {
                     <Users style={{ width: 10, height: 10 }} /> Witnesses
                   </div>
                   <button type="button" onClick={() => {
-                    setWitnesses(JSON.parse((selected as any).witnesses || '[]'));
+                    try { setWitnesses(JSON.parse((selected as any).witnesses || '[]')); } catch { setWitnesses([]); }
                     setWitnessOpen(true);
                   }} className="toolbar-btn text-[9px]">Manage</button>
                 </div>
                 {(() => {
-                  const w = JSON.parse((selected as any).witnesses || '[]');
+                  let w: any[] = [];
+                  try { w = JSON.parse((selected as any).witnesses || '[]'); } catch { /* invalid JSON */ }
                   if (w.length === 0) return <div className="text-[10px] text-rmpg-500">No witnesses recorded.</div>;
                   return w.map((wit: any, i: number) => (
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`w-2 h-2 rounded-full ${wit.contact_status === 'confirmed' ? 'bg-green-500' : wit.contact_status === 'contacted' ? 'bg-amber-500' : 'bg-rmpg-600'}`} />
                       <span className="text-[10px] text-white flex-1">{wit.name}</span>
-                      <span className="text-[9px] text-rmpg-500">{wit.role}</span>
-                      <span className="text-[9px] text-rmpg-600">{wit.contact_status}</span>
+                      <span className="text-[9px] text-rmpg-500">{(wit.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[9px] text-rmpg-600">{(wit.contact_status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
                   ));
                 })()}
@@ -932,7 +977,8 @@ export default function CourtTrackerPage() {
 
               {/* Feature 3: Continuance log */}
               {(() => {
-                const log = JSON.parse((selected as any).continuance_log || '[]');
+                let log: any[] = [];
+                try { log = JSON.parse((selected as any).continuance_log || '[]'); } catch { /* invalid JSON */ }
                 if (log.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
@@ -1227,7 +1273,7 @@ export default function CourtTrackerPage() {
               <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent space-y-2">
+              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-2">
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
@@ -1281,7 +1327,7 @@ export default function CourtTrackerPage() {
                 </button>
               </div>
               {citationSearchResults.length > 0 ? (
-                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent space-y-1">
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
                   {citationSearchResults.map((c: any) => (
                     <div key={c.id} className="flex items-center justify-between px-3 py-2 border border-rmpg-700 bg-surface-sunken hover:bg-rmpg-800/50">
                       <div>

@@ -101,7 +101,7 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
       </div>
       {visible && createPortal(
         <div
-          className={`fixed z-[9999] pointer-events-none px-2 py-1 text-[10px] font-medium text-rmpg-100 bg-surface-base border border-[#2a3e58] shadow-lg max-w-xs ${className}`}
+          className={`fixed z-[9999] pointer-events-none px-2 py-1 text-[10px] font-medium text-rmpg-100 bg-surface-base border border-[#2e2e2e] shadow-lg max-w-xs ${className}`}
           style={positionStyles[position]}
         >
           {content}

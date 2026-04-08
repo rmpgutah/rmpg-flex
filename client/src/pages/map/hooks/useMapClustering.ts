@@ -23,8 +23,8 @@ interface ClusterGroup {
 const PRIORITY_COLORS: Record<number, string> = {
   1: '#dc2626',
   2: '#f59e0b',
-  3: '#3b82f6',
-  4: '#6b7280',
+  3: '#888888',
+  4: '#666666',
 };
 
 function getPriorityColor(priority: number): string {

@@ -55,8 +55,8 @@ function buildUnitMarker(callSign: string): HTMLElement {
   const el = document.createElement('div');
   /* #55: Unit marker with shadow */
   el.style.cssText =
-    'background:#3b82f6;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #1e3a5f;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
+    'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
+    "padding:1px 4px;border:1px solid #222222;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
   el.textContent = callSign;
   return el;
 }
@@ -283,7 +283,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       : [];
 
     return (
-      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
+      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
         {/* Toolbar (same as online mode) */}
         <div style={{
           position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
@@ -345,7 +345,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -383,14 +383,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.9)', border: '1px solid #3b82f650',
+          background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
           padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
         }}>
-          <span style={{ fontSize: 8, color: '#60a5fa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#6b7280' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
         </div>
       )}
 
@@ -403,7 +403,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: '#060c14',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#3a5070' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>
       )}
 

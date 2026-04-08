@@ -74,9 +74,9 @@ function formatTimestamp(iso: string | null): string {
 function getStatusColor(status: string): string {
   switch (status) {
     case 'cleared': return '#22c55e';
-    case 'closed': return '#6b7280';
-    case 'archived': return '#4b5563';
-    default: return '#6b7280';
+    case 'closed': return '#666666';
+    case 'archived': return '#555555';
+    default: return '#666666';
   }
 }
 
@@ -132,32 +132,32 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
         title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
         zIndex: 50,
         onClick: () => {
-        const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
+        const pColor = PRIORITY_COLORS[call.priority] || '#666666';
         const sColor = getStatusColor(call.status);
 
         infoWindowRef.current?.setContent(`
-          <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0d1520;color:#e5e7eb;padding:10px;border:1px solid ${pColor}40;border-radius:4px;">
+          <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid ${pColor}40;border-radius:4px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
               <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
               <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
             </div>
-            <div style="font-size:12px;color:#60a5fa;font-weight:bold;">${escapeHtml(call.call_number)}</div>
+            <div style="font-size:12px;color:#999999;font-weight:bold;">${escapeHtml(call.call_number)}</div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
               <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(call.status)}</span>
               ${call.disposition ? `<span style="font-size:9px;color:#9ca3af;">${escapeHtml(call.disposition)}</span>` : ''}
             </div>
             <div style="font-size:10px;margin-top:6px;color:#d1d5db;">${escapeHtml(call.location_address || '')}</div>
-            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #1e3048;">
+            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #222222;">
               <div style="display:flex;gap:12px;font-size:9px;color:#5a6e80;">
                 <div><span style="color:#9ca3af;font-weight:bold;">Response:</span> ${escapeHtml(formatResponseTime(call.response_time_min))}</div>
               </div>
-              ${call.assigned_units ? `<div style="font-size:9px;color:#60a5fa;margin-top:4px;font-weight:bold;">${escapeHtml(call.assigned_units)}</div>` : ''}
+              ${call.assigned_units ? `<div style="font-size:9px;color:#999999;margin-top:4px;font-weight:bold;">${escapeHtml(call.assigned_units)}</div>` : ''}
               <div style="font-size:8px;color:#4b5563;margin-top:4px;">
                 ${escapeHtml(formatTimestamp(call.created_at))} &rarr; ${escapeHtml(formatTimestamp(call.cleared_at))}
               </div>
             </div>
-            ${call.description ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #1e3048;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(call.description.substring(0, 150))}</div>` : ''}
-            ${call.source ? `<div style="margin-top:4px;"><span style="font-size:8px;color:#5a6e80;padding:1px 4px;background:#1e304830;border:1px solid #1e304860;border-radius:2px;">${escapeHtml(getSourceLabel(call.source))}</span></div>` : ''}
+            ${call.description ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #222222;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(call.description.substring(0, 150))}</div>` : ''}
+            ${call.source ? `<div style="margin-top:4px;"><span style="font-size:8px;color:#5a6e80;padding:1px 4px;background:#22222230;border:1px solid #22222260;border-radius:2px;">${escapeHtml(getSourceLabel(call.source))}</span></div>` : ''}
           </div>
         `);
         infoWindowRef.current?.setPosition({ lat: call.latitude, lng: call.longitude });

@@ -21,6 +21,7 @@ interface CheckpointRecord {
   scan_required_interval_minutes: number;
   last_scanned: string | null;
   scanned_by_name: string | null;
+  scan_count?: number;
 }
 
 interface UseMapPatrolCheckpointsReturn {
@@ -34,18 +35,23 @@ interface UseMapPatrolCheckpointsReturn {
 
 type ScanStatus = 'green' | 'amber' | 'red';
 
-function getScanStatus(checkpoint: CheckpointRecord): ScanStatus {
-  if (!checkpoint.last_scanned) return 'red';
-
+function getHoursSinceLastScan(checkpoint: CheckpointRecord): number {
+  if (!checkpoint.last_scanned) return Infinity;
   const lastScan = new Date(checkpoint.last_scanned).getTime();
-  if (isNaN(lastScan)) return 'red';
-  const now = Date.now();
-  const elapsedMs = now - lastScan;
-  const intervalMs = checkpoint.scan_required_interval_minutes * 60 * 1000;
+  if (isNaN(lastScan)) return Infinity;
+  return (Date.now() - lastScan) / (1000 * 60 * 60);
+}
 
-  if (elapsedMs >= intervalMs) return 'red';
-  if (elapsedMs >= intervalMs * 0.5) return 'amber';
-  return 'green';
+function getScanStatus(checkpoint: CheckpointRecord): ScanStatus {
+  const hours = getHoursSinceLastScan(checkpoint);
+  // Time-based thresholds: green <1hr, amber <4hr, red >=4hr
+  if (hours < 1) return 'green';
+  if (hours < 4) return 'amber';
+  return 'red';
+}
+
+function isOverdue(checkpoint: CheckpointRecord): boolean {
+  return getHoursSinceLastScan(checkpoint) >= 4;
 }
 
 const STATUS_COLORS: Record<ScanStatus, string> = {
@@ -56,8 +62,28 @@ const STATUS_COLORS: Record<ScanStatus, string> = {
 
 // ─── Create marker HTML element using DOM API ───────────────
 
-function createCheckpointMarkerElement(status: ScanStatus): HTMLDivElement {
+// Inject pulse keyframes for overdue checkpoints (once)
+let pulseInjected = false;
+function injectCheckpointPulse() {
+  if (pulseInjected) return;
+  pulseInjected = true;
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes checkpoint-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.6); }
+      50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function createCheckpointMarkerElement(status: ScanStatus, overdue: boolean, scanCount?: number): HTMLDivElement {
   const color = STATUS_COLORS[status];
+
+  if (overdue) injectCheckpointPulse();
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:relative;display:inline-flex;';
 
   const el = document.createElement('div');
   el.style.cssText = `
@@ -71,6 +97,7 @@ function createCheckpointMarkerElement(status: ScanStatus): HTMLDivElement {
     border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.5);
     cursor: pointer;
+    ${overdue ? 'animation: checkpoint-pulse 1.5s ease-in-out infinite;' : ''}
   `;
 
   const label = document.createElement('span');
@@ -78,7 +105,35 @@ function createCheckpointMarkerElement(status: ScanStatus): HTMLDivElement {
   label.textContent = '\u2713'; // checkmark
   el.appendChild(label);
 
-  return el;
+  wrapper.appendChild(el);
+
+  // Check count badge
+  if (scanCount != null && scanCount > 0) {
+    const badge = document.createElement('div');
+    badge.style.cssText = `
+      position: absolute;
+      top: -6px;
+      right: -8px;
+      background: #141414;
+      color: ${color};
+      font-size: 8px;
+      font-weight: bold;
+      font-family: monospace;
+      min-width: 14px;
+      height: 14px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid ${color};
+      padding: 0 2px;
+      line-height: 1;
+    `;
+    badge.textContent = String(scanCount);
+    wrapper.appendChild(badge);
+  }
+
+  return wrapper;
 }
 
 // ─── Build info window content ──────────────────────────────
@@ -115,9 +170,14 @@ function buildCheckpointInfoContent(cp: CheckpointRecord, status: ScanStatus): H
   addRow('Interval', `${cp.scan_required_interval_minutes} min`);
   addRow('Last Scan', cp.last_scanned ? new Date(cp.last_scanned).toLocaleString() : 'Never', cp.last_scanned ? undefined : '#dc2626');
   addRow('Scanned By', cp.scanned_by_name);
+  if (cp.scan_count != null) {
+    addRow('Total Scans', String(cp.scan_count));
+  }
 
+  const hours = getHoursSinceLastScan(cp);
+  const hoursLabel = hours === Infinity ? '' : ` (${hours.toFixed(1)}h ago)`;
   const statusLabel = status === 'green' ? 'ON TIME' : status === 'amber' ? 'DUE SOON' : 'OVERDUE';
-  addRow('Status', statusLabel, color);
+  addRow('Status', `${statusLabel}${hoursLabel}`, color);
 
   container.appendChild(table);
   return container;
@@ -178,7 +238,7 @@ export function useMapPatrolCheckpoints(
       const lng = Number(cp.longitude);
       const status = getScanStatus(cp);
 
-      const content = createCheckpointMarkerElement(status);
+      const content = createCheckpointMarkerElement(status, isOverdue(cp), cp.scan_count);
 
       const marker = new OverlayMarkerClass({
         map,
@@ -214,7 +274,7 @@ export function useMapPatrolCheckpoints(
       const polyline = new google.maps.Polyline({
         path,
         geodesic: true,
-        strokeColor: '#60a5fa',
+        strokeColor: '#aaaaaa',
         strokeOpacity: 0,
         strokeWeight: 2,
         map,

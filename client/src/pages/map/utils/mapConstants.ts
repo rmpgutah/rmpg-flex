@@ -23,6 +23,11 @@ export interface MapUnit {
   current_call_type: string | null;
   current_call_location: string | null;
   gps_source?: string;
+  gps_speed?: number | null;       // m/s from GPS tracker
+  gps_heading?: number | null;     // degrees 0-360
+  battery_level?: number | null;   // 0-100 from mobile device
+  dispatched_at?: string | null;   // timestamp when dispatched to current call
+  onscene_at?: string | null;      // timestamp when arrived on scene
 }
 
 export interface ActiveCall {
@@ -35,6 +40,7 @@ export interface ActiveCall {
   latitude: number | null;
   longitude: number | null;
   property_name: string | null;
+  created_at?: string | null;
 }
 
 export interface MapProperty {
@@ -145,7 +151,7 @@ export function getMapStyleIcon(style: MapStyleId): string {
 export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   THEFT: '#f59e0b',
   ASLT: '#ef4444',
-  TRFC: '#3b82f6',
+  TRFC: '#888888',
   FIRE: '#f97316',
   MED: '#22c55e',
   SUSP: '#a855f7',
@@ -154,7 +160,7 @@ export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   DV: '#ec4899',
   DRUG: '#14b8a6',
   VNDL: '#f43f5e',
-  PTRL: '#60a5fa',
+  PTRL: '#aaaaaa',
   NOIS: '#84cc16',
   FRAD: '#8b5cf6',
   MISP: '#fb923c',
@@ -162,12 +168,12 @@ export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   WRNT: '#7c3aed',
   HZMT: '#fbbf24',
   ANML: '#a3e635',
-  CALL: '#6b7280',
+  CALL: '#666666',
 };
 
 export function getIncidentCategoryColor(type: string): string {
   const { category } = getIncidentCategory(type);
-  return INCIDENT_CATEGORY_COLORS[category] || '#6b7280';
+  return INCIDENT_CATEGORY_COLORS[category] || '#666666';
 }
 
 // ── Map Zoom Breakpoints ─────────────────────────────────────

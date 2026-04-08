@@ -974,7 +974,13 @@ export default function FleetPage() {
                       {regStatus === 'expiring' && <span className="text-[8px] text-amber-400">REG SOON</span>}
                       {insStatus === 'expired' && <span className="text-[8px] text-red-400 font-bold">INS EXP</span>}
                       {insStatus === 'expiring' && <span className="text-[8px] text-amber-400">INS SOON</span>}
-                      {svcStatus === 'expired' && <span className="text-[8px] text-amber-400 font-bold">SVC DUE</span>}
+                      {/* Maintenance due alert with days count */}
+                      {v.next_service_due && (() => {
+                        const daysUntil = Math.ceil((new Date(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        if (daysUntil < 0) return <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold">OVERDUE {Math.abs(daysUntil)}d</span>;
+                        if (daysUntil <= 14) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
+                        return null;
+                      })()}
                     </div>
                   </div>
                   {/* Utilization bar */}

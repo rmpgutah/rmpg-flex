@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Package, Plus, Edit3, Trash2, AlertTriangle, Box, ClipboardList, ArrowRightLeft,
+  Package, Plus, Edit3, Trash2, AlertTriangle, Box, ClipboardList, ArrowRightLeft, Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { OfficerEquipment, EquipmentType } from '../../../types';
@@ -38,11 +38,16 @@ interface Props {
 
 export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipment, onDeleteEquipment }: Props) {
   const [typeFilter, setTypeFilter] = useState<EquipmentType | 'all'>('all');
-  const [checkoutLog, setCheckoutLog] = useState<any[]>([]);
+  const [checkoutLog, setCheckoutLog] = useState<{ id: number; equipment_id: number; officer_name: string; equipment_name: string; action: string; notes: string; created_at: string }[]>([]);
   const [showCheckoutLog, setShowCheckoutLog] = useState(false);
+  const [logLoading, setLogLoading] = useState(false);
 
   useEffect(() => {
-    apiFetch<any>('/api/personnel/equipment-log?days=30').then((d: any) => Array.isArray(d) ? setCheckoutLog(d) : setCheckoutLog([])).catch(() => setCheckoutLog([]));
+    setLogLoading(true);
+    apiFetch<any>('/api/personnel/equipment-log?days=30')
+      .then((d: any) => Array.isArray(d) ? setCheckoutLog(d) : setCheckoutLog([]))
+      .catch(() => setCheckoutLog([]))
+      .finally(() => setLogLoading(false));
   }, []);
 
   const stats = useMemo(() => {
@@ -77,7 +82,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
   function statusLedClass(status: string): string {
     switch (status) {
       case 'issued': return 'led-dot led-green';
-      case 'maintenance': return 'led-dot led-blue';
+      case 'maintenance': return 'led-dot led-gray';
       case 'damaged': return 'led-dot led-amber';
       case 'lost': return 'led-dot led-red';
       case 'returned': return 'led-dot led-off';
@@ -88,10 +93,10 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
 
   const SUMMARY_CARDS = [
     { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
-    { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
+    { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-blue-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
   ];
 
@@ -114,7 +119,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
 
       {/* Alert Banner */}
       {alertCount > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-surface-base">
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-xs text-red-400 font-semibold">
@@ -159,12 +164,21 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
           <ArrowRightLeft className="w-3 h-3" /> Equipment Checkout Log ({checkoutLog.length})
           <span className="ml-auto text-[8px] text-rmpg-500">{showCheckoutLog ? 'Hide' : 'Show'}</span>
         </button>
-        {showCheckoutLog && checkoutLog.length > 0 && (
+        {showCheckoutLog && logLoading && (
+          <div className="mt-2 flex items-center justify-center py-4">
+            <Loader2 className="w-4 h-4 animate-spin text-rmpg-400" />
+            <span className="ml-2 text-[9px] text-rmpg-500">Loading checkout log...</span>
+          </div>
+        )}
+        {showCheckoutLog && !logLoading && checkoutLog.length === 0 && (
+          <p className="mt-2 text-[9px] text-rmpg-500 text-center py-3">No checkout activity in the last 30 days</p>
+        )}
+        {showCheckoutLog && !logLoading && checkoutLog.length > 0 && (
           <div className="mt-2 space-y-0.5 max-h-[200px] overflow-y-auto">
-            {checkoutLog.slice(0, 20).map((log: any) => (
+            {checkoutLog.slice(0, 20).map((log) => (
               <div key={log.id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[9px]">
                 <span className="text-rmpg-300">{log.officer_name || '-'}</span>
-                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-blue-400' : 'text-amber-400'}`}>
+                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-gray-400' : 'text-amber-400'}`}>
                   {log.action?.toUpperCase()}
                 </span>
                 <span className="text-rmpg-200">{log.equipment_name}</span>

@@ -89,26 +89,26 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['#1a5a9e', '#d4a017', '#4a90c4', '#a855f7', '#22c55e', '#06b6d4', '#5a6e80', '#ec4899', '#8b5cf6'];
+const PIE_COLORS = ['#888888', '#d4a017', '#888888', '#a855f7', '#22c55e', '#22c55e', '#666666', '#ec4899', '#8b5cf6'];
 
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
   P2: '#d4a017',
-  P3: '#4a90c4',
-  P4: '#5a6e80',
+  P3: '#888888',
+  P4: '#666666',
 };
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#0d1520',
-    border: '1px solid #1e3048',
+    backgroundColor: '#050505',
+    border: '1px solid #222222',
     borderRadius: '2px',
     color: '#e0e0e0',
     fontSize: '11px',
     fontFamily: 'monospace',
     boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   },
-  cursor: { fill: 'rgba(26,90,158,0.08)' },
+  cursor: { fill: 'rgba(136,136,136,0.08)' },
 };
 
 // ============================================================
@@ -383,7 +383,7 @@ function DailyBriefingCard() {
                 <div className="text-[8px] text-rmpg-500 uppercase">P2 Calls</div>
               </div>
               <div className="panel-beveled bg-surface-sunken p-2 text-center">
-                <div className="text-lg font-bold font-mono text-blue-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
+                <div className="text-lg font-bold font-mono text-gray-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
                 <div className="text-[8px] text-rmpg-500 uppercase">Avg Response</div>
               </div>
             </div>
@@ -468,11 +468,11 @@ function WeeklyDigestCard() {
         <div className="p-4 space-y-3 text-xs">
           <div className="grid grid-cols-5 gap-2">
             {[
-              { label: 'Calls', value: digest.summary?.totalCalls || 0, color: '#3b82f6' },
+              { label: 'Calls', value: digest.summary?.totalCalls || 0, color: '#888888' },
               { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },
               { label: 'Citations', value: digest.summary?.totalCitations || 0, color: '#f59e0b' },
               { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: '#ef4444' },
-              { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: '#1a5a9e' },
+              { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: '#888888' },
             ].map(s => (
               <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
                 <div className="text-lg font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
@@ -485,11 +485,11 @@ function WeeklyDigestCard() {
               <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1.5">Daily Breakdown</div>
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-                  <XAxis dataKey="day" tick={{ fill: '#8a9aaa', fontSize: 9 }} tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })} />
-                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 9 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <XAxis dataKey="day" tick={{ fill: '#888888', fontSize: 9 }} tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <YAxis tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Bar dataKey="count" fill="#1a5a9e" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="count" fill="#888888" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -545,9 +545,9 @@ function CrimeTrendCard() {
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-              <XAxis dataKey="month" tick={{ fill: '#8a9aaa', fontSize: 9 }} />
-              <YAxis tick={{ fill: '#8a9aaa', fontSize: 9 }} allowDecimals={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <XAxis dataKey="month" tick={{ fill: '#888888', fontSize: 9 }} />
+              <YAxis tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
               <Area type="monotone" dataKey="count" stroke="#ef4444" strokeWidth={2} fill="url(#trendGrad)" />
             </AreaChart>
@@ -556,7 +556,7 @@ function CrimeTrendCard() {
         {data.trends?.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#0d1520]">
+              <thead className="sticky top-0 z-10 bg-[#050505]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
@@ -611,7 +611,7 @@ function CitationRevenueCard() {
       <div className="p-4 space-y-3">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
-            { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: '#3b82f6' },
+            { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: '#888888' },
             { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: '#22c55e' },
             { label: 'Outstanding', value: `$${(data.summary?.outstanding || 0).toLocaleString()}`, color: '#f59e0b' },
             { label: 'Dismissed', value: `$${(data.summary?.dismissed || 0).toLocaleString()}`, color: '#ef4444' },
@@ -625,11 +625,11 @@ function CitationRevenueCard() {
         {data.monthlyRevenue?.length > 0 && (
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={data.monthlyRevenue}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-              <XAxis dataKey="month" tick={{ fill: '#8a9aaa', fontSize: 9 }} />
-              <YAxis tick={{ fill: '#8a9aaa', fontSize: 9 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <XAxis dataKey="month" tick={{ fill: '#888888', fontSize: 9 }} />
+              <YAxis tick={{ fill: '#888888', fontSize: 9 }} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
-              <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '9px' }} />
+              <Legend wrapperStyle={{ color: '#888888', fontSize: '9px' }} />
               <Bar dataKey="collected" name="Collected" fill="#22c55e" radius={[2, 2, 0, 0]} />
               <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[2, 2, 0, 0]} />
             </BarChart>
@@ -661,7 +661,7 @@ function BeatActivityCard() {
         {data.beats?.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#0d1520]">
+              <thead className="sticky top-0 z-10 bg-[#050505]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Beat</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
@@ -675,7 +675,7 @@ function BeatActivityCard() {
                 {data.beats.map((b: any) => (
                   <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-blue-400">{b.calls}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>
@@ -892,7 +892,7 @@ export default function ReportsPage() {
   const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
-    fill: PRIORITY_COLORS[item.priority] || '#6b7280',
+    fill: PRIORITY_COLORS[item.priority] || '#666666',
   }));
 
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
@@ -920,7 +920,7 @@ export default function ReportsPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-100">Reports & Analytics</h1>
@@ -1006,7 +1006,7 @@ export default function ReportsPage() {
           {/* Summary Stats */}
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
-              { label: 'Total Calls', value: stats.totalCalls, color: '#3b82f6', border: 'border-l-blue-500' },
+              { label: 'Total Calls', value: stats.totalCalls, color: '#888888', border: 'border-l-blue-500' },
               { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
               { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
               { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },
@@ -1142,9 +1142,9 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-                  <XAxis dataKey="priority" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <XAxis dataKey="priority" tick={{ fill: '#888888', fontSize: 12 }} />
+                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {priorityChartData.map((entry, i) => (
@@ -1172,12 +1172,12 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={responseTimeChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-                  <XAxis dataKey="date" tick={{ fill: '#8a9aaa', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} domain={[0, 'auto']} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <XAxis dataKey="date" tick={{ fill: '#888888', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#1a5a9e" strokeWidth={2} dot={{ fill: '#1a5a9e', r: 3 }} />
+                  <Legend wrapperStyle={{ color: '#888888', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#888888" strokeWidth={2} dot={{ fill: '#888888', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -1200,12 +1200,12 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={officerChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-                  <XAxis type="number" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#8a9aaa', fontSize: 11 }} width={70} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 12 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#888888', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Bar dataKey="calls" name="Calls" fill="#1a5a9e" radius={[0, 4, 4, 0]} />
+                  <Legend wrapperStyle={{ color: '#888888', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -1229,15 +1229,15 @@ export default function ReportsPage() {
                 }))}>
                   <defs>
                     <linearGradient id="callVolumeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                      <stop offset="5%" stopColor="#888888" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-                  <XAxis dataKey="date" tick={{ fill: '#8a9aaa', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <XAxis dataKey="date" tick={{ fill: '#888888', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Area type="monotone" dataKey="calls" name="Calls" stroke="#3b82f6" strokeWidth={2} fill="url(#callVolumeGradient)" />
+                  <Area type="monotone" dataKey="calls" name="Calls" stroke="#888888" strokeWidth={2} fill="url(#callVolumeGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
               </div>
@@ -1257,16 +1257,16 @@ export default function ReportsPage() {
                   priority: item.priority,
                   avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
-                  fill: PRIORITY_COLORS[item.priority] || '#6b7280',
+                  fill: PRIORITY_COLORS[item.priority] || '#666666',
                 }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
-                  <XAxis dataKey="priority" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <XAxis dataKey="priority" tick={{ fill: '#888888', fontSize: 12 }} />
+                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: '#888888', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || '#6b7280'} />
+                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || '#666666'} />
                     ))}
                   </Bar>
                 </BarChart>

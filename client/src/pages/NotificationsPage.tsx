@@ -209,7 +209,7 @@ export default function NotificationsPage() {
 
   const typeIcon = (type: string) => {
     if (type === 'escalation') return <AlertTriangle className="w-4 h-4 text-red-400" />;
-    if (type === 'dispatch') return <Bell className="w-4 h-4 text-blue-400" />;
+    if (type === 'dispatch') return <Bell className="w-4 h-4 text-gray-400" />;
     return <Bell className="w-4 h-4 text-rmpg-400" />;
   };
 
@@ -237,7 +237,7 @@ export default function NotificationsPage() {
           <span className="text-rmpg-400">Snoozed: <strong className="text-amber-400">{stats.totalSnoozed}</strong></span>
           {stats.byPriority.map(p => (
             <span key={p.priority} className={`${p.priority === 'critical' ? 'text-red-400' : p.priority === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>
-              {p.priority}: {p.unread}/{p.total}
+              {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}: {p.unread}/{p.total}
             </span>
           ))}
         </div>
@@ -369,8 +369,17 @@ export default function NotificationsPage() {
                     </div>
                     {n.body && <p className="text-[11px] text-rmpg-400 mt-0.5 line-clamp-2">{n.body}</p>}
                     <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
-                      <span>{n.type}</span>
-                      <span>{formatDateTime(n.created_at)}</span>
+                      <span>{(n.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span title={formatDateTime(n.created_at)}>{(() => {
+                        const ms = Date.now() - new Date(n.created_at).getTime();
+                        const mins = Math.floor(ms / 60000);
+                        if (mins < 1) return 'just now';
+                        if (mins < 60) return `${mins}m ago`;
+                        const hrs = Math.floor(mins / 60);
+                        if (hrs < 24) return `${hrs}h ago`;
+                        if (hrs < 48) return 'yesterday';
+                        return `${Math.floor(hrs / 24)}d ago`;
+                      })()}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">

@@ -28,7 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   defensive_tactics: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   first_aid: 'bg-green-900/40 text-green-400 border-green-700/50',
   legal: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  communication: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
+  communication: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   driving: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
   technology: 'bg-indigo-900/40 text-indigo-400 border-indigo-700/50',
   leadership: 'bg-brand-900/40 text-brand-400 border-brand-700/50',
@@ -38,7 +38,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   completed: { bg: 'bg-green-900/50', text: 'text-green-400', border: 'border-green-700/50' },
-  in_progress: { bg: 'bg-blue-900/50', text: 'text-blue-400', border: 'border-blue-700/50' },
+  in_progress: { bg: 'bg-gray-900/50', text: 'text-gray-400', border: 'border-gray-700/50' },
   scheduled: { bg: 'bg-amber-900/50', text: 'text-amber-400', border: 'border-amber-700/50' },
   overdue: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
   expired: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
@@ -110,7 +110,12 @@ export default function TrainingPage() {
       ]);
       if (!mountedRef.current) return;
       setRecords(recs || []);
-      setRequirements(reqs || []);
+      // Normalize required_for_roles — DB stores as JSON string, UI expects array
+      setRequirements((reqs || []).map(r => ({
+        ...r,
+        required_for_roles: Array.isArray(r.required_for_roles) ? r.required_for_roles
+          : (() => { try { return JSON.parse(r.required_for_roles as any || '[]'); } catch { return []; } })(),
+      })));
       setOfficers((users || []).filter(u => u.status === 'active'));
     } catch (err: any) {
       console.error('Failed to load training data:', err);
@@ -510,7 +515,7 @@ function DashboardTab({ records, requirements, officers }: {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
         <StatCard value={records.length} label="Total Records" color="#6b8aad" borderColor="#4a6a8a" />
         <StatCard value={stats.completed} label="Completed" color="#22c55e" borderColor="#15803d" />
-        <StatCard value={stats.inProgress} label="In Progress" color="#3b82f6" borderColor="#1d4ed8" />
+        <StatCard value={stats.inProgress} label="In Progress" color="#888888" borderColor="#666666" />
         <StatCard value={stats.scheduled} label="Scheduled" color="#f59e0b" borderColor="#b45309" />
         <StatCard value={stats.overdue} label="Overdue" color="#ef4444" borderColor="#b91c1c" />
         <StatCard value={stats.expiringSoon} label="Expiring (30d)" color="#f97316" borderColor="#c2410c" />
@@ -948,14 +953,16 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                       <span className="flex items-center gap-1">
                         <span className={
                           new Date(record.expiry_date) < new Date() ? 'text-red-400 font-bold' :
-                          new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' : ''
+                          new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' :
+                          new Date(record.expiry_date) <= new Date(Date.now() + 60 * 86400000) ? 'text-yellow-400' : ''
                         }>{formatDate(record.expiry_date)}</span>
-                        {new Date(record.expiry_date) < new Date() && (
-                          <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase">EXPIRED</span>
-                        )}
-                        {new Date(record.expiry_date) >= new Date() && new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) && (
-                          <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold uppercase">EXPIRING</span>
-                        )}
+                        {(() => {
+                          const days = Math.ceil((new Date(record.expiry_date).getTime() - Date.now()) / 86400000);
+                          if (days < 0) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase animate-pulse">EXPIRED {Math.abs(days)}d</span>;
+                          if (days <= 30) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase">{days}d LEFT</span>;
+                          if (days <= 60) return <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold uppercase">{days}d LEFT</span>;
+                          return <span className="text-[8px] px-1 py-0 text-green-400 font-mono">{days}d</span>;
+                        })()}
                       </span>
                     ) : '—'}
                   </td>
@@ -1059,7 +1066,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                 <div className="grid grid-cols-3 gap-2 text-[10px] text-rmpg-400 mb-2">
                   <div>
                     <span className="text-rmpg-500">Roles: </span>
-                    <span className="text-rmpg-300">{req.required_for_roles.map(r => r.replace(/_/g, ' ')).join(', ')}</span>
+                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ')).join(', ') || '—'}</span>
                   </div>
                   <div>
                     <span className="text-rmpg-500">Min Hours: </span>

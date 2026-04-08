@@ -126,9 +126,10 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       limit = '50',
     } = req.query;
 
-    // Validate enum query filters
+    // Validate enum query filters (status supports comma-separated values)
     const VALID_CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
-    if (status && !VALID_CALL_STATUSES.includes(status as string)) {
+    const statusList = status ? String(status).split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (statusList.length > 0 && statusList.some(s => !VALID_CALL_STATUSES.includes(s))) {
       res.status(400).json({ error: 'Invalid status filter', code: 'INVALID_STATUS_FILTER' });
       return;
     }
@@ -145,9 +146,12 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 
-    if (status) {
+    if (statusList.length === 1) {
       whereClause += ' AND c.status = ?';
-      params.push(status);
+      params.push(statusList[0]);
+    } else if (statusList.length > 1) {
+      whereClause += ` AND c.status IN (${statusList.map(() => '?').join(',')})`;
+      params.push(...statusList);
     }
     if (priority) {
       whereClause += ' AND c.priority = ?';
@@ -166,7 +170,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       params.push(propertyId);
     }
     if (search) {
-      whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.call_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.narrative LIKE ? ESCAPE '\\')";
+      whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.incident_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.description LIKE ? ESCAPE '\\')";
       const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
@@ -239,7 +243,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       incident_type, priority, caller_name, caller_phone, caller_relationship, caller_address,
       location_address, property_id, latitude, longitude, description, notes, source,
       cross_street, location_building, location_floor, location_room, zone_beat,
-      section_id, zone_id, beat_id,
+      section_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
       weapons_involved, injuries_reported, num_subjects, num_victims,
       subject_description, vehicle_description, direction_of_travel,
       scene_safety, weather_conditions, lighting_conditions,
@@ -258,6 +262,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       pso_attempt_number: createAttemptNumber,
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
+      process_attempts, process_served_at, process_service_result,
       client_id: requestClientId,
       // Historical entry fields (optional)
       created_at: customCreatedAt,
@@ -319,6 +324,16 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
     if (!VALID_PRIORITIES.includes(normalizedPriority)) {
       res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`, code: 'INVALID_PRIORITY' });
+      return;
+    }
+
+    // Max length validation
+    if (location_address && String(location_address).length > 500) {
+      res.status(400).json({ error: 'Location address too long (max 500 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+    if (description && String(description).length > 10000) {
+      res.status(400).json({ error: 'Description too long (max 10000 chars)', code: 'FIELD_TOO_LONG' });
       return;
     }
 
@@ -384,7 +399,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let autoSectionId = section_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
-    let autoDispatchCode: string | null = null;
+    let autoDispatchCode: string | null = requestDispatchCode || null;
     let autoSectionName: string | null = null;
     let autoZoneName: string | null = null;
     let autoBeatName: string | null = null;
@@ -433,6 +448,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       } else {
         autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
       }
+    }
+
+    // Auto-generate dispatch code if not provided and section/zone/beat are available
+    if (!autoDispatchCode && (autoSectionId || autoZoneId)) {
+      autoDispatchCode = [autoSectionId, autoZoneId, autoBeatId].filter(Boolean).join('-') || null;
     }
 
     // Upgrade 10: Calculate priority score for queue sorting
@@ -546,6 +566,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         process_service_type: process_service_type || null,
         process_served_to: process_served_to || null,
         process_served_address: process_served_address || null,
+        process_attempts: process_attempts || null,
+        process_served_at: process_served_at || null,
+        process_service_result: process_service_result || null,
         contract_id: contract_id || null,
         client_id: resolvedClientId,
         priority_score: priorityScore,
@@ -806,8 +829,33 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
   }
 });
 
+// GET /api/dispatch/calls/active — Shortcut for dispatched+enroute+onscene+pending+open calls
+router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT c.*, u.full_name as dispatcher_name, p.name as property_name,
+        cl.name as client_name
+      FROM calls_for_service c
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.status IN ('dispatched', 'enroute', 'onscene', 'pending', 'open')
+      ORDER BY
+        COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
+        c.created_at DESC
+      LIMIT 200
+    `).all();
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Active calls error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get active calls', code: 'ACTIVE_CALLS_ERROR' });
+  }
+});
+
 // GET /api/dispatch/calls/:id - Get single call with details
-router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+// NOTE: \\d+ constraint ensures this doesn't shadow named routes like /calls/search, /calls/active, /calls/stats/*
+router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -888,7 +936,7 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -922,6 +970,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
       process_attempts, process_served_at, process_service_result,
+      contract_id,
       client_id: updateClientId,
     } = req.body;
 
@@ -1025,6 +1074,16 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       return;
     }
 
+    // Max length validation
+    if (location_address && String(location_address).length > 500) {
+      res.status(400).json({ error: 'Location address too long (max 500 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+    if (description && String(description).length > 10000) {
+      res.status(400).json({ error: 'Description too long (max 10000 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+
     // Build dynamic SET clause so we only update provided fields
     const updates: string[] = [];
     const params: any[] = [];
@@ -1085,6 +1144,10 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
         // Build dispatch_code from IDs even without a district record
         addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
       }
+    } else if ((finalSectionId || finalZoneId) && !call.dispatch_code) {
+      // Auto-generate dispatch code from available S/Z/B when not all three are present
+      const code = [finalSectionId, finalZoneId, finalBeatId].filter(Boolean).join('-');
+      if (code) addField('dispatch_code', code);
     }
 
     addField('responding_officer', responding_officer);
@@ -1139,6 +1202,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('process_attempts', process_attempts !== undefined ? (isNaN(Number(process_attempts)) ? null : Number(process_attempts)) : undefined);
     addField('process_served_at', process_served_at);
     addField('process_service_result', process_service_result);
+    addField('contract_id', contract_id);
     addField('client_id', resolvedUpdateClientId);
 
     // ── Admin/Manager timeline override: allow editing dispatch timestamps ──
@@ -1185,6 +1249,24 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     params.push(localNow());
     params.push(req.params.id);
     db.prepare(`UPDATE calls_for_service SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Propagate case_number to all related calls in the chain (parent + siblings)
+    if (case_number !== undefined) {
+      try {
+        const now = localNow();
+        // Update children (calls that have this call as parent)
+        db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE parent_call_id = ? AND id != ?')
+          .run(case_number || null, now, call.id, call.id);
+        // Update parent (if this call has a parent)
+        if (call.parent_call_id) {
+          db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE id = ?')
+            .run(case_number || null, now, call.parent_call_id);
+          // Update siblings (other children of the same parent)
+          db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE parent_call_id = ? AND id != ?')
+            .run(case_number || null, now, call.parent_call_id, call.id);
+        }
+      } catch { /* non-critical — best effort propagation */ }
+    }
 
     // Upgrade 19: Detailed activity log showing what changed
     const changedFields = updates.filter(u => !u.includes('updated_at') && !u.includes('priority_score') && !u.includes('status_changed_at')).map(u => u.split(' = ')[0]);
@@ -1736,10 +1818,9 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
     }
 
     // Upgrade 21: Disposition required for clearing/closing in bulk
-    if (['cleared', 'closed'].includes(status) && !disposition) {
-      res.status(400).json({ error: 'Disposition is required when clearing or closing calls', code: 'DISPOSITION_REQUIRED' });
-      return;
-    }
+    // (Falls back to each call's existing disposition if not provided in bulk request)
+    const requiresDisposition = ['cleared', 'closed'].includes(status);
+    // No longer rejecting — will inherit from existing call.disposition per call
 
     const now = localNow();
     const timestampField: Record<string, string> = {
@@ -1754,8 +1835,12 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
         const id = parseInt(String(callId), 10);
         if (isNaN(id) || id < 1) continue;
 
-        const call = db.prepare('SELECT id, call_number, status FROM calls_for_service WHERE id = ?').get(id) as any;
+        const call = db.prepare('SELECT id, call_number, status, disposition FROM calls_for_service WHERE id = ?').get(id) as any;
         if (!call || call.status === 'archived') continue;
+
+        // For clear/close, require a disposition (from request or existing on call)
+        const resolvedDisposition = disposition || call.disposition;
+        if (requiresDisposition && !resolvedDisposition) continue; // skip calls without disposition
 
         let updateSql = `UPDATE calls_for_service SET status = ?, status_changed_at = ?, updated_at = ?`;
         const updateParams: any[] = [status, now, now];
@@ -1764,9 +1849,9 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
           updateSql += `, ${tsField} = COALESCE(${tsField}, ?)`;
           updateParams.push(now);
         }
-        if (disposition) {
+        if (resolvedDisposition) {
           updateSql += `, disposition = ?`;
-          updateParams.push(disposition);
+          updateParams.push(resolvedDisposition);
         }
         updateSql += ` WHERE id = ?`;
         updateParams.push(id);

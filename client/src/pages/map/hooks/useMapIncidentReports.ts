@@ -48,8 +48,8 @@ interface UseMapIncidentReportsReturn {
 // ─── Helpers ────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: '#6b7280',
-  submitted: '#3b82f6',
+  draft: '#666666',
+  submitted: '#888888',
   under_review: '#f59e0b',
   approved: '#22c55e',
   returned: '#ef4444',
@@ -66,8 +66,8 @@ const STATUS_LABELS: Record<string, string> = {
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
   P2: '#f59e0b',
-  P3: '#3b82f6',
-  P4: '#6b7280',
+  P3: '#888888',
+  P4: '#666666',
 };
 
 function formatDate(iso: string | null): string {
@@ -123,12 +123,12 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
         title: `${incident.incident_number} - ${formatIncidentType(incident.incident_type)}`,
         zIndex: 40,
         onClick: () => {
-        const sColor = STATUS_COLORS[incident.status] || '#6b7280';
-        const pColor = PRIORITY_COLORS[incident.priority] || '#5a6e80';
+        const sColor = STATUS_COLORS[incident.status] || '#666666';
+        const pColor = PRIORITY_COLORS[incident.priority] || '#666666';
         const sLabel = STATUS_LABELS[incident.status] || incident.status;
 
         infoWindowRef.current?.setContent(`
-          <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0d1520;color:#e5e7eb;padding:10px;border:1px solid ${sColor}40;border-radius:4px;">
+          <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid ${sColor}40;border-radius:4px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
               <span style="font-weight:900;font-size:13px;color:#e5e7eb;">${escapeHtml(incident.incident_number)}</span>
             </div>
@@ -140,11 +140,11 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
               <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(sLabel)}</span>
             </div>
             <div style="font-size:10px;color:#d1d5db;">${escapeHtml(incident.location_address || '')}</div>
-            ${incident.narrative_preview ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #1e3048;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(incident.narrative_preview)}</div>` : ''}
-            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #1e3048;font-size:9px;">
+            ${incident.narrative_preview ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #222222;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(incident.narrative_preview)}</div>` : ''}
+            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #222222;font-size:9px;">
               ${incident.officer_name ? `<div style="color:#9ca3af;margin-bottom:2px;">${escapeHtml(incident.officer_name)}</div>` : ''}
               <div style="color:#4b5563;">${escapeHtml(formatDate(incident.created_at))}</div>
-              ${incident.call_number ? `<div style="color:#60a5fa;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
+              ${incident.call_number ? `<div style="color:#999999;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
               ${incident.case_number ? `<div style="color:#d4a017;margin-top:2px;font-weight:bold;">Case: ${escapeHtml(incident.case_number)}</div>` : ''}
             </div>
           </div>

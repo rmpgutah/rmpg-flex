@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Database,
   UserCircle,
@@ -63,9 +64,22 @@ const timeAgo = (date: string): string => {
 export default function RecordsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const [urlParams] = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+
+  // Handle cross-module navigation params (?tab=persons&personId=X)
+  useEffect(() => {
+    const tab = urlParams.get('tab');
+    const personId = urlParams.get('personId');
+    if (tab && ['persons', 'vehicles', 'properties', 'evidence'].includes(tab)) {
+      setActiveTab(tab as TabId);
+    }
+    if (personId && tab === 'persons') {
+      setSearchQuery(personId);
+    }
+  }, []); // Only on mount
 
   // Data state
   const [persons, setPersons] = useState<Person[]>([]);
@@ -446,14 +460,14 @@ export default function RecordsPage() {
       </div>
 
       {/* Compact Stats Strip */}
-      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#0d1520' }}>
+      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#050505' }}>
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>
           <span className="text-white font-bold">{persons.length}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Car className="w-2.5 h-2.5 text-blue-400" />
+          <Car className="w-2.5 h-2.5 text-gray-400" />
           <span className="text-rmpg-400">V:</span>
           <span className="text-white font-bold">{vehicles.length}</span>
         </div>
@@ -521,7 +535,7 @@ export default function RecordsPage() {
       )}
 
       {/* Active TabList Content */}
-      <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`}>
+      <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`} style={{ overscrollBehavior: 'contain' }}>
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading records" />

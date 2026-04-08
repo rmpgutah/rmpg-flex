@@ -421,6 +421,7 @@ export default function FileAttachments({
           aria-label={`Preview: ${previewAttachment.original_name}`}
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-fade-in"
           onClick={() => setPreviewAttachment(null)}
+          style={{ touchAction: 'manipulation' }}
         >
           <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>
             <div className="absolute -top-8 left-0 right-0 flex items-center justify-between">
@@ -437,10 +438,11 @@ export default function FileAttachments({
                 </a>
                 <button type="button"
                   onClick={() => setPreviewAttachment(null)}
-                  className="p-1 hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
-                  aria-label="Close preview"
+                  className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
+                  style={{ touchAction: 'manipulation' }}
+                  aria-label="Close"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5 sm:w-4 sm:h-4" />
                 </button>
               </div>
             </div>

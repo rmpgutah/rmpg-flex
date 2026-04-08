@@ -28,7 +28,7 @@ const FUEL_TYPES: { value: FuelType; label: string }[] = [
 const FUEL_GRADE: Record<FuelType, { led: string; desc: string }> = {
   regular: { led: 'led-green', desc: 'Unleaded 87' },
   premium: { led: 'led-amber', desc: 'Unleaded 91-93' },
-  diesel:  { led: 'led-blue',  desc: 'Diesel #2' },
+  diesel:  { led: 'led-gray',  desc: 'Diesel #2' },
 };
 
 interface Props {

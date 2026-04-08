@@ -22,7 +22,7 @@ interface Grievance {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  filed: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  filed: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   under_review: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   investigation: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   mediation: 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50',
@@ -33,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: 'text-rmpg-400',
-  normal: 'text-blue-400',
+  normal: 'text-gray-400',
   high: 'text-amber-400',
   urgent: 'text-red-400',
 };

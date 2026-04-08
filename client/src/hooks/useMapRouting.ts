@@ -56,7 +56,7 @@ const REROUTE_THROTTLE_MS = 30_000;
 const REROUTE_DISTANCE_THRESHOLD = 100;
 
 /** Route polyline color (matches unit blue) */
-const ROUTE_COLOR = '#3b82f6';
+const ROUTE_COLOR = '#888888';
 
 // ─── Hook ───────────────────────────────────────────────────
 

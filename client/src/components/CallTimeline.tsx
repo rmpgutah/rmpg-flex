@@ -25,8 +25,8 @@ interface CallTimelineProps {
  */
 const ACTION_LED_CLASS: Record<string, string> = {
   call_created: 'led-green',
-  dispatched: 'led-blue',
-  unit_dispatched: 'led-blue',
+  dispatched: 'led-gray',
+  unit_dispatched: 'led-gray',
   enroute: 'led-amber',
   onscene: 'led-amber',
   cleared: 'led-green',
@@ -71,7 +71,7 @@ export default function CallTimeline({ entries, className = '' }: CallTimelinePr
         style={{
           left: '3.5px',
           width: '1px',
-          background: '#2a3e58',
+          background: '#2e2e2e',
         }}
       />
 

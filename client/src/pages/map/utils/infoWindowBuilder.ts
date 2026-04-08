@@ -18,15 +18,15 @@ function nextId(): string { return `iw${++_iwCounter}`; }
 
 const FONT_MONO = "'Courier New','JetBrains Mono',monospace";
 const FONT_SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
-const C_BASE = '#141e2b';
-const C_SUNKEN = '#0d1520';
-const C_RAISED = '#1a2636';
-const C_BORDER = '#1e3048';
-const C_TEXT = '#e5e7eb';
-const C_TEXT_DIM = '#9ca3af';
-const C_TEXT_MUTED = '#5a6e80';
-const C_BLUE = '#60a5fa';
-const C_BRAND = '#1a5a9e';
+const C_BASE = '#0a0a0a';
+const C_SUNKEN = '#050505';
+const C_RAISED = '#141414';
+const C_BORDER = '#222222';
+const C_TEXT = '#e0e0e0';
+const C_TEXT_DIM = '#999999';
+const C_TEXT_MUTED = '#666666';
+const C_BLUE = '#aaaaaa';
+const C_BRAND = '#888888';
 const C_GOLD = '#d4a017';
 const C_RED = '#f87171';
 const C_GREEN = '#4ade80';
@@ -76,7 +76,7 @@ function routeButton(unitCallSign: string, callNumber: string, uLat: number, uLn
 
 function findClosestButton(callId: string): string {
   return `<button data-find-closest="${escapeHtml(callId)}"
-    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(26,90,158,0.3);">
+    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(136,136,136,0.3);">
     &#9737; FIND CLOSEST UNIT
   </button>`;
 }
@@ -137,6 +137,32 @@ export function buildUnitInfoWindow(
   // GPS accuracy indicator color
   const gpsColor = gpsSource === 'device' ? C_GREEN : gpsSource === 'manual' ? C_GOLD : C_TEXT_MUTED;
 
+  // Speed and heading formatting
+  const speedMph = unit.gps_speed != null ? `${(unit.gps_speed * 2.237).toFixed(0)} mph` : '';
+  const headingDirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const headingStr = unit.gps_heading != null
+    ? `${headingDirs[Math.round(unit.gps_heading / 45) % 8]} (${Math.round(unit.gps_heading)}\u00b0)`
+    : '';
+
+  // Time on scene / time since dispatch
+  let timeOnScene = '';
+  let timeSinceDispatch = '';
+  if (unit.onscene_at) {
+    const ms = Date.now() - new Date(unit.onscene_at).getTime();
+    const mins = Math.floor(ms / 60000);
+    timeOnScene = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+  if (unit.dispatched_at && !unit.onscene_at) {
+    const ms = Date.now() - new Date(unit.dispatched_at).getTime();
+    const mins = Math.floor(ms / 60000);
+    timeSinceDispatch = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  // Battery level color
+  const batteryColor = unit.battery_level != null
+    ? unit.battery_level > 50 ? C_GREEN : unit.battery_level > 20 ? C_AMBER : C_RED
+    : C_TEXT_MUTED;
+
   // Overview tab
   const overviewTab = `
     <div style="padding:4px 6px;background:${C_BASE};border-radius:2px;border:1px solid ${C_BORDER}20;">
@@ -144,6 +170,11 @@ export function buildUnitInfoWindow(
       ${dataRow('Status', statusLabel, statusColor)}
       ${unit.vehicle ? dataRow('Vehicle', unit.vehicle, C_TEXT_DIM) : ''}
       ${dataRow('GPS Source', gpsSource + ' ', gpsColor)}
+      ${speedMph ? dataRow('Speed', speedMph, C_TEXT) : ''}
+      ${headingStr ? dataRow('Heading', headingStr, C_TEXT_DIM) : ''}
+      ${unit.battery_level != null ? dataRow('Battery', `${unit.battery_level}%`, batteryColor) : ''}
+      ${timeOnScene ? dataRow('On Scene', timeOnScene, C_AMBER) : ''}
+      ${timeSinceDispatch ? dataRow('Since Dispatch', timeSinceDispatch, C_TEXT_DIM) : ''}
       ${unit.last_gps_update ? dataRow('Last Update', formatTimestamp(unit.last_gps_update), C_TEXT_DIM) : ''}
     </div>
   `;
@@ -272,7 +303,7 @@ export function buildCallInfoWindow(
   const timelineItems: Array<{ label: string; ts: string | null | undefined; color: string }> = [
     { label: 'Created', ts: call.created_at, color: C_TEXT_DIM },
     { label: 'Dispatched', ts: call.dispatched_at, color: '#f59e0b' },
-    { label: 'First En Route', ts: call.first_enroute_at, color: '#3b82f6' },
+    { label: 'First En Route', ts: call.first_enroute_at, color: '#888888' },
     { label: 'First On Scene', ts: call.first_onscene_at, color: '#a855f7' },
     { label: 'Cleared', ts: call.cleared_at, color: '#22c55e' },
   ];
@@ -370,9 +401,9 @@ export function buildPropertyInfoWindow(
   }
 
   const RELATIONSHIP_COLORS: Record<string, string> = {
-    employee: '#22d3ee', contact: '#60a5fa', tenant: '#a78bfa', owner: '#4ade80',
+    employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
     manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
-    banned: '#ef4444', frequent_visitor: '#9ca3af', associated: '#6b7280',
+    banned: '#ef4444', frequent_visitor: '#999999', associated: '#666666',
   };
 
   const recentCalls = details.recentCalls || [];
@@ -385,7 +416,7 @@ export function buildPropertyInfoWindow(
     ${prop.client_name ? dataRow('Client', prop.client_name, C_GOLD) : ''}
     ${details.property_type ? dataRow('Type', details.property_type, C_TEXT_DIM) : ''}
     ${details.emergency_contact ? dataRow('Emergency', details.emergency_contact, '#f87171') : ''}
-    ${details.gate_code ? dataRow('Gate Code', details.gate_code, '#22d3ee') : ''}
+    ${details.gate_code ? dataRow('Gate Code', details.gate_code, '#22c55e') : ''}
     ${details.alarm_code ? dataRow('Alarm Code', details.alarm_code, '#f59e0b') : ''}
     ${details.access_instructions ? `
       <div style="margin-top:4px;padding:3px 5px;background:${C_RAISED};border:1px solid ${C_BORDER};border-radius:2px;">
@@ -422,7 +453,7 @@ export function buildPropertyInfoWindow(
       ${sectionHeader(`Call History (${recentCalls.length})`)}
       ${recentCalls.slice(0, 5).map(c => {
         const isActive = c.status === 'dispatched' || c.status === 'en_route' || c.status === 'on_scene';
-        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#93c5fd' : C_BLUE;
+        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#cccccc' : C_BLUE;
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
           <div style="overflow:hidden;flex:1;">
             <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
@@ -456,7 +487,7 @@ export function buildPropertyInfoWindow(
       <div style="${details.client_contact ? `margin-top:6px;padding-top:4px;border-top:1px solid ${C_BORDER};` : ''}">
         ${sectionHeader(`Linked Persons (${linkedPersons.length})`, '#e879f9')}
         ${linkedPersons.slice(0, 8).map(p => {
-          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || '#6b7280';
+          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || '#666666';
           const name = `${p.first_name} ${p.last_name}`;
           const rel = (p.relationship || '').replace(/_/g, ' ');
           let flagsArr: string[] = [];

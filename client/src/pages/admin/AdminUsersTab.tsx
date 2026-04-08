@@ -228,8 +228,8 @@ export default function AdminUsersTab({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
-      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-[#162236] flex flex-col overflow-hidden transition-all duration-200`}>
-        <div className="px-4 py-3 flex items-center justify-between border-b border-[#162236] flex-shrink-0 bg-surface-sunken">
+      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-[#181818] flex flex-col overflow-hidden transition-all duration-200`}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-[#181818] flex-shrink-0 bg-surface-sunken">
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />
             <input
@@ -273,10 +273,10 @@ export default function AdminUsersTab({
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); } }}
                   aria-label={`Select ${user.first_name} ${user.last_name}`}
-                  className={`px-4 py-3 border-b border-[#162236]/60 cursor-pointer transition-all duration-150 ${
+                  className={`px-4 py-3 border-b border-[#181818]/60 cursor-pointer transition-all duration-150 ${
                     selectedUser?.id === user.id
                       ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                      : `hover:bg-[rgba(26,90,158,0.06)] border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
+                      : `hover:bg-[rgba(136,136,136,0.06)] border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -307,6 +307,10 @@ export default function AdminUsersTab({
                         <span className="font-mono">@{user.username}</span>
                         {user.badge_number && <span>Badge: {user.badge_number}</span>}
                         {user.rank && <span>{user.rank}</span>}
+                        {/* Enhancement 45: Active sessions count */}
+                        {(user as any).active_sessions > 0 && (
+                          <span className="text-green-400 font-mono">{(user as any).active_sessions} session{(user as any).active_sessions > 1 ? 's' : ''}</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
@@ -348,7 +352,7 @@ export default function AdminUsersTab({
       {selectedUser && (
         <div className="w-[60%] flex flex-col overflow-hidden">
           {/* Detail Header */}
-          <div className="p-4 border-b border-[#162236] bg-surface-sunken flex-shrink-0">
+          <div className="p-4 border-b border-[#181818] bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 {selectedUser.profile_image ? (
@@ -435,7 +439,7 @@ export default function AdminUsersTab({
           </div>
 
           {/* Detail Tabs */}
-          <div className="flex gap-0.5 px-4 pt-2 border-b border-[#162236] flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
+          <div className="flex gap-0.5 px-4 pt-2 border-b border-[#181818] flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
             {([
               { id: 'profile' as const, label: 'Profile' },
               { id: 'personal' as const, label: 'Personal' },
@@ -451,8 +455,8 @@ export default function AdminUsersTab({
                 onClick={() => setUserDetailTab(tab.id)}
                 className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                   userDetailTab === tab.id
-                    ? 'bg-[#1a2636] text-white border border-[#162236] border-b-[#1a2636]'
-                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(26,90,158,0.08)]'
+                    ? 'bg-[#141414] text-white border border-[#181818] border-b-[#141414]'
+                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(136,136,136,0.08)]'
                 }`}
               >
                 {tab.label}
@@ -467,7 +471,7 @@ export default function AdminUsersTab({
             {userDetailTab === 'profile' && (
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
-                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-[#162236] pb-1.5">Employment Information</h3>
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-[#181818] pb-1.5">Employment Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Department:</span> <span className="text-rmpg-200 ml-1">{selectedUser.department || '--'}</span></div>
                     <div><span className="text-rmpg-400">Rank:</span> <span className="text-rmpg-200 ml-1">{selectedUser.rank || '--'}</span></div>
@@ -659,7 +663,7 @@ export default function AdminUsersTab({
                       Reset 2FA
                     </button>
                   </div>
-                  <p className="text-[9px] mt-2" style={{ color: '#4b5563' }}>
+                  <p className="text-[9px] mt-2" style={{ color: '#555555' }}>
                     Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
                   </p>
                 </div>

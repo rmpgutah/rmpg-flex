@@ -54,11 +54,11 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
   }
 
   const SUMMARY_CARDS = [
-    { label: 'Currently Clocked In', value: stats.clockedInCount, icon: LogIn, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Currently Clocked In', value: stats.clockedInCount, icon: LogIn, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Total Hours', value: stats.totalHours, icon: Clock, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-[#1a1400]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
-    { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-[#0a1020]', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
+    { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-surface-base', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
   ];
 
   // Set document title
@@ -88,7 +88,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
 
       {/* Active Clock-Ins */}
       {activeEntries.length > 0 && (
-        <div className="panel-beveled p-3 border border-green-700/30 border-l-2 border-l-green-500 bg-[#0a1a0a]">
+        <div className="panel-beveled p-3 border border-green-700/30 border-l-2 border-l-green-500 bg-surface-base">
           <h3 className="text-[9px] text-green-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Users className="w-3 h-3" />
             Currently Active ({activeEntries.length})
@@ -146,7 +146,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                       {te.status === 'clocked_in' && <span className="led-dot led-green" />}
                       {te.status === 'on_break' && <span className="led-dot led-amber" />}
                       {te.status === 'clocked_out' && <span className="led-dot led-off" />}
-                      {te.status === 'edited' && <span className="led-dot led-blue" />}
+                      {te.status === 'edited' && <span className="led-dot led-gray" />}
                       <span className="text-xs text-rmpg-200">{te.officer_name}</span>
                     </div>
                   </td>
@@ -187,7 +187,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                       </span>
                     )}
                     {te.status === 'edited' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">
                         Edited
                       </span>
                     )}

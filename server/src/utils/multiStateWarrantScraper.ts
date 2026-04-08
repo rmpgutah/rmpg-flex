@@ -23,12 +23,13 @@ import { localNow } from './timeUtils';
 
 // ── Constants ───────────────────────────────────────────────
 
-const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement CAD/RMS)';
-const REQUEST_TIMEOUT_MS = 15_000;
-const CIRCUIT_BREAKER_THRESHOLD = 5;
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const REQUEST_TIMEOUT_MS = 20_000;
+const CIRCUIT_BREAKER_THRESHOLD = 15;     // Higher threshold — many sites are flaky
 const STARTUP_DELAY_MS = 60_000;          // 60s after boot (let jail roster start first)
-const BACKOFF_BASE_MS = 60 * 60_000;      // 1 hour
-const BACKOFF_MAX_MS = 24 * 60 * 60_000;  // 24 hour cap
+const BACKOFF_BASE_MS = 2 * 60 * 60_000;  // 2 hours base
+const BACKOFF_MAX_MS = 48 * 60 * 60_000;  // 48 hour cap
+const STAGGER_DELAY_MS = 5_000;           // 5s between source starts
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -84,19 +85,90 @@ let startupTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // ── HTTP helpers ────────────────────────────────────────────
 
-async function fetchPage(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
-    return await res.text();
-  } finally {
-    clearTimeout(timeout);
+// Rotate User-Agents to avoid fingerprinting
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+];
+
+function getRandomUA(): string {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+async function fetchPage(url: string, retries = 2): Promise<string> {
+  const domain = new URL(url).hostname;
+  const isApiEndpoint = domain.startsWith('api.') || url.includes('/api/');
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      // API endpoints get minimal headers (no browser fingerprint needed)
+      const headers: Record<string, string> = isApiEndpoint ? {
+        'User-Agent': getRandomUA(),
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      } : {
+        'User-Agent': getRandomUA(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Connection': 'keep-alive',
+        'Referer': `https://www.google.com/search?q=${encodeURIComponent(domain)}+warrants`,
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'sec-ch-ua': '"Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+      };
+
+      const res = await fetch(url, {
+        headers,
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      clearTimeout(timeout);
+      // 404 = page moved/restructured — permanent, don't retry
+      if (res.status === 404) throw new Error(`HTTP_PERMANENT_404`);
+      // 403 = blocked — might work with retry after delay
+      if (res.status === 403 && attempt < retries) {
+        await sleep(3000 * (attempt + 1));
+        continue;
+      }
+      // 429 = rate limited — retry after delay
+      if (res.status === 429 && attempt < retries) {
+        const retryAfter = parseInt(res.headers.get('retry-after') || '10', 10);
+        await sleep(retryAfter * 1000);
+        continue;
+      }
+      // 5xx = server error — retry
+      if (res.status >= 500 && attempt < retries) {
+        await sleep(2000 * (attempt + 1));
+        continue;
+      }
+      if (!res.ok) throw new Error(`HTTP_${res.status}`);
+      return await res.text();
+    } catch (e: any) {
+      clearTimeout(timeout);
+      // Don't retry permanent errors or already-classified errors
+      if (e?.message?.startsWith('HTTP_PERMANENT_') || e?.message?.startsWith('HTTP_4')) throw e;
+      // Retry on network errors (timeout, DNS, connection reset)
+      if (attempt < retries) {
+        await sleep(2000 * (attempt + 1));
+        continue;
+      }
+      throw e;
+    }
   }
+  throw new Error('fetchPage: max retries exceeded');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -120,6 +192,7 @@ function splitName(fullName: string): { first: string; middle: string; last: str
 }
 
 function stripHtml(html: string): string {
+  if (!html) return '';
   return html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, '').trim();
 }
@@ -212,10 +285,9 @@ function createGenericWarrantParser(sourceKey: string): WarrantParser {
         });
       }
 
-      // Strategy 2: If no table rows found, try card/div patterns
+      // Strategy 2: Card/div patterns with warrant/wanted/person/suspect class
       if (entries.length === 0) {
-        // Look for "wanted" card patterns — name in h2/h3/strong tags
-        const cardRegex = /<(?:div|article|section)[^>]*class="[^"]*(?:wanted|warrant|card|person|suspect)[^"]*"[^>]*>([\s\S]*?)<\/(?:div|article|section)>/gi;
+        const cardRegex = /<(?:div|article|section|li)[^>]*class="[^"]*(?:wanted|warrant|card|person|suspect|fugitive|offender|inmate|most-wanted|mostwanted)[^"]*"[^>]*>([\s\S]*?)<\/(?:div|article|section|li)>/gi;
         let cardMatch: RegExpExecArray | null;
         let cardIdx = 0;
 
@@ -223,45 +295,126 @@ function createGenericWarrantParser(sourceKey: string): WarrantParser {
           const cardHtml = cardMatch[1];
           cardIdx++;
 
-          // Extract name from heading tags
-          const nameMatch = cardHtml.match(/<(?:h[1-6]|strong|b)[^>]*>([\s\S]*?)<\/(?:h[1-6]|strong|b)>/i);
+          const nameMatch = cardHtml.match(/<(?:h[1-6]|strong|b|a)[^>]*>([\s\S]*?)<\/(?:h[1-6]|strong|b|a)>/i);
           if (!nameMatch) continue;
 
           const nameText = stripHtml(nameMatch[1]);
           if (nameText.length < 3 || nameText.length > 60) continue;
+          // Skip non-name content (dates, numbers, navigation text)
+          if (/^\d|^(read|more|view|click|page|next|prev|back|home)/i.test(nameText)) continue;
 
-          // Extract image
           const imgMatch = cardHtml.match(/<img[^>]+src="([^"]+)"/i);
           const photoUrl = imgMatch ? imgMatch[1] : '';
+          const linkMatch = cardHtml.match(/<a[^>]+href="([^"]+)"/i);
+          const detailUrl = linkMatch ? linkMatch[1] : '';
 
-          // Extract charges/description
           const descText = stripHtml(cardHtml.replace(nameMatch[0], ''));
-          const chargeMatch = descText.match(/(?:charge|offense|crime|wanted for)[:\s]*(.+?)(?:\.|$)/i);
+          const chargeMatch = descText.match(/(?:charge|offense|crime|wanted for|warrant)[:\s]*(.+?)(?:\.|$)/i);
 
           const { first, middle, last } = splitName(nameText);
           const wId = `${sourceKey}-${last}-${first}-${cardIdx}`.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 80);
 
           entries.push({
-            warrant_id: wId,
-            full_name: nameText,
-            first_name: first,
-            last_name: last,
-            middle_name: middle,
-            date_of_birth: '',
-            age: null,
-            gender: '',
-            race: '',
-            city: '',
-            state: stateCode,
-            warrant_type: 'arrest',
-            case_number: '',
-            court_name: '',
-            issue_date: '',
+            warrant_id: wId, full_name: nameText, first_name: first, last_name: last, middle_name: middle,
+            date_of_birth: '', age: null, gender: '', race: '', city: '', state: stateCode,
+            warrant_type: 'arrest', case_number: '', court_name: '', issue_date: '',
             charge_description: chargeMatch ? chargeMatch[1].trim() : '',
-            bail_amount: '',
-            offense_level: '',
-            photo_url: photoUrl,
-            detail_url: '',
+            bail_amount: '', offense_level: '', photo_url: photoUrl, detail_url: detailUrl,
+          });
+        }
+      }
+
+      // Strategy 3: WordPress / CMS article patterns (post titles as names)
+      if (entries.length === 0) {
+        const articleRegex = /<article[^>]*>([\s\S]*?)<\/article>/gi;
+        let artMatch: RegExpExecArray | null;
+        let artIdx = 0;
+
+        while ((artMatch = articleRegex.exec(html)) !== null) {
+          const artHtml = artMatch[1];
+          artIdx++;
+
+          const titleMatch = artHtml.match(/<h[2-4][^>]*>\s*(?:<a[^>]*href="([^"]*)"[^>]*>)?([\s\S]*?)(?:<\/a>)?<\/h[2-4]>/i);
+          if (!titleMatch) continue;
+
+          const nameText = stripHtml(titleMatch[2]);
+          // Filter: name must look like a person's name (at least 2 words, not an article title)
+          if (nameText.length < 5 || nameText.length > 60) continue;
+          if (nameText.split(/\s+/).length < 2) continue;
+          if (/^(armed|robbery|homicide|shooting|burglary|theft|assault|update|news|press|notice|release)/i.test(nameText)) continue;
+
+          const imgMatch = artHtml.match(/<img[^>]+src="([^"]+)"/i);
+          const contentMatch = artHtml.match(/<div[^>]*class="[^"]*(?:entry-content|excerpt|summary|description)[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+
+          const { first, middle, last } = splitName(nameText);
+          const wId = `${sourceKey}-${last}-${first}-${artIdx}`.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 80);
+
+          entries.push({
+            warrant_id: wId, full_name: nameText, first_name: first, last_name: last, middle_name: middle,
+            date_of_birth: '', age: null, gender: '', race: '', city: '', state: stateCode,
+            warrant_type: 'fugitive', case_number: '', court_name: '', issue_date: '',
+            charge_description: contentMatch ? stripHtml(contentMatch[2]).substring(0, 300) : '',
+            bail_amount: '', offense_level: '', photo_url: imgMatch?.[1] || '', detail_url: titleMatch[1] || '',
+          });
+        }
+      }
+
+      // Strategy 4: Links containing names in "LAST, FIRST" format (common warrant list pattern)
+      if (entries.length === 0) {
+        const linkRegex = /<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>/gi;
+        let linkMatch: RegExpExecArray | null;
+        let linkIdx = 0;
+        const namePattern = /^([A-Z][A-Z'-]+),\s*([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+)?)/;
+
+        while ((linkMatch = linkRegex.exec(html)) !== null) {
+          const linkText = linkMatch[2].trim();
+          const nameCheck = namePattern.exec(linkText);
+          if (!nameCheck) continue;
+          linkIdx++;
+
+          const fullName = linkText;
+          const { first, middle, last } = splitName(fullName);
+          if (!last || !first) continue;
+          const wId = `${sourceKey}-${last}-${first}-${linkIdx}`.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 80);
+
+          entries.push({
+            warrant_id: wId, full_name: fullName, first_name: first, last_name: last, middle_name: middle,
+            date_of_birth: '', age: null, gender: '', race: '', city: '', state: stateCode,
+            warrant_type: 'arrest', case_number: '', court_name: '', issue_date: '',
+            charge_description: '', bail_amount: '', offense_level: '',
+            photo_url: '', detail_url: linkMatch[1] || '',
+          });
+        }
+      }
+
+      // Strategy 5: All-caps names in page content (fallback for plain text lists)
+      if (entries.length === 0) {
+        const pageText = stripHtml(html);
+        const nameRegex = /\b([A-Z][A-Z'-]{1,20}),\s+([A-Z][A-Za-z'-]+(?:\s+[A-Z]\.?)?(?:\s+[A-Z][A-Za-z'-]+)?)\b/g;
+        let textMatch: RegExpExecArray | null;
+        let textIdx = 0;
+        const seen = new Set<string>();
+
+        while ((textMatch = nameRegex.exec(pageText)) !== null) {
+          const last = textMatch[1];
+          const rest = textMatch[2];
+          // Skip common false positives
+          if (/^(COUNTY|STATE|CITY|OFFICE|DEPARTMENT|SHERIFF|POLICE|COURT|PAGE|HOME)/i.test(last)) continue;
+          const fullName = `${last}, ${rest}`;
+          if (seen.has(fullName.toLowerCase())) continue;
+          seen.add(fullName.toLowerCase());
+          textIdx++;
+
+          const { first, middle, last: ln } = splitName(fullName);
+          if (!ln || !first) continue;
+          const wId = `${sourceKey}-${ln}-${first}-${textIdx}`.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 80);
+
+          entries.push({
+            warrant_id: wId, full_name: fullName, first_name: first, last_name: ln, middle_name: middle,
+            date_of_birth: '', age: null, gender: '', race: '', city: '', state: stateCode,
+            warrant_type: 'arrest', case_number: '', court_name: '', issue_date: '',
+            charge_description: '', bail_amount: '', offense_level: '',
+            photo_url: '', detail_url: '',
           });
         }
       }
@@ -742,81 +895,61 @@ const flatheadWarrantParser: WarrantParser = {
   sourceKey: 'mt_flathead_warrants',
   parseWarrants(html: string): WarrantEntry[] {
     const entries: WarrantEntry[] = [];
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+
+    // Flathead uses <div class="warrant-entry"> cards with:
+    //   <div class="warrant-name"><p>LAST, <span>FIRST MIDDLE</span></p></div>
+    //   <div class="warrant-stat"><h6>Age:</h6><p>25</p></div>
+    //   <div class="warrant-stat"><h6>Last Known Location:</h6><p>Kalispell, MT</p></div>
+    //   <div class="img_mug" style="...url('image_thumb_script.php?f=...')..."></div>
+    const entryRegex = /<a[^>]*class="warrant-link"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
     let match: RegExpExecArray | null;
 
-    while ((match = rowRegex.exec(html)) !== null) {
-      const cells: string[] = [];
-      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-      let tdMatch: RegExpExecArray | null;
-      while ((tdMatch = tdRe.exec(match[1])) !== null) {
-        cells.push(stripHtml(tdMatch[1]));
-      }
-      if (cells.length < 2) continue;
+    while ((match = entryRegex.exec(html)) !== null) {
+      const detailUrl = match[1] || '';
+      const cardHtml = match[2];
 
-      // Skip header rows
-      if (cells[0].match(/^(Name|Defendant|Last|First|Warrant|#|ID)$/i)) continue;
+      // Extract name: "LAST, <span class="lighten-text">FIRST MIDDLE</span>"
+      const nameMatch = cardHtml.match(/<div[^>]*class="warrant-name"[^>]*>[\s\S]*?<p>\s*([\s\S]*?)\s*<\/p>/i);
+      if (!nameMatch) continue;
+      const nameRaw = stripHtml(nameMatch[1]);
+      if (nameRaw.length < 3 || nameRaw.length > 80) continue;
 
-      // Flathead table typically has: Name, Age/DOB, City, Charges
-      let nameCell = '';
-      let charges = '';
-      let caseNum = '';
-      let warrantType = '';
-      let issueDate = '';
-      let bail = '';
-      let dob = '';
-      let age: number | null = null;
-      let city = '';
+      // Extract age
+      const ageMatch = cardHtml.match(/<h6>Age:<\/h6>\s*<p>\s*(\d+)\s*<\/p>/i);
+      const age = ageMatch ? parseInt(ageMatch[1]) : null;
 
-      for (const cell of cells) {
-        if (!nameCell && cell.match(/[A-Z]{2,}/i) && (cell.includes(',') || cell.includes(' '))) {
-          if (!cell.match(/^\d/) && cell.length > 3 && cell.length < 60) {
-            nameCell = cell;
-          }
-        } else if (cell.match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/) && !dob) {
-          if (cell.match(/\b(19|20)\d{2}/)) dob = cell;
-          else if (!issueDate) issueDate = cell;
-        } else if (cell.match(/^\d{1,3}$/) && !age) {
-          age = parseInt(cell);
-        } else if (cell.match(/\$[\d,.]+/)) {
-          bail = cell;
-        } else if (cell.match(/(warrant|bench|arrest|FTA|fugitive)/i)) {
-          warrantType = cell;
-        } else if (cell.match(/(case|CR|CF|MC|CV|DR)-?\d/i) || cell.match(/^\d{2,4}-[A-Z]{1,3}-\d+$/i)) {
-          caseNum = cell;
-        } else if (cell.match(/^[A-Z][a-z]+(\s[A-Z][a-z]+)?$/)) {
-          // Likely a city name
-          if (!city) city = cell;
-        } else if (cell.length > 10 && !charges) {
-          charges = cell;
-        }
-      }
-      if (!nameCell) continue;
+      // Extract city/location
+      const locMatch = cardHtml.match(/<h6>Last Known Location:<\/h6>\s*<p>\s*([\s\S]*?)\s*<\/p>/i);
+      const location = locMatch ? stripHtml(locMatch[1]) : '';
 
-      const { first, middle, last } = splitName(nameCell);
-      const wId = `fhc-${last}-${first}-${caseNum || entries.length}`.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 80);
+      // Extract mugshot
+      const imgMatch = cardHtml.match(/url\('([^']+)'\)/i);
+      const photoUrl = imgMatch ? `https://apps.flathead.mt.gov/warrants/${imgMatch[1]}` : '';
+
+      const { first, middle, last } = splitName(nameRaw);
+      const wId = `fhc-${last}-${first}-${entries.length}`.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 80);
 
       entries.push({
         warrant_id: wId,
-        full_name: nameCell,
+        full_name: nameRaw,
         first_name: first,
         last_name: last,
         middle_name: middle,
-        date_of_birth: dob,
+        date_of_birth: '',
         age,
         gender: '',
         race: '',
-        city: city || 'Flathead County',
+        city: location || 'Flathead County',
         state: 'MT',
-        warrant_type: warrantType || 'arrest',
-        case_number: caseNum,
+        warrant_type: 'arrest',
+        case_number: '',
         court_name: 'Flathead County',
-        issue_date: issueDate,
-        charge_description: charges,
-        bail_amount: bail,
-        offense_level: charges.toLowerCase().includes('felon') ? 'felony' : '',
-        photo_url: '',
-        detail_url: '',
+        issue_date: '',
+        charge_description: '',
+        bail_amount: '',
+        offense_level: '',
+        photo_url: photoUrl,
+        detail_url: detailUrl ? `https://apps.flathead.mt.gov/warrants/${detailUrl}` : '',
       });
     }
     return entries;
@@ -1004,6 +1137,16 @@ const miamiWarrantParser: WarrantParser = {
 
 
 // ════════════════════════════════════════════════════════════
+//  PAGINATED SOURCES — sources that need multiple page fetches
+// ════════════════════════════════════════════════════════════
+
+const FLATHEAD_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const PAGINATED_SOURCES: Record<string, string[]> = {
+  mt_flathead_warrants: FLATHEAD_LETTERS.map(l => `https://apps.flathead.mt.gov/warrants/warrants_list.php?letter=${l}`),
+};
+
+
+// ════════════════════════════════════════════════════════════
 //  PARSER REGISTRY
 // ════════════════════════════════════════════════════════════
 
@@ -1014,6 +1157,7 @@ const WARRANT_PARSERS: Record<string, WarrantParser> = {
   az_maricopa_warrants: mcsoWarrantParser,
   // Federal + Mountain West
   federal_fbi_wanted: fbiWantedParser,
+  fed_fbi_wanted: fbiWantedParser,  // DB key alias
   nv_washoe_warrants: washoeWarrantParser,
   az_pima_warrants: pimaWarrantParser,
   co_denver_warrants: denverCrimeStoppersParser,
@@ -1110,8 +1254,8 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
           }
         }
 
-        // Skip warrants for people NOT in our system
-        if (!personId) continue;
+        // Store ALL warrants (national search needs full dataset)
+        // person_id is set if matched to a local person (for alerts)
 
         insertStmt.run(
           sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
@@ -1303,11 +1447,31 @@ async function scrapeSource(sourceKey: string): Promise<{
   // Get parser (specific or generic fallback)
   const parser = WARRANT_PARSERS[sourceKey] || createGenericWarrantParser(sourceKey);
 
-  // Fetch page content
-  const content = await fetchPage(config.source_url);
+  // Paginated sources: fetch multiple pages and concatenate results
+  const paginatedUrls = PAGINATED_SOURCES[sourceKey];
+  let entries: WarrantEntry[];
 
-  // Parse warrants
-  const entries = parser.parseWarrants(content);
+  if (paginatedUrls) {
+    entries = [];
+    for (const pageUrl of paginatedUrls) {
+      try {
+        const pageContent = await fetchPage(pageUrl);
+        const pageEntries = parser.parseWarrants(pageContent);
+        entries.push(...pageEntries);
+        // Small delay between pages to avoid rate limiting
+        await sleep(1500);
+      } catch (e: any) {
+        // Skip individual page errors, continue with others
+        if (e?.message === 'HTTP_PERMANENT_404') continue;
+        // Only fail if ALL pages fail
+      }
+    }
+  } else {
+    // Single page source
+    const content = await fetchPage(config.source_url);
+    entries = parser.parseWarrants(content);
+  }
+
   const { inserted, updated } = upsertWarrants(sourceKey, entries);
   const cleared = detectClearedWarrants(sourceKey, entries.map(e => e.warrant_id));
 
@@ -1343,41 +1507,47 @@ async function syncSource(sourceKey: string): Promise<void> {
     console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
 
   } catch (err) {
-    const errMsg = (err as Error).message;
-    console.error(`[Warrant Scraper] ${config.display_name} error: ${errMsg}`);
+    const errMsg = (err as Error).message || 'unknown error';
 
-    // Increment error counter
-    const errResult = db.prepare(`
+    // Permanent errors (404 = page gone) — disable source, don't circuit break
+    if (errMsg === 'HTTP_PERMANENT_404') {
+      console.warn(`[Warrant Scraper] ${config.display_name}: page not found (404) — disabling source`);
+      db.prepare('UPDATE warrant_scraper_config SET enabled = 0, last_error = ? WHERE source_key = ?').run('Page not found (404)', sourceKey);
+      const interval = sourceIntervals.get(sourceKey);
+      if (interval) { clearInterval(interval); sourceIntervals.delete(sourceKey); }
+      return;
+    }
+
+    // Transient errors — increment counter
+    const shortErr = errMsg.replace(/https?:\/\/[^\s]+/g, '...').substring(0, 100);
+    console.error(`[Warrant Scraper] ${config.display_name}: ${shortErr}`);
+
+    db.prepare(`
       UPDATE warrant_scraper_config
-      SET consecutive_errors = consecutive_errors + 1
+      SET consecutive_errors = consecutive_errors + 1, last_error = ?
       WHERE source_key = ?
-      RETURNING consecutive_errors
-    `).get(sourceKey) as { consecutive_errors: number } | undefined;
+    `).run(shortErr, sourceKey);
 
+    const errResult = db.prepare('SELECT consecutive_errors FROM warrant_scraper_config WHERE source_key = ?').get(sourceKey) as { consecutive_errors: number } | undefined;
     const errorCount = errResult?.consecutive_errors ?? 1;
 
     if (errorCount >= CIRCUIT_BREAKER_THRESHOLD) {
-      console.warn(`[Warrant Scraper] CIRCUIT BREAKER TRIPPED for ${config.display_name} after ${errorCount} errors`);
+      console.warn(`[Warrant Scraper] CIRCUIT BREAKER: ${config.display_name} (${errorCount} errors)`);
 
       db.prepare('UPDATE warrant_scraper_config SET circuit_broken = 1 WHERE source_key = ?').run(sourceKey);
 
-      // Stop the interval
       const interval = sourceIntervals.get(sourceKey);
-      if (interval) {
-        clearInterval(interval);
-        sourceIntervals.delete(sourceKey);
-      }
+      if (interval) { clearInterval(interval); sourceIntervals.delete(sourceKey); }
 
-      // Schedule exponential backoff recovery
+      // Exponential backoff recovery
       const attempt = (backoffAttempts.get(sourceKey) || 0) + 1;
       backoffAttempts.set(sourceKey, attempt);
       const backoffMs = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt - 1), BACKOFF_MAX_MS);
       const backoffHours = (backoffMs / 3_600_000).toFixed(1);
 
-      console.log(`[Warrant Scraper] Auto-recovery for ${config.display_name} in ${backoffHours}h (attempt ${attempt})`);
+      console.log(`[Warrant Scraper] Recovery for ${config.display_name} in ${backoffHours}h`);
 
       const recoveryTimeout = setTimeout(() => {
-        console.log(`[Warrant Scraper] Auto-recovery: resetting ${config.display_name}`);
         db.prepare('UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key = ?').run(sourceKey);
         scheduleSource(sourceKey);
       }, backoffMs);

@@ -321,7 +321,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                 style={{
                   background: environment === env ? (env === 'production' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)') : 'transparent',
                   border: environment === env ? `1px solid ${env === 'production' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)'}` : '1px solid transparent',
-                  color: environment === env ? (env === 'production' ? '#f87171' : '#60a5fa') : '#8a9aaa',
+                  color: environment === env ? (env === 'production' ? '#f87171' : '#aaaaaa') : '#888888',
                 }}
               >
                 {env === 'sandbox' ? 'Sandbox' : 'Production'}
@@ -464,7 +464,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
               <div key={cat.category}>
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <CatIcon className="w-3 h-3 text-rmpg-400" />
-                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{cat.category}</span>
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{(cat.category || '').replace(/_/g, ' ')}</span>
                 </div>
                 <div className="space-y-0.5">
                   {cat.products.map((product) => {
@@ -474,7 +474,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                         key={product.id}
                         className="flex items-center gap-2 px-2 py-1.5 rounded-sm transition-colors hover:bg-rmpg-800/30"
                         style={{
-                          background: enabled ? 'rgba(26, 90, 158, 0.06)' : undefined,
+                          background: enabled ? 'rgba(136, 136, 136, 0.06)' : undefined,
                         }}
                       >
                         <button type="button"

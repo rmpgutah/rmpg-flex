@@ -15,7 +15,7 @@ interface Props {
 const STATUS_BADGE: Record<string, string> = {
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
   cancelled: 'bg-red-900/50 text-red-400 border border-red-700/50',
-  confirmed: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  confirmed: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   no_show: 'bg-red-900/50 text-red-400 border border-red-700/50',
 };
 

@@ -98,21 +98,29 @@ function createSession(userId: number, refreshToken: string, ip: string, userAge
   // Parse refresh token expiry
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Enforce max sessions per user
+  // Enforce max sessions per user (admin gets unlimited)
+  const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as { role: string } | undefined;
+  const isAdmin = userRow?.role === 'admin';
+  const maxSessions = isAdmin ? 50 : config.session.maxPerUser; // Admin: effectively unlimited
+
   const activeSessions = db.prepare(`
     SELECT id FROM sessions WHERE user_id = ? AND is_active = 1
     ORDER BY last_used_at ASC
-  
     LIMIT 1000
   `).all(userId) as { id: number }[];
 
-  if (activeSessions.length >= config.session.maxPerUser) {
-    // Deactivate oldest sessions
-    const toRemove = activeSessions.length - config.session.maxPerUser + 1;
+  if (activeSessions.length >= maxSessions) {
+    // Deactivate oldest sessions (keep the most recent ones)
+    const toRemove = activeSessions.length - maxSessions + 1;
     const oldestIds = activeSessions.slice(0, toRemove).map(s => s.id);
     db.prepare(`UPDATE sessions SET is_active = 0 WHERE id IN (${oldestIds.map(() => '?').join(',')})`)
       .run(...oldestIds);
   }
+
+  // Clean up expired sessions for this user (housekeeping)
+  try {
+    db.prepare("DELETE FROM sessions WHERE user_id = ? AND (expires_at < datetime('now') OR (is_active = 0 AND last_used_at < datetime('now', '-7 days')))").run(userId);
+  } catch { /* non-critical cleanup */ }
 
   db.prepare(`
     INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at)

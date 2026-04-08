@@ -117,7 +117,7 @@ function Section({
       {/* #29: Section toggle with smooth chevron rotation */}
       <button type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 w-full text-left py-1 transition-all duration-150 active:scale-[0.97] hover:bg-[#1a2636]/30 rounded-sm"
+        className="flex items-center gap-1 w-full text-left py-1 transition-all duration-150 active:scale-[0.97] hover:bg-[#141414]/30 rounded-sm"
         aria-expanded={open}
       >
         <ChevronRight size={10} className="text-rmpg-500 transition-transform duration-200" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
@@ -163,7 +163,7 @@ export default function SafetyDashboardPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -171,14 +171,14 @@ export default function SafetyDashboardPanel({
             Safety Dashboard
           </span>
         </div>
-        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close safety dashboard">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#141414] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close safety dashboard">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
+        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Section 1: Shift Risk Score ──────────────────── */}
@@ -194,7 +194,7 @@ export default function SafetyDashboardPanel({
                     cy="28"
                     r="22"
                     fill="none"
-                    stroke="#1e2a3a"
+                    stroke="#1e1e1e"
                     strokeWidth="5"
                     strokeDasharray="103.67 138.23"
                     strokeLinecap="round"
@@ -412,7 +412,7 @@ export default function SafetyDashboardPanel({
         <Section title="Coverage">
           <div className="flex items-center gap-2">
             <Gauge size={14} style={{ color: coverageColor(unitSafety.coveragePercent) }} />
-            <div className="flex-1 h-2 rounded-sm overflow-hidden" style={{ background: '#1e2a3a' }}>
+            <div className="flex-1 h-2 rounded-sm overflow-hidden" style={{ background: '#1e1e1e' }}>
               <div
                 className="h-full rounded-sm transition-all duration-500"
                 style={{
@@ -434,7 +434,7 @@ export default function SafetyDashboardPanel({
         {shiftRisk && shiftRisk.alerts.length > 0 && (
           <Section title="Alerts History" defaultOpen={false}>
             <div
-              className="space-y-0.5 max-h-[120px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
+              className="space-y-0.5 max-h-[120px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
               style={{ scrollbarWidth: 'thin' }}
             >
               {shiftRisk.alerts.map((alert, i) => (
@@ -470,9 +470,9 @@ function ThreatCard({
   return (
     <div
       className="rounded-sm p-1.5 flex items-center gap-1.5 transition-all duration-150 hover:border-[#2a3f5a]"
-      style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
     >
-      <span className="led-dot" style={{ background: count > 0 ? ledColor : '#374151' }} />
+      <span className="led-dot" style={{ background: count > 0 ? ledColor : '#444444' }} />
       <span className="text-sm font-bold text-rmpg-200 tabular-nums">{count}</span>
       <span className="text-[10px] text-rmpg-500">{label}</span>
     </div>

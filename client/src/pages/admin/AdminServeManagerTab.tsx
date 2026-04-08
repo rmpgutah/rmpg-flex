@@ -266,7 +266,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={status?.configured ? 'Enter new key to replace...' : 'Enter your ServeManager API key...'}
-              className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-[2px] focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 font-mono transition-colors"
+              className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 font-mono transition-colors"
             />
             <button type="button"
               onClick={() => setShowKey(!showKey)}
@@ -489,7 +489,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 max={1800}
                 value={pollerInterval}
                 onChange={(e) => { setPollerInterval(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors font-mono"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
               />
               <div className="text-[9px] text-rmpg-500">Min 60s, max 1800s (30 min)</div>
             </div>
@@ -501,7 +501,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 type="text"
                 value={pollerTargetClient}
                 onChange={(e) => { setPollerTargetClient(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
               <div className="text-[9px] text-rmpg-500">Only jobs from this client trigger auto-dispatch</div>
             </div>
@@ -536,7 +536,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   value={jobSearch}
                   onChange={(e) => { setJobSearch(e.target.value); setJobPage(1); }}
                   placeholder="Search jobs..." aria-label="Search jobs..."
-                  className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-[2px] w-48 focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
+                  className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-[2px] w-48 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 />
               </div>
               <button type="button" onClick={fetchJobs} className="toolbar-btn text-[10px] flex items-center gap-1">
@@ -616,7 +616,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     <tr
                       key={job.id}
                       onClick={() => handleViewJob(job.id)}
-                      className="border-b border-rmpg-800 hover:bg-[#1a2636]/60 cursor-pointer transition-all duration-100"
+                      className="border-b border-rmpg-800 hover:bg-[#141414]/60 cursor-pointer transition-all duration-100"
                     >
                       <td className="py-1 pr-2 font-mono text-brand-400">{job.sm_job_number}</td>
                       <td className="py-1 pr-2 text-rmpg-200 max-w-[120px] truncate">{job.recipient_name || '—'}</td>

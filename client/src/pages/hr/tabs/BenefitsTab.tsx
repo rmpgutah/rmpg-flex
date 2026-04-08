@@ -169,7 +169,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
                     <div className="flex items-center gap-3">
                       <span className="text-rmpg-300 tabular-nums">EE: ${b.employee_cost.toFixed(2)}/mo</span>
                       <span className="text-rmpg-300 tabular-nums">ER: ${b.employer_cost.toFixed(2)}/mo</span>
-                      <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${b.status === 'active' ? 'bg-green-900/50 text-green-400 border border-green-700/50' : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700'}`}>{b.status}</span>
+                      <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${b.status === 'active' ? 'bg-green-900/50 text-green-400 border border-green-700/50' : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700'}`}>{(b.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
                   </div>
                 ))}

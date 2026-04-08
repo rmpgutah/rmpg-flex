@@ -39,7 +39,7 @@ export function useMapTrackingLines({ mapInstanceRef, mapLoaded, units, calls }:
       // Fix 21: skip lines where unit position equals call position (zero-length line)
       if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
 
-      const statusColor = UNIT_STATUS_COLORS[unit.status] || '#5a6e80';
+      const statusColor = UNIT_STATUS_COLORS[unit.status] || '#666666';
       const isDashed = unit.status === 'dispatched';
 
       try { // Fix 20: try/catch around Polyline creation

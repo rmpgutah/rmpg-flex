@@ -17,7 +17,7 @@ interface AnimationState {
   animFrame: number;
 }
 
-const INTERPOLATION_DURATION_MS = 500;
+const INTERPOLATION_DURATION_MS = 1000;
 
 export function useMarkerAnimation() {
   const animationsRef = useRef<Map<string, AnimationState>>(new Map());
@@ -131,4 +131,41 @@ export function useMarkerAnimation() {
   useEffect(() => () => cleanupAll(), [cleanupAll]);
 
   return { animateMarkerTo, cancelAnimation, cleanupAll };
+}
+
+/**
+ * Standalone function to animate an AdvancedMarkerElement from its current
+ * position to a new position over `duration` ms using requestAnimationFrame
+ * with ease-out cubic interpolation.
+ */
+export function animateMarkerToPosition(
+  marker: google.maps.marker.AdvancedMarkerElement,
+  targetLat: number,
+  targetLng: number,
+  duration = 1000,
+): void {
+  const startPos = marker.position as google.maps.LatLngLiteral | null;
+  if (!startPos) {
+    marker.position = { lat: targetLat, lng: targetLng };
+    return;
+  }
+  const startLat = startPos.lat;
+  const startLng = startPos.lng;
+
+  // Skip animation for negligible moves
+  if (Math.abs(targetLat - startLat) < 0.000001 && Math.abs(targetLng - startLng) < 0.000001) return;
+
+  const startTime = performance.now();
+
+  function step(currentTime: number) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // Ease-out cubic for smooth deceleration
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const lat = startLat + (targetLat - startLat) * eased;
+    const lng = startLng + (targetLng - startLng) * eased;
+    marker.position = { lat, lng };
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
 }

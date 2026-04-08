@@ -44,7 +44,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
         /* AI Unavailable state */
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
-            <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: '#6b7280' }} />
+            <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: '#666666' }} />
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6b7280] mb-1">AI Unavailable</p>
             <p className="text-[9px] text-[#4b5563] leading-relaxed max-w-[180px] mx-auto">
               No AI analysis available for this call. Analysis runs automatically when calls are created or updated.
@@ -108,7 +108,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           {/* Confidence Meter */}
           {analysis.confidence != null && (
             <div>
-              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: '#6b7280' }}>
+              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: '#666666' }}>
                 <span>Confidence</span>
                 <span className="font-mono tabular-nums">{Math.round(analysis.confidence)}%</span>
               </label>

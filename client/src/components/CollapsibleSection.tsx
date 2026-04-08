@@ -28,21 +28,23 @@ export default function CollapsibleSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className={className}>
+    <div className={`border border-[#222222] ${className}`} style={{ background: '#050505' }}>
       <button type="button"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
         aria-label={`${title} section${count !== undefined ? ` (${count})` : ''}`}
-        className="w-full flex items-center justify-between panel-title-bar"
+        className="w-full flex items-center justify-between px-2.5 py-1.5 hover:brightness-110 transition-all"
+        style={{ background: 'linear-gradient(180deg, #222222 0%, #1a1a1a 100%)', borderBottom: isOpen ? '1px solid #050505' : 'none' }}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <ChevronRight
-            className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-90 text-brand-400' : 'text-rmpg-400'}`}
+            className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
+            style={{ color: '#d4a017' }}
           />
-          {Icon && <Icon className="w-3 h-3 title-icon" />}
-          <span>{title}</span>
+          {Icon && <Icon className="w-3.5 h-3.5" style={{ color: '#d4a017', filter: 'drop-shadow(0 0 3px rgba(212,160,23,0.3))' }} />}
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>{title}</span>
           {count !== undefined && (
-            <span className="text-micro text-rmpg-500 font-mono">({count})</span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: count > 0 ? '#86efac' : '#555555' }}>({count})</span>
           )}
         </div>
         {actions && (
@@ -52,7 +54,7 @@ export default function CollapsibleSection({
         )}
       </button>
       {isOpen && (
-        <div className="pb-3 px-2 pt-2 animate-fade-in" style={{ background: 'rgba(10, 14, 20, 0.5)' }}>
+        <div className="pb-3 px-2.5 pt-2 animate-fade-in" style={{ background: '#050505' }}>
           {children}
         </div>
       )}

@@ -282,7 +282,7 @@ export default function WebResearchPage() {
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {/* Header bar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700" style={{ background: '#050505' }}>
         <Globe className="w-4 h-4 text-brand-400" />
         <h1 className="text-sm font-bold text-rmpg-100 tracking-wide uppercase flex-1">Web Research</h1>
 
@@ -552,11 +552,11 @@ export default function WebResearchPage() {
                             : 'bg-brand-600/20 text-brand-400 border border-brand-600/30'
                         }`}
                       >
-                        {result.type}
+                        {(result.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                       </span>
                       {result.linked_entity_type && (
                         <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-mono uppercase bg-green-500/20 text-green-400 border border-green-500/30 rounded-sm">
-                          {result.linked_entity_type} #{result.linked_entity_id}
+                          {(result.linked_entity_type || '').replace(/_/g, ' ')} #{result.linked_entity_id}
                         </span>
                       )}
                     </div>

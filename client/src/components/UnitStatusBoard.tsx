@@ -28,7 +28,7 @@ interface UnitStatusBoardProps {
 const STATUS_LED_CLASSES: Record<UnitStatus, string> = {
   available: 'led-dot led-green',
   dispatched: 'led-dot led-amber',
-  enroute: 'led-dot led-blue',
+  enroute: 'led-dot led-gray',
   onscene: 'led-dot led-purple',
   busy: 'led-dot led-red animate-led-blink',
   off_duty: 'led-dot led-off',
@@ -87,7 +87,7 @@ export default React.memo(function UnitStatusBoard({
             onDragEnd={handleDragEnd}
             onClick={() => onUnitClick?.(unit)}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            style={{ background: '#141e2b' }}
+            style={{ background: '#0a0a0a' }}
           >
             {/* 33: aria-hidden on decorative LED dot */}
             <span className={STATUS_LED_CLASSES[unit.status]} aria-hidden="true" />
@@ -154,6 +154,11 @@ export default React.memo(function UnitStatusBoard({
                   <div className="flex items-center gap-1 text-xs text-rmpg-300">
                     <MapPin className="w-3 h-3" />
                     <span className="truncate max-w-[150px]">{unit.location}</span>
+                    {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
+                      const mins = Math.floor((Date.now() - new Date(unit.gps_updated_at).getTime()) / 60000);
+                      const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
+                      return <span className="text-[8px] font-mono ml-1" style={{ color }}>{mins}m</span>;
+                    })()}
                   </div>
                 ) : (
                   <span className="text-rmpg-500 italic text-[10px]">No GPS</span>
@@ -165,7 +170,7 @@ export default React.memo(function UnitStatusBoard({
                   {unit.status === 'available' && !assignedUnitIds.includes(unit.id) ? (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); onAssignUnit!(unit.id); }}
-                      className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 active:bg-green-700/50 transition-colors"
+                      className="flex items-center gap-1 px-2 py-0.5 sm:py-0.5 min-h-[44px] sm:min-h-0 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 active:bg-green-700/50 transition-colors"
                       title={`Assign ${unit.call_sign} to call`}
                       aria-label={`Assign ${unit.call_sign} to call`}
                     >
@@ -185,7 +190,7 @@ export default React.memo(function UnitStatusBoard({
                     {onEditUnit && (
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); onEditUnit(unit); }}
-                        className="p-0.5 text-rmpg-400 hover:text-brand-400 transition-colors"
+                        className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-brand-400 transition-colors"
                         title={`Edit ${unit.call_sign}`}
                       >
                         <Edit className="w-3 h-3" />
@@ -194,7 +199,7 @@ export default React.memo(function UnitStatusBoard({
                     {onDeleteUnit && !unit.current_call_id && (
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); onDeleteUnit(unit); }}
-                        className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
+                        className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-red-400 transition-colors"
                         title={`Delete ${unit.call_sign}`}
                       >
                         <Trash2 className="w-3 h-3" />

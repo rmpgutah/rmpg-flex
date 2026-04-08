@@ -183,7 +183,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
         {/* Sync Queue */}
         <div className="panel-beveled p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Database className="w-4 h-4 text-blue-400" />
+            <Database className="w-4 h-4 text-gray-400" />
             <span className="text-xs font-bold text-white">Sync Queue</span>
           </div>
           <div className="text-[10px] text-rmpg-400 space-y-1">
@@ -191,7 +191,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               Pending items: <span className="text-white font-bold">{syncQueueDepth}</span>
             </div>
             {isSyncing && (
-              <div className="flex items-center gap-1 text-blue-400">
+              <div className="flex items-center gap-1 text-gray-400">
                 <RefreshCw className="w-3 h-3 animate-spin" />
                 {syncStatus.phase === 'push' ? 'Pushing' : 'Pulling'} {syncStatus.table}
                 ({syncStatus.current}/{syncStatus.total})
@@ -204,9 +204,9 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               disabled={isSyncing}
               className="mt-2 flex items-center gap-1 px-2 py-1 text-[10px] transition-colors"
               style={{
-                background: '#1e3048',
-                border: '1px solid #2a3e58',
-                color: isSyncing ? '#3a5070' : '#8a9aaa',
+                background: '#222222',
+                border: '1px solid #2e2e2e',
+                color: isSyncing ? '#383838' : '#888888',
               }}
             >
               <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -248,9 +248,9 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               disabled={generatingAll}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors"
               style={{
-                background: '#1e3048',
-                border: '1px solid #2a3e58',
-                color: generatingAll ? '#3a5070' : '#8a9aaa',
+                background: '#222222',
+                border: '1px solid #2e2e2e',
+                color: generatingAll ? '#383838' : '#888888',
               }}
             >
               {generatingAll ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
@@ -313,9 +313,9 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 transition-colors"
                         style={{
-                          background: '#1e3048',
-                          border: '1px solid #2a3e58',
-                          color: generatingSingle === s.user_id ? '#3a5070' : '#d97706',
+                          background: '#222222',
+                          border: '1px solid #2e2e2e',
+                          color: generatingSingle === s.user_id ? '#383838' : '#d97706',
                         }}
                       >
                         {generatingSingle === s.user_id ? (
@@ -329,7 +329,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        style={{ background: '#141e2b', border: '1px solid #1e3048' }}
+                        style={{ background: '#0a0a0a', border: '1px solid #222222' }}
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (

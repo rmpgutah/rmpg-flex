@@ -6,6 +6,7 @@ import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus, type TimerSeverity } from '../utils/dispatchTimers';
+import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
 
 // Feature 15: Call Source Icons
 const SOURCE_ICONS: Record<string, React.ElementType> = {
@@ -205,14 +206,17 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         ${isEmergency ? 'animate-emergency-pulse' : ''}
         ${isOverdue ? 'timer-overdue' : ''}
         ${call.status === 'on_hold' ? 'call-on-hold' : ''}
-        ${call.priority === 'P1' ? 'p1-pulse-border' : ''}
+        ${call.priority === 'P1' ? 'p1-pulse-border' : call.priority === 'P2' ? 'p2-pulse-border' : ''}
         ${call.status === 'archived' ? 'opacity-60' : ''}
       `}
       style={{
         background: call.status === 'on_hold'
           ? 'rgba(180, 130, 0, 0.08)'
-          : isSelected ? undefined : '#141e2b',
+          : isSelected ? undefined : '#0a0a0a',
         borderLeftColor: call.status === 'on_hold' ? '#f59e0b' : undefined,
+        scrollSnapAlign: 'start',
+        WebkitTouchCallout: 'none',
+        willChange: 'transform',
         ...(isDragOver ? {
           boxShadow: '0 0 8px rgba(34, 197, 94, 0.5)',
           borderColor: 'rgb(34, 197, 94)',
@@ -275,6 +279,23 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             }
             return null;
           })()}
+          {/* 72-hour deadline for active PSO calls (from creation time) */}
+          {call.incident_type === 'pso_client_request' && !['cleared', 'closed', 'archived', 'cancelled'].includes(call.status) && call.created_at && (() => {
+            const deadline = new Date(new Date(call.created_at).getTime() + 72 * 3600000);
+            const remaining = deadline.getTime() - Date.now();
+            if (remaining <= 0) return (
+              <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
+                72HR PASSED
+              </span>
+            );
+            const hrs = Math.floor(remaining / 3600000);
+            if (hrs < 24) return (
+              <span className={`text-[8px] font-bold font-mono px-1 py-0 ${hrs < 12 ? 'text-red-400 bg-red-900/40 border border-red-600/50' : 'text-amber-400 bg-amber-900/40 border border-amber-600/50'}`}>
+                {hrs}h left
+              </span>
+            );
+            return null;
+          })()}
           {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
             <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
               {call.dispatch_code}
@@ -282,8 +303,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <StatusBadge status={call.priority} type="priority" size="sm" />
-          <StatusBadge status={call.status} type="call_status" size="sm" />
+          <StatusBadge status={call.priority} type="priority" size="sm" title={humanizePriority(call.priority)} />
+          <StatusBadge status={call.status} type="call_status" size="sm" title={getStatusTooltip(call.status, 'call')} />
           {shouldEscalate && (
             <span className="text-[8px] font-bold font-mono text-amber-400 bg-amber-900/30 border border-amber-700/50 px-1 py-0 animate-pulse">
               ESCALATE
@@ -313,7 +334,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {formatIncidentType(call.incident_type)}
         </span>
         {call.incident_type === 'pso_client_request' && call.pso_service_type && (
-          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type}</span>
+          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
         )}
         {call.case_number && (
           <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 px-1">
@@ -326,6 +347,29 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           </span>
         )}
       </div>
+
+      {/* Safety Flag Indicators — compact inline badges */}
+      {(() => {
+        const flagBadges: Array<{ label: string; color: string; bg: string; border: string }> = [];
+        if (call.weapons_involved && call.weapons_involved !== 'None') flagBadges.push({ label: 'ARMED', color: '#fca5a5', bg: 'rgba(220,38,38,0.2)', border: 'rgba(220,38,38,0.4)' });
+        if ((call as any).domestic_violence) flagBadges.push({ label: 'DV', color: '#fde047', bg: 'rgba(234,179,8,0.15)', border: 'rgba(234,179,8,0.35)' });
+        if ((call as any).mental_health_crisis) flagBadges.push({ label: 'MH', color: '#c4b5fd', bg: 'rgba(139,92,246,0.15)', border: 'rgba(139,92,246,0.35)' });
+        if ((call as any).vehicle_pursuit || (call as any).foot_pursuit) flagBadges.push({ label: 'PURSUIT', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)' });
+        if ((call as any).officer_safety_caution) flagBadges.push({ label: 'SAFETY', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.35)' });
+        if ((call as any).felony_in_progress) flagBadges.push({ label: 'FELONY', color: '#ef4444', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.5)' });
+        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#aaaaaa', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.35)' });
+        if ((call as any).injuries_reported) flagBadges.push({ label: 'INJ', color: '#fb923c', bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.35)' });
+        if (flagBadges.length === 0) return null;
+        return (
+          <div className="flex flex-wrap gap-0.5 mb-1">
+            {flagBadges.map(f => (
+              <span key={f.label} className="text-[7px] font-bold font-mono px-1 py-0 leading-tight" style={{ color: f.color, background: f.bg, border: `1px solid ${f.border}` }}>
+                {f.label}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Feature 15: Source icon + Feature 5: Stack count + Feature 3: Duration */}
       <div className="flex items-center gap-1.5 text-[9px] text-rmpg-400 mb-1">
@@ -352,7 +396,20 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {/* 40: Location with improved pin icon color — coords hidden (redundant with address) */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
         <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
-        <span className="truncate">{call.location}</span>
+        <div className="truncate">
+          <span className="truncate">{formatAddressDisplay(call.location)}</span>
+          {/* Enhancement 28: Show property name below address */}
+          {call.property_name && (
+            <div className="text-[9px] text-rmpg-400 truncate">{call.property_name}</div>
+          )}
+          {/* Client/requestor company name */}
+          {(call.client_name || (call as any).pso_requestor_name) && (
+            <div className="text-[9px] text-brand-400 truncate flex items-center gap-0.5">
+              <Globe className="w-2.5 h-2.5 flex-shrink-0" />
+              {call.client_name || (call as any).pso_requestor_name}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 20: Footer row with top border separator for visual grouping */}
@@ -378,7 +435,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       {/* 41: Description with smoother transition and better truncation */}
       {call.description && (
-        <p className="mt-1.5 text-[11px] text-rmpg-400 italic line-clamp-2 border-t border-rmpg-700/30 pt-1.5" style={{ lineHeight: '1.4' }}>
+        <p className="mt-1.5 text-[11px] text-rmpg-400 italic line-clamp-3 border-t border-rmpg-700/30 pt-1.5" style={{ lineHeight: '1.4' }}>
           {call.description}
         </p>
       )}
@@ -393,7 +450,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           domestic: 'bg-red-900/40 text-red-300 border-red-700/50',
           weapons: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
           officer_safety: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50',
-          juvenile: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+          juvenile: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
           mental_health: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
           gang: 'bg-red-900/40 text-red-400 border-red-600/50',
           drugs: 'bg-green-900/40 text-green-300 border-green-700/50',
@@ -476,7 +533,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             <button type="button" onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch" aria-label="Dispatch call">D</button>
           )}
           {call.status === 'dispatched' && (
-            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-blue-900/60 text-blue-300 border border-blue-700/50 hover:bg-blue-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-gray-900/60 text-gray-300 border border-gray-700/50 hover:bg-gray-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
           )}
           {call.status === 'enroute' && (
             <button type="button" onClick={() => onStatusChange(call.id, 'onscene')} className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 hover:bg-purple-800/80 transition-colors" title="On Scene" aria-label="Set on scene">OS</button>

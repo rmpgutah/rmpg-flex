@@ -20,9 +20,9 @@ interface Props {
   loading: boolean;
 }
 
-const AXIS_TICK = { fill: '#5a6e80', fontSize: 9 };
-const GRID_STROKE = '#162236';
-const BRAND_500 = '#1a5a9e';
+const AXIS_TICK = { fill: '#666666', fontSize: 9 };
+const GRID_STROKE = '#181818';
+const BRAND_500 = '#888888';
 const OVERTIME_COLOR = '#f59e0b';
 
 export default function AnalyticsTab({ analytics, loading }: Props) {
@@ -41,7 +41,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
     { label: 'Total Personnel', value: hc.total_personnel, icon: Users, color: 'text-rmpg-100', topBorder: 'border-t-rmpg-500' },
     { label: 'Active', value: hc.active, icon: UserCheck, color: 'text-green-400', topBorder: 'border-t-green-500' },
     { label: 'On Duty', value: hc.on_duty, icon: Radio, color: 'text-green-400', topBorder: 'border-t-green-500' },
-    { label: 'Clocked In', value: hc.clocked_in, icon: Clock, color: 'text-blue-400', topBorder: 'border-t-blue-500' },
+    { label: 'Clocked In', value: hc.clocked_in, icon: Clock, color: 'text-gray-400', topBorder: 'border-t-blue-500' },
     { label: 'Avg Tenure', value: `${(Number.isFinite(Number(hc.avg_tenure_years)) ? Number(hc.avg_tenure_years) : 0).toFixed(1)}y`, icon: Calendar, color: 'text-rmpg-200', topBorder: 'border-t-rmpg-500' },
     { label: 'New Hires (30d)', value: hc.new_hires_30d, icon: UserPlus, color: 'text-cyan-400', topBorder: 'border-t-cyan-500' },
     { label: 'Terminations (30d)', value: hc.terminations_30d, icon: UserMinus, color: 'text-red-400', topBorder: 'border-t-red-500' },
@@ -172,7 +172,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
             <div className="relative w-28 h-28">
               <svg viewBox="0 0 120 120" className="w-full h-full">
                 {/* Background circle */}
-                <circle cx="60" cy="60" r="50" fill="none" stroke="#162236" strokeWidth="10" />
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#181818" strokeWidth="10" />
                 {/* Progress arc */}
                 <circle
                   cx="60"
@@ -195,7 +195,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
 
           {/* Progress bar segments */}
           <div className="space-y-2 mt-2">
-            <div className="w-full h-2 rounded-full overflow-hidden flex" style={{ background: '#162236' }}>
+            <div className="w-full h-2 rounded-full overflow-hidden flex" style={{ background: '#181818' }}>
               <div className="h-full bg-green-500" style={{ width: `${validPct}%` }} />
               <div className="h-full bg-amber-500" style={{ width: `${expiringPct}%` }} />
               <div className="h-full bg-red-500" style={{ width: `${expiredPct}%` }} />

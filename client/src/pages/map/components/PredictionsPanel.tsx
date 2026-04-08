@@ -18,7 +18,7 @@ interface PredictionsPanelProps {
 function confidenceColor(score: number): string {
   if (score >= 70) return '#ef4444';
   if (score >= 40) return '#f59e0b';
-  return '#3b82f6';
+  return '#888888';
 }
 
 function confidenceLabel(score: number): string {
@@ -43,7 +43,7 @@ export default function PredictionsPanel({
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-purple-400" />
@@ -57,7 +57,7 @@ export default function PredictionsPanel({
           )}
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close predictions panel">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#141414] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close predictions panel">
             <X size={12} className="text-rmpg-400" />
           </button>
         )}
@@ -94,7 +94,7 @@ export default function PredictionsPanel({
                   </span>
                 )}
                 {lowCount > 0 && (
-                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm bg-blue-900/30 text-blue-400 border border-blue-800/30">
+                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm bg-gray-900/30 text-gray-400 border border-gray-800/30">
                     {lowCount} LOW
                   </span>
                 )}
@@ -105,7 +105,7 @@ export default function PredictionsPanel({
             </div>
 
             {/* ── Hotspot list ────────────────────────────── */}
-            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
+            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
               {hotspots.map((hs, idx) => {
                 const color = confidenceColor(hs.score);
                 const label = confidenceLabel(hs.score);
@@ -118,7 +118,7 @@ export default function PredictionsPanel({
                     key={`${hs.latitude}-${hs.longitude}-${idx}`}
                     className="rounded-sm overflow-hidden transition-all duration-150 hover:bg-[#0f1926]"
                     style={{
-                      background: '#0d1520',
+                      background: '#050505',
                       border: '1px solid #1e2a3a',
                       borderLeft: `3px solid ${color}`,
                     }}
@@ -197,7 +197,7 @@ export default function PredictionsPanel({
       {hotspots.length > 0 && (
         <div
           className="px-3 py-1.5 flex items-center justify-between"
-          style={{ borderTop: '1px solid #1e2a3a', background: '#0d1520' }}
+          style={{ borderTop: '1px solid #1e2a3a', background: '#050505' }}
         >
           <div className="flex items-center gap-1">
             <TrendingUp size={10} className="text-purple-400" />

@@ -41,19 +41,19 @@ function getVehicleColor(status: string, gpsReportedAt: string | null): string {
   // If GPS data is stale (> 1 hour), show gray regardless of status
   if (gpsReportedAt) {
     const reportedTime = new Date(gpsReportedAt).getTime();
-    if (isNaN(reportedTime)) return '#6b7280'; // invalid date — gray
+    if (isNaN(reportedTime)) return '#666666'; // invalid date — gray
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    if (reportedTime < oneHourAgo) return '#6b7280'; // gray
+    if (reportedTime < oneHourAgo) return '#666666'; // gray
   } else {
     // No GPS time at all — stale
-    return '#6b7280';
+    return '#666666';
   }
 
   switch (status) {
     case 'in_service': return '#22c55e';      // green
     case 'maintenance': return '#f59e0b';      // amber (maintenance_due equivalent)
     case 'out_of_service': return '#dc2626';   // red
-    default: return '#6b7280';                 // gray
+    default: return '#666666';                 // gray
   }
 }
 

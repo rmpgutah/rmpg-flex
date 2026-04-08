@@ -275,13 +275,13 @@ function composeAreaCheckNarrative(lat: number, lng: number): string {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   try {
     const calls = db.prepare(
-      `SELECT call_type, location_address, priority FROM calls_for_service
+      `SELECT incident_type, location_address, priority FROM calls_for_service
        WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
-       AND created_at >= ? AND archived = 0
+       AND created_at >= ?
        ORDER BY created_at DESC LIMIT 10`
     ).all(lat - delta, lat + delta, lng - delta, lng + delta, cutoff) as any[];
     if (calls.length === 0) return 'No recent activity in this area in the last 24 hours.';
-    const types = [...new Set(calls.map((c: any) => c.call_type).filter(Boolean))];
+    const types = [...new Set(calls.map((c: any) => c.incident_type).filter(Boolean))];
     const highPri = calls.filter((c: any) => c.priority === 'P1' || c.priority === 'P2').length;
     let msg = `${calls.length} calls in this area in the last 24 hours`;
     if (types.length > 0) msg += `, types include ${types.slice(0, 4).join(', ')}`;

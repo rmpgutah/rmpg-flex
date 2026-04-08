@@ -11,6 +11,7 @@ import {
   LE_AGENCY_OPTIONS,
 } from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 
@@ -969,7 +970,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-                <input type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', e.target.value)} />
+                <input type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>

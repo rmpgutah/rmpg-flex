@@ -92,7 +92,7 @@ export default function MapOverlays({
         style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
       >
         <div
-          className="backdrop-blur-md shadow-2xl transition-all duration-200"
+          className="backdrop-blur-md shadow-md transition-all duration-200"
           role="status"
           aria-label="Map statistics"
           style={{
@@ -103,14 +103,14 @@ export default function MapOverlays({
         >
           <div className="flex items-center gap-0.5 px-1.5 py-1">
             {/* #9: Connection status LED with glow effect */}
-            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} style={{ boxShadow: isConnected ? '0 0 6px #22c55e80' : '0 0 6px #ef444480' }} />
               <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
                 {isConnected ? 'LIVE' : 'DISC'}
               </span>
             </div>
 
-            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
               <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
               {/* #10: Tabular-nums for monospaced number alignment in stats bar */}
               <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
@@ -125,7 +125,7 @@ export default function MapOverlays({
                 {([
                   { key: 'available', label: 'AVL', color: '#22c55e' },
                   { key: 'dispatched', label: 'DSP', color: '#f59e0b' },
-                  { key: 'enroute', label: 'ENR', color: '#3b82f6' },
+                  { key: 'enroute', label: 'ENR', color: '#888888' },
                   { key: 'onscene', label: 'ONS', color: '#a855f7' },
                 ] as const).filter(s => (unitsByStatus[s.key] || 0) > 0).map(({ key, label, color }) => (
                   <span key={key} className="text-[8px] font-mono font-bold px-1 rounded-sm" style={{ color, background: color + '15' }}>
@@ -156,7 +156,7 @@ export default function MapOverlays({
               ? { top: 56, left: 8, right: 8 }
               : { bottom: 48, left: 16, minWidth: 200 }),
             background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(59,130,246,0.3)' : '1px solid #3b82f650',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(59,130,246,0.3)' : '1px solid #88888850',
             padding: '8px 14px',
             fontFamily: "'JetBrains Mono', 'Courier New', monospace",
             borderRadius: 2,
@@ -164,13 +164,13 @@ export default function MapOverlays({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 10, color: '#3b82f6', fontWeight: 900, letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
               {activeRoute.unitCallSign} → {activeRoute.callNumber}
             </span>
             <button type="button"
               onClick={clearRoute}
-              className="hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
-              style={{ background: 'none', border: 'none', color: '#5a6e80', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
+              className="hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] rounded-sm"
+              style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
               aria-label="Clear route"
               title="Clear route"
             >
@@ -179,7 +179,7 @@ export default function MapOverlays({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-            <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#6b7280' : '#9ca3af' }}>{activeRoute.distance}</span>
+            <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
           </div>
           {routeLoading && (
             <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
@@ -201,7 +201,7 @@ export default function MapOverlays({
             style={{
               borderRadius: 2,
               background: 'rgba(13, 21, 32, 0.9)',
-              border: '1px solid #1e3048',
+              border: '1px solid #222222',
             }}
           >
             <button type="button"
@@ -210,7 +210,7 @@ export default function MapOverlays({
                 if (map) map.setZoom((map.getZoom() || 12) + 1);
               }}
               className="flex items-center justify-center transition-all duration-150 hover:bg-white/10 active:bg-white/20 active:scale-[0.97]"
-              style={{ width: 48, height: 48, borderBottom: '1px solid #1e3048' }}
+              style={{ width: 48, height: 48, borderBottom: '1px solid #222222' }}
               aria-label="Zoom in"
               title="Zoom in"
             >
@@ -241,8 +241,8 @@ export default function MapOverlays({
             }}
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
-                ? 'bg-white/90 border border-blue-300 hover:bg-blue-50'
-                : 'bg-surface-deep/95 border border-blue-500/50 hover:bg-blue-900/30'
+                ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
+                : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
             }`}
             style={isMobile
               ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -250,7 +250,7 @@ export default function MapOverlays({
             }
             title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
           >
-            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
+            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
           </button>
         )}
         <MapExportMenu
@@ -266,7 +266,7 @@ export default function MapOverlays({
           }}
           className={`backdrop-blur-md shadow-xl transition-colors ${
             isLightMapStyle(mapStyle)
-              ? 'bg-white/90 border border-gray-300 hover:bg-gray-100'
+              ? 'bg-white/90 border border-gray-300 hover:bg-[#141414]'
               : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
           }`}
           style={isMobile

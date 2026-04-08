@@ -47,9 +47,9 @@ function activityColor(type: string): string {
     case 'leave_request': return '#f59e0b';
     case 'leave_approved': return '#22c55e';
     case 'disciplinary': return '#ef4444';
-    case 'review': return '#3b82f6';
+    case 'review': return '#888888';
     case 'commendation': return '#8b5cf6';
-    default: return '#6b7280';
+    default: return '#666666';
   }
 }
 
@@ -83,7 +83,7 @@ function MetricCard({
   icon: Icon,
   label,
   value,
-  accent = '#3b82f6',
+  accent = '#888888',
   onClick,
 }: {
   icon: React.ElementType;
@@ -96,7 +96,7 @@ function MetricCard({
     <button type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 text-left transition-all duration-200 hover:border-[#2a3f5a] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+      className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4 text-left transition-all duration-200 hover:border-[#2a3f5a] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
       aria-label={`${label}: ${value}`}
     >
       <div className="flex items-center gap-2 mb-2">
@@ -109,14 +109,14 @@ function MetricCard({
 }
 
 // ─── Progress Bar ───────────────────────────────────────────
-function ProgressBar({ label, pct, color = '#3b82f6' }: { label: string; pct: number; color?: string }) {
+function ProgressBar({ label, pct, color = '#888888' }: { label: string; pct: number; color?: string }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-rmpg-300">{label}</span>
         <span className="text-xs font-medium text-white">{pct}%</span>
       </div>
-      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden">
+      <div className="h-2 bg-[#050505] rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
@@ -142,12 +142,12 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 transition-all duration-200 hover:border-[#2a3f5a] hover:brightness-105">
+    <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4 transition-all duration-200 hover:border-[#2a3f5a] hover:brightness-105">
       <div className="text-xs text-rmpg-400 uppercase tracking-wide mb-1">{label}</div>
       <div className="text-2xl font-bold text-white mb-1 font-mono">
         {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">/ {total} remaining</span>
       </div>
-      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
+      <div className="h-2 bg-[#050505] rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: color }}
@@ -170,22 +170,22 @@ function ManagerDashboard({
     <div className="space-y-4">
       {/* Top metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="group" aria-label="HR metrics">
-        <MetricCard icon={Users} label="Total Active" value={data.total_active} accent="#3b82f6" />
+        <MetricCard icon={Users} label="Total Active" value={data.total_active} accent="#888888" />
         <MetricCard icon={UserPlus} label="New Hires (30d)" value={data.new_hires_30d} accent="#22c55e" />
         <MetricCard icon={CalendarOff} label="On Leave Today" value={data.on_leave_today} accent="#f59e0b" />
         <MetricCard
           icon={Clock}
           label="Pending Approvals"
           value={data.pending_approvals}
-          accent={data.pending_approvals > 0 ? '#ef4444' : '#6b7280'}
+          accent={data.pending_approvals > 0 ? '#ef4444' : '#666666'}
           onClick={data.pending_approvals > 0 ? onNavigateToLeave : undefined}
         />
       </div>
 
       {/* Compliance */}
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+      <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
         <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-          <ShieldCheck size={14} className="text-blue-400" />
+          <ShieldCheck size={14} className="text-gray-400" />
           Compliance Overview
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -210,9 +210,9 @@ function ManagerDashboard({
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+      <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
         <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-          <Activity size={14} className="text-blue-400" />
+          <Activity size={14} className="text-gray-400" />
           Recent HR Activity
         </h3>
         {data.recent_activity.length === 0 ? (
@@ -224,7 +224,7 @@ function ManagerDashboard({
               return (
                 <div
                   key={item.id}
-                  className="flex items-start gap-3 bg-[#0d1520] border border-[#1e3048] rounded-sm p-2.5 transition-colors duration-150 hover:border-[#2a3f5a]"
+                  className="flex items-start gap-3 bg-[#050505] border border-[#222222] rounded-sm p-2.5 transition-colors duration-150 hover:border-[#2a3f5a]"
                 >
                   <div
                     className="w-1 self-stretch rounded-full flex-shrink-0"
@@ -279,12 +279,12 @@ function OfficerDashboard({
       {/* PTO Balances */}
       {balances ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <BalanceCard label="Vacation" used={balances.vacation_used} total={balances.vacation_total} color="#3b82f6" />
+          <BalanceCard label="Vacation" used={balances.vacation_used} total={balances.vacation_total} color="#888888" />
           <BalanceCard label="Sick" used={balances.sick_used} total={balances.sick_total} color="#ef4444" />
           <BalanceCard label="Personal" used={balances.personal_used} total={balances.personal_total} color="#8b5cf6" />
         </div>
       ) : (
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
           <p className="text-xs text-rmpg-500">Leave balances not available</p>
         </div>
       )}
@@ -292,7 +292,7 @@ function OfficerDashboard({
       {/* Quick actions */}
       <button type="button"
         onClick={onNavigateToLeave}
-        className="flex items-center gap-2 bg-[#141e2b] border border-[#1e3048] rounded-sm px-4 py-3 text-sm text-white hover:border-brand-500 transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 w-full md:w-auto"
+        className="flex items-center gap-2 bg-[#0a0a0a] border border-[#222222] rounded-sm px-4 py-3 text-sm text-white hover:border-brand-500 transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 w-full md:w-auto"
       >
         <CalendarOff size={14} className="text-amber-400" />
         Request Time Off
@@ -301,11 +301,11 @@ function OfficerDashboard({
 
       {/* Placeholders */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
           <h3 className="text-xs text-rmpg-400 uppercase tracking-wide mb-2">Next Performance Review</h3>
           <p className="text-xs text-rmpg-500">No upcoming reviews scheduled</p>
         </div>
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
           <h3 className="text-xs text-rmpg-400 uppercase tracking-wide mb-2">Expiring Credentials</h3>
           <p className="text-xs text-rmpg-500">No credentials expiring soon</p>
         </div>
@@ -350,7 +350,7 @@ export default function HRDashboardTab({
       {isManager && data ? (
         <ManagerDashboard data={data} onNavigateToLeave={onNavigateToLeave} />
       ) : isManager && !data ? (
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
           <p className="text-xs text-rmpg-500">Unable to load HR dashboard data</p>
         </div>
       ) : (

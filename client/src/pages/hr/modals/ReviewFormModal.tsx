@@ -155,7 +155,7 @@ export default function ReviewFormModal({
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-700 rounded-sm shadow-2xl flex flex-col max-h-[80vh]">
+      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-700 rounded-sm shadow-md flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <h2 className="text-sm font-semibold text-white">

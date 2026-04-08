@@ -195,7 +195,7 @@ export function getTimerState(call: CallForService): TimerState {
     const terminalTime = (call as any).archived_at || call.cleared_at || call.closed_at || call.created_at;
     const d = new Date(terminalTime);
     const formatted = !isNaN(d.getTime())
-      ? `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours() % 12 || 12).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}${d.getHours() >= 12 ? 'P' : 'A'}`
+      ? `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
       : '--';
     return {
       label,
@@ -204,7 +204,7 @@ export function getTimerState(call: CallForService): TimerState {
       threshold: Infinity,
       progress: 0,
       severity: 'normal',
-      color: '#6b7280', // muted gray for terminal calls
+      color: '#666666', // muted gray for terminal calls
       isOverdue: false,
     };
   }

@@ -66,7 +66,7 @@ export default function SignaturePad({
     ctx.font = '12px Helvetica';
     ctx.fillText('X', 10, canvas.height - 28);
     // Reset for drawing
-    ctx.strokeStyle = '#1a1a4e';
+    ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -143,7 +143,7 @@ export default function SignaturePad({
     ctx.beginPath();
     ctx.moveTo(last.x, last.y);
     ctx.quadraticCurveTo(last.x, last.y, midX, midY);
-    ctx.strokeStyle = '#1a1a4e';
+    ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = smoothWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -187,7 +187,7 @@ export default function SignaturePad({
     ctx.stroke();
 
     // Render typed name
-    ctx.fillStyle = '#1a1a4e';
+    ctx.fillStyle = '#1a1a1a';
     ctx.font = SIGNATURE_FONTS[selectedFont].css;
     ctx.textBaseline = 'bottom';
 
@@ -283,7 +283,7 @@ export default function SignaturePad({
     <div className="space-y-1">
       <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
       {/* 48: Signature pad container with top accent */}
-      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #1a5a9e' }}>
+      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #888888' }}>
         {/* 49: Mode toggle tabs with improved active state contrast */}
         <div className="flex gap-1 mb-2">
           <button
@@ -339,7 +339,7 @@ export default function SignaturePad({
                 className="text-center truncate max-w-full"
                 style={{
                   font: SIGNATURE_FONTS[selectedFont].css,
-                  color: '#1a1a4e',
+                  color: '#1a1a1a',
                   fontSize: typedName.length > 20 ? '22px' : undefined,
                 }}
               >
@@ -369,7 +369,7 @@ export default function SignaturePad({
                   onClick={() => setSelectedFont(i)}
                   className={`px-1.5 py-0.5 text-[9px] rounded-sm transition-colors ${
                     selectedFont === i
-                      ? 'bg-blue-100 border border-blue-400 text-blue-700'
+                      ? 'bg-gray-100 border border-gray-400 text-gray-700'
                       : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700'
                   }`}
                 >

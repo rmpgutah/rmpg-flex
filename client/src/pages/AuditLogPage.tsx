@@ -10,7 +10,13 @@ import {
   Calendar,
   Loader2,
   Clock,
-  X
+  X,
+  Plus,
+  Edit,
+  Trash2,
+  LogIn,
+  LogOut,
+  Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -49,6 +55,19 @@ interface Filters {
   endDate: string;
   search: string;
 }
+
+// Enhancement 44: Action type icons
+const getActionIcon = (action: string): React.ElementType => {
+  if (!action) return ScrollText;
+  const a = action.toLowerCase();
+  if (a.includes('created') || a.includes('create')) return Plus;
+  if (a.includes('updated') || a.includes('update') || a.includes('status_change')) return Edit;
+  if (a.includes('deleted') || a.includes('delete') || a.includes('cancelled')) return Trash2;
+  if (a.includes('login') || a.includes('clock_in')) return LogIn;
+  if (a.includes('logout') || a.includes('clock_out')) return LogOut;
+  if (a.includes('view') || a.includes('export') || a.includes('download')) return Eye;
+  return ScrollText;
+};
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
@@ -295,11 +314,11 @@ const AuditLogPage: React.FC = () => {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden mb-6">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Audit Log</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -334,21 +353,21 @@ const AuditLogPage: React.FC = () => {
         {stats && (
           <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+            <div className="panel-beveled p-3" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2 mb-2">
                 <ScrollText className="w-4 h-4 text-brand-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Total Entries</span>
               </div>
               <div className="text-2xl font-bold text-brand-400 font-mono">{stats.totalEntries.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: stats.entriesToday > 0 ? '#0a1a0a' : '#0d1520' }}>
+            <div className="panel-beveled p-3" style={{ background: stats.entriesToday > 0 ? '#0a1a0a' : '#050505' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="w-4 h-4 text-green-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Today</span>
               </div>
               <div className="text-2xl font-bold text-green-400 font-mono">{stats.entriesToday.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+            <div className="panel-beveled p-3" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top Action (30d)</span>
@@ -370,7 +389,7 @@ const AuditLogPage: React.FC = () => {
                 </div>
               )}
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+            <div className="panel-beveled p-3" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Filter className="w-4 h-4 text-cyan-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top User (30d)</span>
@@ -400,7 +419,7 @@ const AuditLogPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               {complianceReport && (
                 <>
-                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Login Failure Rate</div>
                     <div className={`text-xl font-bold font-mono ${complianceReport.login_stats?.failure_rate > 20 ? 'text-red-400' : 'text-green-400'}`}>
                       {complianceReport.login_stats?.failure_rate ?? 0}%
@@ -409,7 +428,7 @@ const AuditLogPage: React.FC = () => {
                       {complianceReport.login_stats?.failed ?? 0} failed / {(complianceReport.login_stats?.successful ?? 0) + (complianceReport.login_stats?.failed ?? 0)} total
                     </div>
                   </div>
-                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Active Users (30d)</div>
                     <div className="text-xl font-bold font-mono text-purple-400">
                       {complianceReport.active_users ?? 0}
@@ -419,13 +438,13 @@ const AuditLogPage: React.FC = () => {
               )}
               {indexStats && (
                 <>
-                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Total Log Entries</div>
                     <div className="text-xl font-bold font-mono text-rmpg-200">
                       {indexStats.total_entries.toLocaleString()}
                     </div>
                   </div>
-                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                  <div className="panel-beveled p-3" style={{ background: '#050505' }}>
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Est. Log Size</div>
                     <div className="text-xl font-bold font-mono text-rmpg-200">
                       {indexStats.estimated_size_mb} MB
@@ -606,7 +625,8 @@ const AuditLogPage: React.FC = () => {
                       {log.badge_number || <span className="text-rmpg-400">-</span>}
                     </td>
                     <td className="px-3 py-1.5 whitespace-nowrap">
-                      <span className={`font-semibold ${getActionColor(log.action)}`}>
+                      <span className={`font-semibold inline-flex items-center gap-1 ${getActionColor(log.action)}`}>
+                        {(() => { const Icon = getActionIcon(log.action); return <Icon className="w-3 h-3" />; })()}
                         {log.action}
                       </span>
                     </td>

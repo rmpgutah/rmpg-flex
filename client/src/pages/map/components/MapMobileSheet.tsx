@@ -56,14 +56,14 @@ export default function MapMobileSheet({
           background: 'rgba(13, 21, 32, 0.9)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid #1e3048',
+          border: '1px solid #222222',
           borderRadius: 2,
         }}
         onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
         aria-label="Toggle layers"
       >
         {/* #49: FAB icon with consistent sizing */}
-        <Layers style={{ width: 20, height: 20, color: '#3b82f6' }} />
+        <Layers style={{ width: 20, height: 20, color: '#888888' }} />
       </button>
 
       <MobileBottomSheet
@@ -74,7 +74,7 @@ export default function MapMobileSheet({
         header={
           <div className="flex items-center gap-1" role="tablist">
             {([
-              { id: 'layers' as const, icon: Layers, label: 'Layers', color: '#3b82f6' },
+              { id: 'layers' as const, icon: Layers, label: 'Layers', color: '#888888' },
               { id: 'units' as const, icon: Shield, label: `Units (${filteredUnits.length})`, color: '#22c55e' },
               { id: 'calls' as const, icon: AlertTriangle, label: `Calls (${filteredCalls.length})`, color: '#ef4444' },
             ] as const).map(({ id, icon: Icon, label, color }) => (
@@ -86,7 +86,7 @@ export default function MapMobileSheet({
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
                 style={{
                   minHeight: 44,
-                  color: mobileSheetTab === id ? color : '#6a7a8a',
+                  color: mobileSheetTab === id ? color : '#666666',
                   background: mobileSheetTab === id ? `${color}10` : 'transparent',
                   borderBottom: mobileSheetTab === id ? `2px solid ${color}` : '2px solid transparent',
                 }}
@@ -104,7 +104,7 @@ export default function MapMobileSheet({
             {[
               { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
               { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
-              { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#3b82f6' },
+              { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#888888' },
             ].map(({ key, icon: Icon, label, color }) => (
               <button type="button"
                 key={key}
@@ -112,16 +112,16 @@ export default function MapMobileSheet({
                 aria-label={`Toggle ${label} layer`}
                 role="switch"
                 aria-checked={layers[key]}
-                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
+                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
                 style={{
-                  background: layers[key] ? 'rgba(34,197,94,0.08)' : '#141e2b',
-                  border: '1px solid #1e3048',
+                  background: layers[key] ? 'rgba(34,197,94,0.08)' : '#0a0a0a',
+                  border: '1px solid #222222',
                   minHeight: 44,
                   borderRadius: 2,
                 }}
               >
                 {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-                <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#5a6e80' }} />
+                <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#666666' }} />
                 <span className="text-sm text-rmpg-200 flex-1">{label}</span>
                 {/* #50: Layer active indicator with LED glow */}
                 {layers[key] && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}80` }} />}
@@ -133,10 +133,10 @@ export default function MapMobileSheet({
               role="switch"
               aria-checked={showHeatmap}
               aria-label="Toggle heat map"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
               style={{
-                background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#141e2b',
-                border: '1px solid #1e3048',
+                background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#0a0a0a',
+                border: '1px solid #222222',
                 minHeight: 44,
                 borderRadius: 2,
               }}
@@ -152,10 +152,10 @@ export default function MapMobileSheet({
               role="switch"
               aria-checked={showBreadcrumbs}
               aria-label="Toggle breadcrumbs"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
               style={{
-                background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#141e2b',
-                border: '1px solid #1e3048',
+                background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#0a0a0a',
+                border: '1px solid #222222',
                 minHeight: 44,
                 borderRadius: 2,
               }}
@@ -167,7 +167,7 @@ export default function MapMobileSheet({
             </button>
 
             {showBreadcrumbs && (
-              <div className="px-4 py-3 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048', borderRadius: 2 }}>
+              <div className="px-4 py-3 space-y-2" style={{ background: '#050505', border: '1px solid #222222', borderRadius: 2 }}>
                 <div className="flex gap-1">
                   {[2, 4, 8, 12, 24].map((h) => (
                     <button type="button"
@@ -204,7 +204,7 @@ export default function MapMobileSheet({
             )}
 
             {/* Map Style Selector (mobile) */}
-            <div className="px-4 py-3 space-y-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048', borderRadius: 2 }}>
+            <div className="px-4 py-3 space-y-1.5" style={{ background: '#050505', border: '1px solid #222222', borderRadius: 2 }}>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
               <div className="grid grid-cols-3 gap-1.5">
                 {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
@@ -237,10 +237,10 @@ export default function MapMobileSheet({
               }}
               disabled={!gps?.latitude}
               aria-label="Center on my location"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
               style={{
-                background: '#141e2b',
-                border: '1px solid #1e3048',
+                background: '#0a0a0a',
+                border: '1px solid #222222',
                 minHeight: 44,
                 opacity: !gps?.latitude ? 0.5 : 1,
                 borderRadius: 2,
@@ -269,7 +269,7 @@ export default function MapMobileSheet({
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                     <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                     {unit.gps_source === 'clearpathgps' && (
-                      <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                      <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                     )}
                     <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                   </div>
@@ -291,7 +291,7 @@ export default function MapMobileSheet({
           <div className="divide-y divide-rmpg-700/50">
             {filteredCalls.map((call) => {
               const hasCoords = call.latitude != null && call.longitude != null;
-              const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
+              const pColor = PRIORITY_COLORS[call.priority] || '#666666';
               const { category } = getIncidentCategory(call.incident_type);
               return (
                 <button type="button"

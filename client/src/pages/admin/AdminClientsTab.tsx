@@ -16,6 +16,7 @@ import { toDisplayLabel } from '../../utils/formatters';
 import type { Client } from '../../types';
 import AdminInvoiceTab from './AdminInvoiceTab';
 import { ClientPersonLinks } from '../../components/ClientPersonLinksSection';
+import { formatAddressDisplay } from '../../utils/statusLabels';
 
 // ============================================================
 // Props
@@ -483,7 +484,7 @@ export default function AdminClientsTab({
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">Incidents</div>
                   </div>
                   <div className="panel-beveled p-3 text-center bg-surface-base">
-                    <div className="text-2xl font-bold text-blue-400">{clientCalls.length}</div>
+                    <div className="text-2xl font-bold text-gray-400">{clientCalls.length}</div>
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">CFS Calls</div>
                   </div>
                 </div>
@@ -666,10 +667,10 @@ export default function AdminClientsTab({
                       {clientCalls.map((call: any) => (
                         <tr key={call.id}>
                           <td className="font-bold text-green-400 text-xs font-mono">{call.call_number}</td>
-                          <td className="text-xs text-rmpg-200">{(call.call_type || '').replace(/_/g, ' ')}</td>
+                          <td className="text-xs text-rmpg-200">{(call.call_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                           <td className="text-xs font-mono font-bold text-rmpg-300">{call.priority}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(call.status)}</td>
-                          <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{call.location}</td>
+                          <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{formatAddressDisplay(call.location)}</td>
                           <td className="text-[10px] text-rmpg-400">{call.created_at ? new Date(call.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
                         </tr>
                       ))}

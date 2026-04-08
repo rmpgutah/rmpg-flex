@@ -16,7 +16,7 @@ export default function ProgressBar({
   value,
   label,
   showPercent = true,
-  color = '#1a5a9e',
+  color = '#888888',
   height = 4,
   className = '',
 }: ProgressBarProps) {
@@ -33,7 +33,7 @@ export default function ProgressBar({
         </div>
       )}
       <div
-        className="w-full bg-surface-sunken border border-[#1e3048] rounded-sm overflow-hidden"
+        className="w-full bg-surface-sunken border border-[#222222] rounded-sm overflow-hidden"
         style={{ height }}
       >
         {isIndeterminate ? (

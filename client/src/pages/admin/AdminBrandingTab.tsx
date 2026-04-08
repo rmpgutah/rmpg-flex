@@ -42,7 +42,7 @@ interface BrandingConfig {
 const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#1a5a9e',
+  primary_color: '#888888',
   accent_color: '#d4a017',
   header_bg_color: '#000000',
   report_footer_text: 'This document is the property of RMPG Security Services. Unauthorized distribution is prohibited.',
@@ -197,7 +197,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
               role="switch"
               aria-checked={config.show_classification_bar === '1'}
               className={`flex items-center gap-2 w-full p-2.5 border transition-all duration-150 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
-                config.show_classification_bar === '1' ? 'bg-green-900/15 border-green-700/40' : 'bg-[#0d1520] border-[#1a2636]'
+                config.show_classification_bar === '1' ? 'bg-green-900/15 border-green-700/40' : 'bg-[#050505] border-[#141414]'
               }`}
             >
               {config.show_classification_bar === '1' ? <Eye className="w-4 h-4 text-green-400" aria-hidden="true" /> : <Eye className="w-4 h-4 text-rmpg-600" aria-hidden="true" />}
@@ -227,7 +227,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
             role="switch"
             aria-checked={config.show_confidential_watermark === '1'}
             className={`flex items-center gap-2 w-full p-2.5 border transition-all duration-150 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
-              config.show_confidential_watermark === '1' ? 'bg-amber-900/15 border-amber-700/40' : 'bg-[#0d1520] border-[#1a2636]'
+              config.show_confidential_watermark === '1' ? 'bg-amber-900/15 border-amber-700/40' : 'bg-[#050505] border-[#141414]'
             }`}
           >
             {config.show_confidential_watermark === '1' ? <Eye className="w-4 h-4 text-amber-400" aria-hidden="true" /> : <Eye className="w-4 h-4 text-rmpg-600" aria-hidden="true" />}
@@ -244,7 +244,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
       {/* Live Preview */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <Printer className="w-4 h-4 text-blue-400" />
+          <Printer className="w-4 h-4 text-gray-400" />
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Report Header Preview</h3>
         </div>
 

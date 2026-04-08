@@ -19,6 +19,7 @@ import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import WarrantBadge from '../components/WarrantBadge';
+import { formatAddressDisplay } from '../utils/statusLabels';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -52,7 +53,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const REASON_COLORS: Record<string, string> = {
   suspicious_activity: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  traffic_stop: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  traffic_stop: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   trespass: 'bg-red-900/50 text-red-400 border-red-700/50',
   welfare_check: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   investigation: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
@@ -334,7 +335,7 @@ export default function FieldInterviewsPage() {
           )}
         </div>
         <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
-          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by contact reason">
             <option value="">All Reasons</option>
             {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
@@ -396,10 +397,17 @@ export default function FieldInterviewsPage() {
                 <div className="text-xs text-white font-medium flex items-center gap-1.5">
                   {fi.subject_last_name ? `${fi.subject_last_name}, ${fi.subject_first_name || ''}` : 'Unknown Subject'}
                   {fi.person_flags && <WarrantBadge flags={fi.person_flags} size="sm" />}
+                  {(() => {
+                    if (!fi.subject_last_name) return null;
+                    const key = `${fi.subject_last_name}|${fi.subject_first_name || ''}`.toLowerCase();
+                    const count = fis.filter(f => `${f.subject_last_name}|${f.subject_first_name || ''}`.toLowerCase() === key).length;
+                    if (count >= 2) return <span className="text-[8px] font-bold px-1 py-0 bg-orange-900/50 text-orange-400 border border-orange-700/50">REPEAT ({count})</span>;
+                    return null;
+                  })()}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate">{fi.location}</span>
+                  <span className="truncate">{formatAddressDisplay(fi.location)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-rmpg-500 mt-0.5">
                   <span>{fi.officer_name || fi.officer_display_name || 'Unknown Officer'}</span>
@@ -481,7 +489,7 @@ export default function FieldInterviewsPage() {
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Build</span><div className="text-white mt-0.5">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Hair / Eyes</span><div className="text-white mt-0.5">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Clothing</span><div className="text-white mt-0.5">{selectedFi.subject_clothing || '—'}</div></div>
-              <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-white mt-0.5">{selectedFi.location}</div></div>
+              <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-white mt-0.5">{formatAddressDisplay(selectedFi.location)}</div></div>
               {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
                 <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
@@ -506,8 +514,8 @@ export default function FieldInterviewsPage() {
       {/* Form Modal */}
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={`${editingFi ? 'Edit' : 'New'} Field Interview`} onClick={() => setFormOpen(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-dark shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-dark shadow-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
               <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
@@ -642,7 +650,7 @@ export default function FieldInterviewsPage() {
 
               {/* Actions */}
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(136,136,136,0.3)', borderColor: 'rgba(136,136,136,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>

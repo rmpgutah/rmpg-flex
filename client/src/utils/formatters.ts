@@ -18,6 +18,25 @@ export function formatPhone(phone: string | null | undefined): string {
 }
 
 /**
+ * Auto-format phone number as user types — (###) ###-####
+ * Only accepts digits; automatically adds parentheses, space, and hyphen.
+ * Use as onChange handler: onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+ */
+export function formatPhoneInput(value: string): string {
+  // Strip everything except digits
+  let digits = value.replace(/\D/g, '');
+  // Remove leading "1" country code if user types it
+  if (digits.length > 10 && digits[0] === '1') digits = digits.substring(1);
+  // Limit to 10 digits
+  digits = digits.substring(0, 10);
+  // Progressive formatting as user types
+  if (digits.length === 0) return '';
+  if (digits.length <= 3) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.substring(0, 3)}) ${digits.substring(3)}`;
+  return `(${digits.substring(0, 3)}) ${digits.substring(3, 6)}-${digits.substring(6)}`;
+}
+
+/**
  * Format a SSN with masking: ***-**-1234
  * Shows only last 4 digits by default. Pass `full: true` to show all.
  */

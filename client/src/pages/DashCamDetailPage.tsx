@@ -201,7 +201,7 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       <line
         x1={`${progressX}%`} y1="0"
         x2={`${progressX}%`} y2={h}
-        stroke="#3b8ad4" strokeWidth="2"
+        stroke="#aaaaaa" strokeWidth="2"
         vectorEffect="non-scaling-stroke"
       />
     </svg>
@@ -408,7 +408,7 @@ export default function DashCamDetailPage() {
       disableDefaultUI: true,
       zoomControl: true,
       styles: DARK_MAP_STYLE,
-      backgroundColor: '#17263c',
+      backgroundColor: '#171717',
     });
     mapRef.current = map;
 
@@ -419,9 +419,9 @@ export default function DashCamDetailPage() {
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 7,
-        fillColor: '#3b82f6',
+        fillColor: '#888888',
         fillOpacity: 1,
-        strokeColor: '#93c5fd',
+        strokeColor: '#cccccc',
         strokeWeight: 2,
       },
     });
@@ -432,7 +432,7 @@ export default function DashCamDetailPage() {
       const path = gpsTrack.map(p => ({ lat: p.latitude, lng: p.longitude }));
       const polyline = new google.maps.Polyline({
         path,
-        strokeColor: '#3b82f6',
+        strokeColor: '#888888',
         strokeOpacity: 0.5,
         strokeWeight: 2,
         map,
@@ -712,7 +712,7 @@ export default function DashCamDetailPage() {
 
             {/* Unit call sign */}
             {video.unit_call_sign && (
-              <span className="text-blue-400 font-bold tracking-wide">
+              <span className="text-gray-400 font-bold tracking-wide">
                 {video.unit_call_sign}
               </span>
             )}
@@ -839,7 +839,7 @@ export default function DashCamDetailPage() {
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
             className="w-16 h-1 accent-brand-500 cursor-pointer"
-            style={{ accentColor: '#3b8ad4' }}
+            style={{ accentColor: '#aaaaaa' }}
           />
 
           {/* Separator */}
@@ -969,7 +969,7 @@ export default function DashCamDetailPage() {
               isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
               <div ref={mapContainerRef}
                 className="w-full rounded-sm"
-                style={{ height: 200, background: '#0d1520' }}>
+                style={{ height: 200, background: '#050505' }}>
                 {!window.google?.maps && (
                   <div className="flex items-center justify-center h-full">
                     <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
@@ -1003,19 +1003,19 @@ export default function DashCamDetailPage() {
                   {incidentLink.incident_type && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Type</span>
-                      <span className="text-[11px] text-rmpg-200">{incidentLink.incident_type}</span>
+                      <span className="text-[11px] text-rmpg-200">{(incidentLink.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
                   )}
                   {incidentLink.status && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Status</span>
-                      <span className="text-[11px] text-rmpg-200 capitalize">{incidentLink.status}</span>
+                      <span className="text-[11px] text-rmpg-200 capitalize">{(incidentLink.status || '').replace(/_/g, ' ')}</span>
                     </div>
                   )}
                   {incidentLink.disposition && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Disposition</span>
-                      <span className="text-[11px] text-rmpg-200">{incidentLink.disposition}</span>
+                      <span className="text-[11px] text-rmpg-200">{(incidentLink.disposition || '').replace(/_/g, ' ')}</span>
                     </div>
                   )}
                 </div>
@@ -1112,7 +1112,7 @@ export default function DashCamDetailPage() {
           </div>
 
           {/* ── Panel Bottom Actions ── */}
-          <div className="border-t border-[#1a2636] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+          <div className="border-t border-[#141414] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
             {/* File info */}
             <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
               <span>{formatSize(video.file_size)}</span>

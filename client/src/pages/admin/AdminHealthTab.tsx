@@ -189,7 +189,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
   const changeTypeBadge = (type: string) => {
     const styles: Record<string, string> = {
       feature: 'bg-green-900/40 text-green-400 border-green-800/50',
-      enhancement: 'bg-blue-900/40 text-blue-400 border-blue-800/50',
+      enhancement: 'bg-gray-900/40 text-gray-400 border-gray-800/50',
       fix: 'bg-amber-900/40 text-amber-400 border-amber-800/50',
       security: 'bg-red-900/40 text-red-400 border-red-800/50',
     };
@@ -198,7 +198,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
 
   const versionTypeBadge = (type: string) => {
     if (type === 'major') return 'bg-red-900/30 text-red-400 border-red-800/40';
-    if (type === 'minor') return 'bg-blue-900/30 text-blue-400 border-blue-800/40';
+    if (type === 'minor') return 'bg-gray-900/30 text-gray-400 border-gray-800/40';
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
 
@@ -269,7 +269,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             { label: 'Units On Duty', value: realtimeStats.unitsOnDuty, color: 'text-green-400' },
             { label: 'Pending Incidents', value: realtimeStats.pendingIncidents, color: 'text-amber-400' },
             { label: 'Active BOLOs', value: realtimeStats.activeBolos, color: 'text-orange-400' },
-            { label: 'Active Sessions', value: realtimeStats.activeSessions, color: 'text-blue-400' },
+            { label: 'Active Sessions', value: realtimeStats.activeSessions, color: 'text-gray-400' },
             { label: "Today's Activity", value: realtimeStats.todayActivity, color: 'text-purple-400' },
             { label: "Today's Calls", value: realtimeStats.todayCalls, color: 'text-cyan-400' },
           ].map(item => (
@@ -328,7 +328,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                 {usersActivity.data.slice(0, 10).map((u: any) => (
                   <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised">
                     <td className="py-1 px-2 text-white font-bold">{u.full_name}</td>
-                    <td className="py-1 px-2 text-rmpg-400">{u.role}</td>
+                    <td className="py-1 px-2 text-rmpg-400">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                     <td className="py-1 px-2 text-right font-mono text-brand-400">{u.recent_action_count}</td>
                     <td className="py-1 px-2 text-right font-mono">{u.incidents_30d}</td>
                     <td className="py-1 px-2 text-right font-mono">{u.messages_30d}</td>
@@ -392,7 +392,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           label="Uptime"
           value={formatDuration(h.server.uptime)}
           sub={`Node ${h.server.nodeVersion}`}
-          color="text-blue-400"
+          color="text-gray-400"
         />
         <MetricCard
           icon={HardDrive}
@@ -559,9 +559,9 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                     <span className="text-[11px] font-mono font-bold text-green-400 ml-auto">{formatFileSize(host.networkIO.rxBytes)}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <ArrowUp className="w-3 h-3 text-blue-400" />
+                    <ArrowUp className="w-3 h-3 text-gray-400" />
                     <span className="text-[10px] text-rmpg-400">TX</span>
-                    <span className="text-[11px] font-mono font-bold text-blue-400 ml-auto">{formatFileSize(host.networkIO.txBytes)}</span>
+                    <span className="text-[11px] font-mono font-bold text-gray-400 ml-auto">{formatFileSize(host.networkIO.txBytes)}</span>
                   </div>
                 </div>
               </div>

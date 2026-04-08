@@ -116,7 +116,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-purple-700/50 shadow-2xl animate-fade-in">
+      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-purple-700/50 shadow-md animate-fade-in">
         {/* Header — purple PSO theme */}
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-purple-700/50"

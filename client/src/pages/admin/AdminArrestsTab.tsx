@@ -588,7 +588,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 {/* Source badge */}
                 <div className={`shrink-0 w-1 h-8 rounded-full ${
                   rec.entry_source === 'manual' ? 'bg-brand-500' :
-                  rec.entry_source === 'csv' ? 'bg-blue-500' :
+                  rec.entry_source === 'csv' ? 'bg-gray-500' :
                   rec.entry_source === 'scraper' ? 'bg-emerald-500' : 'bg-rmpg-600'
                 }`} />
 
@@ -600,7 +600,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                       rec.status === 'active' ? 'bg-red-900/40 text-red-400' :
                       rec.status === 'released' ? 'bg-green-900/40 text-green-400' :
                       'bg-rmpg-700 text-rmpg-400'
-                    }`}>{rec.status}</span>
+                    }`}>{(rec.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[9px] text-rmpg-500">
                     {rec.booking_date && <span>Booked: {rec.booking_date.split('T')[0]}</span>}
@@ -771,7 +771,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
                           {/* Type badge */}
                           <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${
-                            county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-blue-900/40 text-blue-400'
+                            county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-gray-900/40 text-gray-400'
                           }`}>{county.roster_type}</span>
 
                           {/* Enable/Disable toggle */}

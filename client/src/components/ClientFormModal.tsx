@@ -3,6 +3,7 @@ import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import AddressAutocomplete from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 export interface ClientFormData {
   name: string;
@@ -335,7 +336,7 @@ export default function ClientFormModal({
             </div>
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Phone</label>
-              <input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} placeholder="(801) 555-3001" pattern="[0-9()\-\s+]{7,20}" />
+              <input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-3001" pattern="[0-9()\-\s+]{7,20}" />
             </div>
           </div>
 
@@ -362,7 +363,7 @@ export default function ClientFormModal({
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Method</label>
               <select className="select-dark text-xs w-full" value={form.payment_method} onChange={(e) => set('payment_method', e.target.value)}>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{m ? m.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-- Select --'}</option>
+                  <option key={m} value={m}>{m ? m.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '-- Select --'}</option>
                 ))}
               </select>
             </div>

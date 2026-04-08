@@ -50,10 +50,10 @@ function todayStr() {
 // ── Status badge helper ────────────────────────────────────
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  draft:     { bg: 'rgba(107,114,128,0.15)', text: '#9ca3af', border: '#4b5563' },
+  draft:     { bg: 'rgba(107,114,128,0.15)', text: '#999999', border: '#555555' },
   active:    { bg: 'rgba(34,197,94,0.15)',    text: '#22c55e', border: '#16a34a' },
-  completed: { bg: 'rgba(59,130,246,0.15)',   text: '#3b82f6', border: '#2563eb' },
-  archived:  { bg: 'rgba(100,116,139,0.15)',  text: '#94a3b8', border: '#64748b' },
+  completed: { bg: 'rgba(59,130,246,0.15)',   text: '#888888', border: '#888888' },
+  archived:  { bg: 'rgba(100,116,139,0.15)',  text: '#888888', border: '#666666' },
 };
 
 function PlanStatusBadge({ status }: { status: string }) {
@@ -177,10 +177,10 @@ export default function ShiftPlansPage() {
       {/* ── DATE SELECTOR BAR ─────────────────────────────── */}
       <div
         className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}
+        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
       >
         <div className="flex items-center gap-3">
-          <Calendar style={{ width: 14, height: 14, color: '#3b82f6' }} />
+          <Calendar style={{ width: 14, height: 14, color: '#888888' }} />
           <button type="button"
             onClick={() => navigateDate(-1)}
             className="text-[10px] text-rmpg-400 hover:text-white px-1.5 py-0.5 hover:bg-rmpg-700/30 transition-colors"
@@ -193,7 +193,7 @@ export default function ShiftPlansPage() {
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             aria-label="Select shift date"
-            className="bg-transparent text-white text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors"
+            className="bg-transparent text-white text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/30 transition-colors"
           />
           <button type="button"
             onClick={() => navigateDate(1)}
@@ -205,7 +205,7 @@ export default function ShiftPlansPage() {
           <span className="text-[11px] font-semibold text-rmpg-300">{formatDate(selectedDate)}</span>
           <button type="button"
             onClick={() => setSelectedDate(todayStr())}
-            className="text-[9px] text-blue-400 hover:text-blue-300 uppercase font-bold tracking-wider px-1.5 py-0.5 hover:bg-blue-900/30 transition-colors border border-transparent hover:border-blue-700/30"
+            className="text-[9px] text-gray-400 hover:text-gray-300 uppercase font-bold tracking-wider px-1.5 py-0.5 hover:bg-gray-900/30 transition-colors border border-transparent hover:border-gray-700/30"
           >
             Today
           </button>
@@ -233,7 +233,7 @@ export default function ShiftPlansPage() {
           <ExportButton exportUrl="/api/admin/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           <button type="button"
             onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
+            className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
           >
             <Plus style={{ width: 10, height: 10 }} />
             New Plan
@@ -245,7 +245,7 @@ export default function ShiftPlansPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* ── LEFT: Plan List ── */}
         <div className={`${isMobile ? (sp.activePlanId ? 'hidden' : 'w-full') : 'w-1/3'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2" style={{ background: '#0f1a28', borderBottom: '1px solid #1e3048' }}>
+          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2" style={{ background: '#080808', borderBottom: '1px solid #222222' }}>
             Plans for {formatDate(selectedDate)} ({plansForDate.length})
           </div>
 
@@ -253,7 +253,7 @@ export default function ShiftPlansPage() {
           {showCreateForm && (
             <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'rgba(59,130,246,0.06)' }}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold text-blue-400 uppercase">New Shift Plan</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase">New Shift Plan</span>
                 <button type="button" onClick={() => setShowCreateForm(false)} className="text-rmpg-500 hover:text-white">
                   <X style={{ width: 10, height: 10 }} />
                 </button>
@@ -263,7 +263,7 @@ export default function ShiftPlansPage() {
                 value={newPlanName}
                 onChange={(e) => setNewPlanName(e.target.value)}
                 placeholder="Plan name..."
-                className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1.5 mb-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors"
+                className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1.5 mb-2 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/30 transition-colors"
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />
@@ -286,7 +286,7 @@ export default function ShiftPlansPage() {
               <button type="button"
                 onClick={handleCreate}
                 disabled={!newPlanName.trim()}
-                className="w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors disabled:opacity-40"
+                className="w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors disabled:opacity-40"
               >
                 Create Plan
               </button>
@@ -304,7 +304,7 @@ export default function ShiftPlansPage() {
                   <p className="text-rmpg-400 font-medium">No shift plans for this date</p>
                   <button type="button"
                     onClick={() => setShowCreateForm(true)}
-                    className="text-blue-400 hover:text-blue-300 text-[10px] mt-2 hover:underline"
+                    className="text-gray-400 hover:text-gray-300 text-[10px] mt-2 hover:underline"
                   >
                     + Create one
                   </button>
@@ -321,7 +321,7 @@ export default function ShiftPlansPage() {
                     className="px-3 py-2.5 cursor-pointer transition-all duration-150 border-b border-rmpg-800/50 hover:brightness-110"
                     style={{
                       background: isSelected ? 'rgba(59,130,246,0.08)' : 'transparent',
-                      borderLeft: `3px solid ${shiftConfig?.color || '#5a6e80'}`,
+                      borderLeft: `3px solid ${shiftConfig?.color || '#666666'}`,
                     }}
                     role="button"
                     tabIndex={0}
@@ -333,7 +333,7 @@ export default function ShiftPlansPage() {
                         <span className="text-[11px] font-bold text-white">{plan.name}</span>
                         <PlanStatusBadge status={plan.status} />
                       </div>
-                      {isSelected && <ChevronRight style={{ width: 10, height: 10, color: '#3b82f6' }} />}
+                      {isSelected && <ChevronRight style={{ width: 10, height: 10, color: '#888888' }} />}
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-[9px] text-rmpg-400">
                       <span style={{ color: shiftConfig?.color }}>{shiftConfig?.label}</span>
@@ -354,7 +354,7 @@ export default function ShiftPlansPage() {
               {/* Plan header with actions */}
               <div
                 className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-                style={{ background: '#0f1a28', borderBottom: '1px solid #1e3048' }}
+                style={{ background: '#080808', borderBottom: '1px solid #222222' }}
               >
                 <div>
                   {isMobile && (
@@ -389,7 +389,7 @@ export default function ShiftPlansPage() {
                   {sp.activePlan.status === 'active' && (
                     <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'completed')}
-                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50"
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50"
                     >
                       <CheckCircle style={{ width: 9, height: 9 }} /> Complete
                     </button>
@@ -430,7 +430,7 @@ export default function ShiftPlansPage() {
               {/* Assignments table */}
               <div className="flex-1 overflow-auto">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between"
-                  style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}
+                  style={{ background: '#050505', borderBottom: '1px solid #222222' }}
                 >
                   <span>Area Assignments ({sp.activePlan.assignments.length})</span>
                   {sp.activePlan.assignments.length > 0 && (
@@ -457,7 +457,7 @@ export default function ShiftPlansPage() {
                   <div className={isMobile ? 'overflow-x-auto' : ''}>
                   <table className="w-full text-[10px]" role="table">
                     <thead className="sticky top-0 z-10">
-                      <tr style={{ background: '#0f1a28' }} className="text-rmpg-500 text-[9px] uppercase tracking-wider">
+                      <tr style={{ background: '#080808' }} className="text-rmpg-500 text-[9px] uppercase tracking-wider">
                         <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Area</th>
                         <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Layer</th>
                         <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Officers</th>
@@ -475,7 +475,7 @@ export default function ShiftPlansPage() {
                         >
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1.5">
-                              <MapPin style={{ width: 9, height: 9, color: a.color || '#3b82f6' }} />
+                              <MapPin style={{ width: 9, height: 9, color: a.color || '#888888' }} />
                               <span className="font-semibold text-white">{a.label}</span>
                             </div>
                           </td>
@@ -484,7 +484,7 @@ export default function ShiftPlansPage() {
                             {a.officerNames.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
                                 {a.officerNames.map((name) => (
-                                  <span key={name} className="text-[9px] font-mono px-1 py-px bg-blue-900/30 text-blue-400 border border-blue-800/50">
+                                  <span key={name} className="text-[9px] font-mono px-1 py-px bg-gray-900/30 text-gray-400 border border-gray-800/50">
                                     {name}
                                   </span>
                                 ))}
@@ -528,22 +528,22 @@ export default function ShiftPlansPage() {
 
                 {/* Summary panel */}
                 {sp.activePlan.assignments.length > 0 && (
-                  <div className="px-4 py-3" style={{ background: '#0d1520', borderTop: '1px solid #1e3048' }}>
+                  <div className="px-4 py-3" style={{ background: '#050505', borderTop: '1px solid #222222' }}>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Coverage Summary</div>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
-                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
-                        <div className="text-[18px] font-black text-blue-400 font-mono tabular-nums">{stats.assigned}</div>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
+                        <div className="text-[18px] font-black text-gray-400 font-mono tabular-nums">{stats.assigned}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Areas Covered</div>
                       </div>
-                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-green-400 font-mono tabular-nums">{stats.officers}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Officers Assigned</div>
                       </div>
-                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-purple-400 font-mono tabular-nums">{stats.units}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Units Deployed</div>
                       </div>
-                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-amber-400 font-mono">
                           {SHIFT_TYPES[sp.activePlan.shiftType]?.defaultStart}
                         </div>
@@ -574,7 +574,7 @@ export default function ShiftPlansPage() {
         {shiftNotifs.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {shiftNotifs.slice(0, 6).map((n: any, i: number) => (
-              <span key={i} className={`text-[9px] px-2 py-0.5 rounded ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : n.severity === 'warning' ? 'bg-amber-900/30 text-amber-400' : 'bg-blue-900/30 text-blue-400'}`}>
+              <span key={i} className={`text-[9px] px-2 py-0.5 rounded ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : n.severity === 'warning' ? 'bg-amber-900/30 text-amber-400' : 'bg-gray-900/30 text-gray-400'}`}>
                 {n.message}
               </span>
             ))}
@@ -604,10 +604,10 @@ export default function ShiftPlansPage() {
 
           {/* Pending Swap Requests */}
           {swapRequests.length > 0 && (
-            <div className="p-2 rounded border bg-blue-900/20 border-blue-800/30 text-center">
-              <ArrowRightLeft className="w-3 h-3 text-blue-400 mx-auto mb-0.5" />
-              <div className="text-sm font-bold font-mono text-blue-400">{swapRequests.length}</div>
-              <div className="text-[8px] text-blue-400">Swap Requests</div>
+            <div className="p-2 rounded border bg-gray-900/20 border-gray-800/30 text-center">
+              <ArrowRightLeft className="w-3 h-3 text-gray-400 mx-auto mb-0.5" />
+              <div className="text-sm font-bold font-mono text-gray-400">{swapRequests.length}</div>
+              <div className="text-[8px] text-gray-400">Swap Requests</div>
             </div>
           )}
 

@@ -28,7 +28,7 @@ interface UseMapEnforcementClustersReturn {
 // Fix 70: color code by enforcement type (citations vs arrests vs warnings)
 
 const TYPE_COLORS: Record<string, string> = {
-  citations: '#3b82f6',   // blue
+  citations: '#888888',   // blue
   arrests: '#dc2626',     // red
   warnings: '#f59e0b',    // amber
 };
@@ -91,7 +91,7 @@ export function useMapEnforcementClusters(
       infoWindowRef.current = new google.maps.InfoWindow();
     }
 
-    const color = TYPE_COLORS[type] || '#3b82f6';
+    const color = TYPE_COLORS[type] || '#888888';
 
     clusters.forEach((cluster) => {
       if (cluster.lat == null || cluster.lng == null) return;
