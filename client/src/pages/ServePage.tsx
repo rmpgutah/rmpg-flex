@@ -13,12 +13,8 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
-<<<<<<< HEAD
 import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
-=======
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
->>>>>>> main
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
@@ -29,10 +25,6 @@ import ExportButton from '../components/ExportButton';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-=======
-const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
->>>>>>> main
 const TABS = ['Queue', 'Route', 'Map', 'Stats'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
@@ -795,11 +787,7 @@ export default function ServePage() {
                 </div>
               ) : filteredJobs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-center">
-<<<<<<< HEAD
                   <div className="w-12 h-12 rounded-full bg-[#0c0f13] flex items-center justify-center mb-3">
-=======
-                  <div className="w-12 h-12 rounded-full bg-[#0d1520] flex items-center justify-center mb-3">
->>>>>>> main
                     <Briefcase size={20} className="text-rmpg-500" />
                   </div>
                   <p className="text-sm text-rmpg-400 font-medium">
@@ -856,11 +844,7 @@ export default function ServePage() {
               return (
                 <>
                   {/* Stats bar */}
-<<<<<<< HEAD
                   <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#0c0f13] border border-[#2b313a] rounded-[2px]" role="status" aria-label="Route statistics">
-=======
-                  <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#0d1520] border border-[#1e3048] rounded-[2px]" role="status" aria-label="Route statistics">
->>>>>>> main
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
                       <MapPin size={12} className="text-blue-400" />
                       <span className="font-mono tabular-nums text-white">{totalStops}</span> stops
@@ -887,11 +871,7 @@ export default function ServePage() {
                   </div>
 
                   {/* Progress bar */}
-<<<<<<< HEAD
                   <div className="w-full h-1.5 bg-[#1b2128] rounded-full overflow-hidden">
-=======
-                  <div className="w-full h-1.5 bg-[#1a2636] rounded-full overflow-hidden">
->>>>>>> main
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
@@ -915,22 +895,14 @@ export default function ServePage() {
                               ? 'bg-green-900/10 border-green-800/30 opacity-60'
                               : isFailed
                                 ? 'bg-red-900/10 border-red-800/30 opacity-60'
-<<<<<<< HEAD
                                 : 'bg-[#161b21] border-[#2b313a] hover:border-[#888888]/30'
-=======
-                                : 'bg-[#141e2b] border-[#1e3048] hover:border-[#1a5a9e]/30'
->>>>>>> main
                           }`}
                         >
                           {/* Stop number */}
                           <span
                             className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0"
                             style={{
-<<<<<<< HEAD
                               background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#888888',
-=======
-                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#3b82f6',
->>>>>>> main
                             }}
                           >
                             {idx + 1}
@@ -957,11 +929,7 @@ export default function ServePage() {
                           {/* Status badge */}
                           <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0" style={{
                             background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#3b82f620',
-<<<<<<< HEAD
                             color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
-=======
-                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#60a5fa',
->>>>>>> main
                             border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#3b82f630'}`,
                           }}>
                             {job.status.replace('_', ' ')}
@@ -1002,11 +970,7 @@ export default function ServePage() {
               );
             })() : (
               <div className="flex flex-col items-center justify-center h-40 text-center">
-<<<<<<< HEAD
                 <div className="w-12 h-12 rounded-full bg-[#1b2128] flex items-center justify-center mb-3">
-=======
-                <div className="w-12 h-12 rounded-full bg-[#1a2636] flex items-center justify-center mb-3">
->>>>>>> main
                   <Route size={20} className="text-rmpg-500" />
                 </div>
                 <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
@@ -1464,11 +1428,7 @@ export default function ServePage() {
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
-<<<<<<< HEAD
               className="w-full px-3 py-2 text-sm bg-[#0c0f13] border border-[#2b313a] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
-=======
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
->>>>>>> main
               placeholder="Special instructions for service..."
             />
           </div>
@@ -1478,11 +1438,7 @@ export default function ServePage() {
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}
-<<<<<<< HEAD
               className="w-full px-3 py-2 text-sm bg-[#0c0f13] border border-[#2b313a] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors resize-none"
-=======
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
->>>>>>> main
               placeholder="Internal notes..."
             />
           </div>

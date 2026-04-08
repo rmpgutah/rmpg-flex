@@ -23,10 +23,7 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
-<<<<<<< HEAD
-=======
   formSectionPageBreak,
->>>>>>> main
   sanitizePdfText,
   addSignatureBlock,
   wordWrapText,

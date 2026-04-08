@@ -90,21 +90,13 @@ export function drawFormCell(
   // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
   if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
-<<<<<<< HEAD
   // Cell borders drawn by drawFormRow (shared edges prevent double-lines)
-=======
-  // No cell border — clean borderless style matching CFS report
->>>>>>> main
 
   // Label (Helvetica Bold, dark gray — above value)
   const labelBaseY = y + pad + 1.2;
   if (cell.label) {
     doc.setFont('helvetica', 'bold');
-<<<<<<< HEAD
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-=======
-    doc.setFontSize(5.5); // 5.5pt labels matching CFS addFieldPair style
->>>>>>> main
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     // Strip numbered prefix patterns like "1. ", "12. " from labels
     const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
@@ -218,11 +210,6 @@ export function drawFormGrid(
     curY = drawFormRow(doc, row.cells, x, curY, totalW, h);
   }
 
-<<<<<<< HEAD
-=======
-  // No outer border — clean borderless style matching CFS report
-
->>>>>>> main
   return curY;
 }
 
@@ -332,11 +319,6 @@ export function drawCheckboxGrid(
   // Account for last row
   curY += rowH;
 
-<<<<<<< HEAD
-=======
-  // No outer border — clean borderless style matching CFS report
-
->>>>>>> main
   return curY;
 }
 
@@ -395,11 +377,6 @@ export function drawCodeReferenceTable(
 
   curY += rowH;
 
-<<<<<<< HEAD
-=======
-  // No outer border — clean borderless style matching CFS report
-
->>>>>>> main
   return curY;
 }
 
@@ -472,11 +449,7 @@ export function drawFormSection(
     const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textY = curY + (bannerH + bannerCapH) / 2;
     doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
-<<<<<<< HEAD
     curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
-=======
-    curY += bannerH + 1; // 1mm gap between banner and first grid row (tight)
->>>>>>> main
   }
 
   // Draw grid rows
@@ -488,13 +461,7 @@ export function drawFormSection(
   }
 
   if (useBanner) {
-<<<<<<< HEAD
     // No extra enclosing border — rows already have shared-edge borders
-=======
-    // Enclosing section border around entire section (banner + grid + afterGrid)
-    const totalH = curY - sectionStartY;
-    // No enclosing section border — clean borderless style
->>>>>>> main
   } else {
     // Draw sidebar tab spanning the full section height (legacy mode)
     const sectionH = curY - sectionStartY;

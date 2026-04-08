@@ -78,11 +78,7 @@ import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
-<<<<<<< HEAD
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
-=======
-import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
->>>>>>> main
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -249,6 +245,78 @@ function formatServiceType(val: string | undefined | null): string {
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
   return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
+
+// Label maps for human-readable display of stored values
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  process_service: 'Process Service (General)',
+  subpoena_service: 'Subpoena Service',
+  summons_service: 'Summons & Complaint',
+  eviction_service: 'Eviction / Unlawful Detainer',
+  restraining_order_service: 'Protective Order Service',
+  writ_service: 'Writ Service',
+  court_filing: 'Court Filing / Delivery',
+  skip_trace: 'Skip Trace & Locate',
+  stake_out: 'Stake Out / Surveillance',
+  rush_service: 'Rush / Same-Day Service',
+  patrol: 'Patrol',
+  static_guard: 'Static Guard',
+  escort: 'Escort',
+  event_security: 'Event Security',
+  surveillance: 'Surveillance',
+  access_control: 'Access Control',
+  other: 'Other',
+};
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  // Civil Process
+  subpoena: 'Subpoena',
+  summons: 'Summons & Complaint',
+  complaint: 'Complaint',
+  civil_summons: 'Civil Summons',
+  small_claims: 'Small Claims',
+  garnishment: 'Garnishment',
+  writ_of_execution: 'Writ of Execution',
+  writ_of_restitution: 'Writ of Restitution',
+  writ_of_garnishment: 'Writ of Garnishment',
+  writ_of_attachment: 'Writ of Attachment',
+  // Family / Domestic
+  restraining_order: 'Protective / Restraining Order',
+  divorce_papers: 'Divorce Papers',
+  custody_order: 'Custody Order',
+  child_support: 'Child Support Order',
+  stalking_injunction: 'Stalking Injunction',
+  // Real Property
+  eviction: 'Eviction Notice',
+  unlawful_detainer: 'Unlawful Detainer',
+  notice_to_quit: 'Notice to Quit',
+  foreclosure: 'Foreclosure Notice',
+  // Court Orders
+  court_order: 'Court Order',
+  temporary_order: 'Temporary Order',
+  motion: 'Motion / Petition',
+  notice_of_hearing: 'Notice of Hearing',
+  order_to_show_cause: 'Order to Show Cause',
+  // Other
+  demand_letter: 'Demand Letter',
+  cease_and_desist: 'Cease & Desist',
+  civil: 'Civil Papers',
+  writ: 'Writ',
+  order: 'Court Order',
+  notice: 'Notice',
+  petition: 'Petition',
+  levy: 'Levy',
+  other: 'Other',
+};
+
+function formatServiceType(val: string | undefined | null): string {
+  if (!val) return '';
+  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatDocumentType(val: string | undefined | null): string {
+  if (!val) return '';
+  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // Label maps for human-readable display of stored values
@@ -969,13 +1037,10 @@ export default function DispatchPage() {
       if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
         setServeLink(data);
       }
-<<<<<<< HEAD
       // Voice alert: announce return visit scheduled
       if (data?.call_number && data?.attempt_number && data.attempt_number > 1) {
         announceReturnVisit(data.call_number, data.attempt_number, data.next_window);
       }
-=======
->>>>>>> main
     });
     const unsubServeAttempt = subscribe('serve:attempt', (msg: any) => {
       const data = msg.data || msg;
@@ -986,7 +1051,6 @@ export default function DispatchPage() {
           if (res) setServeLink(res);
         }).catch(() => {});
       }
-<<<<<<< HEAD
       // Voice alert: announce serve completion
       if (data?.result && data?.served_to && data?.call_number) {
         announceServeComplete(
@@ -997,8 +1061,6 @@ export default function DispatchPage() {
           data.result,
         );
       }
-=======
->>>>>>> main
     });
 
     // Listen for warrant alerts on linked persons
@@ -2750,21 +2812,12 @@ export default function DispatchPage() {
                   </div>
                   <div className="space-y-1.5 text-xs">
                     {([
-<<<<<<< HEAD
                       { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#999999' },
                       { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
                       { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
                       { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
                       { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
                       { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
-=======
-                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#9ca3af' },
-                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
-                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
-                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
->>>>>>> main
                     ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
                       <div key={ts.field} className="flex justify-between items-center group">
                         <span className="text-rmpg-400 flex items-center gap-1.5">
@@ -2789,11 +2842,7 @@ export default function DispatchPage() {
                               }}
                             />
                             {ts.value && ts.field !== 'created_at' && (
-<<<<<<< HEAD
                               <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
-=======
-                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
->>>>>>> main
                                 <X className="w-3 h-3" />
                               </button>
                             )}
@@ -2809,7 +2858,6 @@ export default function DispatchPage() {
                         )}
                       </div>
                     ))}
-<<<<<<< HEAD
                     {/* Enhancement 26: Response time (dispatched → onscene) */}
                     {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
                       const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
@@ -2823,8 +2871,6 @@ export default function DispatchPage() {
                         </div>
                       );
                     })()}
-=======
->>>>>>> main
                   </div>
                 </div>
 
@@ -3548,22 +3594,17 @@ export default function DispatchPage() {
                   {selectedCall.priority === 'P1' && (
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
-<<<<<<< HEAD
                   <span
                     className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap cursor-pointer hover:text-green-300 transition-colors"
                     style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}
                     title="Click to copy"
                     onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(selectedCall.call_number || ''); addToast(`Copied ${selectedCall.call_number}`, 'success'); }}
                   >{selectedCall.call_number}</span>
-=======
-                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
->>>>>>> main
                   {/* Case Number — editable by admin/manager */}
                   {(selectedCall.case_number || isAdminOrManager) && (
                     editingTimestamp === 'case_number' ? (
                       <input
                         type="text"
-<<<<<<< HEAD
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={selectedCall.case_number || ''}
                         placeholder="Enter case number..."
@@ -3571,14 +3612,6 @@ export default function DispatchPage() {
                         onKeyDown={async (e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
-=======
-                        className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[140px]"
-                        defaultValue={selectedCall.case_number || ''}
-                        placeholder="Case #"
-                        autoFocus
-                        onKeyDown={async (e) => {
-                          if (e.key === 'Enter') {
->>>>>>> main
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
@@ -3591,7 +3624,6 @@ export default function DispatchPage() {
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
                         }}
-<<<<<<< HEAD
                         onBlur={async (e) => {
                           // Save on blur (don't discard changes)
                           const val = e.target.value.trim();
@@ -3605,9 +3637,6 @@ export default function DispatchPage() {
                           }
                           setEditingTimestamp(null);
                         }}
-=======
-                        onBlur={() => setEditingTimestamp(null)}
->>>>>>> main
                       />
                     ) : (
                       <span
@@ -3646,7 +3675,6 @@ export default function DispatchPage() {
                       />
                     ) : selectedCall.incident_number ? (
                       <span
-<<<<<<< HEAD
                         className={`text-[10px] font-bold font-mono text-cyan-300 bg-cyan-900/30 border border-cyan-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-cyan-200 transition-colors`}
                         onClick={(e) => {
                           if (isAdminOrManager && e.shiftKey) {
@@ -3659,12 +3687,6 @@ export default function DispatchPage() {
                         title={isAdminOrManager ? 'Click to view incident (Shift+click to edit)' : 'Click to view incident'}
                       >
                         <Link style={{ width: 8, height: 8, display: 'inline', verticalAlign: 'middle', marginRight: 2 }} />
-=======
-                        className={`text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap ${isAdminOrManager ? 'cursor-pointer hover:brightness-125' : ''}`}
-                        onClick={() => isAdminOrManager && setEditingTimestamp('incident_number')}
-                        title={isAdminOrManager ? 'Click to edit incident link' : undefined}
-                      >
->>>>>>> main
                         INC {selectedCall.incident_number}
                       </span>
                     ) : null
@@ -4247,7 +4269,6 @@ export default function DispatchPage() {
                         <label className="field-label">Timeline:</label>
                         {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
                       </div>
-<<<<<<< HEAD
                       <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #2b313a' }}>
                         {([
                           { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#666666', showElapsed: true },
@@ -4260,20 +4281,6 @@ export default function DispatchPage() {
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0c0f13', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
-=======
-                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #1e3048' }}>
-                        {([
-                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#6b7280', showElapsed: true },
-                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#3b82f6' },
-                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
-                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#6b7280' },
-                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#6b7280' },
-                        ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
-                          <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#1e3048', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
->>>>>>> main
                             <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
@@ -4293,11 +4300,7 @@ export default function DispatchPage() {
                                   }}
                                 />
                                 {ts.value && ts.field !== 'created_at' && (
-<<<<<<< HEAD
                                   <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
-=======
-                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5" title="Clear timestamp">
->>>>>>> main
                                     <X className="w-3 h-3" />
                                   </button>
                                 )}
@@ -4311,7 +4314,6 @@ export default function DispatchPage() {
                                 {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic text-[9px]">— not set —</span>}
                               </span>
                             )}
-<<<<<<< HEAD
                             {ts.showElapsed && ts.value && !editingTimestamp && (() => {
                               const ageMin = Math.floor((Date.now() - new Date(ts.value).getTime()) / 60000);
                               const ageColor = ageMin > 120 ? '#ef4444' : ageMin > 60 ? '#f97316' : ageMin > 30 ? '#eab308' : '#22c55e';
@@ -4332,13 +4334,6 @@ export default function DispatchPage() {
                             </div>
                           );
                         })()}
-=======
-                            {ts.showElapsed && ts.value && !editingTimestamp && (
-                              <span className="text-[#4b5563] text-[9px] font-mono tabular-nums">({formatElapsed(ts.value)})</span>
-                            )}
-                          </div>
-                        ))}
->>>>>>> main
                       </div>
                     </div>
 
@@ -4967,7 +4962,6 @@ export default function DispatchPage() {
                                 <option value="restraining_order_service">Protective Order Service</option>
                                 <option value="writ_service">Writ Service</option>
                                 <option value="court_filing">Court Filing / Delivery</option>
-<<<<<<< HEAD
                                 <option value="court_order_service">Court Order Service</option>
                                 <option value="notice_service">Notice / Demand Service</option>
                                 <option value="posting_service">Posting Service (Nail &amp; Mail)</option>
@@ -4984,11 +4978,6 @@ export default function DispatchPage() {
                                 <option value="document_retrieval">Document Retrieval</option>
                                 <option value="field_investigation">Field Investigation</option>
                                 <option value="insurance_investigation">Insurance Investigation</option>
-=======
-                                <option value="skip_trace">Skip Trace &amp; Locate</option>
-                                <option value="stake_out">Stake Out / Surveillance</option>
-                                <option value="rush_service">Rush / Same-Day Service</option>
->>>>>>> main
                               </optgroup>
                               <optgroup label="Security Services">
                                 <option value="patrol">Patrol</option>
@@ -4997,7 +4986,6 @@ export default function DispatchPage() {
                                 <option value="event_security">Event Security</option>
                                 <option value="surveillance">Surveillance</option>
                                 <option value="access_control">Access Control</option>
-<<<<<<< HEAD
                                 <option value="alarm_response">Alarm Response</option>
                                 <option value="fire_watch">Fire Watch</option>
                                 <option value="construction_security">Construction Site Security</option>
@@ -5010,10 +4998,6 @@ export default function DispatchPage() {
                                 <option value="courier">Courier / Messenger</option>
                                 <option value="document_preparation">Document Preparation</option>
                                 <option value="affidavit_preparation">Affidavit Preparation</option>
-=======
-                              </optgroup>
-                              <optgroup label="Other">
->>>>>>> main
                                 <option value="other">Other</option>
                               </optgroup>
                             </select>
@@ -5026,7 +5010,6 @@ export default function DispatchPage() {
                         </div>
                       </div>
                     ) : (
-<<<<<<< HEAD
                       <div className="space-y-2 mt-1">
                         {/* Prominent client/requestor badges */}
                         <div className="flex flex-wrap gap-1.5">
@@ -5074,15 +5057,6 @@ export default function DispatchPage() {
                             </div>
                           );
                         })()}
-=======
-                      <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.pso_requestor_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</span>}
-                        {selectedCall.pso_requestor_phone && <span className="text-rmpg-200"><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</span>}
-                        {selectedCall.pso_requestor_email && <span className="text-rmpg-200"><span className="text-rmpg-400">Email:</span> {selectedCall.pso_requestor_email}</span>}
-                        {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
-                        {selectedCall.pso_billing_code && <span className="text-rmpg-200"><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</span>}
-                        {selectedCall.pso_authorization && <span className="text-rmpg-200"><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</span>}
->>>>>>> main
                         {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
                           <span className="text-rmpg-500 italic text-xs">No PSO details entered yet</span>
                         )}
@@ -5165,7 +5139,6 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-amber-400">Document Type</label>
                             <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
                               <option value="">— Select Document Type —</option>
-<<<<<<< HEAD
                               <optgroup label="Civil Process — General">
                                 <option value="subpoena">Subpoena</option>
                                 <option value="subpoena_duces_tecum">Subpoena Duces Tecum</option>
@@ -5184,20 +5157,10 @@ export default function DispatchPage() {
                                 <option value="garnishment">Garnishment</option>
                                 <option value="wage_garnishment">Wage Garnishment</option>
                                 <option value="bank_levy">Bank Levy / Account Garnishment</option>
-=======
-                              <optgroup label="Civil Process">
-                                <option value="subpoena">Subpoena</option>
-                                <option value="summons">Summons &amp; Complaint</option>
-                                <option value="complaint">Complaint</option>
-                                <option value="civil_summons">Civil Summons</option>
-                                <option value="small_claims">Small Claims</option>
-                                <option value="garnishment">Garnishment</option>
->>>>>>> main
                                 <option value="writ_of_execution">Writ of Execution</option>
                                 <option value="writ_of_restitution">Writ of Restitution</option>
                                 <option value="writ_of_garnishment">Writ of Garnishment</option>
                                 <option value="writ_of_attachment">Writ of Attachment</option>
-<<<<<<< HEAD
                                 <option value="writ_of_possession">Writ of Possession</option>
                                 <option value="writ_of_assistance">Writ of Assistance</option>
                                 <option value="writ_of_mandate">Writ of Mandate / Mandamus</option>
@@ -5218,21 +5181,12 @@ export default function DispatchPage() {
                                 <option value="adoption_papers">Adoption Papers</option>
                                 <option value="guardianship">Guardianship Petition</option>
                                 <option value="termination_of_parental_rights">Termination of Parental Rights</option>
-=======
-                              </optgroup>
-                              <optgroup label="Family / Domestic">
-                                <option value="restraining_order">Protective / Restraining Order</option>
-                                <option value="divorce_papers">Divorce Papers</option>
-                                <option value="custody_order">Custody Order</option>
-                                <option value="child_support">Child Support Order</option>
->>>>>>> main
                                 <option value="stalking_injunction">Stalking Injunction</option>
                               </optgroup>
                               <optgroup label="Real Property">
                                 <option value="eviction">Eviction Notice</option>
                                 <option value="unlawful_detainer">Unlawful Detainer</option>
                                 <option value="notice_to_quit">Notice to Quit</option>
-<<<<<<< HEAD
                                 <option value="three_day_notice">3-Day Notice to Pay or Quit</option>
                                 <option value="five_day_notice">5-Day Notice (Commercial)</option>
                                 <option value="fifteen_day_notice">15-Day Notice (Month-to-Month)</option>
@@ -5269,26 +5223,13 @@ export default function DispatchPage() {
                                 <option value="interrogatories">Interrogatories</option>
                                 <option value="request_for_production">Request for Production</option>
                                 <option value="request_for_admission">Request for Admission</option>
-=======
-                                <option value="foreclosure">Foreclosure Notice</option>
-                              </optgroup>
-                              <optgroup label="Court Orders">
-                                <option value="court_order">Court Order</option>
-                                <option value="temporary_order">Temporary Order</option>
-                                <option value="motion">Motion / Petition</option>
-                                <option value="notice_of_hearing">Notice of Hearing</option>
-                                <option value="order_to_show_cause">Order to Show Cause</option>
->>>>>>> main
                               </optgroup>
                               <optgroup label="Other">
                                 <option value="demand_letter">Demand Letter</option>
                                 <option value="cease_and_desist">Cease &amp; Desist</option>
-<<<<<<< HEAD
                                 <option value="affidavit">Affidavit</option>
                                 <option value="declaration">Declaration</option>
                                 <option value="stipulation">Stipulation</option>
-=======
->>>>>>> main
                                 <option value="other">Other</option>
                               </optgroup>
                             </select>
@@ -5315,16 +5256,11 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-amber-400">Service Result</label>
                             <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
-<<<<<<< HEAD
                               <optgroup label="Successful Service">
-=======
-                              <optgroup label="Successful">
->>>>>>> main
                                 <option value="served">Personal Service</option>
                                 <option value="substitute_service">Substitute Service</option>
                                 <option value="abode_service">Abode / Dwelling Service</option>
                                 <option value="posted">Posted (Nail &amp; Mail)</option>
-<<<<<<< HEAD
                                 <option value="left_with">Left With (Co-Resident / Co-Worker)</option>
                                 <option value="left_at_door">Left at Door (Conspicuous Place)</option>
                                 <option value="served_agent">Served on Agent / Registered Agent</option>
@@ -5370,23 +5306,6 @@ export default function DispatchPage() {
                                 <option value="insufficient_info">Insufficient Information</option>
                                 <option value="jurisdiction_issue">Jurisdiction Issue</option>
                                 <option value="referred_out">Referred to Another Server</option>
-=======
-                                <option value="left_with">Left With (Co-Resident)</option>
-                              </optgroup>
-                              <optgroup label="Unsuccessful">
-                                <option value="no_answer">No Answer / Not Home</option>
-                                <option value="unable_to_locate">Unable to Locate</option>
-                                <option value="refused">Refused Service</option>
-                                <option value="evasion">Evasion / Avoiding Service</option>
-                                <option value="bad_address">Bad / Invalid Address</option>
-                                <option value="moved">Subject Moved</option>
-                                <option value="deceased">Subject Deceased</option>
-                              </optgroup>
-                              <optgroup label="Other">
-                                <option value="non_est">Non Est Inventus (Not Found)</option>
-                                <option value="unable_to_serve">Unable to Serve (General)</option>
-                                <option value="returned_to_attorney">Returned to Attorney</option>
->>>>>>> main
                                 <option value="other">Other</option>
                               </optgroup>
                             </select>
@@ -5582,17 +5501,10 @@ export default function DispatchPage() {
                             <>
                               <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-<<<<<<< HEAD
                                 <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
                                 <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
-=======
-                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
-                                  <Edit3 style={{ width: 9, height: 9 }} />
-                                </button>
-                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
->>>>>>> main
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -5629,11 +5541,7 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-<<<<<<< HEAD
                       <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1b212820]" style={{ borderLeft: '2px solid #88888840' }}>
-=======
-                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
->>>>>>> main
                         <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
@@ -5649,13 +5557,8 @@ export default function DispatchPage() {
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-<<<<<<< HEAD
                                 <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#60a5fa] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
                                 <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
-=======
-                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#60a5fa] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" className="p-0.5 text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
->>>>>>> main
                               </div>
                             )}
                           </>
@@ -5916,11 +5819,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-<<<<<<< HEAD
             style={{ background: '#141414', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
-=======
-            style={{ background: '#1a2636', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
->>>>>>> main
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -5962,7 +5861,6 @@ export default function DispatchPage() {
               </>
             )}
             <div className="border-t border-rmpg-600 my-1" />
-<<<<<<< HEAD
             {/* Priority change shortcuts */}
             <div className="flex items-center gap-0.5 px-2 py-1">
               <span className="text-[9px] text-rmpg-500 mr-1.5">PRI:</span>
@@ -6002,11 +5900,6 @@ export default function DispatchPage() {
               </button>
             )}
             <div className="border-t border-rmpg-600 my-1" />
-=======
-            <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
-              Copy Call Number
-            </button>
->>>>>>> main
             <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
               <Trash2 style={{ width: 12, height: 12 }} /> Delete
             </button>

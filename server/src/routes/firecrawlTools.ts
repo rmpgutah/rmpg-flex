@@ -21,7 +21,6 @@ import TurndownService from 'turndown';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 import config from '../config';
-<<<<<<< HEAD
 import multer from 'multer';
 import fs from 'fs';
 
@@ -32,8 +31,6 @@ function safeJsonParse(val: string | null | undefined, fallback: any = null): an
   if (!val) return fallback;
   try { return JSON.parse(val); } catch { return fallback; }
 }
-=======
->>>>>>> main
 
 const router = Router();
 router.use(authenticate);
@@ -871,7 +868,6 @@ function initTables(): void {
       created_at TEXT NOT NULL
     )
   `);
-<<<<<<< HEAD
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS firecrawl_support_bots (
@@ -947,13 +943,11 @@ function initTables(): void {
 // Initialize tables on module load
 try { initTables(); } catch {
   // Tables will be created lazily on first request via ensureTables()
-=======
 }
 
 // Initialize tables on module load
 try { initTables(); } catch (e) {
   console.error('[FirecrawlTools] Table init deferred — DB may not be ready yet:', (e as Error).message);
->>>>>>> main
 }
 
 // Helper to ensure tables exist (called on first request if init failed)
@@ -999,7 +993,6 @@ function handleFirecrawlError(err: unknown, res: Response): boolean {
   return false;
 }
 
-<<<<<<< HEAD
 function respondWithFirecrawlError(err: unknown, res: Response, action: string): void {
   if (handleFirecrawlError(err, res)) return;
   const msg = err instanceof Error ? err.message : String(err);
@@ -1046,8 +1039,6 @@ async function parsePdfUrl(url: string): Promise<ParsedPdfDocument> {
   return parsePdfDocument({ url });
 }
 
-=======
->>>>>>> main
 // ═════════════════════════════════════════════════════════════
 // 1. Open Scouts — Web monitoring with alerts
 // ═════════════════════════════════════════════════════════════
@@ -1210,11 +1201,7 @@ router.post(
       let error: string | null = null;
 
       try {
-<<<<<<< HEAD
         const keywords: string[] = safeJsonParse(scout.keywords, []);
-=======
-        const keywords: string[] = scout.keywords ? JSON.parse(scout.keywords) : [];
->>>>>>> main
 
         if (scout.query) {
           // Use search for query-based scouts
@@ -1677,11 +1664,7 @@ router.post(
       if (!monitor) { res.status(404).json({ error: 'Brand monitor not found' }); return; }
 
       const now = localNow();
-<<<<<<< HEAD
       const keywords: string[] = safeJsonParse(monitor.keywords, []);
-=======
-      const keywords: string[] = monitor.keywords ? JSON.parse(monitor.keywords) : [];
->>>>>>> main
       const searchQuery = [monitor.brand_name, ...keywords].join(' ');
 
       // Search for brand mentions
@@ -1713,11 +1696,7 @@ router.post(
       }
 
       // Also scrape competitor URLs if configured
-<<<<<<< HEAD
       const competitorUrls: string[] = safeJsonParse(monitor.competitor_urls, []);
-=======
-      const competitorUrls: string[] = monitor.competitor_urls ? JSON.parse(monitor.competitor_urls) : [];
->>>>>>> main
       for (const compUrl of competitorUrls) {
         try {
           const scrapeResult = await firecrawlScrape({
@@ -2029,11 +2008,7 @@ router.post(
       const workflow = db.prepare('SELECT * FROM firecrawl_workflows WHERE id = ?').get(id) as any;
       if (!workflow) { res.status(404).json({ error: 'Workflow not found' }); return; }
 
-<<<<<<< HEAD
       const steps: Array<{ type: string; url?: string; query?: string; extract_schema?: Record<string, unknown> }> = safeJsonParse(workflow.steps, []);
-=======
-      const steps: Array<{ type: string; url?: string; query?: string; extract_schema?: Record<string, unknown> }> = JSON.parse(workflow.steps);
->>>>>>> main
       const now = localNow();
 
       // Create run record
@@ -3437,7 +3412,6 @@ router.get(
 // 14. PDF Inspector
 // ═════════════════════════════════════════════════════════════
 
-<<<<<<< HEAD
 // ── POST /pdf-inspect/upload — Upload a PDF file for inspection ──
 
 router.post(
@@ -3538,8 +3512,6 @@ router.post(
   },
 );
 
-=======
->>>>>>> main
 // ── POST /pdf-inspect — Inspect/classify a PDF URL ──────────
 
 router.post(
@@ -3554,7 +3526,6 @@ router.post(
     }
 
     try {
-<<<<<<< HEAD
       // Reject local file:// URLs — server can't access client's local files
       if (url.trim().startsWith('file://')) {
         res.status(400).json({ error: 'Cannot inspect local files. Upload the PDF or provide a web URL (https://).', code: 'LOCAL_FILE_NOT_SUPPORTED' }); return;
@@ -3579,7 +3550,6 @@ router.post(
         content = (scrapeResult.data as any)?.markdown || '';
       }
 
-=======
       // Scrape the PDF
       const scrapeResult = await firecrawlScrape({
         url: url.trim(),
@@ -3588,7 +3558,6 @@ router.post(
       });
 
       const content = (scrapeResult.data as any)?.markdown || '';
->>>>>>> main
       const contentLower = content.toLowerCase();
 
       // Estimate page count (~3000 chars per page)
@@ -3638,7 +3607,6 @@ router.post(
       const uniqueNames = [...new Set(nameMatches)].slice(0, 20) as string[];
       names.push(...uniqueNames);
 
-<<<<<<< HEAD
       // Phone numbers
       const phoneMatches = content.match(/(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
       const phones = [...new Set(phoneMatches)].slice(0, 15);
@@ -3662,12 +3630,10 @@ router.post(
       const wordCount = content.split(/\s+/).filter(Boolean).length;
 
       const extractedEntities = { names, dates, amounts, phones, emails, addresses, caseNumbers };
-=======
       // Summary
       const summary = content.substring(0, 500).replace(/\n{2,}/g, ' ').trim();
 
       const extractedEntities = { names, dates, amounts };
->>>>>>> main
 
       // Store in DB
       const db = getDb();
@@ -3693,12 +3659,9 @@ router.post(
         summary,
         key_sections: keySections,
         extracted_entities: extractedEntities,
-<<<<<<< HEAD
         word_count: wordCount,
         character_count: content.length,
         full_text: content.substring(0, 100000),
-=======
->>>>>>> main
       });
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -3794,11 +3757,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_graphs ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, config: safeJsonParse(r.config) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, config: r.config ? JSON.parse(r.config) : null })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -4083,11 +4042,7 @@ router.get(
       const db = getDb();
       const id = Number(req.params.id);
       const rows = db.prepare('SELECT * FROM firecrawl_connector_syncs WHERE connector_id = ? ORDER BY created_at DESC LIMIT 50').all(id);
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, data: safeJsonParse(r.data) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : null })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -4193,13 +4148,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_rag_evals ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         test_questions: safeJsonParse(r.test_questions, []),
         evaluations: safeJsonParse(r.evaluations, []),
-=======
-        test_questions: r.test_questions ? JSON.parse(r.test_questions) : [],
-        evaluations: r.evaluations ? JSON.parse(r.evaluations) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4309,13 +4259,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_trend_scans ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         keywords: safeJsonParse(r.keywords, []),
         trends: safeJsonParse(r.trends, []),
-=======
-        keywords: r.keywords ? JSON.parse(r.keywords) : [],
-        trends: r.trends ? JSON.parse(r.trends) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4442,13 +4387,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_gen_ui ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         structure: safeJsonParse(r.structure),
         tailwind_classes: safeJsonParse(r.tailwind_classes, []),
-=======
-        structure: r.structure ? JSON.parse(r.structure) : null,
-        tailwind_classes: r.tailwind_classes ? JSON.parse(r.tailwind_classes) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4541,13 +4481,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_qa_clusters ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         questions: safeJsonParse(r.questions, []),
         clusters: safeJsonParse(r.clusters, []),
-=======
-        questions: r.questions ? JSON.parse(r.questions) : [],
-        clusters: r.clusters ? JSON.parse(r.clusters) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4673,13 +4608,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_extractions ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         schema: safeJsonParse(r.schema),
         extracted: safeJsonParse(r.extracted),
-=======
-        schema: r.schema ? JSON.parse(r.schema) : null,
-        extracted: r.extracted ? JSON.parse(r.extracted) : null,
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -4892,11 +4822,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_coupon_searches ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, coupons: safeJsonParse(r.coupons, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, coupons: r.coupons ? JSON.parse(r.coupons) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5046,21 +4972,18 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_brand_analyses ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         colors: safeJsonParse(r.colors, []),
         fonts: safeJsonParse(r.fonts, []),
         tone_keywords: safeJsonParse(r.tone_keywords, []),
         social_profiles: safeJsonParse(r.social_profiles, []),
         competitors: safeJsonParse(r.competitors, []),
         extension_suggestions: safeJsonParse(r.extension_suggestions, []),
-=======
         colors: r.colors ? JSON.parse(r.colors) : [],
         fonts: r.fonts ? JSON.parse(r.fonts) : [],
         tone_keywords: r.tone_keywords ? JSON.parse(r.tone_keywords) : [],
         social_profiles: r.social_profiles ? JSON.parse(r.social_profiles) : [],
         competitors: r.competitors ? JSON.parse(r.competitors) : [],
         extension_suggestions: r.extension_suggestions ? JSON.parse(r.extension_suggestions) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -5253,11 +5176,7 @@ router.get(
       const rows = category
         ? db.prepare('SELECT * FROM firecrawl_examples WHERE category = ? ORDER BY created_at DESC').all(category)
         : db.prepare('SELECT * FROM firecrawl_examples ORDER BY created_at DESC').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, config: safeJsonParse(r.config, {}) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, config: r.config ? JSON.parse(r.config) : {} })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5280,11 +5199,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_examples WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Example not found' }); return; }
-<<<<<<< HEAD
       res.json({ ...row, config: safeJsonParse(row.config, {}) });
-=======
-      res.json({ ...row, config: row.config ? JSON.parse(row.config) : {} });
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5332,11 +5247,7 @@ router.post(
       const example = db.prepare('SELECT * FROM firecrawl_examples WHERE id = ?').get(id) as any;
       if (!example) { res.status(404).json({ error: 'Example not found' }); return; }
 
-<<<<<<< HEAD
       const config = safeJsonParse(example.config, {});
-=======
-      const config = JSON.parse(example.config || '{}');
->>>>>>> main
       let result: any;
 
       if (config.type === 'search' && config.query) {
@@ -5541,11 +5452,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, name, source_urls, system_prompt, welcome_message, page_count, created_by, created_at, updated_at FROM firecrawl_mendable_bots ORDER BY created_at DESC').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, source_urls: safeJsonParse(r.source_urls, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, source_urls: r.source_urls ? JSON.parse(r.source_urls) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5714,13 +5621,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_news_searches ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         sources: safeJsonParse(r.sources, []),
         articles: safeJsonParse(r.articles, []),
-=======
-        sources: r.sources ? JSON.parse(r.sources) : [],
-        articles: r.articles ? JSON.parse(r.articles) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -5866,11 +5768,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_drafts WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Draft not found' }); return; }
-<<<<<<< HEAD
       res.json({ ...row, sources_used: safeJsonParse(row.sources_used, []) });
-=======
-      res.json({ ...row, sources_used: row.sources_used ? JSON.parse(row.sources_used) : [] });
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -5957,11 +5855,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_slack_config ORDER BY id DESC LIMIT 1').get() as any;
       if (!row) { res.json({ configured: false }); return; }
-<<<<<<< HEAD
       res.json({ ...row, notify_on: safeJsonParse(row.notify_on, []) });
-=======
-      res.json({ ...row, notify_on: row.notify_on ? JSON.parse(row.notify_on) : [] });
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6071,11 +5965,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_discord_config ORDER BY id DESC LIMIT 1').get() as any;
       if (!row) { res.json({ configured: false }); return; }
-<<<<<<< HEAD
       res.json({ ...row, notify_on: safeJsonParse(row.notify_on, []) });
-=======
-      res.json({ ...row, notify_on: row.notify_on ? JSON.parse(row.notify_on) : [] });
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6199,11 +6089,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_agents ORDER BY created_at DESC').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, tools: safeJsonParse(r.tools, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, tools: r.tools ? JSON.parse(r.tools) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6227,11 +6113,7 @@ router.post(
       const agent = db.prepare('SELECT * FROM firecrawl_agents WHERE id = ?').get(id) as any;
       if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
 
-<<<<<<< HEAD
       const agentTools = safeJsonParse(agent.tools, []) as string[];
-=======
-      const agentTools = JSON.parse(agent.tools || '[]') as string[];
->>>>>>> main
       const maxSteps = agent.max_steps || 10;
       const steps: any[] = [];
       let currentUrl = agent.initial_url || '';
@@ -6316,11 +6198,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_agent_runs WHERE agent_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, steps: safeJsonParse(r.steps, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, steps: r.steps ? JSON.parse(r.steps) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6357,7 +6235,6 @@ router.delete(
 // 34. MinerU Document Extraction
 // ═════════════════════════════════════════════════════════════
 
-<<<<<<< HEAD
 // ── POST /doc-extract/upload — Upload document for extraction ──
 
 router.post(
@@ -6415,8 +6292,6 @@ router.post(
   },
 );
 
-=======
->>>>>>> main
 // ── POST /doc-extract — Extract structured content from URL ──
 
 router.post(
@@ -6516,11 +6391,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, url, format, images_found, metadata, created_by, created_at FROM firecrawl_doc_extractions ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, metadata: safeJsonParse(r.metadata, {}) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, metadata: r.metadata ? JSON.parse(r.metadata) : {} })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6655,13 +6526,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_job_matches ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r,
-<<<<<<< HEAD
         criteria: safeJsonParse(r.criteria, {}),
         matches: safeJsonParse(r.matches, []),
-=======
-        criteria: r.criteria ? JSON.parse(r.criteria) : {},
-        matches: r.matches ? JSON.parse(r.matches) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -6879,11 +6745,7 @@ router.get(
       const db = getDb();
       const row = db.prepare('SELECT * FROM firecrawl_crawl_jobs WHERE id = ?').get(id) as any;
       if (!row) { res.status(404).json({ error: 'Crawl job not found' }); return; }
-<<<<<<< HEAD
       res.json({ ...row, pages: safeJsonParse(row.pages, []), include_paths: safeJsonParse(row.include_paths, []), exclude_paths: safeJsonParse(row.exclude_paths, []) });
-=======
-      res.json({ ...row, pages: row.pages ? JSON.parse(row.pages) : [], include_paths: row.include_paths ? JSON.parse(row.include_paths) : [], exclude_paths: row.exclude_paths ? JSON.parse(row.exclude_paths) : [] });
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -6999,11 +6861,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_cli_history ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, args: safeJsonParse(r.args, {}), result: safeJsonParse(r.result) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, args: r.args ? JSON.parse(r.args) : {}, result: r.result ? JSON.parse(r.result) : null })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7095,11 +6953,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_grok_enrichments ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, data: safeJsonParse(r.data, {}) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, data: r.data ? JSON.parse(r.data) : {} })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7224,11 +7078,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_n8n_workflows ORDER BY created_at DESC').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, nodes: safeJsonParse(r.nodes, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, nodes: r.nodes ? JSON.parse(r.nodes) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7252,11 +7102,7 @@ router.post(
       const workflow = db.prepare('SELECT * FROM firecrawl_n8n_workflows WHERE id = ?').get(id) as any;
       if (!workflow) { res.status(404).json({ error: 'Workflow not found' }); return; }
 
-<<<<<<< HEAD
       const nodes = safeJsonParse(workflow.nodes, []) as { type: string; config: any }[];
-=======
-      const nodes = JSON.parse(workflow.nodes || '[]') as { type: string; config: any }[];
->>>>>>> main
       const now = localNow();
       const nodeResults: any[] = [];
       let lastOutput: any = null;
@@ -7309,11 +7155,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_n8n_runs WHERE workflow_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, node_results: safeJsonParse(r.node_results, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, node_results: r.node_results ? JSON.parse(r.node_results) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7412,11 +7254,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, name, urls, page_count, created_by, created_at FROM firecrawl_mendable_indexes ORDER BY created_at DESC').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, urls: safeJsonParse(r.urls, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, urls: r.urls ? JSON.parse(r.urls) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7446,11 +7284,7 @@ router.post(
       if (!index) { res.status(404).json({ error: 'Index not found' }); return; }
 
       const content = index.scraped_content || '';
-<<<<<<< HEAD
       const urls: string[] = safeJsonParse(index.urls, []);
-=======
-      const urls: string[] = index.urls ? JSON.parse(index.urls) : [];
->>>>>>> main
       const queryLower = question.trim().toLowerCase();
 
       // Simple keyword-based relevance scoring
@@ -7576,11 +7410,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_code_analyses ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, languages: safeJsonParse(r.languages, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, languages: r.languages ? JSON.parse(r.languages) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7663,11 +7493,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_skill_generations ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, generated_skill: safeJsonParse(r.generated_skill, {}) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, generated_skill: r.generated_skill ? JSON.parse(r.generated_skill) : {} })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7755,11 +7581,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_pipelines ORDER BY created_at DESC').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, steps: safeJsonParse(r.steps, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, steps: r.steps ? JSON.parse(r.steps) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -7785,11 +7607,7 @@ router.post(
       const pipeline = db.prepare('SELECT * FROM firecrawl_pipelines WHERE id = ?').get(id) as any;
       if (!pipeline) { res.status(404).json({ error: 'Pipeline not found' }); return; }
 
-<<<<<<< HEAD
       const steps = safeJsonParse(pipeline.steps, []) as { type: string; config: any }[];
-=======
-      const steps = JSON.parse(pipeline.steps || '[]') as { type: string; config: any }[];
->>>>>>> main
       const now = localNow();
       const stepResults: any[] = [];
       let currentData: any = input_text || '';
@@ -7800,7 +7618,6 @@ router.post(
             const scrapeResult = await firecrawlScrape({ url: input_url.trim(), formats: ['markdown'], onlyMainContent: true });
             currentData = (scrapeResult.data as any)?.markdown || '';
             stepResults.push({ type: 'ingest', status: 'success', content_length: currentData.length });
-<<<<<<< HEAD
           } else if (step.type === 'extract') {
             // Extract structured data from URL or current content
             const extractUrl = step.config?.url || input_url;
@@ -7842,8 +7659,6 @@ router.post(
             } else {
               stepResults.push({ type: 'search', status: 'skipped', reason: 'No query' });
             }
-=======
->>>>>>> main
           } else if (step.type === 'transform') {
             stepResults.push({ type: 'transform', status: 'success', applied: true, config: step.config });
           } else if (step.type === 'filter') {
@@ -7887,11 +7702,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_pipeline_runs WHERE pipeline_id = ? ORDER BY started_at DESC LIMIT 50').all(id);
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, input: safeJsonParse(r.input, {}), step_results: safeJsonParse(r.step_results, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, input: r.input ? JSON.parse(r.input) : {}, step_results: r.step_results ? JSON.parse(r.step_results) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -8052,11 +7863,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM firecrawl_ai_chat_history ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, context_used: !!r.context_used, sources: safeJsonParse(r.sources, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, context_used: !!r.context_used, sources: r.sources ? JSON.parse(r.sources) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -8069,7 +7876,6 @@ router.get(
 // 49. LoPDF — PDF Manipulation
 // ═════════════════════════════════════════════════════════════
 
-<<<<<<< HEAD
 // ── POST /pdf-manipulate/upload — Upload PDF for manipulation ──
 
 router.post(
@@ -8124,8 +7930,6 @@ router.post(
   },
 );
 
-=======
->>>>>>> main
 // ── POST /pdf-manipulate — Analyze/manipulate a PDF URL ───────
 
 router.post(
@@ -8149,7 +7953,6 @@ router.post(
     }
 
     try {
-<<<<<<< HEAD
       let md = '';
       let metadata: any = {};
 
@@ -8172,12 +7975,10 @@ router.post(
         md = data?.markdown || '';
         metadata = data?.metadata || {};
       }
-=======
       const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
       const data = scrapeResult.data as any;
       const md = data?.markdown || '';
       const metadata = data?.metadata || {};
->>>>>>> main
 
       const results: any = {};
 
@@ -8226,11 +8027,7 @@ router.get(
     try {
       const db = getDb();
       const rows = db.prepare('SELECT id, url, operations, created_by, created_at FROM firecrawl_pdf_operations ORDER BY created_at DESC LIMIT 100').all();
-<<<<<<< HEAD
       res.json(rows.map((r: any) => ({ ...r, operations: safeJsonParse(r.operations, []) })));
-=======
-      res.json(rows.map((r: any) => ({ ...r, operations: r.operations ? JSON.parse(r.operations) : [] })));
->>>>>>> main
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -8333,13 +8130,8 @@ router.get(
       const rows = db.prepare('SELECT * FROM firecrawl_assistant_chats ORDER BY created_at DESC LIMIT 100').all();
       res.json(rows.map((r: any) => ({
         ...r, search_web: !!r.search_web, web_searched: !!r.web_searched,
-<<<<<<< HEAD
         context_urls: safeJsonParse(r.context_urls, []),
         sources_used: safeJsonParse(r.sources_used, []),
-=======
-        context_urls: r.context_urls ? JSON.parse(r.context_urls) : [],
-        sources_used: r.sources_used ? JSON.parse(r.sources_used) : [],
->>>>>>> main
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -8423,15 +8215,12 @@ router.post('/leads/search', requireRole('admin', 'manager'), async (req: Reques
       if (!getRes.ok) {
         const errText = await getRes.text().catch(() => '');
         console.error(`[LeadGen] API error (${getRes.status}):`, errText.slice(0, 300));
-<<<<<<< HEAD
         if (getRes.status === 429) {
           res.status(429).json({ error: 'Lead Generation API rate limit exceeded. Wait and retry, or upgrade your RapidAPI plan.', code: 'LEADGEN_RATE_LIMITED' }); return;
         }
         if (getRes.status === 403) {
           res.status(503).json({ error: 'Lead Generation API subscription expired or access denied. Check your RapidAPI subscription.', code: 'LEADGEN_SUBSCRIPTION_EXPIRED' }); return;
         }
-=======
->>>>>>> main
         res.status(502).json({ error: `Lead Generation API returned ${getRes.status}`, detail: errText.slice(0, 200) }); return;
       }
 
@@ -8467,7 +8256,6 @@ router.get('/leads/config', requireRole('admin', 'manager'), (_req: Request, res
   }
 });
 
-<<<<<<< HEAD
 // ══════════════════════════════════════════════════════════════
 // Customer Support Bot Routes (ai-customer-support-bot)
 // ══════════════════════════════════════════════════════════════
@@ -9201,6 +8989,4 @@ for (const alias of aliasRoutes) {
   });
 }
 
-=======
->>>>>>> main
 export default router;

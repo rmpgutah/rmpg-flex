@@ -34,10 +34,7 @@ import {
   addImageToPage,
   formSectionPageBreak,
   sanitizePdfText,
-<<<<<<< HEAD
   displayStatus,
-=======
->>>>>>> main
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import {
@@ -746,7 +743,6 @@ function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string
   const yyyy = mt.getFullYear();
   const hh = String(mt.getHours()).padStart(2, '0');
   return { mm, dd, yyyy, hh, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0') };
-<<<<<<< HEAD
 }
 
 function parsePdfDate(value?: string | null): Date | null {
@@ -779,54 +775,22 @@ function fmtTimestamp(ts?: string): string {
   if (!d) return '';
   const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
   return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
-=======
-}
-
-function fmtTimestamp(ts?: string): string {
-  if (!ts) return '';
-  try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
-    if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
-    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
-  } catch { return ts; }
->>>>>>> main
 }
 
 /** Format: MM/DD/YYYY */
 function fmtDate(ts?: string | null): string {
-<<<<<<< HEAD
   const d = parsePdfDate(ts);
   if (!d) return '';
   const { mm, dd, yyyy } = toMountain(d);
   return `${mm}/${dd}/${yyyy}`;
-=======
-  if (!ts) return '';
-  try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
-    if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy } = toMountain(d);
-    return `${mm}/${dd}/${yyyy}`;
-  } catch { return ts; }
->>>>>>> main
 }
 
 /** Format: MM/DD/YYYY @ HH:MM:SS (military time) */
 function fmtDateTime(ts?: string | null): string {
-<<<<<<< HEAD
   const d = parsePdfDate(ts);
   if (!d) return '';
   const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
   return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
-=======
-  if (!ts) return '';
-  try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
-    if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
-    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
-  } catch { return ts; }
->>>>>>> main
 }
 
 function fmtCurrency(val?: number | null): string {
@@ -1062,7 +1026,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
     const numCols = hasContract ? 6 : 5;
     const barH = 8;
-<<<<<<< HEAD
     const districtAccent: [number, number, number] = [212, 160, 23];
     const districtDivider: [number, number, number] = [82, 88, 96];
     // Black background with white text
@@ -1071,22 +1034,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setDrawColor(districtDivider[0], districtDivider[1], districtDivider[2]);
     doc.setLineWidth(BORDER.TABLE_ROW);
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH);
-=======
-    // Black background with white text
-    doc.setFillColor(0, 0, 0);
-    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
->>>>>>> main
 
     const distFields = [
       { label: 'SECTION', value: data.section_name || 'N/A' },
       { label: 'ZONE', value: data.zone_name || 'N/A' },
-<<<<<<< HEAD
       { label: 'BEAT', value: data.beat_name || data.beat_id || 'N/A' },
       { label: 'AREA', value: data.zone_beat || data.beat_descriptor || 'N/A' },
-=======
-      { label: 'BEAT', value: data.beat_id || 'N/A' },
-      { label: 'AREA', value: data.beat_descriptor || 'N/A' },
->>>>>>> main
       { label: 'CODE', value: data.dispatch_code || 'N/A' },
       ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
     ];
@@ -1115,7 +1068,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const fw = finalWidths[i];
       const fx = colX + 1.5;
       doc.setFont('helvetica', 'bold');
-<<<<<<< HEAD
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(districtAccent[0], districtAccent[1], districtAccent[2]);
       doc.text(f.label, fx, barY + 2.8);
@@ -1127,15 +1079,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const dividerX = colX + fw;
         doc.line(dividerX, barY + 1, dividerX, barY + barH - 1);
       }
-=======
-      doc.setFontSize(5);
-      doc.setTextColor(255, 255, 255);
-      doc.text(f.label, fx, barY + 2.8);
-      doc.setFont('courier', 'bold');
-      doc.setFontSize(dValSize);
-      doc.setTextColor(255, 255, 255);
-      doc.text(sanitizePdfText(f.value), fx, barY + 6.5);
->>>>>>> main
       colX += fw;
     });
 
@@ -1187,15 +1130,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-<<<<<<< HEAD
   // Response timeline — 3-column grid (timestamps + duration metrics)
   y = checkPageBreak(doc, y, 15, prio);
   { const sec = openAutoSection(doc, 'Response Timeline', y); y = sec.contentY;
-=======
-  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
-  y = checkPageBreak(doc, y, 15, prio);
-  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
->>>>>>> main
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: fmtTimestamp(data.created_at || '') },
       { label: 'Dispatched', value: fmtTimestamp(data.dispatched_at || '') },
@@ -1213,15 +1150,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-<<<<<<< HEAD
   // Reporting party
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Reporting Party', y); y = sec.contentY;
-=======
-  // Caller Information
-  y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
->>>>>>> main
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
       y = Math.max(yL, yR); }
@@ -1270,15 +1201,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
   }
 
-<<<<<<< HEAD
   // Location & premise
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Location & Premise', y); y = sec.contentY;
-=======
-  // Location
-  y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
->>>>>>> main
     // Row 1: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     // Row 2: Latitude | Longitude | Dispatch Code (3 columns)
@@ -1311,18 +1236,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-<<<<<<< HEAD
   // Operational checklist — before Scene Conditions
   y = checkPageBreak(doc, y, 15, prio);
   { const flagSec = openAutoSection(doc, 'Operational Checklist', y);
     // Checkboxes draw at y-1.5, so need extra offset to clear header bar
     y = flagSec.contentY + 2;
-=======
-  // Flags — before Scene Conditions
-  y = checkPageBreak(doc, y, 15, prio);
-  { const flagSec = openAutoSection(doc, 'Flags', y); y = flagSec.contentY;
-    y += 0.5;
->>>>>>> main
     const flagCols = 6;
     const flagColW = ffw / flagCols;
     const flagRowH = 3.5;
@@ -1375,11 +1293,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const scFields = [
       { label: 'Weather', value: data.weather_conditions || '' },
       { label: 'Lighting', value: data.lighting_conditions || '' },
-<<<<<<< HEAD
       { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'N/A' : data.weapons_involved },
-=======
-      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'None' : data.weapons_involved },
->>>>>>> main
       { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
     ];
     let maxScY = y + SPACING.FIELD_ROW_ADVANCE;
@@ -1446,7 +1360,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-<<<<<<< HEAD
   // Linked Persons — clean table: section header + column headers + data rows
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
@@ -1493,37 +1406,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setDrawColor(...COLOR.BORDER_TABLE);
       doc.setLineWidth(BORDER.TABLE_ROW);
       doc.line(lx, y, lx + ffw, y);
-=======
-  // Linked Persons — field-pair box rows (matches Assigned Units style)
-  if (data.linked_persons && data.linked_persons.length > 0) {
-    y = checkPageBreak(doc, y, 18, prio); // header + at least 1 person row
-    const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
-    // 5 columns using ffw (inside section borders): Name | Role | DOB | Race/Sex | Phone
-    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.15, ffw * 0.22, ffw * 0.23];
-    for (const p of data.linked_persons) {
-      y = checkPageBreak(doc, y, 12);
-      const np = 'Not Provided';
-      const pFields = [
-        { label: 'Name', value: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || np },
-        { label: 'Role', value: titleCase((p.role || '').replace(/_/g, ' ')) || np },
-        { label: 'DOB', value: p.dob || np },
-        { label: 'Race/Sex', value: [p.race, p.gender].filter(Boolean).join('/') || np },
-        { label: 'Phone', value: p.phone || np },
-      ];
-      let maxPY = y + SPACING.FIELD_ROW_ADVANCE;
-      let pX = lx;
-      for (let i = 0; i < 5; i++) {
-        const fy = addFieldPair(doc, pFields[i].label, pFields[i].value, pX, y, pColW[i]);
-        if (fy > maxPY) maxPY = fy;
-        pX += pColW[i];
-      }
-      y = maxPY;
->>>>>>> main
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-<<<<<<< HEAD
   // Linked Vehicles — clean table: section header + column headers + data rows
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
@@ -1571,44 +1457,13 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setDrawColor(...COLOR.BORDER_TABLE);
       doc.setLineWidth(BORDER.TABLE_ROW);
       doc.line(lx, y, lx + ffw, y);
-=======
-  // Linked Vehicles — field-pair box rows (matches Linked Persons style)
-  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
-    y = checkPageBreak(doc, y, 18, prio); // header + at least 1 vehicle row
-    const sec = openAutoSection(doc, `Linked Vehicles (${data.linked_vehicles.length})`, y); y = sec.contentY;
-    const vColW = [ffw * 0.15, ffw * 0.25, ffw * 0.12, ffw * 0.18, ffw * 0.30];
-    const nv = 'Not Provided';
-    for (const v of data.linked_vehicles) {
-      y = checkPageBreak(doc, y, 12);
-      const vFields = [
-        { label: 'Role', value: titleCase((v.role || '').replace(/_/g, ' ')) || nv },
-        { label: 'Year/Make/Model', value: [v.year, v.make, v.model].filter(Boolean).join(' ') || nv },
-        { label: 'Color', value: v.color || nv },
-        { label: 'Plate', value: (v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '') || nv },
-        { label: 'Owner', value: [v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + (v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '') || nv },
-      ];
-      let maxVY = y + SPACING.FIELD_ROW_ADVANCE;
-      let vX = lx;
-      for (let i = 0; i < 5; i++) {
-        const fy = addFieldPair(doc, vFields[i].label, vFields[i].value, vX, y, vColW[i]);
-        if (fy > maxVY) maxVY = fy;
-        vX += vColW[i];
-      }
-      y = maxVY;
->>>>>>> main
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-<<<<<<< HEAD
   // ── Call Description — dynamic page break ──
   y = checkPageBreak(doc, y, 25, prio);
   { const sec = openAutoSection(doc, 'Call Description', y); y = sec.contentY;
-=======
-  // ── Incident Details — dynamic page break ──
-  y = checkPageBreak(doc, y, 25, prio);
-  { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
->>>>>>> main
     y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
@@ -1628,7 +1483,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_INVERTED);
       const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-<<<<<<< HEAD
       doc.text('CALL DESCRIPTION -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -1637,15 +1491,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     };
     y = addFormattedText(doc, data.description || '', lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
-=======
-      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
-      doc.setFont('courier', 'normal');
-      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
-    };
-    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
->>>>>>> main
     y += SPACING.SM;
     // Pack remaining fields tightly — check page break before each group
     y = checkPageBreak(doc, y, 10, prio);
@@ -1861,21 +1706,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   if (data.notes && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
-<<<<<<< HEAD
     // Render notes: DATE/TIME on left, AUTHOR on right, content below
     y += 1.5;  // Space after header bar
     for (let ni = 0; ni < data.notes.length; ni++) {
       const n = data.notes[ni];
       y = checkPageBreak(doc, y, 10, prio);
-=======
-    // Render notes: DATE/TIME on left, AUTHOR on right, content below — tight layout
-    y += 0.5;  // Tight space after sub-header
-    for (let ni = 0; ni < data.notes.length; ni++) {
-      const n = data.notes[ni];
-      y = checkPageBreak(doc, y, 6, prio);
-      doc.setDrawColor(255, 255, 255);
-      doc.setLineWidth(0);
->>>>>>> main
       // Date/time on far left, author on far right — same line
       doc.setFont('courier', 'bold');
       doc.setFontSize(6);
@@ -1885,18 +1720,13 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const authorName = (n.author || 'System').toUpperCase();
       const authorW = doc.getTextWidth(authorName);
       doc.text(authorName, lx + ffw - authorW, y);
-<<<<<<< HEAD
       y += 3.5;  // More space between timestamp and content
-=======
-      y += 2;
->>>>>>> main
       // Note content
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
-<<<<<<< HEAD
       // Visible gap between entries (matching Resolution Details spacing)
       if (ni < data.notes.length - 1) {
         y += 2;
@@ -1906,10 +1736,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.line(lx, y, lx + ffw, y);
         y += 2.5;
       }
-=======
-      // Minimal gap between entries
-      if (ni < data.notes.length - 1) y += 0.5;
->>>>>>> main
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2128,14 +1954,6 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y += 2.5;
     y = addFlagBadges(doc, data.flags, lx, y, ffw, prio);
     y += 0.5;
-<<<<<<< HEAD
-=======
-  }
-
-  // Caution block — amber warning styling for officer safety (kept as-is)
-  if (data.caution_flags) {
-    y = addCautionBlock(doc, data.caution_flags, lx, y, ffw);
->>>>>>> main
   }
 
   // ── 9. Emergency Contact ──────────────────────────────────
@@ -2236,11 +2054,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
-<<<<<<< HEAD
       displayStatus(c.status || ''),
-=======
-      (c.status || '').toUpperCase(),
->>>>>>> main
       c.location || 'N/A',
       fmtDate(c.created_at),
     ]);
@@ -2725,6 +2539,31 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     });
   }
 
+  // Source / Verification (conditional — present for Utah/scraped search results)
+  if (data.data_source || data.search_date || data.verified_by) {
+    y = drawFormSection(doc, {
+      sideTab: { label: 'SOURCE' },
+      topBanner: true,
+      onPageBreak: formSectionPageBreak,
+      rows: [
+        { cells: [
+          { label: '25. DATA SOURCE', value: data.data_source || '', ratio: 2 },
+          { label: '26. SEARCH DATE', value: data.search_date || '', ratio: 1 },
+        ]},
+        ...(data.county || data.case_number ? [{ cells: [
+          { label: '27. COUNTY', value: data.county || '', ratio: 1 },
+          { label: '28. CASE NUMBER', value: data.case_number || '', ratio: 1 },
+          { label: '29. FILING DATE', value: fmtDate(data.filing_date), ratio: 1 },
+        ]} as FormRow] : []),
+        ...(data.verified_by ? [{ cells: [
+          { label: '30. VERIFIED BY', value: data.verified_by || '', ratio: 1 },
+          { label: '31. VERIFICATION DATE', value: data.verification_date || '', ratio: 1 },
+        ]} as FormRow] : []),
+      ],
+      y,
+    });
+  }
+
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
@@ -2999,7 +2838,6 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     const totalDist = fs?.total_distance ?? null;
     const costPerMile = fs?.cost_per_mile ?? null;
     const fuelCostPerDay = fs?.fuel_cost_per_day ?? null;
-<<<<<<< HEAD
 
     // ── Fuel Summary ──
     y = checkPageBreak(doc, y, 25);
@@ -3024,38 +2862,6 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     }
 
     // Fuel logs table — columns: Date, Station, Gallons, $/Gal, Cost, Odometer, Distance, MPG, $/Mile
-=======
-
-    // Summary section — row 1: core stats
-    y = drawFormSection(doc, {
-      sideTab: { label: 'FUEL' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: 'TOTAL GALLONS', value: totalGal.toFixed(2), ratio: 1, align: 'center' },
-          { label: 'TOTAL COST', value: `$${totalCost.toFixed(2)}`, ratio: 1, align: 'center' },
-          { label: 'AVG MPG', value: avgMpg != null ? `${avgMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
-        ]},
-        { cells: [
-          { label: 'BEST MPG', value: bestMpg != null ? `${bestMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'WORST MPG', value: worstMpg != null ? `${worstMpg.toFixed(1)} MPG` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'TOTAL DISTANCE', value: totalDist != null ? `${totalDist.toLocaleString(undefined, { maximumFractionDigits: 1 })} MI` : 'N/A', ratio: 1, align: 'center' },
-        ]},
-        { cells: [
-          { label: 'COST/MILE', value: costPerMile != null ? `$${costPerMile.toFixed(3)}` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'FUEL $/DAY', value: fuelCostPerDay != null ? `$${fuelCostPerDay.toFixed(2)}` : 'N/A', ratio: 1, align: 'center' },
-          { label: 'FILL COUNT', value: String(data.fuel_logs!.length), ratio: 1, align: 'center' },
-        ]},
-      ],
-      y,
-    });
-
-    // Fuel logs table — columns: Date, Station, Gallons, $/Gal, Cost, Odometer, Distance, MPG, $/Mile
-    const fuelColW = [18, cw - 148, 14, 14, 18, 22, 16, 14, 16];
-    // Ensure cols fit: Date(18) + Station(remainder) + Gal(14) + $/Gal(14) + Cost(18) + Odo(22) + Dist(16) + MPG(14) + $/Mi(16)
-    // Total non-station = 18+14+14+18+22+16+14+16 = 132, station = cw - 132
->>>>>>> main
     const adjFuelColW = [18, cw - 132, 14, 14, 18, 22, 16, 14, 16];
     const fuelColPos: number[] = [];
     { let cx = lx; for (const w of adjFuelColW) { fuelColPos.push(cx); cx += w; } }
@@ -3872,11 +3678,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-<<<<<<< HEAD
     const sigDate = parsePdfDate(closedDate) || new Date();
-=======
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
->>>>>>> main
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
@@ -3923,11 +3725,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-<<<<<<< HEAD
     const sigDate = parsePdfDate(closedDate) || new Date();
-=======
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
->>>>>>> main
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({

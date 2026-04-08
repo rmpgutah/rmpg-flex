@@ -10,12 +10,9 @@ import * as cheerio from 'cheerio';
 import TurndownService from 'turndown';
 import { convert as htmlToPlainText } from 'html-to-text';
 import robotsParser from 'robots-parser';
-<<<<<<< HEAD
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import config from '../config';
-=======
->>>>>>> main
 
 // ── Configuration ────────────────────────────────────────────
 
@@ -24,7 +21,6 @@ const FIRECRAWL_CLOUD_URL = 'https://api.firecrawl.dev';
 const TIMEOUT_MS = 30_000;
 const USER_AGENT = 'Mozilla/5.0 (RMPG Flex Overwatch Bot; +https://rmpgutah.us)';
 
-<<<<<<< HEAD
 // ── Cloud API key (lazy-loaded from system_config) ───────────
 
 let _apiKey: string | null = null;
@@ -69,8 +65,6 @@ export function hasFirecrawlApiKey(): boolean {
   return !!getFirecrawlApiKey();
 }
 
-=======
->>>>>>> main
 // ── Turndown instance ────────────────────────────────────────
 
 const turndownService = new TurndownService({
@@ -244,14 +238,11 @@ let _firecrawlAvailable: boolean | null = null;
 let _firecrawlLastCheck = 0;
 
 async function isFirecrawlAvailable(): Promise<boolean> {
-<<<<<<< HEAD
   // Cloud API key takes priority — always "available" if configured
   const apiKey = getFirecrawlApiKey();
   if (apiKey) return true;
 
   // Fall back to Docker availability check
-=======
->>>>>>> main
   if (_firecrawlAvailable !== null && Date.now() - _firecrawlLastCheck < 60_000) {
     return _firecrawlAvailable;
   }
@@ -259,11 +250,7 @@ async function isFirecrawlAvailable(): Promise<boolean> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3_000);
     try {
-<<<<<<< HEAD
       const res = await fetch(`${FIRECRAWL_DOCKER_URL}/`, { signal: controller.signal });
-=======
-      const res = await fetch(`${FIRECRAWL_BASE_URL}/`, { signal: controller.signal });
->>>>>>> main
       _firecrawlAvailable = res.ok;
     } finally {
       clearTimeout(timeout);
@@ -496,7 +483,6 @@ export async function firecrawlSearch(
 }
 
 /**
-<<<<<<< HEAD
  * Check if the Firecrawl service is reachable (Cloud API or Docker).
  */
 export async function firecrawlHealthCheck(): Promise<boolean> {
@@ -510,10 +496,4 @@ export function firecrawlConnectionMode(): 'cloud' | 'docker' | 'fallback' {
   if (getFirecrawlApiKey()) return 'cloud';
   if (_firecrawlAvailable === true) return 'docker';
   return 'fallback';
-=======
- * Check if the Firecrawl Docker service is reachable.
- */
-export async function firecrawlHealthCheck(): Promise<boolean> {
-  return isFirecrawlAvailable();
->>>>>>> main
 }

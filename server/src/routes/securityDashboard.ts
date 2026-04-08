@@ -284,8 +284,6 @@ router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Re
   } catch (error: any) {
     console.error('Recent threats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to get recent threats', code: 'RECENT_THREATS_ERROR' });
-<<<<<<< HEAD
-=======
   }
 });
 
@@ -2317,7 +2315,6 @@ router.get('/password-compliance', authenticateToken, requireRole('admin', 'mana
   } catch (error: any) {
     console.error('Password compliance error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to get password compliance', code: 'PASSWORD_COMPLIANCE_ERROR' });
->>>>>>> main
   }
 });
 
