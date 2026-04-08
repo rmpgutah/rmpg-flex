@@ -4986,6 +4986,9 @@ function migrateSchema(): void {
     s.run('wy_laramie_warrants', 'WY', 'Laramie', 'https://www.laramiecountywy.gov/County-Government/Elected-Officials/Laramie-County-Sheriffs-Office/Most-Wanted', 'Laramie County', 'html', 720, 0);
   }
 
+  // Enable ALL warrant scraper sources — circuit breaker auto-disables sources that fail 5 times
+  db.prepare("UPDATE warrant_scraper_config SET enabled = 1 WHERE enabled = 0 AND source_type != 'search_form'").run();
+
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS cpgps_dashcam_events (

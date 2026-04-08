@@ -1876,4 +1876,151 @@ router.put('/batch-archive', requireRole('admin', 'manager', 'supervisor'), (req
   }
 });
 
+// ── National Warrant Coverage ───────────────────────────
+// GET /api/warrants/national-coverage
+// Returns per-state coverage stats for the US map
+router.get('/national-coverage', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Get source config grouped by state
+    const sources = db.prepare(`
+      SELECT state, source_key, display_name, source_type, enabled,
+             last_scrape_at, consecutive_errors, circuit_broken
+      FROM warrant_scraper_config
+      ORDER BY state, source_key
+    `).all() as any[];
+
+    // Get warrant counts per state from scraped_warrants
+    const warrantCounts = db.prepare(`
+      SELECT state, COUNT(*) as count
+      FROM scraped_warrants
+      WHERE status = 'active'
+      GROUP BY state
+    `).all() as { state: string; count: number }[];
+
+    const warrantMap: Record<string, number> = {};
+    for (const row of warrantCounts) {
+      warrantMap[row.state] = row.count;
+    }
+
+    // Build per-state status
+    const stateStatus: Record<string, string> = {};
+    const stateSources: Record<string, number> = {};
+    const stateWarrants: Record<string, number> = {};
+
+    for (const src of sources) {
+      const st = src.state;
+      if (!st) continue;
+      stateSources[st] = (stateSources[st] || 0) + 1;
+      stateWarrants[st] = warrantMap[st] || 0;
+
+      // Determine status: active (enabled + has data or recently scraped), pending (enabled, no data yet), disabled
+      if (src.enabled && !src.circuit_broken) {
+        if (stateWarrants[st] > 0 || src.last_scrape_at) {
+          stateStatus[st] = 'active';
+        } else if (!stateStatus[st] || stateStatus[st] === 'disabled') {
+          stateStatus[st] = 'pending';
+        }
+      } else if (!stateStatus[st]) {
+        stateStatus[st] = 'disabled';
+      }
+    }
+
+    const statesCovered = Object.values(stateStatus).filter(s => s === 'active').length;
+    const totalWarrants = Object.values(stateWarrants).reduce((a, b) => a + b, 0);
+
+    res.json({
+      sources: sources.length,
+      states_covered: statesCovered,
+      active_warrants: totalWarrants,
+      state_status: stateStatus,
+      state_sources: stateSources,
+      state_warrants: stateWarrants,
+    });
+  } catch (error: any) {
+    console.error('National coverage error:', error);
+    res.status(500).json({ error: 'Failed to get national coverage', code: 'NATIONAL_COVERAGE_ERROR' });
+  }
+});
+
+// ── National Warrant Search ─────────────────────────────
+// POST /api/warrants/national-search
+// Search scraped_warrants across all states
+router.post('/national-search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const startMs = Date.now();
+    const { first_name, last_name, dob, state, offense_level, warrant_type, charge_keyword } = req.body;
+
+    if (!first_name && !last_name && !charge_keyword) {
+      res.status(400).json({ error: 'At least a name or charge keyword is required', code: 'SEARCH_PARAMS_REQUIRED' });
+      return;
+    }
+
+    // Build query
+    const conditions: string[] = ["sw.status = 'active'"];
+    const params: any[] = [];
+
+    if (first_name) {
+      conditions.push("sw.first_name LIKE ?");
+      params.push(`%${first_name}%`);
+    }
+    if (last_name) {
+      conditions.push("sw.last_name LIKE ?");
+      params.push(`%${last_name}%`);
+    }
+    if (dob) {
+      conditions.push("sw.date_of_birth = ?");
+      params.push(dob);
+    }
+    if (state) {
+      conditions.push("sw.state = ?");
+      params.push(state);
+    }
+    if (offense_level) {
+      conditions.push("sw.offense_level = ?");
+      params.push(offense_level);
+    }
+    if (warrant_type) {
+      conditions.push("sw.warrant_type = ?");
+      params.push(warrant_type);
+    }
+    if (charge_keyword) {
+      conditions.push("sw.charge_description LIKE ?");
+      params.push(`%${charge_keyword}%`);
+    }
+
+    const rows = db.prepare(`
+      SELECT sw.*, wsc.display_name as source_display_name
+      FROM scraped_warrants sw
+      LEFT JOIN warrant_scraper_config wsc ON sw.source_key = wsc.source_key
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY sw.state, sw.last_name, sw.first_name
+      LIMIT 500
+    `).all(...params) as any[];
+
+    // Group by state
+    const byState: Record<string, any[]> = {};
+    for (const row of rows) {
+      const st = row.state || 'Unknown';
+      if (!byState[st]) byState[st] = [];
+      byState[st].push(row);
+    }
+
+    // Separate local (UT) results
+    const local = byState['UT'] || [];
+
+    res.json({
+      total: rows.length,
+      search_time_ms: Date.now() - startMs,
+      by_state: byState,
+      local,
+    });
+  } catch (error: any) {
+    console.error('National search error:', error);
+    res.status(500).json({ error: 'Failed to search national warrants', code: 'NATIONAL_SEARCH_ERROR' });
+  }
+});
+
 export default router;
