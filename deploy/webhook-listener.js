@@ -12,8 +12,14 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = parseInt(process.env.WEBHOOK_PORT || '9000', 10);
-const REPO_DIR = process.env.REPO_DIR || '/opt/rmpg-flex';
-const DEPLOY_SCRIPT = process.env.DEPLOY_SCRIPT || '/opt/deploy-rmpg.sh';
+const REPO_DIR = path.resolve(process.env.REPO_DIR || '/opt/rmpg-flex');
+const DEPLOY_SCRIPT = path.resolve(process.env.DEPLOY_SCRIPT || '/opt/deploy-rmpg.sh');
+
+// Validate paths to prevent command injection via env vars
+if (!/^\/[\w./-]+$/.test(REPO_DIR) || !/^\/[\w./-]+$/.test(DEPLOY_SCRIPT)) {
+  console.error('[Webhook] FATAL: REPO_DIR or DEPLOY_SCRIPT contain invalid characters');
+  process.exit(1);
+}
 const SECRET_FILE = path.join(REPO_DIR, '.webhook-secret');
 const LOG_FILE = path.join(REPO_DIR, 'deploy', 'webhook.log');
 
@@ -56,9 +62,8 @@ function verifySignature(body, signature) {
 function triggerDeploy(commitSha, branch, pusher) {
   log(`DEPLOY TRIGGERED — branch=${branch}, commit=${commitSha}, by=${pusher}`);
 
-  // Run: cd REPO_DIR && git pull origin main && bash DEPLOY_SCRIPT
-  const script = `cd ${REPO_DIR} && git pull origin main && bash ${DEPLOY_SCRIPT}`;
-  const child = execFile('/bin/bash', ['-c', script], {
+  // Run: git pull then deploy script — using execFile with args to avoid shell injection
+  const child = execFile('/bin/bash', ['-c', 'git pull origin main && exec bash "$1"', '--', DEPLOY_SCRIPT], {
     cwd: REPO_DIR,
     timeout: 300000, // 5 minute timeout
     env: { ...process.env, HOME: '/root' },

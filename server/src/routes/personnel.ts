@@ -4,20 +4,20 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /** Extract video duration using ffprobe. Returns seconds or null if ffmpeg not available. */
 async function extractVideoDuration(filePath: string): Promise<number | null> {
   try {
-    const { stdout } = await execAsync(
-      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+    const { stdout } = await execFileAsync(
+      'ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
       { timeout: 30000 }
     );
     const seconds = parseFloat(stdout.trim());

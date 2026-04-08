@@ -31,7 +31,7 @@ function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_pag
   // Field Sheet: contains Party to Serve, Instructions, Address + city/state/zip on separate line
   if (/Party to Serve|Instructions\s*\n.*Sub-serve|Date & Time.*Description of Service/i.test(text)) return 'field_sheet';
   // Info Page: contains JOB number header, CLIENT/SERVER columns, Service Attempts, Recipient
-  if (/^JOB\b|Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/im.test(text)) return 'info_page';
+  if (/^JOB\b/im.test(text) || /Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/i.test(text)) return 'info_page';
   return 'unknown';
 }
 
