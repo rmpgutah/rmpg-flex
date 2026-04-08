@@ -159,7 +159,7 @@ npm run dev              # Start both client (Vite :5173) and server (tsx :3001)
 npm run build            # Build client only (Vite → client/dist/)
 cd client && npx vite build       # Build client (used by deploy)
 cd server && npx vitest run       # Run server tests (43 tests)
-cd client && npx tsc --noEmit     # TypeScript typecheck (should pass with 0 errors)
+cd client && npx tsc --noEmit     # TypeScript typecheck (~130 pre-existing errors, Vite build is the gate)
 
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
@@ -170,7 +170,7 @@ bash deploy/deploy.sh             # Code only to VPS (runs typecheck + tests + b
 bash deploy/deploy.sh --all       # Code + desktop installers to VPS
 ```
 
-**Note**: TypeScript strict check passes with 0 errors as of v5.7.0. Vite build is the deploy gate.
+**Note**: `tsc --noEmit` has ~130 pre-existing type errors (CRM, fleet, dispatch types). Vite build succeeds and is the deploy gate.
 
 ### Google Maps API Key
 Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
