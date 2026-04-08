@@ -10,6 +10,8 @@ import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatDate } from '../utils/dateUtils';
 
+type CoverageStatus = 'active' | 'pending' | 'disabled';
+
 interface NationalCoverageState {
   stateCode: string;
   stateName: string;
@@ -48,7 +50,7 @@ interface Warrant {
   offense_level?: string | null;
   charge?: string;
   charges?: string;
-  issued_date?: string | Date | null;
+  issued_date?: string | null;
   photo_url?: string | null;
   status?: string | null;
   bond_amount?: number | string | null;
@@ -195,7 +197,6 @@ const STATE_GRID: { code: string; label: string; col: number; row: number }[] = 
 ];
 
 // ── Coverage status colors ──────────────────────────────────
-type CoverageStatus = 'active' | 'pending' | 'disabled';
 function coverageFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#166534'; // green-800
