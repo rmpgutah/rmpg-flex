@@ -3549,15 +3549,6 @@ router.post(
         const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
         content = (scrapeResult.data as any)?.markdown || '';
       }
-
-      // Scrape the PDF
-      const scrapeResult = await firecrawlScrape({
-        url: url.trim(),
-        formats: ['markdown'],
-        onlyMainContent: false,
-      });
-
-      const content = (scrapeResult.data as any)?.markdown || '';
       const contentLower = content.toLowerCase();
 
       // Estimate page count (~3000 chars per page)
@@ -3630,10 +3621,6 @@ router.post(
       const wordCount = content.split(/\s+/).filter(Boolean).length;
 
       const extractedEntities = { names, dates, amounts, phones, emails, addresses, caseNumbers };
-      // Summary
-      const summary = content.substring(0, 500).replace(/\n{2,}/g, ' ').trim();
-
-      const extractedEntities = { names, dates, amounts };
 
       // Store in DB
       const db = getDb();
@@ -4978,12 +4965,6 @@ router.get(
         social_profiles: safeJsonParse(r.social_profiles, []),
         competitors: safeJsonParse(r.competitors, []),
         extension_suggestions: safeJsonParse(r.extension_suggestions, []),
-        colors: r.colors ? JSON.parse(r.colors) : [],
-        fonts: r.fonts ? JSON.parse(r.fonts) : [],
-        tone_keywords: r.tone_keywords ? JSON.parse(r.tone_keywords) : [],
-        social_profiles: r.social_profiles ? JSON.parse(r.social_profiles) : [],
-        competitors: r.competitors ? JSON.parse(r.competitors) : [],
-        extension_suggestions: r.extension_suggestions ? JSON.parse(r.extension_suggestions) : [],
       })));
     } catch (err: unknown) {
       if (handleFirecrawlError(err, res)) return;
@@ -7975,10 +7956,6 @@ router.post(
         md = data?.markdown || '';
         metadata = data?.metadata || {};
       }
-      const scrapeResult = await firecrawlScrape({ url: url.trim(), formats: ['markdown'], onlyMainContent: false });
-      const data = scrapeResult.data as any;
-      const md = data?.markdown || '';
-      const metadata = data?.metadata || {};
 
       const results: any = {};
 
