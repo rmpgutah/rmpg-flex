@@ -475,8 +475,32 @@ app.get('*', (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  // Log with request context for debugging
   const requestId = req.headers['x-request-id'] || 'unknown';
+
+  // Handle multer errors with appropriate status codes
+  if (err?.name === 'MulterError') {
+    const multerStatus: Record<string, number> = {
+      LIMIT_FILE_SIZE: 413, LIMIT_FILE_COUNT: 400, LIMIT_FIELD_KEY: 400,
+      LIMIT_FIELD_VALUE: 400, LIMIT_FIELD_COUNT: 400, LIMIT_UNEXPECTED_FILE: 400,
+      LIMIT_PART_COUNT: 400,
+    };
+    const status = multerStatus[err.code] || 400;
+    console.warn(`Multer rejection [${requestId}] ${req.method} ${req.path}: ${err.code} — ${err.message}`);
+    if (!res.headersSent) {
+      return res.status(status).json({ error: `Upload rejected: ${err.message}` });
+    }
+    return;
+  }
+
+  // Handle multer fileFilter errors (thrown as generic Error)
+  if (err?.message && /file type|not allowed|only.*files/i.test(err.message)) {
+    console.warn(`Upload filter [${requestId}] ${req.method} ${req.path}: ${err.message}`);
+    if (!res.headersSent) {
+      return res.status(415).json({ error: err.message });
+    }
+    return;
+  }
+
   console.error(`Unhandled Express error [${requestId}] ${req.method} ${req.path}:`, err?.message || err, err?.stack || '');
   if (!res.headersSent) {
     const status = err?.status || err?.statusCode || 500;
