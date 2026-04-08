@@ -48,56 +48,54 @@ export default function MobileHeader({
     <div
       className="flex items-center justify-between relative"
       style={{
-        height: 48,
+        height: 56,
         paddingLeft: 8,
         paddingRight: 8,
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)',
-        borderBottom: '1px solid #2b313a',
+        background: 'var(--surface-raised)',
+        borderBottom: '1px solid var(--border-default)',
         flexShrink: 0,
-        WebkitBackdropFilter: 'blur(8px)',
-        backdropFilter: 'blur(8px)',
       }}
     >
-      {/* Blue accent at very top */}
+      {/* Gold accent at very top */}
       <div
         className="absolute top-0 left-0 right-0 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)',
+          background: 'linear-gradient(90deg, transparent, var(--brand-gold), transparent)',
           zIndex: 1,
         }}
       />
 
       {/* Left — Hamburger + Logo + Title */}
-      <div className="flex items-center gap-1 min-w-0">
+      <div className="flex items-center gap-1.5 min-w-0">
         {/* Hamburger */}
         <button type="button"
           onClick={onMenuOpen}
-          className="flex items-center justify-center w-11 h-11"
-          style={{ color: '#aaaaaa' }}
+          className="flex items-center justify-center"
+          style={{ width: 48, height: 48, color: '#aaaaaa' }}
           aria-label="Open navigation"
         >
-          <Menu style={{ width: 20, height: 20 }} />
+          <Menu style={{ width: 22, height: 22 }} />
         </button>
 
-        {/* Back / Forward — tighter on mobile */}
+        {/* Back / Forward */}
         <button type="button"
           onClick={onNavBack}
           disabled={!canGoBack}
-          className="flex items-center justify-center w-9 h-11"
-          style={{ color: canGoBack ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
+          className="flex items-center justify-center"
+          style={{ width: 40, height: 48, color: canGoBack ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
           aria-label="Go back"
         >
-          <ChevronLeft style={{ width: 16, height: 16 }} />
+          <ChevronLeft style={{ width: 18, height: 18 }} />
         </button>
         <button type="button"
           onClick={onNavForward}
           disabled={!canGoForward}
-          className="flex items-center justify-center w-9 h-11"
-          style={{ color: canGoForward ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
+          className="flex items-center justify-center"
+          style={{ width: 40, height: 48, color: canGoForward ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
           aria-label="Go forward"
         >
-          <ChevronRight style={{ width: 16, height: 16 }} />
+          <ChevronRight style={{ width: 18, height: 18 }} />
         </button>
 
         {/* Logo — slightly smaller on mobile */}

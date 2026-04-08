@@ -345,7 +345,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
 
   // ── Footer legal text ──
   y = checkPageBreak(doc, y, 10);
-  doc.setFont('helvetica', 'italic');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text(
@@ -534,7 +534,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
   // ── Footer legal text ──
   y = checkPageBreak(doc, y, 10);
-  doc.setFont('helvetica', 'italic');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text(
