@@ -1422,8 +1422,15 @@ function createTables(): void {
 function migrateSchema(): void {
   const isValidIdentifier = (value: string): boolean => /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
   const quoteIdentifier = (value: string): string => `"${value.replace(/"/g, '""')}"`;
-  const isValidTypeDef = (value: string): boolean =>
-    /^(TEXT|INTEGER|REAL|BLOB|NUMERIC)(\s+(NOT NULL|UNIQUE|PRIMARY KEY))*$/.test(value.trim());
+  // Typedef must start with a valid SQLite base type and must not contain SQL injection
+  // characters (statement terminators or comment markers). DEFAULT expressions, REFERENCES,
+  // NOT NULL, etc. are permitted since all callers use hardcoded values.
+  const isValidTypeDef = (value: string): boolean => {
+    const trimmed = value.trim();
+    if (!/^(TEXT|INTEGER|REAL|BLOB|NUMERIC)\b/i.test(trimmed)) return false;
+    if (/;|--/.test(trimmed)) return false;
+    return true;
+  };
 
   const addCol = (table: string, col: string, typedef: string) => {
     if (!isValidIdentifier(table) || !isValidIdentifier(col) || !isValidTypeDef(typedef)) {
@@ -1662,13 +1669,13 @@ function migrateSchema(): void {
       `);
       // Copy existing data (use PRAGMA to get actual column list)
       const cfsCols = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
-      const safeIdentifier = (name: string): string => {
-        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      const cfsColNames = cfsCols.map((c: any) => {
+        const name = String(c.name);
+        if (!isValidIdentifier(name)) {
           throw new Error(`Unsafe column name in calls_for_service schema: ${name}`);
         }
-        return `"${name.replace(/"/g, '""')}"`;
-      };
-      const cfsColNames = cfsCols.map((c: any) => safeIdentifier(String(c.name))).join(', ');
+        return quoteIdentifier(name);
+      }).join(', ');
       db.exec(`INSERT INTO calls_for_service_new (${cfsColNames}) SELECT ${cfsColNames} FROM calls_for_service`);
       db.exec(`DROP TABLE calls_for_service`);
       db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
@@ -2894,13 +2901,9 @@ function migrateSchema(): void {
 
     // Kick off async backfill after a short delay to let the server finish starting
     setTimeout(() => {
-      try {
-        Promise.resolve(backfillBreadcrumbRoads()).catch((err) => {
-          console.error('[migrate] Async breadcrumb road/cross-street backfill failed:', err);
-        });
-      } catch (err) {
+      backfillBreadcrumbRoads().catch((err) => {
         console.error('[migrate] Async breadcrumb road/cross-street backfill failed:', err);
-      }
+      });
     }, 10_000);
   }
 
@@ -6124,10 +6127,10 @@ function seedData(): void {
     `).run('admin', hash(randomPassword), 'System Administrator', 'admin@rmpgsecurity.com', 'admin', 'A001', '801-555-0100', now, now, now);
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║  INITIAL ADMIN ACCOUNT CREATED                  ║');
-    console.log('║  Username: admin                                ║');
-    console.log('║  Initial password generated securely (not shown).║');
-    console.log('║  You MUST change this password on first login.  ║');
+    console.log('║  INITIAL ADMIN ACCOUNT CREATED                   ║');
+    console.log('║  Username: admin                                 ║');
+    console.log('║  Initial password generated securely (not shown) ║');
+    console.log('║  You MUST change this password on first login.   ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
   }
