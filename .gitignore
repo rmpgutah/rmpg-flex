@@ -60,5 +60,6 @@ firebase-debug.log
 .claude/
 .github/*
 !.github/dependabot.yml
+!.github/labeler.yml
 !.github/workflows/
 .firecrawl/
