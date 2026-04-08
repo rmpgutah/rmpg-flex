@@ -716,6 +716,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
             {renderInfoRow('Doors', selectedVehicle.doors ? String(selectedVehicle.doors) : null)}
             {renderInfoRow('Owner', selectedVehicle.owner_name)}
+            {renderInfoRow('Registered Owner', selectedVehicle.registered_owner)}
           </div>
           {selectedVehicle.vin && (
             <div className="mt-2 text-xs"><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedVehicle.vin}</span></div>
@@ -745,6 +746,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {renderInfoRow('Reg. Expiry', selectedVehicle.registration_expiry, Calendar)}
+            {renderInfoRow('Reg. State', selectedVehicle.registration_state)}
+            {renderInfoRow('Title Status', selectedVehicle.title_status)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
@@ -752,6 +755,24 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
           </div>
         </CollapsibleSection>
+
+        {/* ── Condition & Value (conditional) ──── */}
+        {(selectedVehicle.exterior_condition || selectedVehicle.interior_condition || selectedVehicle.estimated_value || selectedVehicle.window_tint || selectedVehicle.modifications || selectedVehicle.equipment_notes) && (
+          <CollapsibleSection title="Condition & Value" icon={Hash}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {renderInfoRow('Exterior', selectedVehicle.exterior_condition)}
+              {renderInfoRow('Interior', selectedVehicle.interior_condition)}
+              {renderInfoRow('Est. Value', selectedVehicle.estimated_value ? `$${selectedVehicle.estimated_value}` : undefined)}
+              {renderInfoRow('Window Tint', selectedVehicle.window_tint)}
+            </div>
+            {selectedVehicle.modifications && (
+              <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedVehicle.modifications}</span></div>
+            )}
+            {selectedVehicle.equipment_notes && (
+              <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedVehicle.equipment_notes}</span></div>
+            )}
+          </CollapsibleSection>
+        )}
 
         {/* ── Stolen / Tow Status (conditional) ── */}
         {(selectedVehicle.stolen_status || selectedVehicle.tow_status) && (
