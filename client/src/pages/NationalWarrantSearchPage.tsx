@@ -32,6 +32,10 @@ interface NationalWarrantSearchResultItem {
 interface NationalWarrantSearchResults {
   results?: NationalWarrantSearchResultItem[];
   total?: number;
+  search_time_ms?: number;
+  by_state?: Record<string, Warrant[]>;
+  local?: Warrant[];
+  error?: string;
   [key: string]: unknown;
 }
 
@@ -52,7 +56,7 @@ interface Warrant {
   status?: string | null;
   bond_amount?: number | string | null;
   court?: string;
-  [key: string]: unknown;
+  source?: string;
 }
 
 // ── US States List ──────────────────────────────────────────
