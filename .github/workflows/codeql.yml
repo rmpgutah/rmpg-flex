@@ -23,20 +23,27 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install dependencies
-        run: |
-          npm ci --ignore-scripts
-          cd client && npm ci --ignore-scripts
-          cd ../server && npm ci --ignore-scripts
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci --ignore-scripts
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci --ignore-scripts
 
       - name: TypeScript check (client)
-        run: cd client && npx tsc --noEmit
+        working-directory: client
+        run: npx tsc --noEmit
 
       - name: Audit dependencies
         run: |
           echo "=== Root ===" && npm audit --audit-level=high || true
-          echo "=== Server ===" && cd server && npm audit --audit-level=high || true
-          echo "=== Client ===" && cd ../client && npm audit --audit-level=high || true
+          echo "=== Server ===" && (cd server && npm audit --audit-level=high) || true
+          echo "=== Client ===" && (cd client && npm audit --audit-level=high) || true
 
       - name: Build client
-        run: cd client && npx vite build
+        working-directory: client
+        run: npx vite build
