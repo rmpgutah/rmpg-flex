@@ -191,7 +191,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       ];
 
       // Data rows
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
         // Page break check — re-draw headers on new page
@@ -204,14 +204,14 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           y = drawItemHeaders(y);
           // Start new segment on new page
           tableSegments.push({ top: y - 8, bottom: y, page: doc.getNumberOfPages() });
-          doc.setFont('helvetica', 'normal');
+          doc.setFont('courier', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
 
         const item = items[i];
 
         // Dynamic row height for multi-line descriptions — use wordWrapText to prevent mid-word breaks
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         const descLines = wordWrapText(doc, sanitizePdfText(item.description || '').toUpperCase(), cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
