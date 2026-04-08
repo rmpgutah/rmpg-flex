@@ -33,6 +33,17 @@ import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInsta
 import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 import { useToast } from '../components/ToastProvider';
 
+// Add global google type for TypeScript
+declare global {
+  interface Window {
+    google: typeof google;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace google {
+    // The google.maps types are available globally when the Maps script is loaded.
+  }
+}
+
 type Checkpoint = {
   id: number;
   property_id: number;
