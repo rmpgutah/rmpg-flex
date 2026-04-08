@@ -1958,8 +1958,77 @@ router.post('/scraper/reset-all', requireRole('admin'), (req: Request, res: Resp
   }
 });
 
-// NOTE: national-coverage and national-search moved above /:id route to avoid param capture
+// ── National Warrant Coverage ───────────────────────────
+// GET /api/warrants/national-coverage
+// Returns per-state coverage stats for the US map
+router.get('/national-coverage', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
 
+    // Get source config grouped by state
+    const sources = db.prepare(`
+      SELECT state, source_key, display_name, source_type, enabled,
+             last_scrape_at, consecutive_errors, circuit_broken
+      FROM warrant_scraper_config
+      ORDER BY state, source_key
+    `).all() as any[];
+
+    // Get warrant counts per state from scraped_warrants
+    const warrantCounts = db.prepare(`
+      SELECT state, COUNT(*) as count
+      FROM scraped_warrants
+      WHERE status = 'active'
+      GROUP BY state
+    `).all() as { state: string; count: number }[];
+
+    const warrantMap: Record<string, number> = {};
+    for (const row of warrantCounts) {
+      warrantMap[row.state] = row.count;
+    }
+
+    // Build per-state status
+    const stateStatus: Record<string, string> = {};
+    const stateSources: Record<string, number> = {};
+    const stateWarrants: Record<string, number> = {};
+
+    for (const src of sources) {
+      const st = src.state;
+      if (!st) continue;
+      stateSources[st] = (stateSources[st] || 0) + 1;
+      stateWarrants[st] = warrantMap[st] || 0;
+
+      // Determine status: active (enabled + has data or recently scraped), pending (enabled, no data yet), disabled
+      if (src.enabled && !src.circuit_broken) {
+        if (stateWarrants[st] > 0 || src.last_scrape_at) {
+          stateStatus[st] = 'active';
+        } else if (!stateStatus[st] || stateStatus[st] === 'disabled') {
+          stateStatus[st] = 'pending';
+        }
+      } else if (!stateStatus[st]) {
+        stateStatus[st] = 'disabled';
+      }
+    }
+
+    const statesCovered = Object.values(stateStatus).filter(s => s === 'active').length;
+    const totalWarrants = Object.values(stateWarrants).reduce((a, b) => a + b, 0);
+
+    res.json({
+      sources: sources.length,
+      states_covered: statesCovered,
+      active_warrants: totalWarrants,
+      state_status: stateStatus,
+      state_sources: stateSources,
+      state_warrants: stateWarrants,
+    });
+  } catch (error: any) {
+    console.error('National coverage error:', error);
+    res.status(500).json({ error: 'Failed to get national coverage', code: 'NATIONAL_COVERAGE_ERROR' });
+  }
+});
+
+// ── National Warrant Search ─────────────────────────────
+// POST /api/warrants/national-search
+// Hybrid search: local DB + live Utah API + live FBI API
 router.post('/national-search', async (req: Request, res: Response) => {
   try {
     const db = getDb();

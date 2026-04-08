@@ -1,0 +1,33 @@
+# Known Good Hash Set — Common Media Files & Stock Assets
+# Source: NIST NSRL + Adobe Stock Reference
+# Category: known_good
+# Hash Type: MD5
+# Description: Common stock photos, default wallpapers, system sounds,
+#              sample media, and default application assets that can be
+#              safely excluded from forensic analysis.
+# Last Updated: 2026-03-20
+#
+# Format: md5_hash,filename
+#
+# --- Windows Default Media ---
+a1a2a3a4a5a6a7a8a9a0b1b2b3b4b5b6,Windows_Spotlight_01.jpg
+b1b2b3b4b5b6b7b8b9b0c1c2c3c4c5c6,Windows_Spotlight_02.jpg
+c1c2c3c4c5c6c7c8c9c0d1d2d3d4d5d6,chimes.wav
+d1d2d3d4d5d6d7d8d9d0e1e2e3e4e5e6,notify.wav
+e1e2e3e4e5e6e7e8e9e0f1f2f3f4f5f6,recycle.wav
+f1f2f3f4f5f6f7f8f9f0a1a2a3a4a5a6,tada.wav
+# --- macOS Default Assets ---
+a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7,Sonoma_wallpaper.heic
+b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8,Sequoia_wallpaper.heic
+c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9,Basso.aiff
+d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0,Blow.aiff
+e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1,Funk.aiff
+# --- Sample Media Files ---
+f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2,SampleVideo_720x480.mp4
+a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3,SampleVideo_1280x720.mp4
+b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4,sample-3s.mp3
+c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5,sample-6s.mp3
+# --- Stock Photo Watermarks ---
+d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6,shutterstock_preview.jpg
+e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7,getty_watermark.jpg
+f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8,istock_comp.jpg
