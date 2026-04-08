@@ -507,11 +507,12 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       SELECT fi.fi_number, fi.subject_first_name, fi.subject_last_name, fi.subject_dob,
              fi.location,
              fi.contact_reason AS reason,
-             fi.status AS status,
-             fi.officer_name AS officer_name,
-             fi.notes AS notes,
+             fi.action_taken AS status,
+             u.full_name AS officer_name,
+             fi.narrative AS notes,
              fi.created_at
       FROM field_interviews fi
+      LEFT JOIN users u ON fi.officer_id = u.id
       ORDER BY fi.created_at DESC
       LIMIT 10000
     `).all() as any[];
