@@ -942,7 +942,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/dispatch/calls"
                   searchFields={['call_number', 'incident_type', 'location_address']}
-                  onNavigate={() => navigate('/dispatch')}
+                  onNavigate={(item) => navigate(`/dispatch?callId=${item.id}`)}
                 />
               )}
 
@@ -1037,7 +1037,7 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/evidence"
                   searchFields={['evidence_number', 'description', 'evidence_type']}
-                  onNavigate={() => navigate('/evidence')}
+                  onNavigate={(item) => navigate(`/evidence?id=${item.id}`)}
                 />
               )}
 
