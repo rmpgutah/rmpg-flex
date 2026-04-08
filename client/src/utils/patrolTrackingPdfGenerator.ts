@@ -311,7 +311,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // Report metadata
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
 
   const startLabel = data.query.startDate
     ? formatDate(data.query.startDate)
@@ -356,7 +356,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.text(sanitizePdfText(`${trail.call_sign}  --  ${trail.officer_name}  (BADGE: ${trail.badge_number || 'N/A'})`).toUpperCase(), margin + 5, yPos + 4.2);
     yPos += 8;
 
@@ -435,7 +435,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     // Table rows
     doc.setFontSize(5.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
 
     // Sample points for readability — if > 300 points, sample every Nth
     const maxRows = 300;

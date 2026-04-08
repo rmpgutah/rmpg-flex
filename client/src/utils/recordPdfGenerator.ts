@@ -1550,7 +1550,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Status badge
       const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(statusText, lx + visitLabelW, y);
@@ -1559,7 +1559,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
@@ -1577,7 +1577,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
 
       if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
@@ -1594,7 +1594,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
@@ -1603,7 +1603,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       // Disposition
       if (visit.disposition) {
-        doc.setFont('helvetica', 'italic');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
