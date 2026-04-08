@@ -362,8 +362,8 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
               <input type="checkbox" checked={form.narcotics_flag} onChange={(e) => updateField('narcotics_flag', e.target.checked)} className="accent-amber-500" />
               Controlled Substance
             </label>
-            <label className="flex items-center gap-2 text-xs text-blue-400 cursor-pointer">
-              <input type="checkbox" checked={form.temperature_sensitive} onChange={(e) => updateField('temperature_sensitive', e.target.checked)} className="accent-blue-500" />
+            <label className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
+              <input type="checkbox" checked={form.temperature_sensitive} onChange={(e) => updateField('temperature_sensitive', e.target.checked)} className="accent-[#d4a017]" />
               Temperature Sensitive
             </label>
           </div>
