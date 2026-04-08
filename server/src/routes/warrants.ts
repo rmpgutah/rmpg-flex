@@ -1876,6 +1876,19 @@ router.put('/batch-archive', requireRole('admin', 'manager', 'supervisor'), (req
   }
 });
 
+// ── Reset All Circuit Breakers ──────────────────────────
+// POST /api/warrants/scraper/reset-all
+router.post('/scraper/reset-all', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = db.prepare("UPDATE warrant_scraper_config SET circuit_broken = 0, consecutive_errors = 0 WHERE circuit_broken = 1").run();
+    res.json({ reset: result.changes, message: `Reset ${result.changes} circuit-broken sources` });
+  } catch (error: any) {
+    console.error('Reset scrapers error:', error);
+    res.status(500).json({ error: 'Failed to reset scrapers' });
+  }
+});
+
 // ── National Warrant Coverage ───────────────────────────
 // GET /api/warrants/national-coverage
 // Returns per-state coverage stats for the US map
@@ -1946,8 +1959,8 @@ router.get('/national-coverage', (req: Request, res: Response) => {
 
 // ── National Warrant Search ─────────────────────────────
 // POST /api/warrants/national-search
-// Search scraped_warrants across all states
-router.post('/national-search', (req: Request, res: Response) => {
+// Hybrid search: local DB + live Utah API + live FBI API
+router.post('/national-search', async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const startMs = Date.now();
@@ -1958,41 +1971,20 @@ router.post('/national-search', (req: Request, res: Response) => {
       return;
     }
 
-    // Build query
+    // ── Phase 1: Local DB search (instant) ──
     const conditions: string[] = ["sw.status = 'active'"];
     const params: any[] = [];
 
-    if (first_name) {
-      conditions.push("sw.first_name LIKE ?");
-      params.push(`%${first_name}%`);
-    }
-    if (last_name) {
-      conditions.push("sw.last_name LIKE ?");
-      params.push(`%${last_name}%`);
-    }
-    if (dob) {
-      conditions.push("sw.date_of_birth = ?");
-      params.push(dob);
-    }
-    if (state) {
-      conditions.push("sw.state = ?");
-      params.push(state);
-    }
-    if (offense_level) {
-      conditions.push("sw.offense_level = ?");
-      params.push(offense_level);
-    }
-    if (warrant_type) {
-      conditions.push("sw.warrant_type = ?");
-      params.push(warrant_type);
-    }
-    if (charge_keyword) {
-      conditions.push("sw.charge_description LIKE ?");
-      params.push(`%${charge_keyword}%`);
-    }
+    if (first_name) { conditions.push("sw.first_name LIKE ?"); params.push(`%${first_name}%`); }
+    if (last_name) { conditions.push("sw.last_name LIKE ?"); params.push(`%${last_name}%`); }
+    if (dob) { conditions.push("sw.date_of_birth = ?"); params.push(dob); }
+    if (state) { conditions.push("sw.state = ?"); params.push(state); }
+    if (offense_level) { conditions.push("sw.offense_level = ?"); params.push(offense_level); }
+    if (warrant_type) { conditions.push("sw.warrant_type = ?"); params.push(warrant_type); }
+    if (charge_keyword) { conditions.push("sw.charge_description LIKE ?"); params.push(`%${charge_keyword}%`); }
 
-    const rows = db.prepare(`
-      SELECT sw.*, wsc.display_name as source_display_name
+    const localRows = db.prepare(`
+      SELECT sw.*, wsc.display_name as source_display_name, 'local' as search_source
       FROM scraped_warrants sw
       LEFT JOIN warrant_scraper_config wsc ON sw.source_key = wsc.source_key
       WHERE ${conditions.join(' AND ')}
@@ -2000,22 +1992,143 @@ router.post('/national-search', (req: Request, res: Response) => {
       LIMIT 500
     `).all(...params) as any[];
 
+    // ── Phase 2: Live API searches (parallel, non-blocking) ──
+    const liveResults: any[] = [];
+    const liveErrors: string[] = [];
+
+    if (first_name && last_name) {
+      const liveSearches: Promise<void>[] = [];
+
+      // Utah live API search (if not state-filtered to a different state)
+      if (!state || state === 'UT') {
+        liveSearches.push(
+          (async () => {
+            try {
+              const utahResults = await searchUtahWarrantsLive(first_name, last_name);
+              if (utahResults && utahResults.length > 0) {
+                for (const w of utahResults) {
+                  liveResults.push({
+                    first_name: w.first_name || first_name,
+                    last_name: w.last_name || last_name,
+                    date_of_birth: w.date_of_birth || dob || null,
+                    state: 'UT',
+                    warrant_type: w.warrant_type || 'arrest',
+                    charge_description: w.charges || w.charge_description || '',
+                    court_name: w.court_name || 'Utah Courts',
+                    case_number: w.case_number || '',
+                    issue_date: w.issue_date || null,
+                    bail_amount: w.bail_amount || null,
+                    offense_level: w.offense_level || null,
+                    status: 'active',
+                    source_display_name: 'Utah Warrants API (Live)',
+                    search_source: 'live_utah',
+                  });
+                }
+              }
+            } catch (e: any) {
+              liveErrors.push(`Utah: ${e?.message || 'search failed'}`);
+            }
+          })()
+        );
+      }
+
+      // FBI Wanted API (live, if not state-filtered or state=US)
+      if (!state || state === 'US') {
+        liveSearches.push(
+          (async () => {
+            try {
+              const nameQuery = `${first_name} ${last_name}`;
+              const fbiRes = await fetch(`https://api.fbi.gov/wanted/v1/list?title=${encodeURIComponent(nameQuery)}&pageSize=20`, {
+                signal: AbortSignal.timeout(10000),
+              });
+              if (fbiRes.ok) {
+                const fbiData = await fbiRes.json();
+                if (fbiData.items && fbiData.items.length > 0) {
+                  for (const item of fbiData.items) {
+                    liveResults.push({
+                      first_name: first_name,
+                      last_name: last_name,
+                      full_name: item.title || `${first_name} ${last_name}`,
+                      date_of_birth: item.dates_of_birth_used?.[0] || null,
+                      state: 'US',
+                      warrant_type: 'fugitive',
+                      charge_description: item.description || item.caution || '',
+                      court_name: 'Federal — FBI',
+                      case_number: item.uid || '',
+                      bail_amount: item.reward_text ? parseFloat(item.reward_text.replace(/[^0-9.]/g, '')) || null : null,
+                      offense_level: 'felony',
+                      status: 'active',
+                      photo_url: item.images?.[0]?.large || item.images?.[0]?.thumb || null,
+                      detail_url: item.url || null,
+                      source_display_name: 'FBI Most Wanted (Live)',
+                      search_source: 'live_fbi',
+                    });
+                  }
+                }
+              }
+            } catch (e: any) {
+              liveErrors.push(`FBI: ${e?.message || 'search failed'}`);
+            }
+          })()
+        );
+      }
+
+      // Wait for all live searches (max 12s timeout)
+      if (liveSearches.length > 0) {
+        await Promise.race([
+          Promise.allSettled(liveSearches),
+          new Promise(resolve => setTimeout(resolve, 12000)),
+        ]);
+      }
+    }
+
+    // ── Phase 3: Also search local warrants table (manual entries) ──
+    const manualConditions: string[] = ["w.status = 'active'"];
+    const manualParams: any[] = [];
+    if (first_name) { manualConditions.push("w.subject_first_name LIKE ?"); manualParams.push(`%${first_name}%`); }
+    if (last_name) { manualConditions.push("w.subject_last_name LIKE ?"); manualParams.push(`%${last_name}%`); }
+
+    let manualRows: any[] = [];
+    if (first_name || last_name) {
+      try {
+        manualRows = db.prepare(`
+          SELECT w.*, 'manual' as search_source, 'RMPG Manual Entry' as source_display_name
+          FROM warrants w
+          WHERE ${manualConditions.join(' AND ')}
+          LIMIT 100
+        `).all(...manualParams) as any[];
+      } catch (e) { /* warrants table may not have these columns */ }
+    }
+
+    // ── Combine all results ──
+    const allResults = [...localRows, ...liveResults, ...manualRows];
+
+    // Deduplicate by name + state + charge (fuzzy)
+    const seen = new Set<string>();
+    const deduplicated = allResults.filter(r => {
+      const key = `${(r.first_name || '').toLowerCase()}_${(r.last_name || '').toLowerCase()}_${r.state || ''}_${(r.charge_description || '').substring(0, 30).toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     // Group by state
     const byState: Record<string, any[]> = {};
-    for (const row of rows) {
+    for (const row of deduplicated) {
       const st = row.state || 'Unknown';
       if (!byState[st]) byState[st] = [];
       byState[st].push(row);
     }
 
-    // Separate local (UT) results
     const local = byState['UT'] || [];
 
     res.json({
-      total: rows.length,
+      total: deduplicated.length,
       search_time_ms: Date.now() - startMs,
       by_state: byState,
       local,
+      live_sources_queried: (first_name && last_name) ? ['Utah API', 'FBI API'] : [],
+      live_errors: liveErrors.length > 0 ? liveErrors : undefined,
     });
   } catch (error: any) {
     console.error('National search error:', error);
