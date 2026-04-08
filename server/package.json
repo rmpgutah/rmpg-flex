@@ -40,7 +40,7 @@
     "robots-parser": "^3.0.1",
     "rss-parser": "^3.13.0",
     "sentiment": "^5.0.2",
-    "turndown": "^7.2.2",
+    "turndown": "^7.2.4",
     "uuid": "^10.0.0",
     "whois-json": "^2.0.4",
     "ws": "^8.18.0"
