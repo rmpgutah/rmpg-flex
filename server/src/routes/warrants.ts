@@ -27,8 +27,6 @@ router.get('/', (req: Request, res: Response) => {
       charge,
       date_from,
       date_to,
-      severity,
-      source,
       expiring_days,
       person_id,
       page = '1',
