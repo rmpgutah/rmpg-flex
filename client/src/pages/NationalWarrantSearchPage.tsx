@@ -290,7 +290,7 @@ export default function NationalWarrantSearchPage() {
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!firstName && !lastName && !dob && !stateFilter && !chargeKeyword) {
-      setSearchValidationError('Enter at least one search criterion to run a national warrant search.');
+      setSearchValidationError('Enter at least one search field to run a national warrant search.');
       return;
     }
 
