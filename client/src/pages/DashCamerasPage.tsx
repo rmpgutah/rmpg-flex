@@ -680,7 +680,7 @@ export default function DashCamerasPage() {
         <div className="h-4 w-px bg-rmpg-700" />
         <RmpgLogo height={20} iconOnly />
         <PrintButton />
-        <ExportButton exportUrl="/fleet/dashcam-videos?limit=5000&format=csv" exportFilename="dashcam-videos.csv" />
+        <ExportButton exportUrl="/fleet/dashcam-videos/export/csv" exportFilename="dashcam-videos.csv" />
         {canManage && (
           <button type="button" onClick={() => setShowUpload(true)}
             className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">

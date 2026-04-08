@@ -499,4 +499,31 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
   }
 });
 
+// GET /api/field-interviews/export/csv — CSV export
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fi.fi_number, fi.subject_first_name, fi.subject_last_name, fi.subject_dob,
+             fi.location, fi.reason, fi.status, fi.officer_name, fi.notes, fi.created_at
+      FROM field_interviews fi
+      ORDER BY fi.created_at DESC
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['FI #', 'First Name', 'Last Name', 'DOB', 'Location', 'Reason', 'Status', 'Officer', 'Notes', 'Created'];
+    const csvRows = rows.map((r: any) => [
+      r.fi_number, r.subject_first_name, r.subject_last_name, r.subject_dob,
+      (r.location || '').replace(/"/g, '""'), (r.reason || '').replace(/"/g, '""'),
+      r.status, r.officer_name, (r.notes || '').replace(/"/g, '""'), r.created_at,
+    ]);
+    const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="field_interviews_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err: any) {
+    console.error('[FieldInterviews] Export error:', err?.message);
+    res.status(500).json({ error: 'Failed to export', code: 'EXPORT_FI_ERROR' });
+  }
+});
+
 export default router;
