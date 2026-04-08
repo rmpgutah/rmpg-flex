@@ -21,6 +21,7 @@ import { sendCsv } from '../utils/csvExport';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const CORRELATION_WINDOW_MINUTES = 30;
 
 const router = Router();
 
@@ -51,9 +52,28 @@ const storage = multer.diskStorage({
   },
 });
 
+const BYTES_PER_MB = 1024 * 1024;
+const BYTES_PER_GB = 1024 * BYTES_PER_MB;
+
+const DASHCAM_UPLOAD_LIMITS = {
+  fileSize: 10 * BYTES_PER_GB,
+  files: 1,
+  fields: 20,
+  parts: 25,
+  fieldSize: BYTES_PER_MB,
+};
+
+const WEBHOOK_UPLOAD_LIMITS = {
+  fileSize: 500 * BYTES_PER_MB,
+  files: 1,
+  fields: 10,
+  parts: 15,
+  fieldSize: BYTES_PER_MB,
+};
+
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 * 1024, files: 1, fields: 20, parts: 25, fieldSize: 1024 * 1024 }, // 10 GB max
+  limits: DASHCAM_UPLOAD_LIMITS, // 10 GB max
   fileFilter: (_req, file, cb) => {
     const allowed = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska'];
     if (allowed.includes(file.mimetype) || file.originalname.match(/\.(mp4|mov|avi|webm|mkv)$/i)) {
@@ -67,7 +87,7 @@ const upload = multer({
 // Separate upload config for webhook — stricter size limit (500 MB)
 const webhookUpload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024, files: 1, fields: 10, parts: 15, fieldSize: 1024 * 1024 },
+  limits: WEBHOOK_UPLOAD_LIMITS,
   fileFilter: (_req, file, cb) => {
     const allowed = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska'];
     if (allowed.includes(file.mimetype) || file.originalname.match(/\.(mp4|mov|avi|webm|mkv)$/i)) {
@@ -708,10 +728,10 @@ router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, 
       const callsNearby = db.prepare(`
         SELECT id, call_number, incident_type, status, location_address, latitude, longitude, created_at
         FROM calls_for_service
-        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= 30
+        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= ?
         ORDER BY ABS(julianday(created_at) - julianday(?))
         LIMIT 10
-      `).all(recordedAt, recordedAt) as any[];
+      `).all(recordedAt, CORRELATION_WINDOW_MINUTES, recordedAt) as any[];
 
       for (const call of callsNearby) {
         let distance_mi: number | null = null;
@@ -739,10 +759,10 @@ router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, 
       const incidentsNearby = db.prepare(`
         SELECT id, incident_number, incident_type, status, location_address, latitude, longitude, created_at
         FROM incidents
-        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= 30
+        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= ?
         ORDER BY ABS(julianday(created_at) - julianday(?))
         LIMIT 10
-      `).all(recordedAt, recordedAt) as any[];
+      `).all(recordedAt, CORRELATION_WINDOW_MINUTES, recordedAt) as any[];
 
       for (const inc of incidentsNearby) {
         correlations.push({

@@ -83,7 +83,7 @@ const upload = multer({
 // without requiring a valid JWT session.  This prevents TOKEN_EXPIRED
 // errors when viewing photos/documents across sessions or computers.
 
-function signFileAccess(fileId: string, ttlSeconds = 31536000): { sig: string; exp: number } {
+function signFileAccess(fileId: string, ttlSeconds = 86400): { sig: string; exp: number } {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const data = `file:${fileId}:${exp}`;
   const sig = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');

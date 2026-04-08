@@ -20,12 +20,29 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const US_STATES = [
+  'ALABAMA', 'ALASKA', 'ARIZONA', 'ARKANSAS', 'CALIFORNIA', 'COLORADO', 'CONNECTICUT', 'DELAWARE',
+  'FLORIDA', 'GEORGIA', 'HAWAII', 'IDAHO', 'ILLINOIS', 'INDIANA', 'IOWA', 'KANSAS', 'KENTUCKY',
+  'LOUISIANA', 'MAINE', 'MARYLAND', 'MASSACHUSETTS', 'MICHIGAN', 'MINNESOTA', 'MISSISSIPPI',
+  'MISSOURI', 'MONTANA', 'NEBRASKA', 'NEVADA', 'NEW HAMPSHIRE', 'NEW JERSEY', 'NEW MEXICO',
+  'NEW YORK', 'NORTH CAROLINA', 'NORTH DAKOTA', 'OHIO', 'OKLAHOMA', 'OREGON', 'PENNSYLVANIA',
+  'RHODE ISLAND', 'SOUTH CAROLINA', 'SOUTH DAKOTA', 'TENNESSEE', 'TEXAS', 'UTAH', 'VERMONT',
+  'VIRGINIA', 'WASHINGTON', 'WEST VIRGINIA', 'WISCONSIN', 'WYOMING', 'DISTRICT OF COLUMBIA',
+];
+const US_STATES_REGEX = new RegExp(`\\b(${US_STATES.join('|')})\\b`);
+
 const router = Router();
 router.use(authenticateToken);
 
 // ── Multer for DL image uploads ──
 const uploadDir = path.resolve(__dirname, '../../uploads/dl-scans');
 try { fs.mkdirSync(uploadDir, { recursive: true }); } catch { /* exists */ }
+
+const DL_UPLOAD_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const DL_UPLOAD_MAX_FILES = 2;
+const DL_UPLOAD_MAX_FIELDS = 10;
+const DL_UPLOAD_MAX_PARTS = 15;
+const DL_UPLOAD_MAX_FIELD_SIZE_BYTES = 1024 * 1024; // 1MB
 
 const dlUpload = multer({
   storage: multer.diskStorage({
@@ -35,7 +52,13 @@ const dlUpload = multer({
       cb(null, `dl-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024, files: 2, fields: 10, parts: 15, fieldSize: 1024 * 1024 }, // 10MB
+  limits: {
+    fileSize: DL_UPLOAD_MAX_FILE_SIZE_BYTES,
+    files: DL_UPLOAD_MAX_FILES,
+    fields: DL_UPLOAD_MAX_FIELDS,
+    parts: DL_UPLOAD_MAX_PARTS,
+    fieldSize: DL_UPLOAD_MAX_FIELD_SIZE_BYTES,
+  },
   fileFilter: (_req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'];
     const ext = path.extname(file.originalname).toLowerCase();
@@ -235,8 +258,7 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
           const zip = zipMatch?.[1] || '';
 
           // ── State (issuing state for DL, nationality for passport) ──
-          const allStates = 'ALABAMA|ALASKA|ARIZONA|ARKANSAS|CALIFORNIA|COLORADO|CONNECTICUT|DELAWARE|FLORIDA|GEORGIA|HAWAII|IDAHO|ILLINOIS|INDIANA|IOWA|KANSAS|KENTUCKY|LOUISIANA|MAINE|MARYLAND|MASSACHUSETTS|MICHIGAN|MINNESOTA|MISSISSIPPI|MISSOURI|MONTANA|NEBRASKA|NEVADA|NEW HAMPSHIRE|NEW JERSEY|NEW MEXICO|NEW YORK|NORTH CAROLINA|NORTH DAKOTA|OHIO|OKLAHOMA|OREGON|PENNSYLVANIA|RHODE ISLAND|SOUTH CAROLINA|SOUTH DAKOTA|TENNESSEE|TEXAS|UTAH|VERMONT|VIRGINIA|WASHINGTON|WEST VIRGINIA|WISCONSIN|WYOMING|DISTRICT OF COLUMBIA';
-          const stateMatch2 = text.match(new RegExp(`\\b(${allStates})\\b`));
+          const stateMatch2 = text.match(US_STATES_REGEX);
           const state = stateMatch2?.[1] || afterLabel([/(?:STATE|ST)[:\s]+([A-Z]{2})/]) || '';
 
           // ── Sex / Gender ──

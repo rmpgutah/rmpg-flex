@@ -14,10 +14,23 @@ import { generateShiftSummary } from '../utils/shiftBriefing';
 const router = Router();
 router.use(authenticateToken);
 
+// ─── Multer limits/config ────────────────────────────
+const VOICE_AUDIO_MAX_FILE_SIZE = 5 * 1024 * 1024;
+const VOICE_AUDIO_MAX_FILES = 1;
+const VOICE_AUDIO_MAX_FIELDS = 5;
+const VOICE_AUDIO_MAX_PARTS = 10;
+const VOICE_AUDIO_MAX_FIELD_SIZE = 100 * 1024;
+
 // ─── Multer for audio upload (max 5MB) ───────────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5, parts: 10, fieldSize: 100 * 1024 },
+  limits: {
+    fileSize: VOICE_AUDIO_MAX_FILE_SIZE,
+    files: VOICE_AUDIO_MAX_FILES,
+    fields: VOICE_AUDIO_MAX_FIELDS,
+    parts: VOICE_AUDIO_MAX_PARTS,
+    fieldSize: VOICE_AUDIO_MAX_FIELD_SIZE,
+  },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('audio/') || file.mimetype === 'application/octet-stream') {
       cb(null, true);
@@ -28,16 +41,41 @@ const upload = multer({
 });
 
 // ─── Rate limiting (10 commands/min per user) ────────
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 10;
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 60_000;
+const RATE_LIMIT_MAX_USERS = 10_000;
 const rateLimits = new Map<number, { count: number; resetAt: number }>();
+
+function cleanupExpiredRateLimits(): void {
+  const now = Date.now();
+  for (const [id, entry] of rateLimits.entries()) {
+    if (now > entry.resetAt) {
+      rateLimits.delete(id);
+    }
+  }
+}
+
+setInterval(cleanupExpiredRateLimits, RATE_LIMIT_CLEANUP_INTERVAL_MS).unref();
 
 function checkRateLimit(userId: number): boolean {
   const now = Date.now();
   const entry = rateLimits.get(userId);
+
   if (!entry || now > entry.resetAt) {
-    rateLimits.set(userId, { count: 1, resetAt: now + 60_000 });
+    if (!entry && rateLimits.size >= RATE_LIMIT_MAX_USERS) {
+      // Evict oldest inserted entry to keep map bounded.
+      const oldestKey = rateLimits.keys().next().value as number | undefined;
+      if (oldestKey !== undefined) {
+        rateLimits.delete(oldestKey);
+      }
+    }
+
+    rateLimits.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     return true;
   }
-  if (entry.count >= 10) return false;
+
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) return false;
   entry.count++;
   return true;
 }
@@ -49,7 +87,7 @@ async function transcribeAudio(audioBuffer: Buffer): Promise<string | null> {
 
   try {
     const formData = new FormData();
-    formData.append('file', new Blob([audioBuffer as unknown as BlobPart], { type: 'audio/webm' }), 'audio.webm');
+    formData.append('file', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/webm' }), 'audio.webm');
     formData.append('model', 'whisper-1');
     formData.append('language', 'en');
     formData.append('response_format', 'text');
@@ -80,28 +118,31 @@ interface ParsedCommand {
   raw: string;
 }
 
+interface CommandDefinition {
+  pattern: RegExp;
+  action: string;
+  params: Record<string, string> | ((transcript: string) => Record<string, string>);
+}
+
+const COMMAND_DEFINITIONS: CommandDefinition[] = [
+  // Status updates
+  { pattern: /\b(en\s*route|10[-\s]?76)\b/, action: 'status_update', params: { status: 'en_route' } },
+  { pattern: /\b(on\s*scene|10[-\s]?97)\b/, action: 'status_update', params: { status: 'on_scene' } },
+  { pattern: /\b(available|10[-\s]?8|cleared)\b/, action: 'status_update', params: { status: 'available' } },
+  { pattern: /\b(out\s*of\s*service|10[-\s]?7)\b/, action: 'status_update', params: { status: 'out_of_service' } },
+  { pattern: /\b(on\s*break|10[-\s]?10)\b/, action: 'status_update', params: { status: 'on_break' } },
+  { pattern: /\b(busy|10[-\s]?6)\b/, action: 'status_update', params: { status: 'busy' } },
+];
+
 // ─── Command parser (regex-based) ────────────────────
 function parseCommand(transcript: string): ParsedCommand | null {
   const t = transcript.toLowerCase().trim();
 
-  // Status updates
-  if (/\b(en\s*route|10[-\s]?76)\b/.test(t)) {
-    return { action: 'status_update', params: { status: 'en_route' }, raw: transcript };
-  }
-  if (/\b(on\s*scene|10[-\s]?97)\b/.test(t)) {
-    return { action: 'status_update', params: { status: 'on_scene' }, raw: transcript };
-  }
-  if (/\b(available|10[-\s]?8|cleared)\b/.test(t)) {
-    return { action: 'status_update', params: { status: 'available' }, raw: transcript };
-  }
-  if (/\b(out\s*of\s*service|10[-\s]?7)\b/.test(t)) {
-    return { action: 'status_update', params: { status: 'out_of_service' }, raw: transcript };
-  }
-  if (/\b(on\s*break|10[-\s]?10)\b/.test(t)) {
-    return { action: 'status_update', params: { status: 'on_break' }, raw: transcript };
-  }
-  if (/\b(busy|10[-\s]?6)\b/.test(t)) {
-    return { action: 'status_update', params: { status: 'busy' }, raw: transcript };
+  for (const def of COMMAND_DEFINITIONS) {
+    if (def.pattern.test(t)) {
+      const params = typeof def.params === 'function' ? def.params(transcript) : def.params;
+      return { action: def.action, params, raw: transcript };
+    }
   }
 
   // Acknowledgments
@@ -324,40 +365,48 @@ async function executeCommand(
         // Auto threat briefing when arriving on scene
         const currentCall = getCurrentCall(unit.id);
         if (currentCall) {
-          const threatCtx = await buildThreatContext({
-            locationAddress: currentCall.location_address,
-            latitude: currentCall.latitude,
-            longitude: currentCall.longitude,
-            callId: currentCall.id,
-          });
-          if (threatCtx.threatLevel !== 'low') {
-            parts.push(composeThreatBriefing(threatCtx));
-          }
-          // Proximity hazards
-          if (currentCall.latitude && currentCall.longitude) {
-            const hazards = checkProximityHazards(currentCall.latitude, currentCall.longitude);
-            if (hazards.length > 0) {
-              parts.push(composeProximityNarrative(hazards));
+          try {
+            const threatCtx = await buildThreatContext({
+              locationAddress: currentCall.location_address,
+              latitude: currentCall.latitude,
+              longitude: currentCall.longitude,
+              callId: currentCall.id,
+            });
+            if (threatCtx.threatLevel !== 'low') {
+              parts.push(composeThreatBriefing(threatCtx));
             }
+            // Proximity hazards
+            if (currentCall.latitude && currentCall.longitude) {
+              const hazards = checkProximityHazards(currentCall.latitude, currentCall.longitude);
+              if (hazards.length > 0) {
+                parts.push(composeProximityNarrative(hazards));
+              }
+            }
+          } catch (err) {
+            parts.push('Additional scene intelligence is temporarily unavailable.');
           }
         }
       } else if (newStatus === 'en_route') {
         // Proximity hazard scan for destination
         const currentCall = getCurrentCall(unit.id);
         if (currentCall?.latitude && currentCall?.longitude) {
-          const hazards = checkProximityHazards(currentCall.latitude, currentCall.longitude);
-          if (hazards.length > 0) {
-            parts.push('En route advisory.');
-            parts.push(composeProximityNarrative(hazards));
-          }
-          // Quick threat level check
-          const threatCtx = await buildThreatContext({
-            locationAddress: currentCall.location_address,
-            latitude: currentCall.latitude,
-            longitude: currentCall.longitude,
-          });
-          if (threatCtx.threatLevel === 'critical' || threatCtx.threatLevel === 'high') {
-            parts.push(`${threatCtx.threatLevel.toUpperCase()} threat location. Use caution on approach.`);
+          try {
+            const hazards = checkProximityHazards(currentCall.latitude, currentCall.longitude);
+            if (hazards.length > 0) {
+              parts.push('En route advisory.');
+              parts.push(composeProximityNarrative(hazards));
+            }
+            // Quick threat level check
+            const threatCtx = await buildThreatContext({
+              locationAddress: currentCall.location_address,
+              latitude: currentCall.latitude,
+              longitude: currentCall.longitude,
+            });
+            if (threatCtx.threatLevel === 'critical' || threatCtx.threatLevel === 'high') {
+              parts.push(`${threatCtx.threatLevel.toUpperCase()} threat location. Use caution on approach.`);
+            }
+          } catch (err) {
+            parts.push('En route intelligence checks are temporarily unavailable.');
           }
         }
       } else if (newStatus === 'available') {

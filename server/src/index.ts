@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
@@ -138,7 +139,7 @@ app.use(sanitizeInput);
 
 // Fix 73: Add request ID for tracing
 app.use((_req, _res, next) => {
-  const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const requestId = crypto.randomUUID();
   _req.headers['x-request-id'] = _req.headers['x-request-id'] || requestId;
   _res.setHeader('X-Request-ID', _req.headers['x-request-id'] as string);
   next();
