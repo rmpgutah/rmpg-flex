@@ -658,7 +658,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'X-Requested-With': 'XMLHttpRequest',
           Authorization: `Bearer ${currentToken}`,
         },
-        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+        body: JSON.stringify({ tempToken: currentToken, code, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (res.ok) {
