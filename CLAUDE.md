@@ -149,7 +149,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 - Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
 - GeoJSON layers: beat.geojson (719 features), county, municipality, highway, state_boundary, place
-- Service Worker (sw.js v151) pre-caches tiles for Utah operational area
+- Service Worker (`sw.js`) pre-caches tiles for Utah operational area; cache/version is defined by `CACHE_NAME`
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
 ## Development
@@ -294,6 +294,6 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
 19. **Worktree file paths** — when operating in a worktree, ALL edits must use the worktree path (`.claude/worktrees/<name>/`), not the main repo path. Edits to the main repo path are invisible to the worktree and will be lost
 20. **Blue is dead** — Tailwind's entire `blue` palette is overridden to grayscale in `tailwind.config.js`. Any `text-blue-*`, `bg-blue-*`, `border-blue-*` renders gray. Use CSS variables (`var(--brand-blue)`) or the custom `rmpg-*` / `brand-*` Tailwind classes instead
-21. **Multer must stay on 1.x** — multer 2.0 has an incompatible API (removes `diskStorage()`, `memoryStorage()`, `upload.single()` pattern). 8 route files use 1.x API. Dependabot multer alerts cannot be auto-fixed
+21. **Multer must stay on 1.x** — multer 2.0 has an incompatible API (removes `diskStorage()`, `memoryStorage()`, `upload.single()` pattern). 7 route files use 1.x API: `server/src/routes/uploads.ts`, `server/src/routes/personnel.ts`, `server/src/routes/fleet.ts`, `server/src/routes/dashcamVideos.ts`, `server/src/routes/dlRecords.ts`, `server/src/routes/voice.ts`, `server/src/routes/firecrawlTools.ts`. Dependabot multer alerts cannot be auto-fixed
 22. **Panel CSS classes** — use `.panel-raised`, `.panel-sunken`, `.panel-base` for surface backgrounds. These are defined in `index.css` and map to CSS variables. Without them, elements render with no background (white)
 23. **CI `npm ci` fragility** — the self-hosted runner uses `npm ci` which requires exact lockfile match. If lockfile drifts, CI fails on install step. Fix: regenerate lockfiles locally (`npm install`) and commit them
