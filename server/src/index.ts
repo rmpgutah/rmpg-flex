@@ -367,6 +367,7 @@ app.use('/api/crm', crmRoutes);
 app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
 app.use('/api/crm', crmFirecrawlRoutes);
+app.use('/api/crm', crmCompetitorMonitorRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
 app.use('/api/hr', hrRoutes);
