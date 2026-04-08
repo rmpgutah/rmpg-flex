@@ -113,9 +113,9 @@ router.get('/stats', (req: Request, res: Response) => {
     ).all();
 
     const byReason = db.prepare(
-      `SELECT reason, COUNT(*) as count FROM field_interviews
-       WHERE reason IS NOT NULL
-       GROUP BY reason ORDER BY count DESC LIMIT 10`
+      `SELECT contact_reason as reason, COUNT(*) as count FROM field_interviews
+       WHERE contact_reason IS NOT NULL
+       GROUP BY contact_reason ORDER BY count DESC LIMIT 10`
     ).all();
 
     const thisWeek = (db.prepare(
@@ -505,7 +505,12 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
     const db = getDb();
     const rows = db.prepare(`
       SELECT fi.fi_number, fi.subject_first_name, fi.subject_last_name, fi.subject_dob,
-             fi.location, fi.reason, fi.status, fi.officer_name, fi.notes, fi.created_at
+             fi.location,
+             fi.contact_reason AS reason,
+             fi.status AS status,
+             fi.officer_name AS officer_name,
+             fi.notes AS notes,
+             fi.created_at
       FROM field_interviews fi
       ORDER BY fi.created_at DESC
       LIMIT 10000
