@@ -7,7 +7,7 @@
 // Free public registry — no API key required.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, SexOffenderRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, SexOffenderRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const NSOPW_SEARCH_URL = 'https://www.nsopw.gov/api/Search';
@@ -17,7 +17,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class NsopwSource extends BaseDataSource {
   readonly name = 'nsopw';
   readonly displayName = 'National Sex Offender Registry';
-  readonly category: SourceCategory = 'registry';
+  readonly category: SkipTracerSourceCategory = 'registry';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

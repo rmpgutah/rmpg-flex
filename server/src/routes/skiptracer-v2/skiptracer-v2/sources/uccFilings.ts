@@ -6,7 +6,7 @@
 // Search by debtor or secured party name. Free public records.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, BusinessRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, BusinessRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const UCC_SEARCH_URL = 'https://secure.utah.gov/bes/action/ucc/search';
@@ -15,7 +15,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class UccFilingsSource extends BaseDataSource {
   readonly name = 'utah_ucc';
   readonly displayName = 'Utah UCC Filings';
-  readonly category: SourceCategory = 'business';
+  readonly category: SkipTracerSourceCategory = 'business';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

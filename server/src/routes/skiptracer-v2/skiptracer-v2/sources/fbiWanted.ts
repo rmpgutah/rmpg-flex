@@ -5,7 +5,7 @@
 // Completely free, always available.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, WatchlistFlag } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, WatchlistFlag } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const API_BASE = 'https://api.fbi.gov/@wanted';
@@ -13,7 +13,7 @@ const API_BASE = 'https://api.fbi.gov/@wanted';
 export default class FbiWantedSource extends BaseDataSource {
   readonly name = 'fbi_wanted';
   readonly displayName = 'FBI Most Wanted';
-  readonly category: SourceCategory = 'registry';
+  readonly category: SkipTracerSourceCategory = 'registry';
   readonly costPerLookup = 0;
 
   isConfigured(): boolean {

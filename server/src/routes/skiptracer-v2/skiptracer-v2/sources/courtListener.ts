@@ -6,7 +6,7 @@
 // Rate limit: 5,000 requests/hour (~83/min), we cap at 30/min.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, CourtRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, CourtRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const API_BASE = 'https://www.courtlistener.com/api/rest/v4/';
@@ -14,7 +14,7 @@ const API_BASE = 'https://www.courtlistener.com/api/rest/v4/';
 export default class CourtListenerSource extends BaseDataSource {
   readonly name = 'court_listener';
   readonly displayName = 'CourtListener Federal Courts';
-  readonly category: SourceCategory = 'court';
+  readonly category: SkipTracerSourceCategory = 'court';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 30;

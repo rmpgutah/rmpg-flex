@@ -5,7 +5,7 @@
 // licenses. Free government API, no auth required.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, LicenseRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, LicenseRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const API_BASE = 'https://data.fcc.gov/api/license-view/basicSearch/getLicenses';
@@ -13,7 +13,7 @@ const API_BASE = 'https://data.fcc.gov/api/license-view/basicSearch/getLicenses'
 export default class FccUlsSource extends BaseDataSource {
   readonly name = 'fcc_uls';
   readonly displayName = 'FCC License Search';
-  readonly category: SourceCategory = 'people';
+  readonly category: SkipTracerSourceCategory = 'people';
   readonly costPerLookup = 0;
 
   isConfigured(): boolean {

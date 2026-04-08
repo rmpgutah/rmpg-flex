@@ -5,7 +5,7 @@
 // data. No auth required. Free public source.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, WatchlistFlag } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, WatchlistFlag } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const DEA_URL = 'https://www.dea.gov/fugitives';
@@ -14,7 +14,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class DeaFugitivesSource extends BaseDataSource {
   readonly name = 'dea_fugitives';
   readonly displayName = 'DEA Most Wanted Fugitives';
-  readonly category: SourceCategory = 'registry';
+  readonly category: SkipTracerSourceCategory = 'registry';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 3;

@@ -8,7 +8,7 @@
 import { randomUUID } from 'crypto';
 import type {
   SourceResult,
-  SourceCategory,
+  SkipTracerSourceCategory,
   DossierProfile,
   AddressRecord,
   PhoneRecord,
@@ -558,7 +558,7 @@ interface ExtractedIdentity {
   state: string | null;
   phones: string[];   // normalized 10-digit
   emails: string[];   // lowercase
-  sourceType: SourceCategory;
+  sourceType: SkipTracerSourceCategory;
 }
 
 /** Pull the best identity fields out of a SourceResult */

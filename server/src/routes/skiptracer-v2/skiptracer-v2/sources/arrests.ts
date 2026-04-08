@@ -5,14 +5,14 @@
 // and county booking feeds). Always configured, zero cost.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, CourtRecord, CustodyRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, CourtRecord, CustodyRecord } from '../types';
 import { getDb } from '../../../models/database';
 import { localNow } from '../../../utils/timeUtils';
 
 export default class ArrestsSource extends BaseDataSource {
   readonly name = 'arrests';
   readonly displayName = 'Arrest Records';
-  readonly category: SourceCategory = 'court';
+  readonly category: SkipTracerSourceCategory = 'court';
   readonly costPerLookup = 0;
 
   isConfigured(): boolean {

@@ -6,7 +6,7 @@
 // encrypted config storage, and enabled/configured checks.
 
 import crypto from 'crypto';
-import { DataSource, SearchQuery, SourceCategory, SourceResult } from '../types';
+import { DataSource, SearchQuery, SkipTracerSourceCategory, SourceResult } from '../types';
 import { getDb } from '../../../models/database';
 import { localNow } from '../../../utils/timeUtils';
 import { config } from '../../../config';
@@ -68,7 +68,7 @@ interface RateLimitBucket {
 export abstract class BaseDataSource implements DataSource {
   abstract readonly name: string;
   abstract readonly displayName: string;
-  abstract readonly category: SourceCategory;
+  abstract readonly category: SkipTracerSourceCategory;
   abstract readonly costPerLookup: number;
   readonly priority?: number;
 

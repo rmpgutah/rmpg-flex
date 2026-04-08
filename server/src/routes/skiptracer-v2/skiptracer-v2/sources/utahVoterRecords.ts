@@ -6,7 +6,7 @@
 // Returns registered address, DOB (year only), party affiliation.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, AddressRecord, SocialProfile } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, AddressRecord, SocialProfile } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const VOTER_SEARCH_URL = 'https://votesearch.utah.gov/voter-search/search/search-by-voter/voter-info';
@@ -15,7 +15,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class UtahVoterRecordsSource extends BaseDataSource {
   readonly name = 'utah_voter';
   readonly displayName = 'Utah Voter Registration';
-  readonly category: SourceCategory = 'people';
+  readonly category: SkipTracerSourceCategory = 'people';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

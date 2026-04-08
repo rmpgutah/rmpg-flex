@@ -15,7 +15,7 @@
 // keys (microbilt_client_id, etc.).
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, AddressRecord, CourtRecord, AssociateRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, AddressRecord, CourtRecord, AssociateRecord } from '../types';
 import { getDb } from '../../../models/database';
 import { localNow } from '../../../utils/timeUtils';
 import crypto from 'crypto';
@@ -62,7 +62,7 @@ let cachedToken: { token: string; expiresAt: number } | null = null;
 export default class MicrobiltSource extends BaseDataSource {
   readonly name = 'microbilt';
   readonly displayName = 'MicroBilt Full Search';
-  readonly category: SourceCategory = 'people';
+  readonly category: SkipTracerSourceCategory = 'people';
   readonly costPerLookup = 0.50;
 
   protected maxRequestsPerMinute = 20;

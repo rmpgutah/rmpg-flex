@@ -6,7 +6,7 @@
 // URL: https://pcl.uscourts.gov/pcl/pages/search.jsf
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, CourtRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, CourtRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const PCL_SEARCH_URL = 'https://pcl.uscourts.gov/pcl/pages/search.jsf';
@@ -15,7 +15,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class PacerLookupSource extends BaseDataSource {
   readonly name = 'pacer_pcl';
   readonly displayName = 'Federal Court (PACER)';
-  readonly category: SourceCategory = 'court';
+  readonly category: SkipTracerSourceCategory = 'court';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

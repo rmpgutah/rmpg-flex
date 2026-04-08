@@ -5,14 +5,14 @@
 // Always configured, always enabled, zero cost.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult } from '../types';
 import { getDb } from '../../../models/database';
 import { localNow } from '../../../utils/timeUtils';
 
 export default class LocalDbSource extends BaseDataSource {
   readonly name = 'local_db';
   readonly displayName = 'Local Records';
-  readonly category: SourceCategory = 'people';
+  readonly category: SkipTracerSourceCategory = 'people';
   readonly costPerLookup = 0;
   readonly priority = 0; // Search first — free and instant
 
