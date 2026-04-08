@@ -36,6 +36,11 @@ const DISPOSAL_METHODS = [
   'Released to Court', 'Transferred', 'Other',
 ];
 
+const CONDITION_OPTIONS = [
+  'Excellent', 'Good', 'Fair', 'Poor', 'Damaged', 'Destroyed',
+  'Contaminated', 'Unknown',
+];
+
 interface EvidenceFormData {
   evidence_type: string;
   category: string;
@@ -57,6 +62,12 @@ interface EvidenceFormData {
   disposal_date: string;
   disposal_authorized_by: string;
   notes: string;
+  location_found: string;
+  condition: string;
+  quantity: string;
+  is_biological: boolean;
+  narcotics_flag: boolean;
+  temperature_sensitive: boolean;
 }
 
 const EMPTY_FORM: EvidenceFormData = {
@@ -80,6 +91,12 @@ const EMPTY_FORM: EvidenceFormData = {
   disposal_date: '',
   disposal_authorized_by: '',
   notes: '',
+  location_found: '',
+  condition: '',
+  quantity: '1',
+  is_biological: false,
+  narcotics_flag: false,
+  temperature_sensitive: false,
 };
 
 export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreated, editingEvidence }: EvidenceFormModalProps) {
@@ -118,6 +135,12 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
         disposal_date: editingEvidence.disposal_date || '',
         disposal_authorized_by: editingEvidence.disposal_authorized_by || '',
         notes: editingEvidence.notes || '',
+        location_found: editingEvidence.location_found || '',
+        condition: editingEvidence.condition || '',
+        quantity: editingEvidence.quantity != null ? String(editingEvidence.quantity) : '1',
+        is_biological: !!(editingEvidence as any).is_biological,
+        narcotics_flag: !!(editingEvidence as any).narcotics_flag,
+        temperature_sensitive: !!(editingEvidence as any).temperature_sensitive,
       };
       setForm(initial);
       snapshot(initial);
@@ -167,6 +190,12 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
         disposal_date: form.disposal_date || undefined,
         disposal_authorized_by: form.disposal_authorized_by.trim() || undefined,
         notes: form.notes.trim() || undefined,
+        location_found: form.location_found.trim() || undefined,
+        condition: form.condition || undefined,
+        quantity: form.quantity ? parseInt(form.quantity, 10) : 1,
+        is_biological: form.is_biological,
+        narcotics_flag: form.narcotics_flag,
+        temperature_sensitive: form.temperature_sensitive,
       };
 
       if (editingEvidence) {
@@ -291,19 +320,51 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
           </div>
 
           <div>
-            <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Packaging Type</label>
-            <select className="select-dark text-xs" value={form.packaging_type} onChange={(e) => updateField('packaging_type', e.target.value)}>
-              <option value="">-- Select --</option>
-              {PACKAGING_TYPES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+            <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Location Found</label>
+            <input type="text" className="input-dark text-xs" placeholder="Where the evidence was discovered / collected" value={form.location_found} onChange={(e) => updateField('location_found', e.target.value)} />
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Packaging Type</label>
+              <select className="select-dark text-xs" value={form.packaging_type} onChange={(e) => updateField('packaging_type', e.target.value)}>
+                <option value="">-- Select --</option>
+                {PACKAGING_TYPES.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Condition</label>
+              <select className="select-dark text-xs" value={form.condition} onChange={(e) => updateField('condition', e.target.value)}>
+                <option value="">-- Select --</option>
+                {CONDITION_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Quantity</label>
+              <input type="number" min="1" className="input-dark text-xs" placeholder="1" value={form.quantity} onChange={(e) => updateField('quantity', e.target.value)} />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-6">
             <label className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
               <input type="checkbox" checked={form.photo_taken} onChange={(e) => updateField('photo_taken', e.target.checked)} className="accent-brand-500" />
               Photo Taken
+            </label>
+            <label className="flex items-center gap-2 text-xs text-red-400 cursor-pointer">
+              <input type="checkbox" checked={form.is_biological} onChange={(e) => updateField('is_biological', e.target.checked)} className="accent-red-500" />
+              Biological / Biohazard
+            </label>
+            <label className="flex items-center gap-2 text-xs text-amber-400 cursor-pointer">
+              <input type="checkbox" checked={form.narcotics_flag} onChange={(e) => updateField('narcotics_flag', e.target.checked)} className="accent-amber-500" />
+              Controlled Substance
+            </label>
+            <label className="flex items-center gap-2 text-xs text-blue-400 cursor-pointer">
+              <input type="checkbox" checked={form.temperature_sensitive} onChange={(e) => updateField('temperature_sensitive', e.target.checked)} className="accent-blue-500" />
+              Temperature Sensitive
             </label>
           </div>
 

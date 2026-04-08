@@ -2272,6 +2272,35 @@ function migrateSchema(): void {
   addCol('persons', 'height_feet', 'INTEGER');
   addCol('persons', 'height_inches', 'INTEGER');
 
+  // ── PERSONS — extended contact & investigative fields ──
+  addCol('persons', 'email_secondary', 'TEXT');
+  addCol('persons', 'date_last_seen', 'TEXT');
+  addCol('persons', 'location_last_seen', 'TEXT');
+  addCol('persons', 'alias_dob', 'TEXT');
+  addCol('persons', 'home_phone', 'TEXT');
+  addCol('persons', 'work_phone', 'TEXT');
+
+  // ── VEHICLES — extended registration & investigative fields ──
+  addCol('vehicles_records', 'insurance_expiry', 'TEXT');
+  addCol('vehicles_records', 'owner_dob', 'TEXT');
+  addCol('vehicles_records', 'owner_dl_number', 'TEXT');
+  addCol('vehicles_records', 'tow_location', 'TEXT');
+  addCol('vehicles_records', 'ncic_entry_number', 'TEXT');
+  addCol('vehicles_records', 'primary_driver_name', 'TEXT');
+  addCol('vehicles_records', 'vehicle_use', 'TEXT');
+
+  // ── PROPERTIES — extended contact & operational fields ──
+  addCol('properties', 'contact_email', 'TEXT');
+  addCol('properties', 'secondary_contact_name', 'TEXT');
+  addCol('properties', 'secondary_contact_phone', 'TEXT');
+  addCol('properties', 'patrol_frequency', 'TEXT');
+  addCol('properties', 'opening_hours', 'TEXT');
+  addCol('properties', 'closing_hours', 'TEXT');
+
+  // ── EVIDENCE — additional classification & tracking fields ──
+  addCol('evidence', 'narcotics_flag', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'temperature_sensitive', 'INTEGER DEFAULT 0');
+
   // ── CITATIONS / SUMMONS TABLE ──────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS citations (
