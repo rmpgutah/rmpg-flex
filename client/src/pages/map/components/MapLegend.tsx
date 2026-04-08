@@ -49,11 +49,11 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="2" y="3" width="4" height="2" rx="0.5" fill="#22c55e" />
-          <rect x="8" y="3" width="6" height="1" rx="0.5" fill="#8899aa" />
+          <rect x="8" y="3" width="6" height="1" rx="0.5" fill="#999999" />
           <rect x="2" y="7" width="4" height="2" rx="0.5" fill="#f59e0b" />
-          <rect x="8" y="7" width="6" height="1" rx="0.5" fill="#8899aa" />
+          <rect x="8" y="7" width="6" height="1" rx="0.5" fill="#999999" />
           <rect x="2" y="11" width="4" height="2" rx="0.5" fill="#888888" />
-          <rect x="8" y="11" width="6" height="1" rx="0.5" fill="#8899aa" />
+          <rect x="8" y="11" width="6" height="1" rx="0.5" fill="#999999" />
         </svg>
       </button>
     );

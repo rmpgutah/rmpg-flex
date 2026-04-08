@@ -86,7 +86,7 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
               className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
                 section === s.id
                   ? 'bg-[#222222] text-white'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-[#111827]'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-[#141414]'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />

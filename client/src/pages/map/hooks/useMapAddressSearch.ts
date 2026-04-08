@@ -138,7 +138,7 @@ export function useMapAddressSearch({ mapInstanceRef, infoWindowRef, createMarke
             // Show address info window on click
             if (infoWindowRef?.current) {
               const container = document.createElement('div');
-              container.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a";
+              container.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222";
               const heading = document.createElement('div');
               heading.style.cssText = 'font-weight:bold;font-size:12px;margin-bottom:4px;color:#888888';
               heading.textContent = description.split(',')[0];

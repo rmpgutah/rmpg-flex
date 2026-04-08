@@ -232,7 +232,7 @@ export function useMapGeofences(
       polygon.addListener('click', (e: google.maps.PolyMouseEvent) => {
         const alertCount = alertCounts.get(fence.id) || 0;
         const container = document.createElement('div');
-        container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a';
+        container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
         const heading = document.createElement('div');
         heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
         heading.textContent = fence.name;
@@ -242,7 +242,7 @@ export function useMapGeofences(
         const addRow = (lbl: string, val: string, c?: string) => {
           const tr = document.createElement('tr');
           const td1 = document.createElement('td');
-          td1.style.cssText = 'color:#6b7b8d;padding:1px 6px 1px 0';
+          td1.style.cssText = 'color:#888888;padding:1px 6px 1px 0';
           td1.textContent = lbl;
           const td2 = document.createElement('td');
           td2.style.cssText = `color:${c || '#e0e0e0'}`;
@@ -275,7 +275,7 @@ export function useMapGeofences(
         const fenceAlertCount = alertCounts.get(fence.id) || 0;
         if (fenceAlertCount > 0) {
           const badge = document.createElement('span');
-          badge.style.cssText = 'background:#f59e0b;color:#0a0e14;font-size:8px;font-weight:bold;padding:0 4px;border-radius:8px;min-width:14px;text-align:center';
+          badge.style.cssText = 'background:#f59e0b;color:#050505;font-size:8px;font-weight:bold;padding:0 4px;border-radius:8px;min-width:14px;text-align:center';
           badge.textContent = String(fenceAlertCount);
           labelEl.appendChild(badge);
         }

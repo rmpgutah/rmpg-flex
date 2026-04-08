@@ -10284,7 +10284,7 @@ function LeadGenPanel() {
         <select
           value={searchType}
           onChange={e => setSearchType(e.target.value as any)}
-          className="px-2 py-2 bg-[#050505] border border-[#1e2d40] rounded-sm text-[11px] text-white"
+          className="px-2 py-2 bg-[#050505] border border-[#222222] rounded-sm text-[11px] text-white"
         >
           <option value="company">Company</option>
           <option value="person">Person</option>
@@ -10297,7 +10297,7 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-[#050505] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
+          className="flex-1 px-3 py-2 bg-[#050505] border border-[#222222] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
         />
         <button
           type="button"
@@ -10311,15 +10311,15 @@ function LeadGenPanel() {
       </div>
 
       {results && (
-        <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
-          <div className="px-3 py-2 bg-[#141414] border-b border-[#1e2d40] flex items-center justify-between">
+        <div className="border border-[#222222] rounded-sm overflow-hidden">
+          <div className="px-3 py-2 bg-[#141414] border-b border-[#222222] flex items-center justify-between">
             <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
-            <span className="text-[9px] text-[#556677] font-mono">
+            <span className="text-[9px] text-[#666666] font-mono">
               {Array.isArray(results.results) ? results.results.length : (results.results && typeof results.results === 'object') ? Object.keys(results.results).length : '—'} entries
             </span>
           </div>
           <div className="p-3 bg-[#050505] max-h-[500px] overflow-y-auto">
-            <pre className="text-[10px] text-[#8899aa] font-mono whitespace-pre-wrap break-words">
+            <pre className="text-[10px] text-[#999999] font-mono whitespace-pre-wrap break-words">
               {JSON.stringify(results.results, null, 2)}
             </pre>
           </div>

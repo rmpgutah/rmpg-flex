@@ -115,7 +115,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Controls bar */}
-      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: '#060c14' }}>
+      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: '#050505' }}>
         <div className="flex gap-0.5">
           {(['breadcrumbs', 'events'] as const).map(t => (
             <button
