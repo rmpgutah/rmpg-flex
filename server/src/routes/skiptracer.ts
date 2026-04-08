@@ -33,9 +33,9 @@ router.use(authenticateToken);
 // Rate limit all skip tracer searches: 20 searches per 5-minute window per user
 const skipSearchRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
-  maxRequests: 20,
+  limit: 20,
   keyGenerator: (req) => `skiptracer:${req.user?.userId || req.ip}`,
-  message: 'Skip tracer search rate limit exceeded. Please wait before searching again.',
+  message: { error: 'Skip tracer search rate limit exceeded. Please wait before searching again.' },
 });
 
 // ============================================================

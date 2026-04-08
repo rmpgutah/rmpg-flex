@@ -7,9 +7,9 @@
 // ============================================================
 
 import { Request, Response, NextFunction } from 'express';
-import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { localNow } from '../utils/timeUtils';
+import { hashApiKey } from '../utils/apiKeyHash';
 
 // Extend Express Request for API key context
 declare global {
@@ -50,7 +50,7 @@ export function authenticateApiKey(requiredScope: string) {
     }
 
     // Hash the provided key and look it up
-    const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+    const keyHash = hashApiKey(apiKey);
     let db;
     try {
       db = getDb();
