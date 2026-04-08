@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { loadGoogleMaps as loadGoogleMapsShared } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 
 // ── Parsed address components returned by onSelect ───────────
 export interface ParsedAddress {
@@ -149,20 +150,25 @@ export default function AddressAutocomplete({
 
   // Load Places library on mount
   useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setLoadError(true);
-      return;
-    }
+    let cancelled = false;
+    setLoadError(false);
 
-    loadGoogleMaps(apiKey)
-      .then(() => {
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        await loadGoogleMaps(apiKey);
+        if (cancelled) return;
         setPlacesLoaded(true);
         injectAutocompleteStyles();
-      })
-      .catch(() => {
-        setLoadError(true);
-      });
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Initialize Autocomplete on the input element

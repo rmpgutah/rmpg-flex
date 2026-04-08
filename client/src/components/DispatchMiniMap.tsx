@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
 import OfflineMapFallback from './OfflineMapFallback';
 import type { CallForService, Unit } from '../types';
@@ -83,34 +84,43 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
   // Load Google Maps script with retry + online auto-recovery
   useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setError('Map key not configured');
-      return;
-    }
-
     let cancelled = false;
+    let unsubOnline = () => {};
     setError(null);
+    setLoaded(false);
 
-    function attemptLoad(attempt: number) {
+    function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled) return;
       loadGoogleMaps(apiKey)
         .then(() => { if (!cancelled) { setLoaded(true); setError(null); } })
         .catch(() => {
           if (cancelled) return;
           if (attempt < 3) {
-            setTimeout(() => attemptLoad(attempt + 1), [3000, 6000, 12000][attempt]);
+            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
           } else {
             setError('Map load failed — check connection');
           }
         });
     }
-    attemptLoad(0);
 
-    // Auto-retry when device comes back online
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !loaded) { setError(null); setLoaded(true); }
-    });
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        attemptLoad(apiKey, 0);
+        unsubOnline = onOnlineRetryMaps(apiKey, () => {
+          if (!cancelled) {
+            setError(null);
+            setLoaded(true);
+          }
+        });
+      } catch (err: any) {
+        if (!cancelled) {
+          setLoaded(false);
+          setError(err?.message || getGoogleMapsApiKeyErrorMessage());
+        }
+      }
+    })();
 
     return () => { cancelled = true; unsubOnline(); };
   }, [gmapsRetry]);

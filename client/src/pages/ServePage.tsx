@@ -13,7 +13,8 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
@@ -24,7 +25,6 @@ import ExportButton from '../components/ExportButton';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 const TABS = ['Queue', 'Route', 'Map', 'Stats'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
@@ -471,11 +471,12 @@ export default function ServePage() {
   // ══════════════════════════════════════════════════════════════════════
 
   useEffect(() => {
-    if (activeTab !== 'Map' || !GMAPS_API_KEY) return;
+    if (activeTab !== 'Map') return;
 
     let cancelled = false;
+    let unsubOnline = () => {};
 
-    loadGoogleMaps(GMAPS_API_KEY).then(() => {
+    const initMap = () => {
       if (cancelled || !mapContainerRef.current) return;
 
       // If map already exists, just update markers
@@ -499,11 +500,25 @@ export default function ServePage() {
       mapRef.current = map;
       infoWindowRef.current = new google.maps.InfoWindow();
       setMapReady(true);
-    }).catch(() => {
-      // map load failed
-    });
+    };
 
-    return () => { cancelled = true; };
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        await loadGoogleMaps(apiKey);
+        if (cancelled) return;
+        initMap();
+        unsubOnline = onOnlineRetryMaps(apiKey, initMap);
+      } catch {
+        if (!cancelled) setMapReady(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubOnline();
+    };
   }, [activeTab]);
 
   // Update markers when jobs change or map becomes ready

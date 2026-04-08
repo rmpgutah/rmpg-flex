@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage } from '../../utils/googleMapsLoader';
+import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../../utils/googleMapsApiKey';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -750,17 +751,13 @@ export default function MapPage() {
     // Clear any previous error when retrying
     setMapError(null);
 
+    let cancelled = false;
+    let unsubOnline = () => {};
+
     // If a map instance already exists (e.g. from a previous successful init
     // before React StrictMode's second mount), just flag it loaded and bail.
     if (mapInstanceRef.current) {
       setMapLoaded(true);
-      return;
-    }
-
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
-      setMapLoaded(false);
       return;
     }
 
@@ -791,13 +788,12 @@ export default function MapPage() {
     // Load Google Maps via direct script tag (more reliable than js-api-loader).
     // Auto-retry with exponential backoff if the script fails to load
     // (e.g. server restart, brief network blip, slow vehicle WiFi).
-    let cancelled = false;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
     let dismissObserver: MutationObserver | null = null;
     let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function initMap() {
+    function initMap(apiKey: string) {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
@@ -901,7 +897,7 @@ export default function MapPage() {
       if (!authFailed) setMapLoaded(true);
     }
 
-    function attemptLoad(attempt: number) {
+    function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled) return;
 
       // If device is offline, pause retries and wait for connectivity
@@ -911,7 +907,7 @@ export default function MapPage() {
           window.removeEventListener('online', onBack);
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
-            attemptLoad(attempt); // resume at same attempt count (don't penalize for offline time)
+            attemptLoad(apiKey, attempt); // resume at same attempt count (don't penalize for offline time)
           }
         };
         window.addEventListener('online', onBack);
@@ -919,7 +915,7 @@ export default function MapPage() {
       }
 
       loadGoogleMaps(apiKey)
-        .then(() => initMap())
+        .then(() => initMap(apiKey))
         .catch((err: any) => {
           if (cancelled) return;
           const errMsg = err?.message || String(err);
@@ -928,7 +924,7 @@ export default function MapPage() {
           if (attempt < MAX_RETRIES) {
             const delay = RETRY_DELAYS[attempt] || 30000;
             devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
-            setTimeout(() => attemptLoad(attempt + 1), delay);
+            setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
           } else {
             console.error('[MapPage] Google Maps load failed after all retries');
             setMapError(
@@ -941,17 +937,31 @@ export default function MapPage() {
         });
     }
 
-    attemptLoad(0);
-
-    // Auto-retry when device comes back online (covers the case where all retries
-    // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) {
-        devLog('[MapPage] Online auto-retry triggered — reinitializing map');
-        setMapError(null);
-        initMap();
+    (async () => {
+      let apiKey = '';
+      try {
+        apiKey = await getGoogleMapsApiKey();
+      } catch (err) {
+        if (!cancelled) {
+          setMapLoaded(false);
+          setMapError(err instanceof Error ? err.message : getGoogleMapsApiKeyErrorMessage());
+        }
+        return;
       }
-    });
+
+      if (cancelled) return;
+      attemptLoad(apiKey, 0);
+
+      // Auto-retry when device comes back online (covers the case where all retries
+      // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
+      unsubOnline = onOnlineRetryMaps(apiKey, () => {
+        if (!cancelled && !mapInstanceRef.current) {
+          devLog('[MapPage] Online auto-retry triggered — reinitializing map');
+          setMapError(null);
+          initMap(apiKey);
+        }
+      });
+    })();
 
     return () => {
       cancelled = true; // Stop any pending retries
@@ -2187,7 +2197,7 @@ export default function MapPage() {
                   4. Go to <span className="text-blue-400">Billing</span> → ensure billing is active<br/>
                   5. Go to <span className="text-blue-400">Credentials</span> → check key restrictions<br/>
                   6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
-                  <span className="text-green-400 ml-2">VITE_GOOGLE_MAPS_API_KEY=your_key</span><br/>
+                  <span className="text-green-400 ml-2">GOOGLE_MAPS_API_KEY=your_key</span><br/>
                   7. Restart the dev server
                 </p>
               </div>

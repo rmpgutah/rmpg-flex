@@ -18,6 +18,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -223,6 +224,7 @@ export default function OffenderRegistryPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
+  const [staticMapApiKey, setStaticMapApiKey] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -295,6 +297,20 @@ export default function OffenderRegistryPage() {
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useLiveSync('records', () => { fetchAlerts({ silent: true }); fetchStats(); });
+
+  useEffect(() => {
+    let cancelled = false;
+    getGoogleMapsApiKey()
+      .then((apiKey) => {
+        if (!cancelled) setStaticMapApiKey(apiKey);
+      })
+      .catch(() => {
+        if (!cancelled) setStaticMapApiKey('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Person search debounce
   useEffect(() => {
@@ -514,12 +530,14 @@ export default function OffenderRegistryPage() {
                     Registered Address / Ban Zone
                   </div>
                   <div className="h-40 bg-[#0c0f13] relative">
-                    <img
-                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${(import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || ''}&style=feature:all|element:geometry|color:0x242f3e&style=feature:all|element:labels.text.fill|color:0x746855`}
-                      alt="Ban zone map"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
+                    {staticMapApiKey ? (
+                      <img
+                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${staticMapApiKey}&style=feature:all|element:geometry|color:0x121212&style=feature:all|element:labels.text.fill|color:0x8a8a8a`}
+                        alt="Ban zone map"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    ) : null}
                     {selected.restriction_radius_ft && (
                       <div className="absolute bottom-2 left-2 px-2 py-1 bg-red-900/80 text-red-300 text-[9px] font-bold border border-red-700/50">
                         <Ban size={10} className="inline mr-1" />

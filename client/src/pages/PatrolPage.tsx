@@ -30,6 +30,7 @@ import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 import { useToast } from '../components/ToastProvider';
 
 type Checkpoint = {
@@ -88,9 +89,6 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
   React.useEffect(() => {
     if (!mapRef.current) return;
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string || '';
-    if (!apiKey) return;
-
     let cancelled = false;
 
     function initPatrolMap() {
@@ -111,23 +109,30 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     }
 
     // Retry with backoff (3 attempts) for intermittent WiFi
-    function attemptLoad(attempt: number) {
+    function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled) return;
       loadGoogleMaps(apiKey)
         .then(() => initPatrolMap())
         .catch(() => {
           if (cancelled) return;
           if (attempt < 3) {
-            setTimeout(() => attemptLoad(attempt + 1), [3000, 6000, 12000][attempt]);
+            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
           }
         });
     }
-    attemptLoad(0);
-
-    // Auto-retry when device comes back online
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) initPatrolMap();
-    });
+    let unsubOnline = () => {};
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        attemptLoad(apiKey, 0);
+        unsubOnline = onOnlineRetryMaps(apiKey, () => {
+          if (!cancelled && !mapInstanceRef.current) initPatrolMap();
+        });
+      } catch {
+        setMapReady(false);
+      }
+    })();
 
     return () => {
       cancelled = true;

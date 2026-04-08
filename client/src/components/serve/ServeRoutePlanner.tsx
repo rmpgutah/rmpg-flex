@@ -3,7 +3,8 @@ import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
   Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../../utils/googleMapsApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
 
@@ -34,8 +35,6 @@ interface StopItem {
 }
 
 const IRS_MILEAGE_RATE = 0.67; // $/mile
-
-const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // ─── Marker Colors ──────────────────────────────────────────────────────
 
@@ -267,11 +266,12 @@ export default function ServeRoutePlanner({
 
   // Initialize Google Maps
   useEffect(() => {
-    if (!isOpen || !GMAPS_API_KEY) return;
+    if (!isOpen) return;
 
     let cancelled = false;
+    let unsubOnline = () => {};
 
-    loadGoogleMaps(GMAPS_API_KEY).then(() => {
+    const initMap = () => {
       if (cancelled || !mapContainerRef.current) return;
 
       const center = currentLocation
@@ -302,12 +302,24 @@ export default function ServeRoutePlanner({
       });
 
       setMapReady(true);
-    }).catch(() => {
-      if (!cancelled) setError('Failed to load Google Maps');
-    });
+    };
+
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        await loadGoogleMaps(apiKey);
+        if (cancelled) return;
+        initMap();
+        unsubOnline = onOnlineRetryMaps(apiKey, initMap);
+      } catch {
+        if (!cancelled) setError('Failed to load Google Maps');
+      }
+    })();
 
     return () => {
       cancelled = true;
+      unsubOnline();
       setMapReady(false);
     };
   }, [isOpen]);
