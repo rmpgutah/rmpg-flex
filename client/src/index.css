@@ -4139,10 +4139,10 @@ html, body {
 
 /* --- 1. SHARP CORNERS EVERYWHERE ---
    Spillman Flex uses 2px max radius. No rounded-lg/xl/2xl anywhere. */
-.rounded-lg { border-radius: 2px !important; }
-.rounded-xl { border-radius: 2px !important; }
-.rounded-2xl { border-radius: 2px !important; }
-.rounded-3xl { border-radius: 2px !important; }
+.rounded-lg { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
+.rounded-xl { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
+.rounded-2xl { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
+.rounded-3xl { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
 .rounded-t-lg { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
 .rounded-b-lg { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
 .rounded-l-lg { border-top-left-radius: 2px !important; border-bottom-left-radius: 2px !important; }
