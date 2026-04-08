@@ -469,6 +469,11 @@ export default function LoginPage() {
                   {error.includes('attempt') && (
                     <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>Too many failed attempts will lock your account.</p>
                   )}
+                  {(error.includes('Invalid verification') || error.includes('invalid verification')) && pending2FA && (
+                    <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>
+                      Tip: Wait for a fresh code in your authenticator app and ensure your device clock is accurate.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

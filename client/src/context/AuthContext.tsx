@@ -430,12 +430,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoginStep('complete');
       } else {
         const errData = await res.json().catch(() => ({}));
-        if (errData.code === 'MFA_EXPIRED') {
+        if (errData.code === 'MFA_EXPIRED' || errData.code === 'VERIFICATION_SESSION_EXPIRED_PLEASE') {
           setLoginStep('password');
           setPending2FA(false);
-          throw new Error('Verification expired. Please enter your password again.');
+          throw new Error('Verification session expired. Please sign in again.');
         }
-        const message = errData.error || 'Invalid verification code';
+        if (errData.code === 'TOTP_DECRYPT_ERROR') {
+          setError('Authentication configuration error. Contact your administrator.');
+          throw new Error(errData.error);
+        }
+        const message = errData.error || 'Invalid verification code. Wait for a new code and try again.';
         setError(message);
         throw new Error(message);
       }

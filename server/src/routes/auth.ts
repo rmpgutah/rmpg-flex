@@ -958,7 +958,15 @@ function verify2FAHandler(req: Request, res: Response) {
     const userAgent = req.headers['user-agent'] || 'unknown';
 
     // Try TOTP code first
-    const secret = decryptSecret(user.totp_secret_enc);
+    let secret: string;
+    try {
+      secret = decryptSecret(user.totp_secret_enc);
+    } catch (decErr) {
+      console.error(`[Auth] TOTP secret decryption failed for user ${user.id}:`, decErr);
+      res.status(500).json({ error: 'Authentication configuration error. Contact an administrator.', code: 'TOTP_DECRYPT_ERROR' });
+      return;
+    }
+
     let codeValid = verifyTotpCode(secret, code);
 
     // If TOTP fails, try backup code
@@ -974,7 +982,18 @@ function verify2FAHandler(req: Request, res: Response) {
     }
 
     if (!codeValid) {
-      res.status(401).json({ error: 'Invalid verification code', code: 'INVALID_VERIFICATION_CODE' });
+      console.warn(`[Auth] TOTP verification failed for user ${user.id} from ${ip}`);
+      // Log failed 2FA attempt
+      try {
+        db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'totp_failed', 'user', ?, '2FA code rejected', ?)
+        `).run(user.id, user.id, ip);
+      } catch { /* non-critical */ }
+      res.status(401).json({
+        error: 'Invalid verification code. Ensure your authenticator app is synced and try the latest code.',
+        code: 'INVALID_VERIFICATION_CODE',
+      });
       return;
     }
 
