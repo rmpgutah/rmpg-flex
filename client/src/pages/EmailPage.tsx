@@ -1661,14 +1661,24 @@ export default function EmailPage() {
               } catch { return null; }
             })
           );
+          const replacementRules: Array<{ directRe: RegExp; localPartRe: RegExp; dataUrl: string }> = [];
           for (const result of cidReplacements) {
             if (result.status === 'fulfilled' && result.value) {
               const { cid, dataUrl } = result.value;
-              // Replace all cid: variations (with or without angle brackets, URL-encoded)
-              resolvedHtml = resolvedHtml
-                .replace(new RegExp(`src=["']cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`)
-                .replace(new RegExp(`src=["']cid:${cid.replace(/@.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`);
+              const escapedCid = cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const escapedLocalPartCid = cid.replace(/@.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              replacementRules.push({
+                directRe: new RegExp(`src=["']cid:${escapedCid}["']`, 'gi'),
+                localPartRe: new RegExp(`src=["']cid:${escapedLocalPartCid}["']`, 'gi'),
+                dataUrl,
+              });
             }
+          }
+          // Replace all cid: variations (with or without angle brackets, URL-encoded)
+          for (const { directRe, localPartRe, dataUrl } of replacementRules) {
+            resolvedHtml = resolvedHtml
+              .replace(directRe, `src="${dataUrl}"`)
+              .replace(localPartRe, `src="${dataUrl}"`);
           }
         }
       }
@@ -2002,8 +2012,18 @@ export default function EmailPage() {
         if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
         if (searchFilters.isFlagged && !msg.isFlagged) return false;
         if (searchFilters.unreadOnly && msg.isRead) return false;
-        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
-        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
+        if (searchFilters.dateFrom) {
+          const msgTime = new Date(msg.receivedAt).getTime();
+          const fromTime = new Date(searchFilters.dateFrom).getTime();
+          if (!Number.isNaN(msgTime) && !Number.isNaN(fromTime) && msgTime < fromTime) return false;
+        }
+        if (searchFilters.dateTo) {
+          const msgTime = new Date(msg.receivedAt).getTime();
+          const endOfDay = new Date(searchFilters.dateTo);
+          endOfDay.setHours(23, 59, 59, 999);
+          const toTime = endOfDay.getTime();
+          if (!Number.isNaN(msgTime) && !Number.isNaN(toTime) && msgTime > toTime) return false;
+        }
         return true;
       })
     : messages;

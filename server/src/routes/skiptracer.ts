@@ -305,7 +305,7 @@ router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Resp
   try {
     const { name, page } = req.query;
     if (!name) return res.status(400).json({ error: 'name parameter required', code: 'NAME_PARAMETER_REQUIRED' });
-    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
+    if (String(name).length > 200) return res.status(400).json({ error: 'Name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
 
     const params: Record<string, string> = { name: String(name) };
     if (page) {
@@ -353,7 +353,7 @@ router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, re
   try {
     const { name, address, page } = req.query;
     if (!name || !address) return res.status(400).json({ error: 'name and address parameters required', code: 'NAME_AND_ADDRESS_PARAMETERS' });
-    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
+    if (String(name).length > 200) return res.status(400).json({ error: 'Name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
     if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)', code: 'ADDRESS_TOO_LONG_MAX' });
 
     const params: Record<string, string> = { name: String(name), address: String(address) };
@@ -378,10 +378,10 @@ router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Res
   try {
     const { phone, page } = req.query;
     if (!phone) return res.status(400).json({ error: 'phone parameter required', code: 'PHONE_PARAMETER_REQUIRED' });
-    // Validate phone format (digits, spaces, dashes, parens, plus)
+    // Validate phone format (digits, spaces, dashes, parens, plus, periods)
     const phoneStr = String(phone);
     if (phoneStr.length > 30 || !/^[0-9()\-+\s.]+$/.test(phoneStr)) {
-      return res.status(400).json({ error: 'Invalid phone format', code: 'INVALID_PHONE_FORMAT' });
+      return res.status(400).json({ error: 'Invalid phone format. Allowed characters: digits, spaces, parentheses, dashes, plus signs, and periods.', code: 'INVALID_PHONE_FORMAT' });
     }
 
     const params: Record<string, string> = { phone: phoneStr };

@@ -160,8 +160,8 @@ router.post('/', (req: Request, res: Response) => {
 
     // Check for duplicate source_id to prevent double-dispatch
     const existing = db.prepare(
-      "SELECT id, call_number FROM calls_for_service WHERE description LIKE ? OR notes LIKE ?"
-    ).get(`%[source_id:${body.source_id}]%`, `%[source_id:${body.source_id}]%`) as any;
+      "SELECT id, call_number FROM calls_for_service WHERE source_id = ?"
+    ).get(body.source_id) as any;
 
     if (existing) {
       return res.status(409).json({

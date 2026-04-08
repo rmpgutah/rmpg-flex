@@ -180,13 +180,17 @@ router.get('/health-log/:id', requireRole('admin', 'manager'), (req: Request, re
 router.get('/keys', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const requestedLimit = Number.parseInt(String(req.query.limit ?? '100'), 10);
+    const requestedOffset = Number.parseInt(String(req.query.offset ?? '0'), 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 1000) : 100;
+    const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
+
     const keys = db.prepare(`
       SELECT id, name, key_prefix, is_active, scopes, last_used_at, request_count, created_at
       FROM integration_api_keys
       ORDER BY created_at DESC
-    
-      LIMIT 1000
-    `).all() as any[];
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as any[];
 
     const mapped = keys.map((k: any) => ({
       id: k.id,
