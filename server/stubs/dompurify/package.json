@@ -1,7 +1,0 @@
-{
-  "name": "dompurify",
-  "version": "99.0.0",
-  "description": "No-op stub — jsPDF .html() not used in RMPG Flex",
-  "main": "index.js",
-  "module": "index.mjs"
-}
