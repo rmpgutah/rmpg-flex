@@ -8,13 +8,14 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Database, Search, X, Loader2, ChevronDown, ChevronRight,
   Users, UserPlus, UserMinus, UserX, MapPin, Clock, Shield,
   BarChart3, TrendingUp, TrendingDown, Minus, Eye, Plus,
   Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2,
   ArrowUpDown, ArrowUp, ArrowDown, FileText, ShieldAlert,
-  Calendar, Building, Scale,
+  Calendar, Building, Scale, ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -221,6 +222,7 @@ export default function ArrestRecordsPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Statistics
@@ -856,7 +858,14 @@ export default function ArrestRecordsPage() {
             {rec.linked_person ? (
               <div className="flex items-center gap-2 text-[9px]">
                 <Link2 className="w-3 h-3 text-brand-400" />
-                <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/records?tab=persons&personId=${rec.linked_person!.id}`)}
+                  className="text-brand-300 font-bold hover:text-brand-200 hover:underline transition-colors flex items-center gap-1"
+                >
+                  {rec.linked_person.name}
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                </button>
                 <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
                 <button type="button"
                   onClick={() => handleUnlinkPerson(rec.id)}

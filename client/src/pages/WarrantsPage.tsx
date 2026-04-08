@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Plus,
@@ -413,6 +414,7 @@ const timeAgo = (date: string): string => {
 
 export default function WarrantsPage() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
@@ -2012,7 +2014,7 @@ export default function WarrantsPage() {
                               <div className="text-xs text-rmpg-300 mt-1">{chargesFromJson(w.charges || w.charge_description || '')}</div>
                               <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
                                 {w.court_name && <span>Court: {w.court_name}</span>}
-                                {w.case_id && <span>Case: {w.case_id}</span>}
+                                {w.case_id && <button type="button" onClick={(e) => { e.stopPropagation(); navigate(`/court`); }} className="text-brand-300 hover:text-brand-200 hover:underline transition-colors">Case: {w.case_id}</button>}
                                 {w.issue_date && <span>Issued: {w.issue_date}</span>}
                                 {w.bail_amount != null && w.bail_amount > 0 && (
                                   <span className="text-amber-400 font-bold">Bail: ${Number(w.bail_amount).toLocaleString()}</span>
@@ -3096,7 +3098,11 @@ export default function WarrantsPage() {
                       {utahDetailWarrant.case_id && (
                         <div>
                           <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Case Number</span>
-                          <div className="font-mono text-white mt-0.5">{utahDetailWarrant.case_id}</div>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/court`)}
+                            className="font-mono text-white mt-0.5 block hover:text-brand-300 hover:underline transition-colors"
+                          >{utahDetailWarrant.case_id}</button>
                         </div>
                       )}
                       {utahDetailWarrant.issue_date && (
