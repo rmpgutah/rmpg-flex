@@ -95,13 +95,13 @@ export function extractContactInfo(html: string): {
   // Extract social media links using cheerio
   const socialLinks: { platform: string; url: string }[] = [];
   const socialPatterns: [string, RegExp][] = [
-    ['linkedin', /(?:\/\/|\.)\blinkedin\.com/i],
-    ['twitter', /(?:\/\/|\.)\b(?:twitter|x)\.com/i],
-    ['facebook', /(?:\/\/|\.)\bfacebook\.com/i],
-    ['instagram', /(?:\/\/|\.)\binstagram\.com/i],
-    ['youtube', /(?:\/\/|\.)\byoutube\.com/i],
-    ['github', /(?:\/\/|\.)\bgithub\.com/i],
-    ['tiktok', /(?:\/\/|\.)\btiktok\.com/i],
+    ['linkedin', /^https?:\/\/(?:www\.)?linkedin\.com/i],
+    ['twitter', /^https?:\/\/(?:www\.)?(?:twitter|x)\.com/i],
+    ['facebook', /^https?:\/\/(?:www\.)?facebook\.com/i],
+    ['instagram', /^https?:\/\/(?:www\.)?instagram\.com/i],
+    ['youtube', /^https?:\/\/(?:www\.)?youtube\.com/i],
+    ['github', /^https?:\/\/(?:www\.)?github\.com/i],
+    ['tiktok', /^https?:\/\/(?:www\.)?tiktok\.com/i],
   ];
 
   $('a[href]').each((_i, el) => {
@@ -214,13 +214,13 @@ export function extractBusinessInfo(
 }
 
 function detectSocialPlatform(url: string): string | null {
-  if (/(?:\/\/|\.)\blinkedin\.com/i.test(url)) return 'linkedin';
-  if (/(?:\/\/|\.)\b(?:twitter|x)\.com/i.test(url)) return 'twitter';
-  if (/(?:\/\/|\.)\bfacebook\.com/i.test(url)) return 'facebook';
-  if (/(?:\/\/|\.)\binstagram\.com/i.test(url)) return 'instagram';
-  if (/(?:\/\/|\.)\byoutube\.com/i.test(url)) return 'youtube';
-  if (/(?:\/\/|\.)\bgithub\.com/i.test(url)) return 'github';
-  if (/(?:\/\/|\.)\btiktok\.com/i.test(url)) return 'tiktok';
+  if (/^https?:\/\/(?:www\.)?linkedin\.com/i.test(url)) return 'linkedin';
+  if (/^https?:\/\/(?:www\.)?(?:twitter|x)\.com/i.test(url)) return 'twitter';
+  if (/^https?:\/\/(?:www\.)?facebook\.com/i.test(url)) return 'facebook';
+  if (/^https?:\/\/(?:www\.)?instagram\.com/i.test(url)) return 'instagram';
+  if (/^https?:\/\/(?:www\.)?youtube\.com/i.test(url)) return 'youtube';
+  if (/^https?:\/\/(?:www\.)?github\.com/i.test(url)) return 'github';
+  if (/^https?:\/\/(?:www\.)?tiktok\.com/i.test(url)) return 'tiktok';
   return null;
 }
 

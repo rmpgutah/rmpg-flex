@@ -60,7 +60,11 @@ function verifySignature(body, signature) {
 
 // ── Deploy ──
 function triggerDeploy(commitSha, branch, pusher) {
-  log(`DEPLOY TRIGGERED — branch=${branch}, commit=${commitSha}, by=${pusher}`);
+  // Sanitize inputs for logging — strip control chars and newlines
+  const safeBranch = String(branch || '').replace(/[^\w/.-]/g, '').slice(0, 128);
+  const safeSha = String(commitSha || '').replace(/[^a-f0-9]/gi, '').slice(0, 40);
+  const safePusher = String(pusher || '').replace(/[^\w.-@]/g, '').slice(0, 64);
+  log(`DEPLOY TRIGGERED — branch=${safeBranch}, commit=${safeSha}, by=${safePusher}`);
 
   // Run: git pull then deploy script — using execFile with args to avoid shell injection
   const child = execFile('/bin/bash', ['-c', 'git pull origin main && exec bash "$1"', '--', DEPLOY_SCRIPT], {

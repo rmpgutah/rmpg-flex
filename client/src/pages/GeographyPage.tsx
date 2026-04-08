@@ -293,7 +293,7 @@ export default function GeographyPage() {
             </select>
           )}
           {['areas', 'sections', 'zones', 'beats', 'codes', 'premises'].includes(tab) && (
-            <button onClick={() => setEditModal({ type: tab.replace(/s$/, '').replace('premise', 'premise'), item: {} })}
+            <button onClick={() => setEditModal({ type: tab.replace(/s$/, ''), item: {} })}
               className="btn-sm btn-primary flex items-center gap-1">
               <Plus className="w-3.5 h-3.5" /> Add
             </button>

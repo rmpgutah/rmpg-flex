@@ -4488,9 +4488,10 @@ router.post(
 
         // Search for field value in content
         // Try pattern: "field_name: value" or "field_name - value"
+        const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const patterns = [
-          new RegExp(`${fieldName}[:\\s-]+([^\\n]{1,200})`, 'i'),
-          new RegExp(`${fieldDesc}[:\\s-]+([^\\n]{1,200})`, 'i'),
+          new RegExp(`${esc(fieldName)}[:\\s-]+([^\\n]{1,200})`, 'i'),
+          new RegExp(`${esc(fieldDesc)}[:\\s-]+([^\\n]{1,200})`, 'i'),
         ];
 
         let value: any = null;

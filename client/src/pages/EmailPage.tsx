@@ -644,7 +644,7 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
     const srcdocHtml = React.useMemo(() => {
       // Sanitize: strip <script> tags + inline event handlers (keep images/styles intact)
       const sanitized = bodyHtml
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<script[\s\S]*?<\/script\s*>/gi, '')
         .replace(/\bon\w+\s*=/gi, 'data-blocked=');
       return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
         body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #050505; margin: 16px; line-height: 1.6; word-wrap: break-word; }

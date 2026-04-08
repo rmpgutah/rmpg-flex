@@ -2111,7 +2111,8 @@ router.get('/database/backups', requireRole('admin'), (req: Request, res: Respon
 router.delete('/database/backups/:filename', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const dataDir = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
-    const filename = req.params.filename;
+    // Strip directory components to prevent path traversal (e.g., "../../../etc/passwd.db")
+    const filename = path.basename(req.params.filename);
 
     // Security: only allow deleting backup files
     if (!filename.startsWith('rmpg-flex-backup-') || !filename.endsWith('.db')) {
@@ -3139,12 +3140,15 @@ router.post('/records/set-sequence', requireRole('admin'), (req: Request, res: R
 router.post('/records/copy-field', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { table, source_field, target_field, where_clause } = req.body;
+    const { table, source_field, target_field, where_id } = req.body;
     if (!table || !source_field || !target_field) { res.status(400).json({ error: 'table, source_field, target_field required' }); return; }
-    const sql = where_clause
-      ? `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ? WHERE ${where_clause}`
+    // Use parameterized WHERE id = ? instead of raw where_clause to prevent SQL injection
+    const sql = where_id
+      ? `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ? WHERE id = ?`
       : `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ?`;
-    const result = db.prepare(sql).run(new Date().toISOString());
+    const params: any[] = [new Date().toISOString()];
+    if (where_id) params.push(where_id);
+    const result = db.prepare(sql).run(...params);
     auditLog(req, 'ADMIN_OVERRIDE', table, 0, `Copied ${table}.${source_field} → ${target_field} on ${result.changes} rows`);
     res.json({ success: true, updated: result.changes });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
