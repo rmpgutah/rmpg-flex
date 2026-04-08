@@ -10,6 +10,51 @@ import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatDate } from '../utils/dateUtils';
 
+interface NationalCoverageState {
+  stateCode: string;
+  stateName: string;
+  available: boolean;
+  message?: string;
+  [key: string]: unknown;
+}
+
+interface NationalCoverageResponse {
+  states: NationalCoverageState[];
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+interface NationalWarrantSearchResultItem {
+  id?: string | number;
+  [key: string]: unknown;
+}
+
+interface NationalWarrantSearchResults {
+  results?: NationalWarrantSearchResultItem[];
+  total?: number;
+  [key: string]: unknown;
+}
+
+interface Warrant {
+  id?: string | number;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  dob?: string;
+  age?: number | string;
+  state?: string;
+  warrant_type?: string | null;
+  offense_level?: string | null;
+  charge?: string;
+  charges?: string;
+  issued_date?: string | Date | null;
+  photo_url?: string | null;
+  status?: string | null;
+  bond_amount?: number | string | null;
+  court?: string;
+  [key: string]: unknown;
+}
+
 // ── US States List ──────────────────────────────────────────
 const US_STATES = [
   { code: '', label: 'All States' },
@@ -218,9 +263,10 @@ export default function NationalWarrantSearchPage() {
   const [warrantType, setWarrantType] = useState('');
   const [chargeKeyword, setChargeKeyword] = useState('');
   const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<any>(null);
-  const [coverage, setCoverage] = useState<any>(null);
+  const [results, setResults] = useState<NationalWarrantSearchResults | null>(null);
+  const [coverage, setCoverage] = useState<NationalCoverageResponse | null>(null);
   const [coverageLoading, setCoverageLoading] = useState(true);
+  const [searchValidationError, setSearchValidationError] = useState<string | null>(null);
 
   // Map hover tooltip
   const [hoveredState, setHoveredState] = useState<string | null>(null);
@@ -232,7 +278,7 @@ export default function NationalWarrantSearchPage() {
   // ── Load Coverage ─────────────────────────────────────────
   useEffect(() => {
     setCoverageLoading(true);
-    apiFetch<any>('/api/warrants/national-coverage')
+    apiFetch<NationalCoverageResponse>('/api/warrants/national-coverage')
       .then(data => setCoverage(data))
       .catch(() => setCoverage(null))
       .finally(() => setCoverageLoading(false));
@@ -241,12 +287,16 @@ export default function NationalWarrantSearchPage() {
   // ── Search Handler ────────────────────────────────────────
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!firstName && !lastName && !dob && !stateFilter && !chargeKeyword) return;
+    if (!firstName && !lastName && !dob && !stateFilter && !chargeKeyword) {
+      setSearchValidationError('Enter at least one search criterion to run a national warrant search.');
+      return;
+    }
 
+    setSearchValidationError(null);
     setSearching(true);
     setResults(null);
     try {
-      const data = await apiFetch<any>('/api/warrants/national-search', {
+      const data = await apiFetch<NationalWarrantSearchResults>('/api/warrants/national-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -260,8 +310,12 @@ export default function NationalWarrantSearchPage() {
         }),
       });
       setResults(data);
-    } catch {
-      setResults({ total: 0, search_time_ms: 0, by_state: {}, local: [], error: 'Search failed — check server connection' });
+    } catch (error) {
+      console.error('National warrant search failed:', error);
+      const errorMessage = error instanceof Error && error.message
+        ? `Search failed: ${error.message}`
+        : 'Search failed. Please try again or check your connection.';
+      setResults({ total: 0, search_time_ms: 0, by_state: {}, local: [], error: errorMessage });
     } finally {
       setSearching(false);
     }
@@ -299,8 +353,8 @@ export default function NationalWarrantSearchPage() {
 
   const totalResults = results?.total ?? 0;
   const searchTime = results?.search_time_ms ?? 0;
-  const stateGroups: Record<string, any[]> = results?.by_state ?? {};
-  const localResults: any[] = results?.local ?? [];
+  const stateGroups: Record<string, Warrant[]> = results?.by_state ?? {};
+  const localResults: Warrant[] = results?.local ?? [];
   const stateGroupKeys = Object.keys(stateGroups).sort();
 
   // ── Render ────────────────────────────────────────────────
@@ -416,6 +470,14 @@ export default function NationalWarrantSearchPage() {
             />
           </div>
         </form>
+
+        {/* ─── Validation Error ────────────────────────── */}
+        {searchValidationError && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-red-950/40 border border-red-800/50 text-red-400 text-xs">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            {searchValidationError}
+          </div>
+        )}
 
         {/* ─── US Coverage Map ────────────────────────── */}
         <div className="panel-raised p-3">
@@ -660,7 +722,7 @@ export default function NationalWarrantSearchPage() {
 }
 
 // ── Warrant Result Row ──────────────────────────────────────
-function WarrantRow({ warrant }: { warrant: any }) {
+function WarrantRow({ warrant }: { warrant: Warrant }) {
   return (
     <div className="px-3 py-2 hover:bg-surface-sunken transition-colors flex items-start gap-3">
       {/* Photo thumbnail */}
