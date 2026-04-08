@@ -234,7 +234,7 @@ export default function NationalWarrantSearchPage() {
     setCoverageLoading(true);
     apiFetch<any>('/api/warrants/national-coverage')
       .then(data => setCoverage(data))
-      .catch(() => setCoverage(getMockCoverage()))
+      .catch(() => setCoverage(null))
       .finally(() => setCoverageLoading(false));
   }, []);
 
@@ -261,8 +261,7 @@ export default function NationalWarrantSearchPage() {
       });
       setResults(data);
     } catch {
-      // Show mock results for development when API not yet available
-      setResults(getMockResults(firstName, lastName, stateFilter));
+      setResults({ total: 0, search_time_ms: 0, by_state: {}, local: [], error: 'Search failed — check server connection' });
     } finally {
       setSearching(false);
     }
@@ -752,99 +751,4 @@ function WarrantRow({ warrant }: { warrant: any }) {
 }
 
 // ── Mock Data for Development ───────────────────────────────
-function getMockCoverage() {
-  const stateStatus: Record<string, CoverageStatus> = {};
-  const stateSources: Record<string, number> = {};
-  const stateWarrants: Record<string, number> = {};
-
-  // Active states (have data sources)
-  const activeStates = ['UT', 'CO', 'NV', 'AZ', 'CA', 'TX', 'FL', 'NY', 'IL', 'OH', 'PA', 'GA', 'NC', 'VA', 'WA', 'OR', 'ID', 'MT', 'WY', 'NM'];
-  // Pending states (source exists but data not yet flowing)
-  const pendingStates = ['MN', 'WI', 'MI', 'IN', 'MO', 'KS', 'NE', 'OK', 'AR', 'LA', 'TN', 'KY', 'SC', 'AL', 'MS'];
-
-  activeStates.forEach(s => {
-    stateStatus[s] = 'active';
-    stateSources[s] = Math.floor(Math.random() * 5) + 1;
-    stateWarrants[s] = Math.floor(Math.random() * 50000) + 1000;
-  });
-  pendingStates.forEach(s => {
-    stateStatus[s] = 'pending';
-    stateSources[s] = 1;
-    stateWarrants[s] = 0;
-  });
-
-  return {
-    sources: 50,
-    states_covered: activeStates.length,
-    active_warrants: Object.values(stateWarrants).reduce((a, b) => a + b, 0),
-    state_status: stateStatus,
-    state_sources: stateSources,
-    state_warrants: stateWarrants,
-  };
-}
-
-function getMockResults(firstName: string, lastName: string, state: string) {
-  const mockWarrants = [
-    {
-      first_name: firstName || 'John',
-      last_name: lastName || 'Doe',
-      dob: '1985-03-15',
-      age: 41,
-      charges: 'Failure to Appear - DUI 3rd Offense',
-      offense_level: 'Felony',
-      warrant_type: 'Bench Warrant',
-      court: '3rd District Court, Salt Lake City',
-      source: 'Utah Courts',
-      status: 'active',
-      issued_date: '2025-11-20',
-      bond_amount: 25000,
-      state: 'UT',
-    },
-    {
-      first_name: firstName || 'John',
-      last_name: lastName || 'Doe',
-      dob: '1985-03-15',
-      age: 41,
-      charges: 'Aggravated Assault',
-      offense_level: 'Felony',
-      warrant_type: 'Arrest Warrant',
-      court: 'Denver County Court',
-      source: 'Colorado Bureau of Investigation',
-      status: 'active',
-      issued_date: '2026-01-08',
-      bond_amount: 50000,
-      state: 'CO',
-    },
-    {
-      first_name: firstName || 'John',
-      last_name: lastName || 'Doe',
-      dob: '1985-03-17',
-      age: 41,
-      charges: 'Theft of Property > $1000',
-      offense_level: 'Misdemeanor',
-      warrant_type: 'Arrest Warrant',
-      court: 'Clark County Justice Court',
-      source: 'Nevada DPS',
-      status: 'active',
-      issued_date: '2025-08-02',
-      bond_amount: 5000,
-      state: 'NV',
-    },
-  ];
-
-  const filtered = state ? mockWarrants.filter(w => w.state === state) : mockWarrants;
-
-  // Group by state
-  const byState: Record<string, any[]> = {};
-  filtered.forEach(w => {
-    if (!byState[w.state]) byState[w.state] = [];
-    byState[w.state].push(w);
-  });
-
-  return {
-    total: filtered.length,
-    search_time_ms: Math.floor(Math.random() * 800) + 200,
-    by_state: byState,
-    local: state === 'UT' || !state ? [mockWarrants[0]] : [],
-  };
-}
+// Mock data functions removed — only real API data is displayed
