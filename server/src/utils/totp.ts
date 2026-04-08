@@ -83,7 +83,7 @@ export async function generateQrCodeDataUrl(otpauthUrl: string): Promise<string>
 
 /**
  * Verify a 6-digit TOTP code against a Base32 secret.
- * Allows a window of ±1 period (30s) to accommodate clock drift.
+ * Allows a window of ±2 periods (60s) to accommodate clock drift.
  */
 export function verifyTotpCode(secret: string, code: string): boolean {
   // [FIX 93] Validate inputs before TOTP verification
@@ -102,9 +102,9 @@ export function verifyTotpCode(secret: string, code: string): boolean {
       secret: OTPAuth.Secret.fromBase32(secret),
     });
 
-    // validate() returns the time step difference (0 = exact match, ±1 = drift)
-    // or null if invalid
-    const delta = totp.validate({ token: cleanCode, window: 1 });
+    // validate() returns the time step difference (0 = exact match, ±1/±2 = drift)
+    // or null if invalid. Window of 2 allows ±60s clock drift.
+    const delta = totp.validate({ token: cleanCode, window: 2 });
     return delta !== null;
   } catch {
     // [FIX 95] Handle invalid base32 secret gracefully
