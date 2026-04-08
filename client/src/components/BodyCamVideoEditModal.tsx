@@ -71,7 +71,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
     if (video) {
       setTitle(video.title || '');
       setCaseNumber(video.case_number || '');
-      setInteractionType(video.interaction_type || '');
+      setInteractionType((video.interaction_type as BwcInteractionType) || '');
       setClassification(video.classification || 'routine');
       setRetentionStatus(video.retention_status || 'active');
       setNotes(video.notes || '');

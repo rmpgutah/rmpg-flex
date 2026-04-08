@@ -174,6 +174,9 @@ interface CitationForm {
   court_time: string;
   court_room: string;
   appearance_required: boolean;
+  weather_conditions: string;
+  road_conditions: string;
+  is_equipment_violation: boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────
@@ -267,6 +270,9 @@ const EMPTY_FORM: CitationForm = {
   court_time: '',
   court_room: '',
   appearance_required: false,
+  weather_conditions: '',
+  road_conditions: '',
+  is_equipment_violation: false,
 };
 
 // formatDate imported from ../utils/dateUtils

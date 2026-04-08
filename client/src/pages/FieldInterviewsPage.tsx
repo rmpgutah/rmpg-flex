@@ -199,6 +199,7 @@ export default function FieldInterviewsPage() {
     setEditingFi(fi);
     clearAllErrors();
     setFormData({
+      date: (fi as any).date || fi.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       subject_first_name: fi.subject_first_name || '',
       subject_last_name: fi.subject_last_name || '',
       subject_dob: fi.subject_dob || '',
