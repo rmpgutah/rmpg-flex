@@ -25,7 +25,17 @@ import multer from 'multer';
 import fs from 'fs';
 
 // PDF upload middleware — 50MB max, temp dir
-const pdfUpload = multer({ dest: '/tmp/rmpg-pdf-uploads', limits: { fileSize: 50 * 1024 * 1024 } });
+const pdfUpload = multer({
+  dest: '/tmp/rmpg-pdf-uploads',
+  limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 5, parts: 10, fieldSize: 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.originalname?.toLowerCase().endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are accepted'));
+    }
+  },
+});
 
 function safeJsonParse(val: string | null | undefined, fallback: any = null): any {
   if (!val) return fallback;
