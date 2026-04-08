@@ -7,7 +7,7 @@ import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
-import { DISPATCH_DISTRICTS } from '../seeds/dispatchDistricts';
+import { DISPATCH_DISTRICTS, DISPATCH_SECTORS, DISPATCH_AREAS } from '../seeds/dispatchDistricts';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 
@@ -3133,35 +3133,59 @@ function migrateSchema(): void {
     console.log('[migrate] Dispatch geography tables:', (err as Error).message);
   }
 
-  // Seed normalized geography tables from existing dispatch_districts if empty
+  // Seed full Sector → Area → Zone → Beat hierarchy from DISPATCH_DISTRICTS seed
   try {
     const sectionCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_sections').get() as any;
     if (sectionCount?.cnt === 0) {
-      const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all() as any[];
-      if (districts.length > 0) {
-        const seenSections = new Set<string>();
-        const insertSection = db.prepare('INSERT OR IGNORE INTO dispatch_sections (section_code, section_name) VALUES (?, ?)');
-        for (const d of districts) {
-          if (!seenSections.has(d.section_id)) {
-            insertSection.run(d.section_id, d.section_name);
-            seenSections.add(d.section_id);
-          }
+      // 1. Seed Sectors (dispatch_areas table = top-level Sector groupings)
+      const insertSector = db.prepare(
+        'INSERT OR IGNORE INTO dispatch_areas (area_code, area_name, color, description, sort_order) VALUES (?, ?, ?, ?, ?)'
+      );
+      DISPATCH_SECTORS.forEach((s, i) => insertSector.run(s.id, s.name, s.color, s.description, i));
+
+      // 2. Seed Areas (dispatch_sections = county-level Areas, linked to Sector)
+      const seenAreas = new Set<string>();
+      const insertArea = db.prepare(
+        'INSERT OR IGNORE INTO dispatch_sections (section_code, section_name, area_id, color, sort_order) VALUES (?, ?, (SELECT id FROM dispatch_areas WHERE area_code = ?), ?, ?)'
+      );
+      let areaSort = 0;
+      for (const a of DISPATCH_AREAS) {
+        if (!seenAreas.has(a.area_id)) {
+          insertArea.run(a.area_id, a.area_name, a.sector_id, a.color || '#6366f1', areaSort++);
+          seenAreas.add(a.area_id);
         }
-        const seenZones = new Set<string>();
-        const insertZone = db.prepare('INSERT OR IGNORE INTO dispatch_zones (zone_code, zone_name, section_id) VALUES (?, ?, (SELECT id FROM dispatch_sections WHERE section_code = ?))');
-        for (const d of districts) {
-          if (!seenZones.has(d.zone_id)) {
-            insertZone.run(d.zone_id, d.zone_name, d.section_id);
-            seenZones.add(d.zone_id);
-          }
-        }
-        const insertBeat = db.prepare('INSERT OR IGNORE INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code) VALUES (?, ?, ?, (SELECT id FROM dispatch_zones WHERE zone_code = ?), ?)');
-        for (const d of districts) {
-          const beatCode = d.zone_id + '-' + d.beat_id;
-          insertBeat.run(beatCode, d.beat_name, d.beat_descriptor, d.zone_id, d.dispatch_code);
-        }
-        console.log('[migrate] Seeded normalized geography: ' + seenSections.size + ' sections, ' + seenZones.size + ' zones, ' + districts.length + ' beats');
       }
+
+      // 3. Seed Zones (dispatch_zones = city/town-level, linked to Area)
+      const seenZones = new Set<string>();
+      const insertZone = db.prepare(
+        'INSERT OR IGNORE INTO dispatch_zones (zone_code, zone_name, section_id, sort_order) VALUES (?, ?, (SELECT id FROM dispatch_sections WHERE section_code = ?), ?)'
+      );
+      let zoneSort = 0;
+      for (const d of DISPATCH_DISTRICTS) {
+        if (!seenZones.has(d.zone_id)) {
+          insertZone.run(d.zone_id, d.zone_name, d.area_id || d.section_id, zoneSort++);
+          seenZones.add(d.zone_id);
+        }
+      }
+
+      // 4. Seed Beats (dispatch_beats, linked to Zone)
+      const insertBeat = db.prepare(
+        'INSERT OR IGNORE INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, sort_order) VALUES (?, ?, ?, (SELECT id FROM dispatch_zones WHERE zone_code = ?), ?, ?)'
+      );
+      let beatSort = 0;
+      for (const d of DISPATCH_DISTRICTS) {
+        const beatCode = d.zone_id + '-' + d.beat_id;
+        insertBeat.run(beatCode, d.beat_name, d.beat_descriptor, d.zone_id, d.dispatch_code, beatSort++);
+      }
+
+      console.log(
+        '[migrate] Seeded Utah geography: ' +
+        DISPATCH_SECTORS.length + ' sectors, ' +
+        seenAreas.size + ' areas, ' +
+        seenZones.size + ' zones, ' +
+        DISPATCH_DISTRICTS.length + ' beats'
+      );
     }
   } catch (err) {
     console.log('[migrate] Geography seed:', (err as Error).message);

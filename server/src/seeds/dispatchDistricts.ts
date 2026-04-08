@@ -1,4 +1,263 @@
-export const DISPATCH_DISTRICTS = [
+// ============================================================
+// RMPG Flex — Utah Dispatch Geography Seed Data
+// Hierarchy: Sector → Area (County) → Zone (City/Town) → Beat
+//
+// 4 Sectors, 29 Areas (counties), 232 Zones, 429 Beats
+// Auto-seeded into dispatch_areas, dispatch_sections, dispatch_zones,
+// dispatch_beats tables on server startup (when tables are empty).
+// ============================================================
+
+export interface DispatchGeoEntry {
+  sector_id: string;   // Sector code (NUT/WFR/CUT/SUT)
+  sector_name: string; // e.g. "Northern Utah"
+  area_id: string;     // Area (county) code
+  area_name: string;   // e.g. "Salt Lake"
+  area_color?: string; // Hex color for area polygons
+  zone_id: string;     // Zone (city/town) code
+  zone_name: string;   // e.g. "Salt Lake City"
+  beat_id: string;     // Beat letter/code within zone
+  beat_name: string;   // e.g. "Patrol 1"
+  beat_descriptor: string; // e.g. "Downtown / CBD"
+  dispatch_code: string;   // e.g. "SL1-SLC/A"
+  // Legacy compatibility
+  section_id?: string;
+  section_name?: string;
+}
+
+export const DISPATCH_SECTORS = [
+  {
+    "id": "NUT",
+    "name": "Northern Utah",
+    "color": "#0ea5e9",
+    "description": "Box Elder, Cache, Daggett, Morgan, Rich, Weber counties"
+  },
+  {
+    "id": "WFR",
+    "name": "Wasatch Front",
+    "color": "#6366f1",
+    "description": "Davis, Salt Lake, Tooele, Utah, Wasatch counties"
+  },
+  {
+    "id": "CUT",
+    "name": "Central Utah",
+    "color": "#10b981",
+    "description": "Carbon, Duchesne, Emery, Juab, Millard, Piute, Sanpete, Sevier, Summit, Uintah, Wayne counties"
+  },
+  {
+    "id": "SUT",
+    "name": "Southern Utah",
+    "color": "#ef4444",
+    "description": "Beaver, Garfield, Grand, Iron, Kane, San Juan, Washington counties"
+  }
+];
+
+export const DISPATCH_AREAS = [
+  {
+    "id": "NUT",
+    "sector_id": "NUT",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "color": "#06b6d4"
+  },
+  {
+    "id": "NUT",
+    "sector_id": "NUT",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "color": "#0ea5e9"
+  },
+  {
+    "id": "NUT",
+    "sector_id": "NUT",
+    "area_id": "DG1",
+    "area_name": "Daggett",
+    "color": "#38bdf8"
+  },
+  {
+    "id": "NUT",
+    "sector_id": "NUT",
+    "area_id": "MG1",
+    "area_name": "Morgan",
+    "color": "#7dd3fc"
+  },
+  {
+    "id": "NUT",
+    "sector_id": "NUT",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "color": "#bae6fd"
+  },
+  {
+    "id": "NUT",
+    "sector_id": "NUT",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "color": "#3b82f6"
+  },
+  {
+    "id": "WFR",
+    "sector_id": "WFR",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "color": "#818cf8"
+  },
+  {
+    "id": "WFR",
+    "sector_id": "WFR",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "color": "#6366f1"
+  },
+  {
+    "id": "WFR",
+    "sector_id": "WFR",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "color": "#a78bfa"
+  },
+  {
+    "id": "WFR",
+    "sector_id": "WFR",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "color": "#c4b5fd"
+  },
+  {
+    "id": "WFR",
+    "sector_id": "WFR",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "color": "#ddd6fe"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "CB1",
+    "area_name": "Carbon",
+    "color": "#16a34a"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "DC1",
+    "area_name": "Duchesne",
+    "color": "#15803d"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "color": "#4ade80"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "color": "#a3e635"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "color": "#86efac"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "PT1",
+    "area_name": "Piute",
+    "color": "#6ee7b7"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "color": "#34d399"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "color": "#10b981"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "SU1",
+    "area_name": "Summit",
+    "color": "#059669"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "UI1",
+    "area_name": "Uintah",
+    "color": "#047857"
+  },
+  {
+    "id": "CUT",
+    "sector_id": "CUT",
+    "area_id": "WY1",
+    "area_name": "Wayne",
+    "color": "#bbf7d0"
+  },
+  {
+    "id": "SUT",
+    "sector_id": "SUT",
+    "area_id": "BV1",
+    "area_name": "Beaver",
+    "color": "#fb923c"
+  },
+  {
+    "id": "SUT",
+    "sector_id": "SUT",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "color": "#f97316"
+  },
+  {
+    "id": "SUT",
+    "sector_id": "SUT",
+    "area_id": "GR1",
+    "area_name": "Grand",
+    "color": "#ea580c"
+  },
+  {
+    "id": "SUT",
+    "sector_id": "SUT",
+    "area_id": "IR1",
+    "area_name": "Iron",
+    "color": "#c2410c"
+  },
+  {
+    "id": "SUT",
+    "sector_id": "SUT",
+    "area_id": "KN1",
+    "area_name": "Kane",
+    "color": "#9a3412"
+  },
+  {
+    "id": "SUT",
+    "sector_id": "SUT",
+    "area_id": "SJ1",
+    "area_name": "San Juan",
+    "color": "#7c2d12"
+  },
+  {
+    "id": "SUT",
+    "sector_id": "SUT",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "color": "#ef4444"
+  }
+];
+
+export const DISPATCH_DISTRICTS: DispatchGeoEntry[] = [
   {
     "section_id": "SL1",
     "zone_id": "SLC",
@@ -7,7 +266,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Salt Lake City",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Downtown / CBD"
+    "beat_descriptor": "Downtown / CBD",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -17,7 +280,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Salt Lake City",
     "beat_name": "Metro Core",
-    "beat_descriptor": "North / Rose Park"
+    "beat_descriptor": "North / Rose Park",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -27,7 +294,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Salt Lake City",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South / Central"
+    "beat_descriptor": "South / Central",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -37,7 +308,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Salt Lake City",
     "beat_name": "Metro Core",
-    "beat_descriptor": "East Bench / Avenues"
+    "beat_descriptor": "East Bench / Avenues",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -47,7 +322,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Salt Lake City",
     "beat_name": "Metro Core",
-    "beat_descriptor": "West Side / Glendale"
+    "beat_descriptor": "West Side / Glendale",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -57,7 +336,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Salt Lake City",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Sugar House / SE"
+    "beat_descriptor": "Sugar House / SE",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -67,7 +350,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "South Salt Lake",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Central / State Street"
+    "beat_descriptor": "Central / State Street",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -77,7 +364,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "South Salt Lake",
     "beat_name": "Metro Core",
-    "beat_descriptor": "East / Residential"
+    "beat_descriptor": "East / Residential",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -87,7 +378,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "South Salt Lake",
     "beat_name": "Metro Core",
-    "beat_descriptor": "West / Industrial"
+    "beat_descriptor": "West / Industrial",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -97,7 +392,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Jordan",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Jordan Landing / Commercial"
+    "beat_descriptor": "Jordan Landing / Commercial",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -107,7 +406,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Jordan",
     "beat_name": "Metro Core",
-    "beat_descriptor": "North"
+    "beat_descriptor": "North",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -117,7 +420,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Jordan",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South"
+    "beat_descriptor": "South",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -127,7 +434,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Jordan",
     "beat_name": "Metro Core",
-    "beat_descriptor": "East Bench"
+    "beat_descriptor": "East Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -137,7 +448,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "South Jordan",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Daybreak"
+    "beat_descriptor": "Daybreak",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -147,7 +462,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "South Jordan",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Central / Commercial"
+    "beat_descriptor": "Central / Commercial",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -157,7 +476,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "South Jordan",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South / Residential"
+    "beat_descriptor": "South / Residential",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -167,7 +490,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Murray",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -177,7 +504,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Murray",
     "beat_name": "Metro Core",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -187,7 +518,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Murray",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -197,7 +532,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Taylorsville",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -207,7 +546,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Taylorsville",
     "beat_name": "Metro Core",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -217,7 +560,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Taylorsville",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -227,7 +574,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Herriman",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -237,7 +588,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Herriman",
     "beat_name": "Metro Core",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -247,7 +602,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Herriman",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -257,7 +616,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Riverton",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -267,7 +630,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Riverton",
     "beat_name": "Metro Core",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -277,7 +644,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Riverton",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -287,7 +658,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Draper",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Downtown / Main"
+    "beat_descriptor": "Downtown / Main",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -297,7 +672,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Draper",
     "beat_name": "Metro Core",
-    "beat_descriptor": "Suncrest / East Bench"
+    "beat_descriptor": "Suncrest / East Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL1",
@@ -307,7 +686,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Draper",
     "beat_name": "Metro Core",
-    "beat_descriptor": "South / Point of the Mountain"
+    "beat_descriptor": "South / Point of the Mountain",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -317,7 +700,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Sandy",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "South Towne / Commercial"
+    "beat_descriptor": "South Towne / Commercial",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -327,7 +714,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Sandy",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "Central"
+    "beat_descriptor": "Central",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -337,7 +728,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Sandy",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "East Bench"
+    "beat_descriptor": "East Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -347,7 +742,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Sandy",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "South / Residential"
+    "beat_descriptor": "South / Residential",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -357,7 +756,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Midvale",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -367,7 +770,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Midvale",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -377,7 +784,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Midvale",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -387,7 +798,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Cottonwood Heights",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -397,7 +812,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Cottonwood Heights",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -407,7 +826,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Cottonwood Heights",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -417,7 +840,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Holladay",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -427,7 +854,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Holladay",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -437,7 +868,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Holladay",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -447,7 +882,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Millcreek",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -457,7 +896,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Millcreek",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -467,7 +910,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Millcreek",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -477,7 +924,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Bluffdale",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "Town Core"
+    "beat_descriptor": "Town Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL2",
@@ -487,7 +938,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Bluffdale",
     "beat_name": "East Bench / Central",
-    "beat_descriptor": "Outlying"
+    "beat_descriptor": "Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -497,7 +952,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Valley City",
     "beat_name": "West Corridor",
-    "beat_descriptor": "Central"
+    "beat_descriptor": "Central",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -507,7 +966,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Valley City",
     "beat_name": "West Corridor",
-    "beat_descriptor": "Redwood Corridor"
+    "beat_descriptor": "Redwood Corridor",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -517,7 +980,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Valley City",
     "beat_name": "West Corridor",
-    "beat_descriptor": "Hunter"
+    "beat_descriptor": "Hunter",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -527,7 +994,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "West Valley City",
     "beat_name": "West Corridor",
-    "beat_descriptor": "West / Industrial"
+    "beat_descriptor": "West / Industrial",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -537,7 +1008,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Magna",
     "beat_name": "West Corridor",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -547,7 +1022,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Magna",
     "beat_name": "West Corridor",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -557,7 +1036,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Magna",
     "beat_name": "West Corridor",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -567,7 +1050,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Kearns",
     "beat_name": "West Corridor",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -577,7 +1064,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Kearns",
     "beat_name": "West Corridor",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SL3",
@@ -587,7 +1078,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Salt Lake",
     "zone_name": "Kearns",
     "beat_name": "West Corridor",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -597,7 +1092,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "North Salt Lake",
     "beat_name": "South Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -607,7 +1106,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "North Salt Lake",
     "beat_name": "South Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -617,7 +1120,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "North Salt Lake",
     "beat_name": "South Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -627,7 +1134,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Woods Cross",
     "beat_name": "South Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -637,7 +1148,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Woods Cross",
     "beat_name": "South Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -647,7 +1162,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Woods Cross",
     "beat_name": "South Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -657,7 +1176,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Bountiful",
     "beat_name": "South Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -667,7 +1190,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Bountiful",
     "beat_name": "South Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -677,7 +1204,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Bountiful",
     "beat_name": "South Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -687,7 +1218,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "West Bountiful",
     "beat_name": "South Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -697,7 +1232,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "West Bountiful",
     "beat_name": "South Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -707,7 +1246,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "West Bountiful",
     "beat_name": "South Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -717,7 +1260,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Centerville",
     "beat_name": "South Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -727,7 +1274,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Centerville",
     "beat_name": "South Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV1",
@@ -737,7 +1288,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Centerville",
     "beat_name": "South Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -747,7 +1302,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Farmington",
     "beat_name": "Central Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -757,7 +1316,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Farmington",
     "beat_name": "Central Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -767,7 +1330,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Farmington",
     "beat_name": "Central Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -777,7 +1344,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Kaysville",
     "beat_name": "Central Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -787,7 +1358,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Kaysville",
     "beat_name": "Central Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -797,7 +1372,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Kaysville",
     "beat_name": "Central Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -807,7 +1386,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Layton",
     "beat_name": "Central Davis",
-    "beat_descriptor": "Layton Hills / Retail"
+    "beat_descriptor": "Layton Hills / Retail",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -817,7 +1400,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Layton",
     "beat_name": "Central Davis",
-    "beat_descriptor": "Central / Main"
+    "beat_descriptor": "Central / Main",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -827,7 +1414,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Layton",
     "beat_name": "Central Davis",
-    "beat_descriptor": "East Bench"
+    "beat_descriptor": "East Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV2",
@@ -837,7 +1428,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Layton",
     "beat_name": "Central Davis",
-    "beat_descriptor": "West / Industrial"
+    "beat_descriptor": "West / Industrial",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -847,7 +1442,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Clearfield",
     "beat_name": "North Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -857,7 +1456,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Clearfield",
     "beat_name": "North Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -867,7 +1470,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Clearfield",
     "beat_name": "North Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -877,7 +1484,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Clinton",
     "beat_name": "North Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -887,7 +1498,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Clinton",
     "beat_name": "North Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -897,7 +1512,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Clinton",
     "beat_name": "North Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -907,7 +1526,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Syracuse",
     "beat_name": "North Davis",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -917,7 +1540,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Syracuse",
     "beat_name": "North Davis",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "DV3",
@@ -927,7 +1554,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Davis",
     "zone_name": "Syracuse",
     "beat_name": "North Davis",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "WB1",
@@ -937,7 +1568,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Ogden",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "Central / 25th Street"
+    "beat_descriptor": "Central / 25th Street",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -947,7 +1582,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Ogden",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "East Bench / Canyon"
+    "beat_descriptor": "East Bench / Canyon",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -957,7 +1596,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Ogden",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "West / Industrial"
+    "beat_descriptor": "West / Industrial",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -967,7 +1610,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Ogden",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "South / River Corridor"
+    "beat_descriptor": "South / River Corridor",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -977,7 +1624,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "South Ogden",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -987,7 +1638,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "South Ogden",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -997,7 +1652,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "South Ogden",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1007,7 +1666,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Riverdale",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1017,7 +1680,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Riverdale",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1027,7 +1694,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Riverdale",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1037,7 +1708,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Roy",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1047,7 +1722,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Roy",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1057,7 +1736,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Roy",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1067,7 +1750,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Harrisville",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1077,7 +1764,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Harrisville",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB1",
@@ -1087,7 +1778,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Harrisville",
     "beat_name": "Ogden Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1097,7 +1792,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "North Ogden",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1107,7 +1806,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "North Ogden",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1117,7 +1820,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "North Ogden",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1127,7 +1834,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Pleasant View",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1137,7 +1848,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Pleasant View",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1147,7 +1862,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Pleasant View",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1157,7 +1876,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Plain City",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1167,7 +1890,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Plain City",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1177,7 +1904,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Plain City",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1187,7 +1918,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Farr West",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1197,7 +1932,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Farr West",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1207,7 +1946,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Farr West",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1217,7 +1960,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Hooper",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1227,7 +1974,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Hooper",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WB2",
@@ -1237,7 +1988,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Weber",
     "zone_name": "Hooper",
     "beat_name": "North / West Weber",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WB1",
+    "area_name": "Weber",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "MG1",
@@ -1247,7 +2002,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Morgan",
     "zone_name": "Morgan",
     "beat_name": "Countywide",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "MG1",
+    "area_name": "Morgan",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "MG1",
@@ -1257,7 +2016,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Morgan",
     "zone_name": "Morgan",
     "beat_name": "Countywide",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "MG1",
+    "area_name": "Morgan",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "MG1",
@@ -1267,7 +2030,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Morgan",
     "zone_name": "Morgan",
     "beat_name": "Countywide",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "MG1",
+    "area_name": "Morgan",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "MG1",
@@ -1277,7 +2044,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Morgan",
     "zone_name": "Mountain Green",
     "beat_name": "Countywide",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "MG1",
+    "area_name": "Morgan",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "MG1",
@@ -1287,7 +2058,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Morgan",
     "zone_name": "Mountain Green",
     "beat_name": "Countywide",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "MG1",
+    "area_name": "Morgan",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "MG1",
@@ -1297,7 +2072,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Morgan",
     "zone_name": "Mountain Green",
     "beat_name": "Countywide",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "MG1",
+    "area_name": "Morgan",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "WS1",
@@ -1307,7 +2086,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Wasatch",
     "zone_name": "Heber City",
     "beat_name": "Heber Valley",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "WS1",
@@ -1317,7 +2100,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Wasatch",
     "zone_name": "Heber City",
     "beat_name": "Heber Valley",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "WS1",
@@ -1327,7 +2114,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Wasatch",
     "zone_name": "Heber City",
     "beat_name": "Heber Valley",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "WS1",
@@ -1337,7 +2128,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Wasatch",
     "zone_name": "Midway",
     "beat_name": "Heber Valley",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "WS1",
@@ -1347,7 +2142,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Wasatch",
     "zone_name": "Midway",
     "beat_name": "Heber Valley",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "WS1",
@@ -1357,7 +2156,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Wasatch",
     "zone_name": "Midway",
     "beat_name": "Heber Valley",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "SM1",
@@ -1367,7 +2170,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Park City",
     "beat_name": "Park City Area",
-    "beat_descriptor": "Old Town"
+    "beat_descriptor": "Old Town",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1377,7 +2184,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Park City",
     "beat_name": "Park City Area",
-    "beat_descriptor": "Kimball Junction"
+    "beat_descriptor": "Kimball Junction",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1387,7 +2198,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Park City",
     "beat_name": "Park City Area",
-    "beat_descriptor": "Resort / Deer Valley"
+    "beat_descriptor": "Resort / Deer Valley",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1397,7 +2212,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Kamas",
     "beat_name": "Park City Area",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1407,7 +2226,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Kamas",
     "beat_name": "Park City Area",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1417,7 +2240,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Kamas",
     "beat_name": "Park City Area",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1427,7 +2254,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Francis",
     "beat_name": "Park City Area",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1437,7 +2268,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Francis",
     "beat_name": "Park City Area",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1447,7 +2282,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Francis",
     "beat_name": "Park City Area",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1457,7 +2296,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Oakley",
     "beat_name": "Park City Area",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1467,7 +2310,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Oakley",
     "beat_name": "Park City Area",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM1",
@@ -1477,7 +2324,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Oakley",
     "beat_name": "Park City Area",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM2",
@@ -1487,7 +2338,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Coalville",
     "beat_name": "North Summit",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM2",
@@ -1497,7 +2352,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Coalville",
     "beat_name": "North Summit",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM2",
@@ -1507,7 +2366,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Coalville",
     "beat_name": "North Summit",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM2",
@@ -1517,7 +2380,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Henefer",
     "beat_name": "North Summit",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM2",
@@ -1527,7 +2394,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Henefer",
     "beat_name": "North Summit",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SM2",
@@ -1537,7 +2408,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Summit",
     "zone_name": "Henefer",
     "beat_name": "North Summit",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Summit",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "TL1",
@@ -1547,7 +2422,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Tooele",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "Downtown / Central"
+    "beat_descriptor": "Downtown / Central",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1557,7 +2436,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Tooele",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "East / Residential"
+    "beat_descriptor": "East / Residential",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1567,7 +2450,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Tooele",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "West / Industrial"
+    "beat_descriptor": "West / Industrial",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1577,7 +2464,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Grantsville",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1587,7 +2478,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Grantsville",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1597,7 +2492,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Grantsville",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1607,7 +2506,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Stockton",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1617,7 +2520,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Stockton",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1627,7 +2534,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Stockton",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1637,7 +2548,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Stansbury Park",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1647,7 +2562,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Stansbury Park",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1657,7 +2576,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Stansbury Park",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1667,7 +2590,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Lake Point",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1677,7 +2604,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Lake Point",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL1",
@@ -1687,7 +2618,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Lake Point",
     "beat_name": "Tooele Valley",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL2",
@@ -1697,7 +2632,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Wendover",
     "beat_name": "West Desert",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL2",
@@ -1707,7 +2646,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Wendover",
     "beat_name": "West Desert",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "TL2",
@@ -1717,7 +2660,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Tooele",
     "zone_name": "Wendover",
     "beat_name": "West Desert",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front"
   },
   {
     "section_id": "CH1",
@@ -1727,7 +2674,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Logan",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "Downtown"
+    "beat_descriptor": "Downtown",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1737,7 +2688,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Logan",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "USU / East"
+    "beat_descriptor": "USU / East",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1747,7 +2702,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Logan",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "North"
+    "beat_descriptor": "North",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1757,7 +2716,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Logan",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "South / River Corridor"
+    "beat_descriptor": "South / River Corridor",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1767,7 +2730,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "North Logan",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1777,7 +2744,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "North Logan",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1787,7 +2758,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "North Logan",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1797,7 +2772,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Providence",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1807,7 +2786,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Providence",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1817,7 +2800,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Providence",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1827,7 +2814,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Millville",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1837,7 +2828,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Millville",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1847,7 +2842,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Millville",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1857,7 +2856,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Nibley",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1867,7 +2870,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Nibley",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1877,7 +2884,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Nibley",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1887,7 +2898,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Hyde Park",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1897,7 +2912,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Hyde Park",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH1",
@@ -1907,7 +2926,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Hyde Park",
     "beat_name": "Logan Metro",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1917,7 +2940,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Hyrum",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1927,7 +2954,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Hyrum",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1937,7 +2968,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Hyrum",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1947,7 +2982,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Smithfield",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1957,7 +2996,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Smithfield",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1967,7 +3010,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Smithfield",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1977,7 +3024,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Richmond",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1987,7 +3038,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Richmond",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -1997,7 +3052,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Richmond",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2007,7 +3066,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Wellsville",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2017,7 +3080,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Wellsville",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2027,7 +3094,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Wellsville",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2037,7 +3108,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Lewiston",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2047,7 +3122,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Lewiston",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2057,7 +3136,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Lewiston",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2067,7 +3150,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Mendon",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2077,7 +3164,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Mendon",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2087,7 +3178,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Mendon",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2097,7 +3192,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Clarkston",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2107,7 +3206,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Clarkston",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2117,7 +3220,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Clarkston",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2127,7 +3234,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Cornish",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2137,7 +3248,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Cornish",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2147,7 +3262,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Cornish",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2157,7 +3276,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Paradise",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2167,7 +3290,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Paradise",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "CH2",
@@ -2177,7 +3304,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Cache",
     "zone_name": "Paradise",
     "beat_name": "South / Rural Cache",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2187,7 +3318,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Garden City",
     "beat_name": "Countywide",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2197,7 +3332,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Garden City",
     "beat_name": "Countywide",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2207,7 +3346,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Garden City",
     "beat_name": "Countywide",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2217,7 +3360,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Randolph",
     "beat_name": "Countywide",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2227,7 +3374,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Randolph",
     "beat_name": "Countywide",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2237,7 +3388,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Randolph",
     "beat_name": "Countywide",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2247,7 +3402,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Laketown",
     "beat_name": "Countywide",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2257,7 +3416,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Laketown",
     "beat_name": "Countywide",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2267,7 +3430,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Laketown",
     "beat_name": "Countywide",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2277,7 +3444,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Woodruff",
     "beat_name": "Countywide",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2287,7 +3458,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Woodruff",
     "beat_name": "Countywide",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "RC1",
@@ -2297,7 +3472,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Rich",
     "zone_name": "Woodruff",
     "beat_name": "Countywide",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "RC1",
+    "area_name": "Rich",
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah"
   },
   {
     "section_id": "JB1",
@@ -2307,7 +3486,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Nephi",
     "beat_name": "North Juab",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB1",
@@ -2317,7 +3500,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Nephi",
     "beat_name": "North Juab",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB1",
@@ -2327,7 +3514,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Nephi",
     "beat_name": "North Juab",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB1",
@@ -2337,7 +3528,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Mona",
     "beat_name": "North Juab",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB1",
@@ -2347,7 +3542,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Mona",
     "beat_name": "North Juab",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB1",
@@ -2357,7 +3556,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Mona",
     "beat_name": "North Juab",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB2",
@@ -2367,7 +3570,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Levan",
     "beat_name": "South Juab",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB2",
@@ -2377,7 +3584,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Levan",
     "beat_name": "South Juab",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "JB2",
@@ -2387,7 +3598,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Juab",
     "zone_name": "Levan",
     "beat_name": "South Juab",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2397,7 +3612,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Manti",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2407,7 +3626,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Manti",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2417,7 +3640,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Manti",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2427,7 +3654,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Ephraim",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2437,7 +3668,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Ephraim",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2447,7 +3682,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Ephraim",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2457,7 +3696,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Gunnison",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2467,7 +3710,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Gunnison",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2477,7 +3724,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Gunnison",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2487,7 +3738,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Centerfield",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2497,7 +3752,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Centerfield",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP1",
@@ -2507,7 +3766,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Centerfield",
     "beat_name": "Central Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2517,7 +3780,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Mount Pleasant",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2527,7 +3794,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Mount Pleasant",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2537,7 +3808,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Mount Pleasant",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2547,7 +3822,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Fairview",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2557,7 +3836,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Fairview",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2567,7 +3850,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Fairview",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2577,7 +3864,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Fountain Green",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2587,7 +3878,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Fountain Green",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2597,7 +3892,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Fountain Green",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2607,7 +3906,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Spring City",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2617,7 +3920,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Spring City",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2627,7 +3934,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Spring City",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2637,7 +3948,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Moroni",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2647,7 +3962,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Moroni",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP2",
@@ -2657,7 +3976,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Moroni",
     "beat_name": "North Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP3",
@@ -2667,7 +3990,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Salina",
     "beat_name": "South Sanpete",
-    "beat_descriptor": "Central / Core"
+    "beat_descriptor": "Central / Core",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP3",
@@ -2677,7 +4004,11 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Salina",
     "beat_name": "South Sanpete",
-    "beat_descriptor": "North / Bench"
+    "beat_descriptor": "North / Bench",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
   },
   {
     "section_id": "SP3",
@@ -2687,6 +4018,2090 @@ export const DISPATCH_DISTRICTS = [
     "section_name": "Sanpete",
     "zone_name": "Salina",
     "beat_name": "South Sanpete",
-    "beat_descriptor": "South / Outlying"
+    "beat_descriptor": "South / Outlying",
+    "area_id": "SM1",
+    "area_name": "Sanpete",
+    "sector_id": "CUT",
+    "sector_name": "Central Utah"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "BV1",
+    "area_name": "Beaver",
+    "area_color": "#fb923c",
+    "zone_id": "BEA",
+    "zone_name": "Beaver",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Beaver / General Patrol",
+    "dispatch_code": "BV1-BEA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "BV1",
+    "area_name": "Beaver",
+    "area_color": "#fb923c",
+    "zone_id": "MI3",
+    "zone_name": "Milford",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Milford / General Patrol",
+    "dispatch_code": "BV1-MI3/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "BV1",
+    "area_name": "Beaver",
+    "area_color": "#fb923c",
+    "zone_id": "MIN",
+    "zone_name": "Minersville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Minersville / General Patrol",
+    "dispatch_code": "BV1-MIN/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "BRI",
+    "zone_name": "Bear River City",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Bear River City / General Patrol",
+    "dispatch_code": "BE1-BRI/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "BR3",
+    "zone_name": "Brigham City",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Brigham City / General Patrol",
+    "dispatch_code": "BE1-BR3/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "CO2",
+    "zone_name": "Corinne",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Corinne / General Patrol",
+    "dispatch_code": "BE1-CO2/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "DEW",
+    "zone_name": "Deweyville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Deweyville / General Patrol",
+    "dispatch_code": "BE1-DEW/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "ELW",
+    "zone_name": "Elwood",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Elwood / General Patrol",
+    "dispatch_code": "BE1-ELW/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "FIE",
+    "zone_name": "Fielding",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Fielding / General Patrol",
+    "dispatch_code": "BE1-FIE/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "GA2",
+    "zone_name": "Garland",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Garland / General Patrol",
+    "dispatch_code": "BE1-GA2/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "HON",
+    "zone_name": "Honeyville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Honeyville / General Patrol",
+    "dispatch_code": "BE1-HON/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "HOW",
+    "zone_name": "Howell",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Howell / General Patrol",
+    "dispatch_code": "BE1-HOW/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "MA3",
+    "zone_name": "Mantua",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Mantua / General Patrol",
+    "dispatch_code": "BE1-MA3/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "PER",
+    "zone_name": "Perry",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Perry / General Patrol",
+    "dispatch_code": "BE1-PER/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "PLY",
+    "zone_name": "Plymouth",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Plymouth / General Patrol",
+    "dispatch_code": "BE1-PLY/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "POR",
+    "zone_name": "Portage",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Portage / General Patrol",
+    "dispatch_code": "BE1-POR/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "SNO",
+    "zone_name": "Snowville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Snowville / General Patrol",
+    "dispatch_code": "BE1-SNO/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "TRE",
+    "zone_name": "Tremonton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Tremonton / General Patrol",
+    "dispatch_code": "BE1-TRE/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "BE1",
+    "area_name": "Box Elder",
+    "area_color": "#06b6d4",
+    "zone_id": "WIL",
+    "zone_name": "Willard",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Willard / General Patrol",
+    "dispatch_code": "BE1-WIL/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "area_color": "#0ea5e9",
+    "zone_id": "MEN",
+    "zone_name": "Mendon",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Mendon / General Patrol",
+    "dispatch_code": "CH1-MEN/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "CH1",
+    "area_name": "Cache",
+    "area_color": "#0ea5e9",
+    "zone_id": "NEW",
+    "zone_name": "Newton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Newton / General Patrol",
+    "dispatch_code": "CH1-NEW/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "CB1",
+    "area_name": "Carbon",
+    "area_color": "#16a34a",
+    "zone_id": "ECA",
+    "zone_name": "East Carbon",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "East Carbon / General Patrol",
+    "dispatch_code": "CB1-ECA/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "CB1",
+    "area_name": "Carbon",
+    "area_color": "#16a34a",
+    "zone_id": "HEL",
+    "zone_name": "Helper",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Helper / General Patrol",
+    "dispatch_code": "CB1-HEL/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "CB1",
+    "area_name": "Carbon",
+    "area_color": "#16a34a",
+    "zone_id": "PRI",
+    "zone_name": "Price",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Price / General Patrol",
+    "dispatch_code": "CB1-PRI/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "CB1",
+    "area_name": "Carbon",
+    "area_color": "#16a34a",
+    "zone_id": "SCO",
+    "zone_name": "Scofield",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Scofield / General Patrol",
+    "dispatch_code": "CB1-SCO/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "CB1",
+    "area_name": "Carbon",
+    "area_color": "#16a34a",
+    "zone_id": "WEL",
+    "zone_name": "Wellington",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Wellington / General Patrol",
+    "dispatch_code": "CB1-WEL/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "DG1",
+    "area_name": "Daggett",
+    "area_color": "#38bdf8",
+    "zone_id": "DJO",
+    "zone_name": "Dutch John",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Dutch John / General Patrol",
+    "dispatch_code": "DG1-DJO/P1"
+  },
+  {
+    "sector_id": "NUT",
+    "sector_name": "Northern Utah",
+    "area_id": "DG1",
+    "area_name": "Daggett",
+    "area_color": "#38bdf8",
+    "zone_id": "MAN",
+    "zone_name": "Manila",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Manila / General Patrol",
+    "dispatch_code": "DG1-MAN/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "DV1",
+    "area_name": "Davis",
+    "area_color": "#818cf8",
+    "zone_id": "BO2",
+    "zone_name": "Bountiful",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Bountiful / General Patrol",
+    "dispatch_code": "DV1-BO2/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "DC1",
+    "area_name": "Duchesne",
+    "area_color": "#15803d",
+    "zone_id": "AL2",
+    "zone_name": "Altamont",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Altamont / General Patrol",
+    "dispatch_code": "DC1-AL2/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "DC1",
+    "area_name": "Duchesne",
+    "area_color": "#15803d",
+    "zone_id": "DUC",
+    "zone_name": "Duchesne",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Duchesne / General Patrol",
+    "dispatch_code": "DC1-DUC/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "DC1",
+    "area_name": "Duchesne",
+    "area_color": "#15803d",
+    "zone_id": "MYT",
+    "zone_name": "Myton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Myton / General Patrol",
+    "dispatch_code": "DC1-MYT/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "DC1",
+    "area_name": "Duchesne",
+    "area_color": "#15803d",
+    "zone_id": "ROO",
+    "zone_name": "Roosevelt",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Roosevelt / General Patrol",
+    "dispatch_code": "DC1-ROO/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "DC1",
+    "area_name": "Duchesne",
+    "area_color": "#15803d",
+    "zone_id": "TAB",
+    "zone_name": "Tabiona",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Tabiona / General Patrol",
+    "dispatch_code": "DC1-TAB/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "CDA",
+    "zone_name": "Castle Dale",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Castle Dale / General Patrol",
+    "dispatch_code": "EM1-CDA/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "CL2",
+    "zone_name": "Clawson",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Clawson / General Patrol",
+    "dispatch_code": "EM1-CL2/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "ELM",
+    "zone_name": "Elmo",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Elmo / General Patrol",
+    "dispatch_code": "EM1-ELM/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "EME",
+    "zone_name": "Emery",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Emery / General Patrol",
+    "dispatch_code": "EM1-EME/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "FER",
+    "zone_name": "Ferron",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Ferron / General Patrol",
+    "dispatch_code": "EM1-FER/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "GRI",
+    "zone_name": "Green River",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Green River / General Patrol",
+    "dispatch_code": "EM1-GRI/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "HU2",
+    "zone_name": "Huntington",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Huntington / General Patrol",
+    "dispatch_code": "EM1-HU2/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "EM1",
+    "area_name": "Emery",
+    "area_color": "#4ade80",
+    "zone_id": "ORA",
+    "zone_name": "Orangeville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Orangeville / General Patrol",
+    "dispatch_code": "EM1-ORA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "ANT",
+    "zone_name": "Antimony",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Antimony / General Patrol",
+    "dispatch_code": "GF1-ANT/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "BOU",
+    "zone_name": "Boulder",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Boulder / General Patrol",
+    "dispatch_code": "GF1-BOU/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "BCA",
+    "zone_name": "Bryce Canyon City",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Bryce Canyon City / General Patrol",
+    "dispatch_code": "GF1-BCA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "CAN",
+    "zone_name": "Cannonville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Cannonville / General Patrol",
+    "dispatch_code": "GF1-CAN/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "ESC",
+    "zone_name": "Escalante",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Escalante / General Patrol",
+    "dispatch_code": "GF1-ESC/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "HAT",
+    "zone_name": "Hatch",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Hatch / General Patrol",
+    "dispatch_code": "GF1-HAT/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "HEN",
+    "zone_name": "Henrieville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Henrieville / General Patrol",
+    "dispatch_code": "GF1-HEN/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "PAN",
+    "zone_name": "Panguitch",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Panguitch / General Patrol",
+    "dispatch_code": "GF1-PAN/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GF1",
+    "area_name": "Garfield",
+    "area_color": "#f97316",
+    "zone_id": "TRO",
+    "zone_name": "Tropic",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Tropic / General Patrol",
+    "dispatch_code": "GF1-TRO/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GR1",
+    "area_name": "Grand",
+    "area_color": "#ea580c",
+    "zone_id": "CV2",
+    "zone_name": "Castle Valley",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Castle Valley / General Patrol",
+    "dispatch_code": "GR1-CV2/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "GR1",
+    "area_name": "Grand",
+    "area_color": "#ea580c",
+    "zone_id": "MOA",
+    "zone_name": "Moab",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Moab / General Patrol",
+    "dispatch_code": "GR1-MOA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "IR1",
+    "area_name": "Iron",
+    "area_color": "#c2410c",
+    "zone_id": "BHE",
+    "zone_name": "Brian Head",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Brian Head / General Patrol",
+    "dispatch_code": "IR1-BHE/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "IR1",
+    "area_name": "Iron",
+    "area_color": "#c2410c",
+    "zone_id": "CED",
+    "zone_name": "Cedar City",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Cedar City / General Patrol",
+    "dispatch_code": "IR1-CED/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "IR1",
+    "area_name": "Iron",
+    "area_color": "#c2410c",
+    "zone_id": "ENO",
+    "zone_name": "Enoch",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Enoch / General Patrol",
+    "dispatch_code": "IR1-ENO/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "IR1",
+    "area_name": "Iron",
+    "area_color": "#c2410c",
+    "zone_id": "KA2",
+    "zone_name": "Kanarraville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Kanarraville / General Patrol",
+    "dispatch_code": "IR1-KA2/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "IR1",
+    "area_name": "Iron",
+    "area_color": "#c2410c",
+    "zone_id": "PA3",
+    "zone_name": "Paragonah",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Paragonah / General Patrol",
+    "dispatch_code": "IR1-PA3/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "IR1",
+    "area_name": "Iron",
+    "area_color": "#c2410c",
+    "zone_id": "PA5",
+    "zone_name": "Parowan",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Parowan / General Patrol",
+    "dispatch_code": "IR1-PA5/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "JB1",
+    "area_name": "Juab",
+    "area_color": "#a3e635",
+    "zone_id": "RRI",
+    "zone_name": "Rocky Ridge",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Rocky Ridge / General Patrol",
+    "dispatch_code": "JB1-RRI/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "KN1",
+    "area_name": "Kane",
+    "area_color": "#9a3412",
+    "zone_id": "ALT",
+    "zone_name": "Alton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Alton / General Patrol",
+    "dispatch_code": "KN1-ALT/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "KN1",
+    "area_name": "Kane",
+    "area_color": "#9a3412",
+    "zone_id": "BWA",
+    "zone_name": "Big Water",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Big Water / General Patrol",
+    "dispatch_code": "KN1-BWA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "KN1",
+    "area_name": "Kane",
+    "area_color": "#9a3412",
+    "zone_id": "GL2",
+    "zone_name": "Glendale",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Glendale / General Patrol",
+    "dispatch_code": "KN1-GL2/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "KN1",
+    "area_name": "Kane",
+    "area_color": "#9a3412",
+    "zone_id": "KA3",
+    "zone_name": "Kanab",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Kanab / General Patrol",
+    "dispatch_code": "KN1-KA3/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "KN1",
+    "area_name": "Kane",
+    "area_color": "#9a3412",
+    "zone_id": "ORD",
+    "zone_name": "Orderville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Orderville / General Patrol",
+    "dispatch_code": "KN1-ORD/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "DEL",
+    "zone_name": "Delta",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Delta / General Patrol",
+    "dispatch_code": "ML1-DEL/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "FIL",
+    "zone_name": "Fillmore",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Fillmore / General Patrol",
+    "dispatch_code": "ML1-FIL/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "HIN",
+    "zone_name": "Hinckley",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Hinckley / General Patrol",
+    "dispatch_code": "ML1-HIN/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "HO2",
+    "zone_name": "Holden",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Holden / General Patrol",
+    "dispatch_code": "ML1-HO2/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "KAN",
+    "zone_name": "Kanosh",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Kanosh / General Patrol",
+    "dispatch_code": "ML1-KAN/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "LEA",
+    "zone_name": "Leamington",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Leamington / General Patrol",
+    "dispatch_code": "ML1-LEA/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "LYN",
+    "zone_name": "Lynndyl",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Lynndyl / General Patrol",
+    "dispatch_code": "ML1-LYN/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "MEA",
+    "zone_name": "Meadow",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Meadow / General Patrol",
+    "dispatch_code": "ML1-MEA/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "OA2",
+    "zone_name": "Oak City",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Oak City / General Patrol",
+    "dispatch_code": "ML1-OA2/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "ML1",
+    "area_name": "Millard",
+    "area_color": "#86efac",
+    "zone_id": "SCI",
+    "zone_name": "Scipio",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Scipio / General Patrol",
+    "dispatch_code": "ML1-SCI/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "PT1",
+    "area_name": "Piute",
+    "area_color": "#6ee7b7",
+    "zone_id": "CIR",
+    "zone_name": "Circleville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Circleville / General Patrol",
+    "dispatch_code": "PT1-CIR/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "PT1",
+    "area_name": "Piute",
+    "area_color": "#6ee7b7",
+    "zone_id": "JUN",
+    "zone_name": "Junction",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Junction / General Patrol",
+    "dispatch_code": "PT1-JUN/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "PT1",
+    "area_name": "Piute",
+    "area_color": "#6ee7b7",
+    "zone_id": "KIN",
+    "zone_name": "Kingston",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Kingston / General Patrol",
+    "dispatch_code": "PT1-KIN/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "area_color": "#6366f1",
+    "zone_id": "AL3",
+    "zone_name": "Alta",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Alta / General Patrol",
+    "dispatch_code": "SL1-AL3/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "area_color": "#6366f1",
+    "zone_id": "BR2",
+    "zone_name": "Brighton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Brighton / General Patrol",
+    "dispatch_code": "SL1-BR2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "area_color": "#6366f1",
+    "zone_id": "COP",
+    "zone_name": "Copperton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Copperton / General Patrol",
+    "dispatch_code": "SL1-COP/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "area_color": "#6366f1",
+    "zone_id": "EC2",
+    "zone_name": "Emigration Canyon",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Emigration Canyon / General Patrol",
+    "dispatch_code": "SL1-EC2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "area_color": "#6366f1",
+    "zone_id": "SLA",
+    "zone_name": "Salt Lake City",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Salt Lake City / General Patrol",
+    "dispatch_code": "SL1-SLA/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "SL1",
+    "area_name": "Salt Lake",
+    "area_color": "#6366f1",
+    "zone_id": "WH2",
+    "zone_name": "White City",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "White City / General Patrol",
+    "dispatch_code": "SL1-WH2/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "SJ1",
+    "area_name": "San Juan",
+    "area_color": "#7c2d12",
+    "zone_id": "BLA",
+    "zone_name": "Blanding",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Blanding / General Patrol",
+    "dispatch_code": "SJ1-BLA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "SJ1",
+    "area_name": "San Juan",
+    "area_color": "#7c2d12",
+    "zone_id": "BL2",
+    "zone_name": "Bluff",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Bluff / General Patrol",
+    "dispatch_code": "SJ1-BL2/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "SJ1",
+    "area_name": "San Juan",
+    "area_color": "#7c2d12",
+    "zone_id": "MO3",
+    "zone_name": "Monticello",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Monticello / General Patrol",
+    "dispatch_code": "SJ1-MO3/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "ANN",
+    "zone_name": "Annabella",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Annabella / General Patrol",
+    "dispatch_code": "SV1-ANN/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "AUR",
+    "zone_name": "Aurora",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Aurora / General Patrol",
+    "dispatch_code": "SV1-AUR/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "CVA",
+    "zone_name": "Central Valley",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Central Valley / General Patrol",
+    "dispatch_code": "SV1-CVA/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "ELS",
+    "zone_name": "Elsinore",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Elsinore / General Patrol",
+    "dispatch_code": "SV1-ELS/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "GLE",
+    "zone_name": "Glenwood",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Glenwood / General Patrol",
+    "dispatch_code": "SV1-GLE/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "JOS",
+    "zone_name": "Joseph",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Joseph / General Patrol",
+    "dispatch_code": "SV1-JOS/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "KOO",
+    "zone_name": "Koosharem",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Koosharem / General Patrol",
+    "dispatch_code": "SV1-KOO/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "MON",
+    "zone_name": "Monroe",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Monroe / General Patrol",
+    "dispatch_code": "SV1-MON/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "RED",
+    "zone_name": "Redmond",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Redmond / General Patrol",
+    "dispatch_code": "SV1-RED/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SV1",
+    "area_name": "Sevier",
+    "area_color": "#10b981",
+    "zone_id": "SIG",
+    "zone_name": "Sigurd",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Sigurd / General Patrol",
+    "dispatch_code": "SV1-SIG/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SU1",
+    "area_name": "Summit",
+    "area_color": "#059669",
+    "zone_id": "HE2",
+    "zone_name": "Henefer",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Henefer / General Patrol",
+    "dispatch_code": "SU1-HE2/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "SU1",
+    "area_name": "Summit",
+    "area_color": "#059669",
+    "zone_id": "OAK",
+    "zone_name": "Oakley",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Oakley / General Patrol",
+    "dispatch_code": "SU1-OAK/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "area_color": "#a78bfa",
+    "zone_id": "LPO",
+    "zone_name": "Lake Point",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Lake Point / General Patrol",
+    "dispatch_code": "TL1-LPO/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "area_color": "#a78bfa",
+    "zone_id": "RVA",
+    "zone_name": "Rush Valley",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Rush Valley / General Patrol",
+    "dispatch_code": "TL1-RVA/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "area_color": "#a78bfa",
+    "zone_id": "STO",
+    "zone_name": "Stockton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Stockton / General Patrol",
+    "dispatch_code": "TL1-STO/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "TL1",
+    "area_name": "Tooele",
+    "area_color": "#a78bfa",
+    "zone_id": "VER",
+    "zone_name": "Vernon",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Vernon / General Patrol",
+    "dispatch_code": "TL1-VER/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "UI1",
+    "area_name": "Uintah",
+    "area_color": "#047857",
+    "zone_id": "BAL",
+    "zone_name": "Ballard",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Ballard / General Patrol",
+    "dispatch_code": "UI1-BAL/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "UI1",
+    "area_name": "Uintah",
+    "area_color": "#047857",
+    "zone_id": "NAP",
+    "zone_name": "Naples",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Naples / General Patrol",
+    "dispatch_code": "UI1-NAP/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "UI1",
+    "area_name": "Uintah",
+    "area_color": "#047857",
+    "zone_id": "VE2",
+    "zone_name": "Vernal",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Vernal / General Patrol",
+    "dispatch_code": "UI1-VE2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "ALP",
+    "zone_name": "Alpine",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Alpine / General Patrol",
+    "dispatch_code": "UC1-ALP/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "AFO",
+    "zone_name": "American Fork",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "American Fork / General Patrol",
+    "dispatch_code": "UC1-AFO/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "BL3",
+    "zone_name": "Bluffdale (Utah Co.)",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Bluffdale (Utah Co.) / General Patrol",
+    "dispatch_code": "UC1-BL3/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "CFO",
+    "zone_name": "Cedar Fort",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Cedar Fort / General Patrol",
+    "dispatch_code": "UC1-CFO/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "CHI",
+    "zone_name": "Cedar Hills",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Cedar Hills / General Patrol",
+    "dispatch_code": "UC1-CHI/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "DR2",
+    "zone_name": "Draper (Utah Co.)",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Draper (Utah Co.) / General Patrol",
+    "dispatch_code": "UC1-DR2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "EMO",
+    "zone_name": "Eagle Mountain",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Eagle Mountain / General Patrol",
+    "dispatch_code": "UC1-EMO/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "ERI",
+    "zone_name": "Elk Ridge",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Elk Ridge / General Patrol",
+    "dispatch_code": "UC1-ERI/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "FA2",
+    "zone_name": "Fairfield",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Fairfield / General Patrol",
+    "dispatch_code": "UC1-FA2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "GEN",
+    "zone_name": "Genola",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Genola / General Patrol",
+    "dispatch_code": "UC1-GEN/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "GOS",
+    "zone_name": "Goshen",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Goshen / General Patrol",
+    "dispatch_code": "UC1-GOS/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "HIG",
+    "zone_name": "Highland",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Highland / General Patrol",
+    "dispatch_code": "UC1-HIG/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "LEH",
+    "zone_name": "Lehi",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Lehi / General Patrol",
+    "dispatch_code": "UC1-LEH/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "LIN",
+    "zone_name": "Lindon",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Lindon / General Patrol",
+    "dispatch_code": "UC1-LIN/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "MAP",
+    "zone_name": "Mapleton",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Mapleton / General Patrol",
+    "dispatch_code": "UC1-MAP/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "ORE",
+    "zone_name": "Orem",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Orem / General Patrol",
+    "dispatch_code": "UC1-ORE/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "PAY",
+    "zone_name": "Payson",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Payson / General Patrol",
+    "dispatch_code": "UC1-PAY/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "PGR",
+    "zone_name": "Pleasant Grove",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Pleasant Grove / General Patrol",
+    "dispatch_code": "UC1-PGR/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "PRO",
+    "zone_name": "Provo",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Provo / General Patrol",
+    "dispatch_code": "UC1-PRO/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "SAL",
+    "zone_name": "Salem",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Salem / General Patrol",
+    "dispatch_code": "UC1-SAL/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "SA2",
+    "zone_name": "Santaquin (Utah Co.)",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Santaquin (Utah Co.) / General Patrol",
+    "dispatch_code": "UC1-SA2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "SSP",
+    "zone_name": "Saratoga Springs",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Saratoga Springs / General Patrol",
+    "dispatch_code": "UC1-SSP/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "SFO",
+    "zone_name": "Spanish Fork",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Spanish Fork / General Patrol",
+    "dispatch_code": "UC1-SFO/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "SL2",
+    "zone_name": "Spring Lake",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Spring Lake / General Patrol",
+    "dispatch_code": "UC1-SL2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "SP2",
+    "zone_name": "Springville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Springville / General Patrol",
+    "dispatch_code": "UC1-SP2/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "VIN",
+    "zone_name": "Vineyard",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Vineyard / General Patrol",
+    "dispatch_code": "UC1-VIN/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "UC1",
+    "area_name": "Utah County",
+    "area_color": "#c4b5fd",
+    "zone_id": "WHI",
+    "zone_name": "Woodland Hills",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Woodland Hills / General Patrol",
+    "dispatch_code": "UC1-WHI/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "area_color": "#ddd6fe",
+    "zone_id": "CHA",
+    "zone_name": "Charleston",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Charleston / General Patrol",
+    "dispatch_code": "WS1-CHA/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "area_color": "#ddd6fe",
+    "zone_id": "DAN",
+    "zone_name": "Daniel",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Daniel / General Patrol",
+    "dispatch_code": "WS1-DAN/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "area_color": "#ddd6fe",
+    "zone_id": "HID",
+    "zone_name": "Hideout",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Hideout / General Patrol",
+    "dispatch_code": "WS1-HID/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "area_color": "#ddd6fe",
+    "zone_id": "IND",
+    "zone_name": "Independence",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Independence / General Patrol",
+    "dispatch_code": "WS1-IND/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "area_color": "#ddd6fe",
+    "zone_id": "INT",
+    "zone_name": "Interlaken",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Interlaken / General Patrol",
+    "dispatch_code": "WS1-INT/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "area_color": "#ddd6fe",
+    "zone_id": "PA4",
+    "zone_name": "Park City (Wasatch)",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Park City (Wasatch) / General Patrol",
+    "dispatch_code": "WS1-PA4/P1"
+  },
+  {
+    "sector_id": "WFR",
+    "sector_name": "Wasatch Front",
+    "area_id": "WS1",
+    "area_name": "Wasatch",
+    "area_color": "#ddd6fe",
+    "zone_id": "WA2",
+    "zone_name": "Wallsburg",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Wallsburg / General Patrol",
+    "dispatch_code": "WS1-WA2/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "AVA",
+    "zone_name": "Apple Valley",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Apple Valley / General Patrol",
+    "dispatch_code": "WA1-AVA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "ENT",
+    "zone_name": "Enterprise",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Enterprise / General Patrol",
+    "dispatch_code": "WA1-ENT/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "HIL",
+    "zone_name": "Hildale",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Hildale / General Patrol",
+    "dispatch_code": "WA1-HIL/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "HUR",
+    "zone_name": "Hurricane",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Hurricane / General Patrol",
+    "dispatch_code": "WA1-HUR/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "IVI",
+    "zone_name": "Ivins",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Ivins / General Patrol",
+    "dispatch_code": "WA1-IVI/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "LVE",
+    "zone_name": "La Verkin",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "La Verkin / General Patrol",
+    "dispatch_code": "WA1-LVE/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "LEE",
+    "zone_name": "Leeds",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Leeds / General Patrol",
+    "dispatch_code": "WA1-LEE/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "NHA",
+    "zone_name": "New Harmony",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "New Harmony / General Patrol",
+    "dispatch_code": "WA1-NHA/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "ROC",
+    "zone_name": "Rockville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Rockville / General Patrol",
+    "dispatch_code": "WA1-ROC/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "SCL",
+    "zone_name": "Santa Clara",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Santa Clara / General Patrol",
+    "dispatch_code": "WA1-SCL/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "SPR",
+    "zone_name": "Springdale",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Springdale / General Patrol",
+    "dispatch_code": "WA1-SPR/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "SGE",
+    "zone_name": "St. George",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "St. George / General Patrol",
+    "dispatch_code": "WA1-SGE/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "TOQ",
+    "zone_name": "Toquerville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Toquerville / General Patrol",
+    "dispatch_code": "WA1-TOQ/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "VIR",
+    "zone_name": "Virgin",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Virgin / General Patrol",
+    "dispatch_code": "WA1-VIR/P1"
+  },
+  {
+    "sector_id": "SUT",
+    "sector_name": "Southern Utah",
+    "area_id": "WA1",
+    "area_name": "Washington",
+    "area_color": "#ef4444",
+    "zone_id": "WAS",
+    "zone_name": "Washington",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Washington / General Patrol",
+    "dispatch_code": "WA1-WAS/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "WY1",
+    "area_name": "Wayne",
+    "area_color": "#bbf7d0",
+    "zone_id": "BIC",
+    "zone_name": "Bicknell",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Bicknell / General Patrol",
+    "dispatch_code": "WY1-BIC/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "WY1",
+    "area_name": "Wayne",
+    "area_color": "#bbf7d0",
+    "zone_id": "HAN",
+    "zone_name": "Hanksville",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Hanksville / General Patrol",
+    "dispatch_code": "WY1-HAN/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "WY1",
+    "area_name": "Wayne",
+    "area_color": "#bbf7d0",
+    "zone_id": "LOA",
+    "zone_name": "Loa",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Loa / General Patrol",
+    "dispatch_code": "WY1-LOA/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "WY1",
+    "area_name": "Wayne",
+    "area_color": "#bbf7d0",
+    "zone_id": "LYM",
+    "zone_name": "Lyman",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Lyman / General Patrol",
+    "dispatch_code": "WY1-LYM/P1"
+  },
+  {
+    "sector_id": "CUT",
+    "sector_name": "Central Utah",
+    "area_id": "WY1",
+    "area_name": "Wayne",
+    "area_color": "#bbf7d0",
+    "zone_id": "TOR",
+    "zone_name": "Torrey",
+    "beat_id": "P1",
+    "beat_name": "Patrol 1",
+    "beat_descriptor": "Torrey / General Patrol",
+    "dispatch_code": "WY1-TOR/P1"
   }
 ];
