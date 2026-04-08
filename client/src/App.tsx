@@ -80,6 +80,7 @@ const ServePage = lazyRetry(() => import('./pages/ServePage'));
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
+const GeoDataViewerPage = lazyRetry(() => import('./pages/GeoDataViewerPage'));
 const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
@@ -213,6 +214,7 @@ function AppRoutes() {
             <Route path="/dispatch" element={<DispatchPage />} />
             <Route path="/map" element={<MapPage />} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
+            <Route path="/geo-data" element={<RouteErrorBoundary><GeoDataViewerPage /></RouteErrorBoundary>} />
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />

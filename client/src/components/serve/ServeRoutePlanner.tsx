@@ -463,7 +463,7 @@ export default function ServeRoutePlanner({
               optimizeWaypoints: true,
               travelMode: google.maps.TravelMode.DRIVING,
             },
-            (res, status) => {
+            (res: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
               if (status === 'OK' && res) resolve(res);
               else reject(new Error(`Directions request failed: ${status}`));
             },
@@ -472,7 +472,7 @@ export default function ServeRoutePlanner({
 
         // Apply waypoint order
         const waypointOrder = result.routes[0]?.waypoint_order || [];
-        const reorderedWaypoints = waypointOrder.map(i => waypointStops[i]);
+        const reorderedWaypoints = waypointOrder.map((i: number) => waypointStops[i]);
 
         if (isFirstCluster && currentLocation) {
           // All stops were waypoints + destination
@@ -523,7 +523,7 @@ export default function ServeRoutePlanner({
                 optimizeWaypoints: false, // already optimized
                 travelMode: google.maps.TravelMode.DRIVING,
               },
-              (res, status) => {
+              (res: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
                 if (status === 'OK' && res) resolve(res);
                 else reject(new Error(`Full route render failed: ${status}`));
               },

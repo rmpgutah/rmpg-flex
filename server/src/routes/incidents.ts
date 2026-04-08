@@ -1814,7 +1814,7 @@ router.post('/swap-numbers', authenticateToken, requireRole('admin'), (req: Requ
 // INCIDENT OFFENSES — Spillman Flex offense tracking
 // ════════════════════════════════════════════════════════════
 
-router.get('/:id(\\d+)/offenses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/offenses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const offenses = db.prepare(`
@@ -1836,7 +1836,7 @@ router.get('/:id(\\d+)/offenses', requireRole('admin', 'manager', 'supervisor', 
   }
 });
 
-router.post('/:id(\\d+)/offenses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/offenses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = (req as any).user?.userId || (req as any).user?.id;
@@ -1860,7 +1860,7 @@ router.post('/:id(\\d+)/offenses', requireRole('admin', 'manager', 'supervisor',
   }
 });
 
-router.put('/:id(\\d+)/offenses/:offenseId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/offenses/:offenseId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const fields = ['offense_code', 'statute_id', 'description', 'offense_date', 'offense_level', 'ucr_code', 'nibrs_code',
@@ -1879,7 +1879,7 @@ router.put('/:id(\\d+)/offenses/:offenseId(\\d+)', requireRole('admin', 'manager
   } catch { res.status(500).json({ error: 'Failed to update offense' }); }
 });
 
-router.delete('/:id(\\d+)/offenses/:offenseId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/offenses/:offenseId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM incident_offenses WHERE id = ? AND incident_id = ?').run(req.params.offenseId, req.params.id);
@@ -1891,7 +1891,7 @@ router.delete('/:id(\\d+)/offenses/:offenseId(\\d+)', requireRole('admin', 'mana
 // INCIDENT OFFICERS — Multi-officer tracking with roles
 // ════════════════════════════════════════════════════════════
 
-router.get('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const officers = db.prepare(`
@@ -1908,7 +1908,7 @@ router.get('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 
   }
 });
 
-router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = (req as any).user?.userId || (req as any).user?.id;
@@ -1933,7 +1933,7 @@ router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor',
 });
 
 // PUT /api/incidents/:id/officers/:linkId — Update officer assignment details
-router.put('/:id(\\d+)/officers/:linkId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/officers/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const fields = ['role', 'arrived_at', 'departed_at', 'action_taken', 'notes'];
@@ -1964,7 +1964,7 @@ router.put('/:id(\\d+)/officers/:linkId(\\d+)', requireRole('admin', 'manager', 
   }
 });
 
-router.delete('/:id(\\d+)/officers/:linkId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/officers/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM incident_officers WHERE id = ? AND incident_id = ?').run(req.params.linkId, req.params.id);
@@ -2062,7 +2062,7 @@ router.get('/link-search', requireRole('admin', 'manager', 'supervisor', 'office
   }
 });
 
-router.get('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const links = db.prepare(`SELECT * FROM incident_links WHERE incident_id = ? ORDER BY created_at`).all(req.params.id);
@@ -2093,7 +2093,7 @@ router.get('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'of
   }
 });
 
-router.post('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = (req as any).user?.userId || (req as any).user?.id;
@@ -2116,7 +2116,7 @@ router.post('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'o
   }
 });
 
-router.delete('/:id(\\d+)/links/:linkId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM incident_links WHERE id = ? AND incident_id = ?').run(req.params.linkId, req.params.id);
@@ -2128,7 +2128,7 @@ router.delete('/:id(\\d+)/links/:linkId(\\d+)', requireRole('admin', 'manager', 
 // INCIDENT FULL — Aggregated view (Spillman-style)
 // ════════════════════════════════════════════════════════════
 
-router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare(`
@@ -2269,7 +2269,7 @@ router.get('/mni/search', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // MNI person detail — all records linked to a person
-router.get('/mni/person/:personId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/mni/person/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const personId = req.params.personId;

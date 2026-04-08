@@ -7,7 +7,7 @@ import {
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Handshake, Globe, GraduationCap, FlaskConical, ShieldAlert, Fingerprint,
-  Send, Truck, UserCog,
+  Send, Truck, UserCog, Layers,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -33,6 +33,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Tactical Map' },
       { path: '/geography', icon: Map, label: 'Geography' },
+      { path: '/geo-data', icon: Layers, label: 'Geo Data Viewer' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
