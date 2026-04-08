@@ -330,13 +330,26 @@ SVCEOF
   cd "$APP_DIR"
 
   echo ">>> Installing server dependencies..."
-  cd server && npm install --production 2>&1 | tail -3 && cd ..
+  cd server
+  if [ -f package-lock.json ]; then
+    # Production still boots via `npx tsx server/src/index.ts`, so keep tsx available.
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Installing client dependencies..."
-  cd client && npm install 2>&1 | tail -3 && cd ..
+  cd client
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Building client..."
-  cd client && npx vite build 2>&1 | tail -5 && cd ..
+  cd client && npx vite build && cd ..
 
   # ── Create .env if missing ──
   if [ ! -f server/.env ]; then

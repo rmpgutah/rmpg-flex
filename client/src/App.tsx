@@ -86,11 +86,11 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
   return (
     <div className="flex items-center justify-center bg-surface-base" style={{ height: '100dvh' }}>
       <div className="flex flex-col items-center">
-        {/* Logo with blue glow — same treatment as login page */}
+        {/* Neutralized splash glow to match the darker desktop chrome */}
         <img
           src="/rmpg flex.png"
           alt="RMPG Flex"
-          className="drop-shadow-[0_0_20px_rgba(26,90,158,0.3)]"
+          className="drop-shadow-[0_0_18px_rgba(167,177,188,0.22)]"
           style={{ height: 88, width: 88, objectFit: 'contain' }}
           draggable={false}
         />
@@ -104,7 +104,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
             className="h-full"
             style={{
               width: 48,
-              background: 'linear-gradient(90deg, transparent, #1a5a9e, transparent)',
+              background: 'linear-gradient(90deg, transparent, #a7b1bc, transparent)',
               animation: 'scanLine 1.6s ease-in-out infinite',
             }}
           />
@@ -113,21 +113,21 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         {/* Status text */}
         <p
           className="text-[9px] uppercase tracking-[0.2em] font-bold"
-          style={{ color: 'rgba(138,154,170,0.7)' }}
+          style={{ color: 'rgba(198, 203, 210, 0.7)' }}
         >
           {message}
         </p>
 
         {/* Subtle system label */}
         <div className="flex items-center gap-2 mt-3">
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #1e3048)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #2b313a)' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
-            style={{ color: 'rgba(26,90,158,0.4)' }}
+            style={{ color: 'rgba(167, 177, 188, 0.42)' }}
           >
             CAD / RMS
           </span>
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #1e3048, transparent)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #2b313a, transparent)' }} />
         </div>
       </div>
 

@@ -32,6 +32,7 @@ import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
+import { applyThemePreference, normalizeThemePreference } from '../utils/theme';
 
 interface UserPreferences {
   notify_dispatch_email: number;
@@ -54,6 +55,7 @@ interface UserPreferences {
   default_map_style: string;
   dispatch_sort: string;
   dispatch_show_cleared: number;
+  theme_preference: 'dark' | 'light';
   [key: string]: any;
 }
 
@@ -637,13 +639,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                 <div>
                   <label className="field-label">Username</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #162236' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #242a32' }}>
                     {user.username}
                   </div>
                 </div>
                 <div>
                   <label className="field-label">Badge #</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #162236' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #242a32' }}>
                     {user.badge_number || '—'}
                   </div>
                 </div>
@@ -809,7 +811,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
 
               {pwPolicy.length > 0 && (
-                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#666666', background: '#030303', border: '1px solid #162236' }}>
+                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#666666', background: '#030303', border: '1px solid #242a32' }}>
                   <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#888888' }}>
                     Password Requirements
                   </div>
@@ -853,7 +855,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         Notification Preferences
                       </span>
                     </div>
-                    <div className="space-y-1.5" style={{ background: '#050505', border: '1px solid #162236', padding: '8px 10px' }}>
+                    <div className="space-y-1.5" style={{ background: '#050505', border: '1px solid #242a32', padding: '8px 10px' }}>
                       {[
                         { key: 'dispatch', label: 'Dispatch Alerts' },
                         { key: 'bolo', label: 'BOLO Alerts' },
@@ -890,7 +892,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
 
                   {/* Feature 23: Notification sound toggle */}
-                  <div className="mt-3" style={{ background: '#050505', border: '1px solid #162236', padding: '8px 10px' }}>
+                  <div className="mt-3" style={{ background: '#050505', border: '1px solid #242a32', padding: '8px 10px' }}>
                     <label className="flex items-center justify-between cursor-pointer">
                       <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
                       <div className="flex items-center gap-2">
@@ -951,10 +953,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <select
                           value={prefs.theme_preference || 'dark'}
                           onChange={e => {
-                            const theme = e.target.value;
+                            const theme = normalizeThemePreference(e.target.value);
                             setPrefs({ ...prefs, theme_preference: theme });
-                            document.documentElement.classList.remove('theme-dark', 'theme-light');
-                            document.documentElement.classList.add(`theme-${theme}`);
+                            applyThemePreference(theme);
                           }}
                           className="input-dark text-[10px] py-0.5 px-1 w-24"
                         >
@@ -1298,7 +1299,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               )}
 
               {/* Quick links to devices / history / keys */}
-              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid #162236' }}>
+              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid #242a32' }}>
                 <button type="button"
                   onClick={() => setSecurityView('keys')}
                   className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
@@ -1337,7 +1338,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div
                       key={session.session_id}
                       className="flex items-center justify-between p-2"
-                      style={{ background: '#050505', border: '1px solid #162236' }}
+                      style={{ background: '#050505', border: '1px solid #242a32' }}
                     >
                       <div>
                         <div className="text-[11px] text-white font-mono">

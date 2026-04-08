@@ -382,7 +382,7 @@ export default function OfflineMapFallback({
               "></div>
               <div style="
                 background:rgba(6,12,20,0.92);
-                border:1px solid #1e3048;
+                border:1px solid #2b313a;
                 padding:1px 4px;
                 display:flex;align-items:center;gap:3px;
                 border-radius:2px;
@@ -602,7 +602,7 @@ export default function OfflineMapFallback({
         className="absolute bottom-3 left-3 z-[1000] flex flex-col gap-1"
         style={{
           background: 'rgba(6, 12, 20, 0.92)',
-          border: '1px solid #1e3048',
+          border: '1px solid #2b313a',
           borderRadius: 2,
           padding: compact ? '3px 6px' : '4px 8px',
         }}
@@ -685,7 +685,7 @@ export default function OfflineMapFallback({
           font-size: 16px !important;
         }
         .leaflet-control-zoom a:hover {
-          background: #1e3048 !important;
+          background: #2b313a !important;
           color: #fff !important;
         }
         /* Hide Leaflet's default tile error styling */

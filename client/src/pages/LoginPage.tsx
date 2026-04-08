@@ -324,14 +324,14 @@ export default function LoginPage() {
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0d1520' }}>
+    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0c0f13' }}>
       <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
       <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141e2b 100%)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #161b21 100%)' }}>
       {/* Animated grid background */}
       <div className="login-grid-bg" />
 
@@ -411,8 +411,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #242a32' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #242a32' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
@@ -606,7 +606,7 @@ export default function LoginPage() {
                 </label>
 
                 {/* Alternative methods */}
-                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #1e3048' }}>
+                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #2b313a' }}>
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
@@ -827,7 +827,7 @@ export default function LoginPage() {
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: '#050505', border: '1px solid #1e3048', color: '#e0e0e0' }}
+                      style={{ background: '#050505', border: '1px solid #2b313a', color: '#e0e0e0' }}
                     >
                       {manualKey}
                     </div>
@@ -958,7 +958,7 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #1e3048' }} aria-hidden="true" />
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #2b313a' }} aria-hidden="true" />
           </div>
 
           {/* Status bar */}
@@ -1033,7 +1033,7 @@ export default function LoginPage() {
             className="text-center py-1.5 px-3"
             style={{
               background: '#060c14',
-              border: '1px solid #1e3048',
+              border: '1px solid #2b313a',
               borderTop: '2px solid #333333',
             }}
           >

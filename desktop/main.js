@@ -96,7 +96,7 @@ function createSplashWindow() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #1a1a1a;
+          background: #000000;
           color: #fff;
           display: flex;
           flex-direction: column;
@@ -111,7 +111,7 @@ function createSplashWindow() {
         .logo {
           width: 100px;
           height: 100px;
-          border: 3px solid #1a5a9e;
+          border: 3px solid #5a5a5a;
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -121,7 +121,7 @@ function createSplashWindow() {
         .logo-text {
           font-size: 28px;
           font-weight: 900;
-          color: #1a5a9e;
+          color: #d7d7d7;
           letter-spacing: 2px;
         }
         h1 {
@@ -142,7 +142,7 @@ function createSplashWindow() {
           width: 28px;
           height: 28px;
           border: 3px solid #333;
-          border-top: 3px solid #1a5a9e;
+          border-top: 3px solid #d7d7d7;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
           margin-bottom: 12px;
@@ -234,7 +234,7 @@ function getOfflineHTML() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #1a1a1a;
+          background: #000000;
           color: #fff;
           display: flex;
           flex-direction: column;
@@ -266,7 +266,7 @@ function getOfflineHTML() {
           padding: 12px 32px;
           font-size: 14px;
           font-weight: 600;
-          background: #1a5a9e;
+          background: #2a2a2a;
           color: #fff;
           border: none;
           border-radius: 6px;
@@ -274,7 +274,7 @@ function getOfflineHTML() {
           text-transform: uppercase;
           letter-spacing: 1px;
         }
-        button:hover { background: #14427a; }
+        button:hover { background: #3a3a3a; }
         .server-url {
           margin-top: 24px;
           font-size: 11px;
@@ -307,7 +307,7 @@ async function createMainWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: APP_TITLE,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#000000',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

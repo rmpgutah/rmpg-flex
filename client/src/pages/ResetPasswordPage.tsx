@@ -86,7 +86,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141e2b 100%)' }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #060c14 0%, #161b21 100%)' }}>
       <div className="w-full max-w-sm">
         <div
           className="panel-beveled bg-surface-base relative overflow-hidden"
@@ -281,7 +281,7 @@ export default function ResetPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #1e3048' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b313a' }}>
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"

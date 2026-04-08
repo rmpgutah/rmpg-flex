@@ -4,31 +4,46 @@
 
 /* ============================================================
    RMPG Flex - Custom Styles
-   Spillman Flex / Motorola Solutions — Steel-Blue Dark Theme
-   Motorola blue + gold accents on steel-blue-tinted dark console
+   Pure black shell
+   Black chrome, neutral gray surfaces, gold utility accents
    ============================================================ */
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  --surface-base: #0a0a0a;
-  --surface-raised: #141414;
-  --surface-sunken: #050505;
+  --surface-base: #000000;
+  --surface-raised: #0b0b0b;
+  --surface-sunken: #000000;
   --surface-overlay: #030303;
   --surface-deep: #000000;
-  --border-default: #222222;
-  --border-subtle: #1a1a1a;
-  --border-strong: #2e2e2e;
-  --text-primary: #e0e0e0;
-  --text-secondary: #999999;
-  --text-muted: #666666;
-  --brand-blue: #888888;
+  --border-default: #232323;
+  --border-subtle: #121212;
+  --border-strong: #3a3a3a;
+  --border-panel: #262626;
+  --text-primary: #f2f2f2;
+  --text-secondary: #cfcfcf;
+  --text-muted: #8a8a8a;
+  --brand-blue: #9a9a9a;
   --brand-gold: #d4a017;
-  --toolbar-gradient-start: #1a1a1a;
-  --toolbar-gradient-end: #242424;
-  --grid-header-bg: #080808;
-  --grid-row-alt: #0e0e0e;
+  --toolbar-gradient-start: #0b0b0b;
+  --toolbar-gradient-end: #101010;
+  --grid-header-bg: #050505;
+  --grid-row-alt: #0d0d0d;
   --field-label-color: #d4a017;
-  --border-panel: #222222;
+  --surface-panel: #101010;
+  --surface-panel-alt: #0c0c0c;
+  --surface-hover: #161616;
+  --info-text: #d0d0d0;
+  --info-bg: rgba(150, 150, 150, 0.12);
+  --info-border: rgba(150, 150, 150, 0.24);
+  --desktop-shell-start: #000000;
+  --desktop-shell-end: #0e0e0e;
+  --desktop-shell-raised-start: #050505;
+  --desktop-shell-raised-end: #111111;
+  --desktop-shell-border: #202020;
+  --desktop-shell-accent: #7d7d7d;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
+  --desktop-shell-subtle-text: #b7b7b7;
+  --desktop-shell-icon: #8c8c8c;
 }
 
 /* --- Global Base Overrides --- */
@@ -236,6 +251,192 @@ body.fx-green {
   filter: sepia(0.2) saturate(0.7) hue-rotate(80deg) brightness(0.95);
 }
 
+/* --- Global Theme Neutralization ---------------------------------
+   Existing UI code still contains blue-oriented Tailwind utilities
+   and arbitrary dark-blue hex classes. Normalize them to black/gray
+   until each screen is fully cleaned up.
+   --------------------------------------------------------------- */
+html.theme-dark [class*="text-blue-"],
+html.theme-dark [class*="text-cyan-"],
+html.theme-dark [class*="text-sky-"],
+html.theme-dark [class*="text-indigo-"],
+html.theme-dark [class*="text-rmpg-"],
+html:not(.theme-light) [class*="text-blue-"],
+html:not(.theme-light) [class*="text-cyan-"],
+html:not(.theme-light) [class*="text-sky-"],
+html:not(.theme-light) [class*="text-indigo-"],
+html:not(.theme-light) [class*="text-rmpg-"] {
+  color: #c8c8c8 !important;
+}
+
+html.theme-dark [class*="bg-blue-"],
+html.theme-dark [class*="bg-cyan-"],
+html.theme-dark [class*="bg-sky-"],
+html.theme-dark [class*="bg-indigo-"],
+html:not(.theme-light) [class*="bg-blue-"],
+html:not(.theme-light) [class*="bg-cyan-"],
+html:not(.theme-light) [class*="bg-sky-"],
+html:not(.theme-light) [class*="bg-indigo-"] {
+  background-color: #111111 !important;
+}
+
+html.theme-dark [class*="border-blue-"],
+html.theme-dark [class*="border-cyan-"],
+html.theme-dark [class*="border-sky-"],
+html.theme-dark [class*="border-indigo-"],
+html:not(.theme-light) [class*="border-blue-"],
+html:not(.theme-light) [class*="border-cyan-"],
+html:not(.theme-light) [class*="border-sky-"],
+html:not(.theme-light) [class*="border-indigo-"] {
+  border-color: #4a4a4a !important;
+}
+
+html.theme-dark [class*="ring-blue-"],
+html.theme-dark [class*="ring-cyan-"],
+html.theme-dark [class*="ring-sky-"],
+html.theme-dark [class*="ring-indigo-"],
+html:not(.theme-light) [class*="ring-blue-"],
+html:not(.theme-light) [class*="ring-cyan-"],
+html:not(.theme-light) [class*="ring-sky-"],
+html:not(.theme-light) [class*="ring-indigo-"] {
+  --tw-ring-color: rgba(160, 160, 160, 0.35) !important;
+}
+
+html.theme-dark [class*="from-blue-"],
+html.theme-dark [class*="from-cyan-"],
+html.theme-dark [class*="from-sky-"],
+html.theme-dark [class*="from-indigo-"],
+html:not(.theme-light) [class*="from-blue-"],
+html:not(.theme-light) [class*="from-cyan-"],
+html:not(.theme-light) [class*="from-sky-"],
+html:not(.theme-light) [class*="from-indigo-"] {
+  --tw-gradient-from: #2a2a2a var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(42 42 42 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html.theme-dark [class*="via-blue-"],
+html.theme-dark [class*="via-cyan-"],
+html.theme-dark [class*="via-sky-"],
+html.theme-dark [class*="via-indigo-"],
+html:not(.theme-light) [class*="via-blue-"],
+html:not(.theme-light) [class*="via-cyan-"],
+html:not(.theme-light) [class*="via-sky-"],
+html:not(.theme-light) [class*="via-indigo-"] {
+  --tw-gradient-stops: var(--tw-gradient-from), #1f1f1f var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+html.theme-dark [class*="to-blue-"],
+html.theme-dark [class*="to-cyan-"],
+html.theme-dark [class*="to-sky-"],
+html.theme-dark [class*="to-indigo-"],
+html:not(.theme-light) [class*="to-blue-"],
+html:not(.theme-light) [class*="to-cyan-"],
+html:not(.theme-light) [class*="to-sky-"],
+html:not(.theme-light) [class*="to-indigo-"] {
+  --tw-gradient-to: #111111 var(--tw-gradient-to-position) !important;
+}
+
+[class*="#1a3550"],
+[class*="#1a1a2e"],
+[class*="#161b21"],
+[class*="#1b2128"],
+[class*="#1e2d3f"],
+[class*="#0c0f13"],
+[class*="#0a0a12"],
+[class*="#0a0f18"],
+[class*="#0f1218"],
+[class*="#1a2a3a"],
+[class*="#2b313a"],
+[class*="#2a3e58"],
+[class*="#2a3a4a"],
+[class*="#2a4060"] {
+  background-color: #0b0b0b !important;
+  border-color: #2a2a2a !important;
+  color: #d0d0d0 !important;
+}
+
+html.theme-dark [class*="accent-blue-"],
+html.theme-dark [class*="accent-cyan-"],
+html.theme-dark [class*="accent-sky-"],
+html.theme-dark [class*="accent-indigo-"],
+html:not(.theme-light) [class*="accent-blue-"],
+html:not(.theme-light) [class*="accent-cyan-"],
+html:not(.theme-light) [class*="accent-sky-"],
+html:not(.theme-light) [class*="accent-indigo-"] {
+  accent-color: #8e8e8e !important;
+}
+
+html.theme-dark [style*="#3b82f6"],
+html.theme-dark [style*="#60a5fa"],
+html.theme-dark [style*="#1d4ed8"],
+html.theme-dark [style*="#2563eb"],
+html.theme-dark [style*="#161b21"],
+html.theme-dark [style*="#1b2128"],
+html.theme-dark [style*="#1e2d3f"],
+html.theme-dark [style*="#0c0f13"],
+html.theme-dark [style*="#2b313a"],
+html.theme-dark [style*="#2a3e58"],
+html.theme-dark [style*="rgba(59,130,246"],
+html.theme-dark [style*="rgba(96,165,250"],
+html.theme-dark [style*="rgb(59 130 246"],
+html:not(.theme-light) [style*="#3b82f6"],
+html:not(.theme-light) [style*="#60a5fa"],
+html:not(.theme-light) [style*="#1d4ed8"],
+html:not(.theme-light) [style*="#2563eb"],
+html:not(.theme-light) [style*="#161b21"],
+html:not(.theme-light) [style*="#1b2128"],
+html:not(.theme-light) [style*="#1e2d3f"],
+html:not(.theme-light) [style*="#0c0f13"],
+html:not(.theme-light) [style*="#2b313a"],
+html:not(.theme-light) [style*="#2a3e58"],
+html:not(.theme-light) [style*="rgba(59,130,246"],
+html:not(.theme-light) [style*="rgba(96,165,250"],
+html:not(.theme-light) [style*="rgb(59 130 246"] {
+  background: #080808 !important;
+  border-color: #4a4a4a !important;
+  color: #d0d0d0 !important;
+}
+
+html.theme-dark [style*="linear-gradient(180deg, #1b2128"],
+html.theme-dark [style*="linear-gradient(180deg, #2b313a"],
+html.theme-dark [style*="radial-gradient(circle, #2b313a"],
+html.theme-dark [style*="radial-gradient(circle, #2a3e58"],
+html:not(.theme-light) [style*="linear-gradient(180deg, #1b2128"],
+html:not(.theme-light) [style*="linear-gradient(180deg, #2b313a"],
+html:not(.theme-light) [style*="radial-gradient(circle, #2b313a"],
+html:not(.theme-light) [style*="radial-gradient(circle, #2a3e58"] {
+  background: linear-gradient(180deg, #090909 0%, #040404 100%) !important;
+  border-color: #2f2f2f !important;
+}
+
+html.theme-dark [class*="border-\\[\\#2b313a\\]"],
+html.theme-dark [class*="border-\\[\\#2a3e58\\]"],
+html.theme-dark [class*="border-\\[\\#2a3a4a\\]"],
+html.theme-dark [class*="bg-\\[\\#161b21\\]"],
+html.theme-dark [class*="bg-\\[\\#1b2128\\]"],
+html.theme-dark [class*="bg-\\[\\#1e2d3f\\]"],
+html.theme-dark [class*="bg-\\[\\#0c0f13\\]"],
+html:not(.theme-light) [class*="border-\\[\\#2b313a\\]"],
+html:not(.theme-light) [class*="border-\\[\\#2a3e58\\]"],
+html:not(.theme-light) [class*="border-\\[\\#2a3a4a\\]"],
+html:not(.theme-light) [class*="bg-\\[\\#161b21\\]"],
+html:not(.theme-light) [class*="bg-\\[\\#1b2128\\]"],
+html:not(.theme-light) [class*="bg-\\[\\#1e2d3f\\]"],
+html:not(.theme-light) [class*="bg-\\[\\#0c0f13\\]"] {
+  background-color: #080808 !important;
+  border-color: #2f2f2f !important;
+}
+
+html.theme-dark [class*="hover:bg-\\[\\#1e2d3f\\]"]:hover,
+html.theme-dark [class*="hover:bg-\\[\\#1b2128\\]"]:hover,
+html.theme-dark [class*="hover:bg-\\[\\#0c0f13\\]"]:hover,
+html:not(.theme-light) [class*="hover:bg-\\[\\#1e2d3f\\]"]:hover,
+html:not(.theme-light) [class*="hover:bg-\\[\\#1b2128\\]"]:hover,
+html:not(.theme-light) [class*="hover:bg-\\[\\#0c0f13\\]"]:hover {
+  background-color: #111111 !important;
+}
+
 /* --- High Contrast (accessibility / bright daylight) --- */
 body.fx-highcontrast {
   filter: contrast(1.25) brightness(1.05);
@@ -409,13 +610,13 @@ body.fx-noise::after {
   .table-dark thead {
     @apply border-b;
     background: var(--grid-header-bg);
-    border-color: #2e2e2e;
+    border-color: var(--border-strong);
   }
 
   .table-dark thead th {
     @apply px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
-    color: #888888;
-    border-right: 1px solid rgba(30, 48, 72, 0.5);
+    color: var(--text-secondary);
+    border-right: 1px solid rgba(43, 49, 58, 0.6);
   }
 
   .table-dark thead th:last-child {
@@ -424,11 +625,11 @@ body.fx-noise::after {
 
   .table-dark tbody tr {
     @apply transition-colors duration-150;
-    border-bottom: 1px solid rgba(30, 48, 72, 0.5);
+    border-bottom: 1px solid rgba(43, 49, 58, 0.45);
   }
 
   .table-dark tbody tr:hover {
-    background: rgba(136, 136, 136, 0.15);
+    background: rgba(167, 177, 188, 0.1);
   }
 
   .table-dark tbody tr:nth-child(even) {
@@ -437,7 +638,7 @@ body.fx-noise::after {
 
   .table-dark tbody td {
     @apply px-3 py-1.5;
-    color: #aaaaaa;
+    color: #d2d7dd;
     font-size: 11px;
   }
 
@@ -464,27 +665,27 @@ body.fx-noise::after {
   }
 
   .badge-p1 {
-    background: rgba(220, 38, 38, 0.3);
-    color: #f87171;
-    border: 1px solid rgba(220, 38, 38, 0.4);
+    background: rgba(127, 29, 29, 0.34);
+    color: #fecaca;
+    border: 1px solid rgba(248, 113, 113, 0.38);
   }
 
   .badge-p2 {
-    background: rgba(212, 160, 23, 0.2);
-    color: #e8b820;
-    border: 1px solid rgba(212, 160, 23, 0.35);
+    background: rgba(146, 64, 14, 0.24);
+    color: #fde68a;
+    border: 1px solid rgba(245, 158, 11, 0.36);
   }
 
   .badge-p3 {
-    background: rgba(74, 144, 196, 0.2);
-    color: #7ab8e0;
-    border: 1px solid rgba(74, 144, 196, 0.35);
+    background: var(--info-bg);
+    color: var(--info-text);
+    border: 1px solid var(--info-border);
   }
 
   .badge-p4 {
-    background: rgba(72, 72, 72, 0.4);
-    color: #a0a0a0;
-    border: 1px solid rgba(72, 72, 72, 0.5);
+    background: rgba(113, 113, 122, 0.18);
+    color: #d1d5db;
+    border: 1px solid rgba(113, 113, 122, 0.3);
   }
 
   .badge-available {
@@ -492,15 +693,15 @@ body.fx-noise::after {
   }
 
   .badge-dispatched {
-    background: rgba(212, 160, 23, 0.2);
-    color: #e8b820;
-    border: 1px solid rgba(212, 160, 23, 0.35);
+    background: rgba(146, 64, 14, 0.24);
+    color: #fde68a;
+    border: 1px solid rgba(245, 158, 11, 0.36);
   }
 
   .badge-enroute {
-    background: rgba(74, 144, 196, 0.2);
-    color: #7ab8e0;
-    border: 1px solid rgba(74, 144, 196, 0.35);
+    background: var(--info-bg);
+    color: var(--info-text);
+    border: 1px solid var(--info-border);
   }
 
   .badge-onscene {
@@ -508,59 +709,59 @@ body.fx-noise::after {
   }
 
   .badge-busy {
-    background: rgba(220, 38, 38, 0.3);
-    color: #f87171;
-    border: 1px solid rgba(220, 38, 38, 0.4);
+    background: rgba(127, 29, 29, 0.34);
+    color: #fecaca;
+    border: 1px solid rgba(248, 113, 113, 0.38);
   }
 
   .badge-off_duty {
-    background: rgba(72, 72, 72, 0.4);
-    color: #a0a0a0;
-    border: 1px solid rgba(72, 72, 72, 0.5);
+    background: rgba(113, 113, 122, 0.18);
+    color: #d1d5db;
+    border: 1px solid rgba(113, 113, 122, 0.3);
   }
 
   /* Call Status badges */
   .badge-pending {
-    background: rgba(212, 160, 23, 0.2);
-    color: #e8b820;
-    border: 1px solid rgba(212, 160, 23, 0.35);
+    background: rgba(146, 64, 14, 0.24);
+    color: #fde68a;
+    border: 1px solid rgba(245, 158, 11, 0.36);
   }
 
   .badge-cleared {
-    background: rgba(72, 72, 72, 0.35);
-    color: #c8c8c8;
-    border: 1px solid rgba(72, 72, 72, 0.5);
+    background: rgba(113, 113, 122, 0.16);
+    color: #d1d5db;
+    border: 1px solid rgba(113, 113, 122, 0.28);
   }
 
   .badge-closed {
-    background: rgba(72, 72, 72, 0.4);
-    color: #a0a0a0;
-    border: 1px solid rgba(72, 72, 72, 0.5);
+    background: rgba(113, 113, 122, 0.18);
+    color: #d1d5db;
+    border: 1px solid rgba(113, 113, 122, 0.3);
   }
 
   .badge-cancelled {
-    background: rgba(72, 72, 72, 0.4);
-    color: #a0a0a0;
-    border: 1px solid rgba(72, 72, 72, 0.5);
+    background: rgba(113, 113, 122, 0.18);
+    color: #d1d5db;
+    border: 1px solid rgba(113, 113, 122, 0.3);
   }
 
   /* Incident Status badges */
   .badge-draft {
-    background: rgba(72, 72, 72, 0.4);
-    color: #a0a0a0;
-    border: 1px solid rgba(72, 72, 72, 0.5);
+    background: rgba(113, 113, 122, 0.18);
+    color: #d1d5db;
+    border: 1px solid rgba(113, 113, 122, 0.3);
   }
 
   .badge-submitted {
-    background: rgba(74, 144, 196, 0.2);
-    color: #7ab8e0;
-    border: 1px solid rgba(74, 144, 196, 0.35);
+    background: var(--info-bg);
+    color: var(--info-text);
+    border: 1px solid var(--info-border);
   }
 
   .badge-under_review {
-    background: rgba(212, 160, 23, 0.2);
-    color: #e8b820;
-    border: 1px solid rgba(212, 160, 23, 0.35);
+    background: rgba(146, 64, 14, 0.24);
+    color: #fde68a;
+    border: 1px solid rgba(245, 158, 11, 0.36);
   }
 
   .badge-approved {
@@ -568,9 +769,9 @@ body.fx-noise::after {
   }
 
   .badge-returned {
-    background: rgba(220, 38, 38, 0.3);
-    color: #f87171;
-    border: 1px solid rgba(220, 38, 38, 0.4);
+    background: rgba(127, 29, 29, 0.34);
+    color: #fecaca;
+    border: 1px solid rgba(248, 113, 113, 0.38);
   }
 
   /* --- Card Styles (Blocky) --- */
@@ -650,12 +851,12 @@ body.fx-noise::after {
     border-left-color: #050505;
     border-bottom-color: #2e2e2e;
     border-right-color: #2e2e2e;
-    caret-color: #aaaaaa;
+    caret-color: var(--text-secondary);
     transition: border-color 0.1s;
   }
   .input-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.45), 0 0 0 3px rgba(136, 136, 136, 0.15);
+    box-shadow: 0 0 0 1px rgba(156, 164, 173, 0.48), 0 0 0 3px rgba(156, 164, 173, 0.12);
     outline: none;
   }
 
@@ -669,7 +870,7 @@ body.fx-noise::after {
     border-right-color: #2e2e2e;
     appearance: none;
     -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6e80'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237e8995'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 8px center;
     padding-right: 24px;
@@ -677,7 +878,7 @@ body.fx-noise::after {
   }
   .select-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.35);
+    box-shadow: 0 0 0 1px rgba(156, 164, 173, 0.35);
   }
   .select-dark option {
     background: var(--surface-base);
@@ -692,12 +893,12 @@ body.fx-noise::after {
     border-left-color: #050505;
     border-bottom-color: #2e2e2e;
     border-right-color: #2e2e2e;
-    caret-color: #aaaaaa;
+    caret-color: var(--text-secondary);
     transition: border-color 0.1s;
   }
   .textarea-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.35);
+    box-shadow: 0 0 0 1px rgba(156, 164, 173, 0.35);
   }
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
@@ -776,8 +977,8 @@ body.fx-noise::after {
   }
 
   .led-blue {
-    background: #3b82f6;
-    box-shadow: 0 0 4px #3b82f6, 0 0 8px rgba(59, 130, 246, 0.4);
+    background: #d5dde6;
+    box-shadow: 0 0 4px #d5dde6, 0 0 8px rgba(213, 221, 230, 0.32);
   }
 
   .led-purple {
@@ -813,7 +1014,7 @@ body.fx-noise::after {
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    background: var(--surface-raised);
+    background: linear-gradient(180deg, #14181d 0%, #101316 100%);
     border-bottom: 1px solid #050505;
     border-top: 1px solid #383838;
     font-size: 10px;
@@ -929,7 +1130,7 @@ body.fx-noise::after {
 
   .toolbar-btn-primary {
     background: var(--brand-blue);
-    border-color: #aaaaaa;
+    border-color: #b9c1ca;
     border-bottom-color: #1a1a1a;
     border-right-color: #1a1a1a;
     color: #ffffff;
@@ -3104,6 +3305,25 @@ html.theme-light {
   --text-primary: #111827;
   --text-secondary: #444444;
   --text-muted: #666666;
+  --toolbar-gradient-start: #ffffff;
+  --toolbar-gradient-end: #e9edf2;
+  --desktop-shell-start: #ffffff;
+  --desktop-shell-end: #edf1f5;
+  --desktop-shell-raised-start: #f7f8fa;
+  --desktop-shell-raised-end: #e7ebf0;
+  --desktop-shell-border: #c7ced6;
+  --desktop-shell-accent: #9aa3ad;
+  --desktop-shell-accent-shadow: rgba(148, 163, 184, 0.18);
+  --desktop-shell-subtle-text: #6b7280;
+  --desktop-shell-icon: #6b7280;
+  color-scheme: light;
+  background-color: #f0f2f5;
+}
+
+html.theme-dark,
+html:not(.theme-light) {
+  color-scheme: dark;
+  background-color: #000000;
 }
 
 html.theme-light body {
@@ -3114,7 +3334,14 @@ html.theme-light body {
 html.theme-light .bg-surface-base { background: var(--surface-base) !important; }
 html.theme-light .bg-surface-raised { background: var(--surface-raised) !important; }
 html.theme-light .bg-surface-sunken { background: var(--surface-sunken) !important; }
-html.theme-light .text-white { color: var(--text-primary) !important; }
+html.theme-light .bg-surface-base.text-white,
+html.theme-light .bg-surface-raised.text-white,
+html.theme-light .bg-surface-sunken.text-white,
+html.theme-light .panel-beveled.text-white,
+html.theme-light .panel-surface.text-white,
+html.theme-light .panel-surface.text-white {
+  color: var(--text-primary) !important;
+}
 html.theme-light .text-rmpg-300 { color: var(--text-secondary) !important; }
 html.theme-light .text-rmpg-400 { color: var(--text-secondary) !important; }
 html.theme-light .text-rmpg-500 { color: var(--text-muted) !important; }
@@ -3464,8 +3691,13 @@ select:not(.select-dark) {
 /* ============================================================
    FIX 4: Focus-visible for keyboard users only
    ============================================================ */
-:focus-visible {
-  outline: 2px solid #3b82f6;
+html.theme-dark :focus-visible,
+html:not(.theme-light) :focus-visible {
+  outline: 2px solid #666666;
+  outline-offset: 2px;
+}
+html.theme-light :focus-visible {
+  outline: 2px solid #94a3b8;
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {
@@ -3640,7 +3872,7 @@ form.overflow-y-auto,
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: #3b82f6;
+    background: #6a6a6a;
     border: 2px solid white;
   }
 }
@@ -3754,7 +3986,9 @@ textarea {
 
 /* 24. Fix iOS dark mode color scheme */
 @media (prefers-color-scheme: dark) {
-  :root { color-scheme: dark; }
+  html.theme-light { color-scheme: light; }
+  html.theme-dark,
+  html:not(.theme-light) { color-scheme: dark; }
 }
 
 /* 25. Fix notification badge positioning on iOS */
@@ -3973,8 +4207,8 @@ html, body {
     box-shadow: 0 0 4px #f59e0b80, inset 0 -1px 1px rgba(0,0,0,0.3);
   }
   .led-blue {
-    background: #3b82f6;
-    box-shadow: 0 0 4px #3b82f680, inset 0 -1px 1px rgba(0,0,0,0.3);
+    background: #8a8a8a;
+    box-shadow: 0 0 4px rgba(138,138,138,0.5), inset 0 -1px 1px rgba(0,0,0,0.3);
   }
   .led-blink {
     animation: led-blink 1s ease-in-out infinite;
@@ -4020,7 +4254,7 @@ html, body {
   }
   .badge-p1 { color: #fca5a5; background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.4); }
   .badge-p2 { color: #fcd34d; background: rgba(217,119,6,0.2); border-color: rgba(217,119,6,0.4); }
-  .badge-p3 { color: #93c5fd; background: rgba(37,99,235,0.15); border-color: rgba(37,99,235,0.3); }
+  .badge-p3 { color: var(--info-text); background: var(--info-bg); border-color: var(--info-border); }
   .badge-p4 { color: #999999; background: rgba(102,102,102,0.15); border-color: rgba(102,102,102,0.3); }
   .badge-active { color: #86efac; background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.3); }
   .badge-pending { color: #fbbf24; background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); }
@@ -4379,7 +4613,7 @@ a:not([class]) {
   text-decoration: none;
 }
 a:not([class]):hover {
-  color: #60a5fa;
+  color: #d4d4d4;
   text-decoration: underline;
 }
 

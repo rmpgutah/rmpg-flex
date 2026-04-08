@@ -386,7 +386,7 @@ export default function DlSearchPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b313a' }}>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -418,7 +418,7 @@ export default function DlSearchPage() {
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
               </div>
               {/* DL OCR Scanner */}
-              <div className="border border-[#1e2d40] rounded-sm p-3 bg-[#0d1520] space-y-2 w-full max-w-xs">
+              <div className="border border-[#1e2d40] rounded-sm p-3 bg-[#0c0f13] space-y-2 w-full max-w-xs">
                 <div className="flex items-center gap-2">
                   <CreditCard size={14} className="text-[#d4a017]" />
                   <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
@@ -652,8 +652,8 @@ export default function DlSearchPage() {
       {/* DL Verification Result Panel */}
       {verifyResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141e2b] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0d1520]">
+          <div className="bg-[#161b21] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0c0f13]">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={14} className={verifyResult.verified ? 'text-green-400' : 'text-amber-400'} />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">
@@ -701,7 +701,7 @@ export default function DlSearchPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0d1520]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0c0f13]">
               {verifyResult.verified && (
                 <button
                   type="button"
@@ -715,7 +715,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setVerifyResult(null)}
-                className="px-4 py-2 bg-[#1a2636] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#1b2128] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Close
               </button>
@@ -727,8 +727,8 @@ export default function DlSearchPage() {
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141e2b] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0d1520]">
+          <div className="bg-[#161b21] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0c0f13]">
               <div className="flex items-center gap-2">
                 <CreditCard size={14} className="text-[#d4a017]" />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">DL OCR Results</span>
@@ -778,7 +778,7 @@ export default function DlSearchPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0d1520]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0c0f13]">
               <button
                 type="button"
                 onClick={handleCreatePersonFromOcr}
@@ -790,7 +790,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setShowOcrPreview(false)}
-                className="px-4 py-2 bg-[#1a2636] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#1b2128] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Cancel
               </button>

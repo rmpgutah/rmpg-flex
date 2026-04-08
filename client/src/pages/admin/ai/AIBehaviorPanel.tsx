@@ -80,7 +80,7 @@ export default function AIBehaviorPanel() {
         {/* Left Column — AI Personality */}
         <div className="space-y-5">
           {/* Response Style */}
-          <div className="bg-[#141e2b] border border-[#1a3550] rounded p-4 space-y-3">
+          <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-3">
             <h3 className="text-sm font-semibold text-white">Response Style</h3>
             <div className="space-y-2">
               <RadioOption
@@ -111,7 +111,7 @@ export default function AIBehaviorPanel() {
           </div>
 
           {/* Tone */}
-          <div className="bg-[#141e2b] border border-[#1a3550] rounded p-4 space-y-3">
+          <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-3">
             <h3 className="text-sm font-semibold text-white">Tone</h3>
             <div className="space-y-2">
               <RadioOption
@@ -142,7 +142,7 @@ export default function AIBehaviorPanel() {
           </div>
 
           {/* Safety Filter */}
-          <div className="bg-[#141e2b] border border-[#1a3550] rounded p-4 space-y-3">
+          <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-3">
             <h3 className="text-sm font-semibold text-white">Safety Filter</h3>
             <div className="space-y-2">
               <RadioOption
@@ -175,7 +175,7 @@ export default function AIBehaviorPanel() {
 
         {/* Right Column — Performance */}
         <div className="space-y-5">
-          <div className="bg-[#141e2b] border border-[#1a3550] rounded p-4 space-y-4">
+          <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-4">
             <h3 className="text-sm font-semibold text-white">Performance</h3>
 
             {/* Rate Limit */}
@@ -185,7 +185,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={1} max={100}
                 value={config.rateLimit}
                 onChange={e => update('rateLimit', Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-1.5 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
               />
               <p className="text-[10px] text-gray-600">Maximum requests per minute (1-100)</p>
             </div>
@@ -197,7 +197,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={1} max={10}
                 value={config.maxConcurrent}
                 onChange={e => update('maxConcurrent', Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-1.5 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
               />
               <p className="text-[10px] text-gray-600">Maximum simultaneous AI requests (1-10)</p>
             </div>
@@ -209,7 +209,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={10} max={300}
                 value={config.requestTimeout}
                 onChange={e => update('requestTimeout', Math.min(300, Math.max(10, parseInt(e.target.value) || 10)))}
-                className="w-full px-3 py-1.5 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-1.5 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
               />
               <p className="text-[10px] text-gray-600">Time before request is aborted (10-300s)</p>
             </div>
@@ -240,7 +240,7 @@ export default function AIBehaviorPanel() {
                     type="number" min={1} max={5}
                     value={config.retryCount}
                     onChange={e => update('retryCount', Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-full px-3 py-1.5 bg-[#0d1520] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-1.5 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
                   />
                   <p className="text-[10px] text-gray-600">Number of retry attempts (1-5)</p>
                 </div>

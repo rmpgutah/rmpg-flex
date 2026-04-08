@@ -184,6 +184,26 @@ export interface NcicWarrant {
   status?: string;
 }
 
+const NON_MEANINGFUL_WARNING_VALUES = new Set([
+  '',
+  '0',
+  'none',
+  'n/a',
+  'na',
+  'null',
+  'false',
+  'unknown',
+  'unspecified',
+]);
+
+function getMeaningfulWarningValue(value?: string | null): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  if (NON_MEANINGFUL_WARNING_VALUES.has(normalized.toLowerCase())) return null;
+  return normalized;
+}
+
 export function formatPersonResponse(
   person: NcicPerson,
   criminalHistory: NcicCriminalHistory[] = [],
@@ -212,7 +232,9 @@ export function formatPersonResponse(
   }
 
   // ── Caution flags
-  if (person.caution_flags || person.is_sex_offender || person.gang_affiliation) {
+  const gangAffiliation = getMeaningfulWarningValue(person.gang_affiliation);
+  const probationParole = getMeaningfulWarningValue(person.probation_parole);
+  if (person.caution_flags || person.is_sex_offender || gangAffiliation || probationParole) {
     lines.push('');
     lines.push('  *** CAUTION ***');
     if (person.caution_flags) {
@@ -221,8 +243,8 @@ export function formatPersonResponse(
       });
     }
     if (person.is_sex_offender) lines.push('  >> REGISTERED SEX OFFENDER');
-    if (person.gang_affiliation) lines.push(`  >> GANG AFFILIATION: ${person.gang_affiliation.toUpperCase()}`);
-    if (person.probation_parole) lines.push(`  >> ${person.probation_parole.toUpperCase()}`);
+    if (gangAffiliation) lines.push(`  >> GANG AFFILIATION: ${gangAffiliation.toUpperCase()}`);
+    if (probationParole) lines.push(`  >> ${probationParole.toUpperCase()}`);
   }
 
   // ── Warrant hits
@@ -665,13 +687,15 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
       if (p.scars_marks_tattoos) lines.push(`  SMT/${p.scars_marks_tattoos.toUpperCase()}`);
 
       // Caution flags inline
-      if (p.caution_flags || p.is_sex_offender || p.gang_affiliation) {
+      const gangAffiliation = getMeaningfulWarningValue(p.gang_affiliation);
+      const probationParole = getMeaningfulWarningValue(p.probation_parole);
+      if (p.caution_flags || p.is_sex_offender || gangAffiliation || probationParole) {
         hasWarnings = true;
         lines.push('  *** CAUTION ***');
         if (p.caution_flags) p.caution_flags.split(',').forEach(f => lines.push(`  >> ${f.trim().toUpperCase()}`));
         if (p.is_sex_offender) lines.push('  >> REGISTERED SEX OFFENDER');
-        if (p.gang_affiliation) lines.push(`  >> GANG: ${p.gang_affiliation.toUpperCase()}`);
-        if (p.probation_parole) lines.push(`  >> ${p.probation_parole.toUpperCase()}`);
+        if (gangAffiliation) lines.push(`  >> GANG: ${gangAffiliation.toUpperCase()}`);
+        if (probationParole) lines.push(`  >> ${probationParole.toUpperCase()}`);
       }
 
       // Criminal history count

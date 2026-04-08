@@ -46,6 +46,7 @@ export function mapDbProperty(row: Record<string, unknown>): Property {
     post_orders: row.post_orders ? String(row.post_orders) : undefined,
     hazard_notes: row.hazard_notes ? String(row.hazard_notes) : undefined,
     access_instructions: row.access_instructions ? String(row.access_instructions) : undefined,
+    notes: row.notes ? String(row.notes) : undefined,
     is_active: row.is_active !== 0 && row.is_active !== false,
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
@@ -64,6 +65,11 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
       <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
+}
+
+function safeDateTimeDisplay(value?: string | null): string | null {
+  const formatted = safeDateTimeStr(value, '');
+  return formatted || null;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -439,11 +445,17 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           </CollapsibleSection>
         )}
 
+        {selectedProperty.notes && (
+          <CollapsibleSection title="Notes" icon={FileWarning}>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
+          </CollapsibleSection>
+        )}
+
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Created', selectedProperty.created_at ? new Date(selectedProperty.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
-            {renderInfoRow('Updated', selectedProperty.updated_at ? new Date(selectedProperty.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
+            {renderInfoRow('Created', safeDateTimeDisplay(selectedProperty.created_at), Calendar)}
+            {renderInfoRow('Updated', safeDateTimeDisplay(selectedProperty.updated_at), Calendar)}
           </div>
         </CollapsibleSection>
 
@@ -503,3 +515,4 @@ export default function PropertiesTab(props: PropertiesTabProps) {
     </>
   );
 }
+import { safeDateTimeStr } from '../../utils/dateUtils';

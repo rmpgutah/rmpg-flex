@@ -296,7 +296,7 @@ export default function SexOffenderRegistryPage() {
       {/* Stats Strip */}
       <div
         className="flex items-center gap-4 px-3 py-1.5 text-[11px] font-mono flex-shrink-0 overflow-x-auto"
-        style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)', borderBottom: '1px solid #1e3048' }}
+        style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)', borderBottom: '1px solid #2b313a' }}
       >
         <span className="flex items-center gap-1.5">
           <span className="led-dot led-amber" style={{ width: 6, height: 6 }} />
@@ -329,7 +329,7 @@ export default function SexOffenderRegistryPage() {
       {/* Search + Filters */}
       <div
         className="flex items-center gap-2 px-3 py-2 flex-shrink-0 flex-wrap"
-        style={{ background: '#0a0a0a', borderBottom: '1px solid #1e3048' }}
+        style={{ background: '#0a0a0a', borderBottom: '1px solid #2b313a' }}
       >
         <div className="relative flex-1 min-w-[140px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
@@ -455,7 +455,7 @@ export default function SexOffenderRegistryPage() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5 text-[10px] text-rmpg-500 flex-shrink-0"
-          style={{ background: '#0a0a0a', borderTop: '1px solid #1e3048' }}
+          style={{ background: '#0a0a0a', borderTop: '1px solid #2b313a' }}
         >
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
@@ -493,7 +493,7 @@ export default function SexOffenderRegistryPage() {
       </button>
 
       {/* Header Section */}
-      <div className="p-4 relative" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)', borderBottom: '1px solid #1e3048' }}>
+      <div className="p-4 relative" style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)', borderBottom: '1px solid #2b313a' }}>
         <div className="flex gap-4">
           {/* Large Mugshot */}
           <div
@@ -618,7 +618,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Offenses" icon={<FileText size={12} />}>
             <div className="space-y-2">
               {offs.map((o, i) => (
-                <div key={i} className="p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #1e3048' }}>
+                <div key={i} className="p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #2b313a' }}>
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-[11px] font-mono font-bold">{o.statute}</span>
                     {o.date && <span className="text-[10px] text-rmpg-500">{formatDate(o.date)}</span>}
@@ -753,7 +753,7 @@ export default function SexOffenderRegistryPage() {
       )}
 
       {/* Quick Actions */}
-      <div className="p-3 flex gap-2 flex-wrap" style={{ borderTop: '1px solid #1e3048' }}>
+      <div className="p-3 flex gap-2 flex-wrap" style={{ borderTop: '1px solid #2b313a' }}>
         <button type="button"
           onClick={() => { setEditingRecord(selected); setShowAddModal(true); }}
           className="toolbar-btn px-3 py-1.5 text-[11px] flex items-center gap-1.5"
@@ -925,7 +925,7 @@ export default function SexOffenderRegistryPage() {
 
 function DetailSection({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="px-4 py-3" style={{ borderBottom: '1px solid #1e3048' }}>
+    <div className="px-4 py-3" style={{ borderBottom: '1px solid #2b313a' }}>
       <h3 className="flex items-center gap-1.5 text-[11px] font-bold text-[#d4a017] uppercase tracking-widest mb-2">
         {icon} {title}
       </h3>
@@ -1091,7 +1091,7 @@ function RecordFormModal({
           <FormField label="Notes" value={form.notes} onChange={v => set('notes', v)} multiline />
 
           {/* Submit */}
-          <div className="flex justify-end gap-2 pt-2" style={{ borderTop: '1px solid #1e3048' }}>
+          <div className="flex justify-end gap-2 pt-2" style={{ borderTop: '1px solid #2b313a' }}>
             <button type="button" onClick={onClose} className="toolbar-btn px-4 py-1.5 text-xs">Cancel</button>
             <button
               type="submit"

@@ -40,7 +40,7 @@ export default function MeasurementOverlay({
       role="status"
       aria-live="polite"
       aria-label={`Measurement: ${measureMode === 'distance' ? 'Distance' : 'Area'} - ${measureDisplay}`}
-      className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1001] flex flex-col items-center gap-1 px-4 py-2.5 shadow-lg backdrop-blur-md transition-all duration-200 rounded-sm border border-[#1e3048]"
+      className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1001] flex flex-col items-center gap-1 px-4 py-2.5 shadow-lg backdrop-blur-md transition-all duration-200 rounded-sm border border-[#2b313a]"
       style={{
         background: 'rgba(13, 21, 32, 0.95)',
         borderRadius: 2,

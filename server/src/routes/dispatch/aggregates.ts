@@ -802,7 +802,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
           threatContext: {
             threatLevel: ctx.threatLevel,
             briefingSummary: ctx.briefingSummary,
-            premiseHistoryCount: ctx.premiseHistory.length,
+            premiseHistoryCount: ctx.premiseHistory.totalCalls,
             activeWarrantCount: ctx.activeWarrants.length,
           },
           nearestUnits,

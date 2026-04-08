@@ -147,7 +147,7 @@ const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
   red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
   amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
   blue: { active: 'bg-blue-900/40 text-blue-400 border border-blue-700/40' },
-  gray: { active: 'bg-[#0d1520]/40 text-gray-400 border border-gray-700/40' },
+  gray: { active: 'bg-[#0c0f13]/40 text-gray-400 border border-gray-700/40' },
 };
 
 // Default map center (Salt Lake City)
@@ -1087,8 +1087,8 @@ export default function MapPage() {
                 : '';
 
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0d1520;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #1e3048;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0f13;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #2b313a;">
                     <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};box-shadow:0 0 8px ${statusColor}80;"></div>
                     <span style="font-weight:900;font-size:15px;color:${statusColor};letter-spacing:-0.5px;">${escapeHtml(unit.call_sign)}</span>
                     <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace(/_/g, ' '))}</span>
@@ -1096,7 +1096,7 @@ export default function MapPage() {
                   <div style="font-size:11px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(unit.officer_name)}</div>
                   ${unit.vehicle ? `<div style="font-size:10px;color:#5a6e80;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
                   ${unit.call_number ? `
-                    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #1e3048;">
+                    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b313a;">
                       <div style="font-size:10px;color:#60a5fa;font-weight:bold;">${escapeHtml(unit.call_number)}</div>
                       ${unit.current_call_type ? `<div style="font-size:10px;color:#d1d5db;">${escapeHtml(formatIncidentType(unit.current_call_type))}</div>` : ''}
                       <div style="font-size:9px;color:#5a6e80;margin-top:2px;">${escapeHtml(location)}</div>
@@ -1133,7 +1133,7 @@ export default function MapPage() {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #1e3048;">
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b313a;">
                   <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
                   ${assignedUnits.map(u => {
                     const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
@@ -1154,11 +1154,11 @@ export default function MapPage() {
                   }).join('')}
                 </div>`;
               } else {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #1e3048;font-size:9px;color:#5a6e80;">No units assigned</div>`;
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b313a;font-size:9px;color:#5a6e80;">No units assigned</div>`;
               }
 
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0d1520;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0f13;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
                     <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
@@ -1199,7 +1199,7 @@ export default function MapPage() {
             onClick: async () => {
               // Show loading state immediately
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0d1520;color:#e5e7eb;padding:12px;border:1px solid #3b82f650;border-radius:4px;">
+                <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0c0f13;color:#e5e7eb;padding:12px;border:1px solid #3b82f650;border-radius:4px;">
                   <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                   <div style="font-size:10px;color:#9ca3af;">Loading details...</div>
                 </div>
@@ -1226,7 +1226,7 @@ export default function MapPage() {
                   const rel = escapeHtml((p.relationship || '').replace(/_/g, ' '));
                   const flagsArr = (() => { try { return JSON.parse(p.flags || '[]'); } catch { return []; } })();
                   const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';
-                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #1e304820;">
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2b313a20;">
                     <div style="display:flex;align-items:center;gap:4px;">
                       ${hasWarning ? '<span style="color:#ef4444;font-size:8px;">⚠</span>' : ''}
                       <span style="color:#e0e8f0;font-size:9px;font-weight:700;">${name}</span>
@@ -1241,7 +1241,7 @@ export default function MapPage() {
                   const date = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
                   const time = c.created_at ? new Date(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
                   const statusColor = c.status === 'cleared' || c.status === 'closed' ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : '#aaaaaa';
-                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #1e304820;">
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2b313a20;">
                     <div>
                       <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
                       <span style="color:#6b7280;font-size:8px;margin-left:4px;">${escapeHtml(c.incident_type?.replace(/_/g, ' ') || '')}</span>
@@ -1262,7 +1262,7 @@ export default function MapPage() {
                 ).join('');
 
                 infoWindowRef.current?.setContent(`
-                  <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#0d1520;color:#e5e7eb;padding:12px;border:1px solid #3b82f650;border-radius:4px;">
+                  <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#0c0f13;color:#e5e7eb;padding:12px;border:1px solid #3b82f650;border-radius:4px;">
                     <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:2px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(prop.address)}</div>
                     ${prop.client_name ? `<div style="font-size:9px;color:#d4a017;font-weight:600;margin-bottom:6px;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
@@ -1273,14 +1273,14 @@ export default function MapPage() {
                     ${details.access_instructions ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:6px;">Access: ${escapeHtml(details.access_instructions)}</div>` : ''}
 
                     ${schedules.length > 0 ? `
-                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:4px;">
+                      <div style="border-top:1px solid #2b313a;padding-top:6px;margin-top:4px;">
                         <div style="font-size:9px;color:#22d3ee;font-weight:700;margin-bottom:3px;">TODAY'S OFFICERS</div>
                         ${scheduleRows}
                       </div>
                     ` : ''}
 
                     ${linkedPersons.length > 0 ? `
-                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b313a;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#e879f9;font-weight:700;margin-bottom:3px;">LINKED PERSONS (${linkedPersons.length})</div>
                         ${personRows}
                         ${linkedPersons.length > 8 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${linkedPersons.length - 8} more</div>` : ''}
@@ -1288,19 +1288,19 @@ export default function MapPage() {
                     ` : ''}
 
                     ${recentCalls.length > 0 ? `
-                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b313a;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#f59e0b;font-weight:700;margin-bottom:3px;">CALL HISTORY (${recentCalls.length})</div>
                         ${callRows}
                         ${recentCalls.length > 5 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${recentCalls.length - 5} more</div>` : ''}
                       </div>
                     ` : `
-                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b313a;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#6b7280;">No recent calls</div>
                       </div>
                     `}
 
                     ${details.client_contact ? `
-                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b313a;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#a78bfa;font-weight:700;margin-bottom:3px;">CLIENT CONTACT</div>
                         <div style="font-size:9px;color:#d1d5db;">${escapeHtml(details.client_contact)}</div>
                         ${details.client_phone ? `<div style="font-size:9px;color:#93c5fd;">${escapeHtml(details.client_phone)}</div>` : ''}
@@ -1316,7 +1316,7 @@ export default function MapPage() {
                 console.error('[MapPage] Failed to fetch property details:', err);
                 // If fetch fails, show basic info
                 infoWindowRef.current?.setContent(`
-                  <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#0d1520;color:#e5e7eb;padding:10px;border:1px solid #3b82f650;border-radius:4px;">
+                  <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#0c0f13;color:#e5e7eb;padding:10px;border:1px solid #3b82f650;border-radius:4px;">
                     <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
                     ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#d4a017;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
@@ -3132,7 +3132,7 @@ export default function MapPage() {
                   key={key}
                   onClick={() => toggleIntelLayer(key)}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-[#0d1520]/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
+                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-[#0c0f13]/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
                   }`}
                 >
                   <Shield className="w-3 h-3" />
@@ -3219,7 +3219,7 @@ export default function MapPage() {
                           )}
                           className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                             callHistoryPriorities.includes(p)
-                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-[#0d1520]/40 text-gray-400 border border-gray-700/40')
+                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-[#0c0f13]/40 text-gray-400 border border-gray-700/40')
                               : 'text-rmpg-600 hover:text-rmpg-400'
                           }`}
                         >
@@ -4809,7 +4809,7 @@ export default function MapPage() {
           >
             <div className="flex items-center gap-0.5 px-1.5 py-1">
               {/* Live indicator */}
-              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b313a' }}>
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                 <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
                   {isConnected ? 'LIVE' : 'DISC'}
@@ -4817,7 +4817,7 @@ export default function MapPage() {
               </div>
 
               {/* Calls */}
-              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b313a' }}>
                 <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
                 <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
                 {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
@@ -4911,7 +4911,7 @@ export default function MapPage() {
               style={{
                 borderRadius: 2,
                 background: 'rgba(13, 21, 32, 0.9)',
-                border: '1px solid #1e3048',
+                border: '1px solid #2b313a',
               }}
             >
               <button
@@ -4920,7 +4920,7 @@ export default function MapPage() {
                   if (map) map.setZoom((map.getZoom() ?? 12) + 1);
                 }}
                 className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
-                style={{ width: 48, height: 48, borderBottom: '1px solid #1e3048' }}
+                style={{ width: 48, height: 48, borderBottom: '1px solid #2b313a' }}
                 title="Zoom in"
                 aria-label="Zoom in"
               >
@@ -4971,7 +4971,7 @@ export default function MapPage() {
             }}
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
-                ? 'bg-white/90 border border-gray-300 hover:bg-[#1a2636]'
+                ? 'bg-white/90 border border-gray-300 hover:bg-[#1b2128]'
                 : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
             }`}
             style={isMobile
@@ -5243,7 +5243,7 @@ export default function MapPage() {
               alignItems: 'center',
               justifyContent: 'center',
               background: 'rgba(13, 21, 32, 0.9)',
-              border: '1px solid #1e3048',
+              border: '1px solid #2b313a',
               borderRadius: 2,
             }}
             onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
@@ -5295,7 +5295,7 @@ export default function MapPage() {
                     className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                     style={{
                       background: layers[key] ? 'rgba(34,197,94,0.08)' : '#0a0a0a',
-                      border: '1px solid #1e3048',
+                      border: '1px solid #2b313a',
                       minHeight: 44,
                     }}
                   >
@@ -5310,7 +5310,7 @@ export default function MapPage() {
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
                     background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#0a0a0a',
-                    border: '1px solid #1e3048',
+                    border: '1px solid #2b313a',
                     minHeight: 44,
                   }}
                 >
@@ -5325,7 +5325,7 @@ export default function MapPage() {
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
                     background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#0a0a0a',
-                    border: '1px solid #1e3048',
+                    border: '1px solid #2b313a',
                     minHeight: 44,
                   }}
                 >
@@ -5336,7 +5336,7 @@ export default function MapPage() {
 
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
-                  <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #1e3048' }}>
+                  <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b313a' }}>
                     <div className="flex gap-1">
                       {[2, 4, 8, 12, 24].map((h) => (
                         <button
@@ -5371,7 +5371,7 @@ export default function MapPage() {
                 )}
 
                 {/* Map Style Selector (mobile) */}
-                <div className="px-3 py-2 space-y-1.5" style={{ background: '#050505', border: '1px solid #1e3048' }}>
+                <div className="px-3 py-2 space-y-1.5" style={{ background: '#050505', border: '1px solid #2b313a' }}>
                   <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
@@ -5404,7 +5404,7 @@ export default function MapPage() {
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
                     background: '#0a0a0a',
-                    border: '1px solid #1e3048',
+                    border: '1px solid #2b313a',
                     minHeight: 44,
                   }}
                 >

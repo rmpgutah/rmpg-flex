@@ -24,7 +24,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -638,7 +638,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-bold text-white uppercase">{entry.action.replace(/_/g, ' ')}</span>
-                          <span className="text-[9px] text-rmpg-500">{entry.timestamp ? new Date(entry.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
+                          <span className="text-[9px] text-rmpg-500">{safeDateTimeStr(entry.timestamp, '')}</span>
                         </div>
                         <div className="text-xs text-rmpg-300 mt-0.5">
                           {entry.from_person && <span className="text-rmpg-400">From: {entry.from_person}</span>}
@@ -760,8 +760,8 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Created', selectedEvidence.created_at ? new Date(selectedEvidence.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
-            {renderInfoRow('Updated', selectedEvidence.updated_at ? new Date(selectedEvidence.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
+            {renderInfoRow('Created', safeDateTimeStr(selectedEvidence.created_at, ''), Calendar)}
+            {renderInfoRow('Updated', safeDateTimeStr(selectedEvidence.updated_at, ''), Calendar)}
           </div>
         </CollapsibleSection>
 

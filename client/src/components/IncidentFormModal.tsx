@@ -31,6 +31,14 @@ export interface IncidentFormData {
   priority: CallPriority;
   location_address: string;
   narrative: string;
+  initial_contact_details: string;
+  scene_observations_details: string;
+  involved_parties_details: string;
+  statements_admissions_details: string;
+  actions_taken_details: string;
+  evidence_follow_up_details: string;
+  notifications_referrals_details: string;
+  follow_up_case_status_details: string;
   occurred_date: string;
   occurred_time: string;
   end_date: string;
@@ -126,6 +134,79 @@ const TRESPASS_TYPES: string[] = ['trespass'];
 const USE_OF_FORCE_TYPES: string[] = ['assault', 'battery', 'use_of_force'];
 const PSO_TYPES: string[] = ['pso_client_request'];
 
+const GUIDED_NARRATIVE_FIELDS = [
+  { key: 'initial_contact_details', label: 'INITIAL CONTACT / COMPLAINT' },
+  { key: 'scene_observations_details', label: 'SCENE OBSERVATIONS / CONDITIONS' },
+  { key: 'involved_parties_details', label: 'INVOLVED PARTIES / VEHICLES / WITNESSES' },
+  { key: 'statements_admissions_details', label: 'STATEMENTS / ADMISSIONS' },
+  { key: 'actions_taken_details', label: 'ACTIONS TAKEN' },
+  { key: 'evidence_follow_up_details', label: 'EVIDENCE / STATEMENTS / FOLLOW-UP' },
+  { key: 'notifications_referrals_details', label: 'NOTIFICATIONS / REFERRALS' },
+  { key: 'follow_up_case_status_details', label: 'FOLLOW-UP / CASE STATUS' },
+] as const;
+
+type GuidedNarrativeFieldKey = typeof GUIDED_NARRATIVE_FIELDS[number]['key'];
+
+function createEmptyGuidedNarrativeFields(): Record<GuidedNarrativeFieldKey, string> {
+  return GUIDED_NARRATIVE_FIELDS.reduce((acc, field) => {
+    acc[field.key] = '';
+    return acc;
+  }, {} as Record<GuidedNarrativeFieldKey, string>);
+}
+
+function buildNarrativeForSubmit(data: IncidentFormData): string {
+  const baseNarrative = data.narrative.trim();
+  const guidedSections = GUIDED_NARRATIVE_FIELDS
+    .map(({ key, label }) => {
+      const value = data[key].trim();
+      return value ? `${label}\n${value}` : '';
+    })
+    .filter(Boolean);
+
+  return [baseNarrative, ...guidedSections].filter(Boolean).join('\n\n');
+}
+
+function escapeGuidedNarrativeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function splitNarrativeIntoGuidedFields(rawNarrative: string): { narrative: string } & Record<GuidedNarrativeFieldKey, string> {
+  const emptyFields = createEmptyGuidedNarrativeFields();
+  const narrative = rawNarrative.trim();
+
+  if (!narrative) {
+    return { narrative: '', ...emptyFields };
+  }
+
+  const headingPattern = new RegExp(
+    `(?:^|\\n\\n)(${GUIDED_NARRATIVE_FIELDS.map((field) => escapeGuidedNarrativeRegex(field.label)).join('|')})\\n`,
+    'g',
+  );
+  const matches = Array.from(narrative.matchAll(headingPattern));
+
+  if (matches.length === 0) {
+    return { narrative, ...emptyFields };
+  }
+
+  const extracted = createEmptyGuidedNarrativeFields();
+  const baseNarrative = narrative.slice(0, matches[0].index ?? 0).trim();
+
+  matches.forEach((match, index) => {
+    const label = match[1];
+    const field = GUIDED_NARRATIVE_FIELDS.find((entry) => entry.label === label);
+    if (!field) return;
+
+    const start = (match.index ?? 0) + match[0].length;
+    const end = index + 1 < matches.length ? (matches[index + 1].index ?? narrative.length) : narrative.length;
+    extracted[field.key] = narrative.slice(start, end).trim();
+  });
+
+  return {
+    narrative: baseNarrative,
+    ...extracted,
+  };
+}
+
 const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
   { value: 'P1', label: 'P1', color: 'border-red-500 text-red-400 bg-red-900/30', desc: 'Emergency' },
   { value: 'P2', label: 'P2', color: 'border-amber-500 text-amber-400 bg-amber-900/30', desc: 'Urgent' },
@@ -170,6 +251,14 @@ const EMPTY_FORM: IncidentFormData = {
   priority: 'P3',
   location_address: '',
   narrative: '',
+  initial_contact_details: '',
+  scene_observations_details: '',
+  involved_parties_details: '',
+  statements_admissions_details: '',
+  actions_taken_details: '',
+  evidence_follow_up_details: '',
+  notifications_referrals_details: '',
+  follow_up_case_status_details: '',
   occurred_date: '',
   occurred_time: '',
   end_date: '',
@@ -270,16 +359,26 @@ export default function IncidentFormModal({
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
+  const compiledNarrative = buildNarrativeForSubmit(formData);
 
   useEffect(() => {
     if (isOpen) {
       if (editingIncident) {
         const inc = editingIncident as any;
+        const parsedNarrative = splitNarrativeIntoGuidedFields(editingIncident.narrative || '');
         const initial: IncidentFormData = {
           incident_type: editingIncident.type,
           priority: editingIncident.priority,
           location_address: editingIncident.location,
-          narrative: editingIncident.narrative || '',
+          narrative: parsedNarrative.narrative,
+          initial_contact_details: parsedNarrative.initial_contact_details,
+          scene_observations_details: parsedNarrative.scene_observations_details,
+          involved_parties_details: parsedNarrative.involved_parties_details,
+          statements_admissions_details: parsedNarrative.statements_admissions_details,
+          actions_taken_details: parsedNarrative.actions_taken_details,
+          evidence_follow_up_details: parsedNarrative.evidence_follow_up_details,
+          notifications_referrals_details: parsedNarrative.notifications_referrals_details,
+          follow_up_case_status_details: parsedNarrative.follow_up_case_status_details,
           occurred_date: inc.occurred_date || '',
           occurred_time: inc.occurred_time || '',
           end_date: inc.end_date || '',
@@ -384,7 +483,10 @@ export default function IncidentFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.incident_type) return;
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      narrative: buildNarrativeForSubmit(formData),
+    });
   };
 
   const update = (field: string, value: string | boolean) => {
@@ -1105,15 +1207,102 @@ export default function IncidentFormModal({
       {/* ── Narrative Section ── */}
       {activeSection === 'narrative' && (
         <div>
+          <div className="mb-4 border border-rmpg-600 bg-rmpg-800/40 p-3 space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Initial Contact / Complaint</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="What brought you to the scene, who reported it, and what was first observed on arrival?"
+                  value={formData.initial_contact_details}
+                  onChange={(e) => update('initial_contact_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scene Observations / Conditions</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Describe scene layout, weather, lighting, hazards, damage, and anything notable on approach."
+                  value={formData.scene_observations_details}
+                  onChange={(e) => update('scene_observations_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Involved Parties / Vehicles / Witnesses</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Document subjects, victims, witnesses, vehicles, identifiers, and relevant observations."
+                  value={formData.involved_parties_details}
+                  onChange={(e) => update('involved_parties_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Statements / Admissions</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Summarize witness statements, spontaneous utterances, admissions, denials, and quote-worthy remarks."
+                  value={formData.statements_admissions_details}
+                  onChange={(e) => update('statements_admissions_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Actions Taken</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Describe officer actions, scene handling, interviews, searches, notifications, and resources used."
+                  value={formData.actions_taken_details}
+                  onChange={(e) => update('actions_taken_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Evidence / Statements / Follow-Up</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Capture evidence collected, property handled, forms served, statements obtained, and next investigative steps."
+                  value={formData.evidence_follow_up_details}
+                  onChange={(e) => update('evidence_follow_up_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notifications / Referrals</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Document supervisor, LE, EMS, fire, client, CPS, crisis, or other agency notifications and referrals."
+                  value={formData.notifications_referrals_details}
+                  onChange={(e) => update('notifications_referrals_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Follow-Up / Case Status</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Record disposition, service result, pending tasks, evidence destination, and who owns the next follow-up."
+                  value={formData.follow_up_case_status_details}
+                  onChange={(e) => update('follow_up_case_status_details', e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-rmpg-500">
+              Guided detail entries are appended to the saved narrative automatically and loaded back into these fields when you reopen the report.
+            </p>
+          </div>
+
           <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Narrative</label>
           {/* Feature 24: Narrative quality indicators */}
           {(() => {
-            const narrative = formData.narrative;
-            const wordCount = narrative.split(/\s+/).filter(Boolean).length;
+            const wordCount = compiledNarrative.split(/\s+/).filter(Boolean).length;
             const issues: string[] = [];
             if (wordCount > 0 && wordCount < 20) issues.push('Very short narrative — add more detail');
-            if (narrative === narrative.toUpperCase() && narrative.length > 20) issues.push('ALL CAPS detected — use normal case');
-            if (narrative.length > 0 && !narrative.includes('.')) issues.push('No periods — check for proper sentences');
+            if (compiledNarrative === compiledNarrative.toUpperCase() && compiledNarrative.length > 20) issues.push('ALL CAPS detected — use normal case');
+            if (compiledNarrative.length > 0 && !compiledNarrative.includes('.')) issues.push('No periods — check for proper sentences');
             return issues.length > 0 ? (
               <div className="mt-1 mb-1 px-2 py-1 bg-amber-950/30 border border-amber-700/30 text-[9px] text-amber-400 flex items-center gap-1.5">
                 <span style={{ fontSize: 12 }}>!</span>
@@ -1123,7 +1312,7 @@ export default function IncidentFormModal({
           })()}
           <textarea
             className="textarea-dark mt-1"
-            rows={12}
+            rows={14}
             placeholder="Describe the incident in detail. Include who, what, when, where, why, and how..."
             value={formData.narrative}
             onChange={(e) => update('narrative', e.target.value)}
@@ -1131,8 +1320,8 @@ export default function IncidentFormModal({
           />
           <p className="text-[10px] text-rmpg-500 mt-1">
             {/* Feature 39: Word count display */}
-            {formData.narrative.length} characters | {formData.narrative.split(/\s+/).filter(Boolean).length} words
-            {formData.narrative.split(/\s+/).filter(Boolean).length >= 100 && (
+            {compiledNarrative.length} characters | {compiledNarrative.split(/\s+/).filter(Boolean).length} words after guided details
+            {compiledNarrative.split(/\s+/).filter(Boolean).length >= 100 && (
               <span className="text-green-400 ml-2">Sufficient detail</span>
             )}
           </p>

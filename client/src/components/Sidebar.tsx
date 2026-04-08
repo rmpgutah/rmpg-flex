@@ -150,8 +150,8 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       className="flex flex-col h-full flex-shrink-0 transition-[width] duration-200 ease-out select-none"
       style={{
         width: collapsed ? 56 : 220,
-        background: 'linear-gradient(180deg, #0f1a28 0%, #0d1520 100%)',
-        borderRight: '1px solid #1e3048',
+        background: 'linear-gradient(180deg, #0f1a28 0%, #0c0f13 100%)',
+        borderRight: '1px solid #2b313a',
       }}
     >
       {/* Scrollable nav sections */}
@@ -170,7 +170,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
 
             {/* Collapsed: thin separator between groups */}
             {collapsed && section.id !== 'ops' && (
-              <div className="mx-3 my-1" style={{ borderTop: '1px solid #1e3048' }} />
+              <div className="mx-3 my-1" style={{ borderTop: '1px solid #2b313a' }} />
             )}
 
             {section.items.map((item) => {
@@ -183,7 +183,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                   onClick={() => navigate(item.path)}
                   onMouseEnter={() => collapsed ? setHoveredSection(item.path) : undefined}
                   onMouseLeave={() => setHoveredSection(null)}
-                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-[#1a2636]' : ''}`}
+                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-[#1b2128]' : ''}`}
                   style={{
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
@@ -239,7 +239,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
         className="flex items-center justify-center gap-2 py-2 transition-colors"
         style={{
           height: 36,
-          borderTop: '1px solid #1e3048',
+          borderTop: '1px solid #2b313a',
           background: '#050505',
           color: '#666666',
         }}

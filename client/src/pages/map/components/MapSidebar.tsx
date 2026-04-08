@@ -67,7 +67,7 @@ export default function MapSidebar({
       {/* #1: Collapse/expand toggle with smooth icon rotation */}
       <button type="button"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="toolbar-btn flex items-center justify-center h-7 hover:bg-[#1a2636] transition-colors duration-150"
+        className="toolbar-btn flex items-center justify-center h-7 hover:bg-[#1b2128] transition-colors duration-150"
         style={{ borderRadius: 0 }}
         aria-expanded={sidebarOpen}
         aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -119,7 +119,7 @@ export default function MapSidebar({
           </div>
 
           {/* #4: Search input with clear button and improved focus ring */}
-          <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
+          <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #2b313a' }}>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
               <input
@@ -138,7 +138,7 @@ export default function MapSidebar({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
             {sidebarTab === 'units' && (
               <div className="divide-y divide-rmpg-700/50" role="tabpanel">
                 {/* Fix 98: units sorted by status (available first) */}
@@ -153,7 +153,7 @@ export default function MapSidebar({
                     <button type="button"
                       key={unit.id}
                       onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1a2636] transition-colors duration-100 ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1b2128] transition-colors duration-100 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
                     >
@@ -215,7 +215,7 @@ export default function MapSidebar({
                     <button type="button"
                       key={call.id}
                       onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1a2636] transition-colors duration-100 border-l-2 ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1b2128] transition-colors duration-100 border-l-2 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
                       style={{ borderLeftColor: pColor, borderLeftWidth: 3 }}

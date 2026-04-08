@@ -486,7 +486,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
         </button>
       </div>
 
-      <div className="p-2.5 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048]" style={{ maxHeight: 'calc(100dvh -240px)' }}>
+      <div className="p-2.5 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a]" style={{ maxHeight: 'calc(100dvh -240px)' }}>
         {/* Unit selector */}
         <div className="space-y-1">
           <label className="text-[9px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Unit / Officer</label>
@@ -494,7 +494,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             value={selectedUnit ?? ''}
             onChange={(e) => setSelectedUnit(e.target.value ? Number(e.target.value) : null)}
             aria-label="Select unit for trail playback"
-            className="w-full input-dark text-[11px] font-mono px-2 py-1.5 min-h-[36px] bg-[#0d1520] border-[#1e3048] rounded-sm"
+            className="w-full input-dark text-[11px] font-mono px-2 py-1.5 min-h-[36px] bg-[#0c0f13] border-[#2b313a] rounded-sm"
             style={{ borderRadius: 2 }}
           >
             <option value="">Select unit...</option>
@@ -809,7 +809,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       playbackMarkerRef.current.setPosition({ lat: trail.points[0].lat, lng: trail.points[0].lng });
                     }
                   }}
-                  className="p-1.5 rounded-sm hover:bg-[#1a2636] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
+                  className="p-1.5 rounded-sm hover:bg-[#1b2128] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
                   title="Go to start"
                 >
                   <SkipBack className="w-3 h-3 text-rmpg-300" />
@@ -825,7 +825,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       setIsPlaying(true);
                     }
                   }}
-                  className="p-1.5 rounded-sm hover:bg-[#1a2636] transition-colors duration-150 active:scale-[0.95] w-8 h-8 flex items-center justify-center"
+                  className="p-1.5 rounded-sm hover:bg-[#1b2128] transition-colors duration-150 active:scale-[0.95] w-8 h-8 flex items-center justify-center"
                   title={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? (
@@ -844,7 +844,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
                     }
                   }}
-                  className="p-1.5 rounded-sm hover:bg-[#1a2636] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
+                  className="p-1.5 rounded-sm hover:bg-[#1b2128] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
                   title="Go to end"
                 >
                   <SkipForward className="w-3 h-3 text-rmpg-300" />
@@ -878,8 +878,8 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       onClick={() => setPlaybackSpeed(s)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         playbackSpeed === s
-                          ? 'bg-[#0d1520] text-amber-400 border border-[#1e3048]'
-                          : 'text-rmpg-500 hover:text-rmpg-300 bg-[#0d1520]/50 border border-transparent'
+                          ? 'bg-[#0c0f13] text-amber-400 border border-[#2b313a]'
+                          : 'text-rmpg-500 hover:text-rmpg-300 bg-[#0c0f13]/50 border border-transparent'
                       }`}
                     >
                       {s}x

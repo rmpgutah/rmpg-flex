@@ -215,7 +215,7 @@ self.addEventListener('fetch', (event) => {
           caches.match(event.request)
             .then((cached) => cached || caches.match('/'))
             .then((fallback) => fallback || new Response(
-              '<!DOCTYPE html><html><body style="background:#141e2b;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Offline</h1><p>No network connection. Please reconnect and try again.</p></div></body></html>',
+              '<!DOCTYPE html><html><body style="background:#0a0b0d;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Offline</h1><p>No network connection. Please reconnect and try again.</p></div></body></html>',
               { status: 503, headers: { 'Content-Type': 'text/html' } }
             ))
         )

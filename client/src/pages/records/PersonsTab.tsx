@@ -51,6 +51,47 @@ function parseFlags(raw: unknown): string[] {
   return [];
 }
 
+const NON_MEANINGFUL_RECORD_VALUES = new Set([
+  '',
+  '0',
+  'none',
+  'n/a',
+  'na',
+  'null',
+  'false',
+  'unknown',
+  'unspecified',
+]);
+
+function getMeaningfulRecordValue(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const normalized = String(value).trim();
+  if (!normalized) return undefined;
+  if (NON_MEANINGFUL_RECORD_VALUES.has(normalized.toLowerCase())) return undefined;
+  return normalized;
+}
+
+function safeDateDisplay(value?: string | null): string {
+  if (!value) return '';
+  const normalized = value.trim();
+  if (!normalized || ['0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified', 'invalid date'].includes(normalized.toLowerCase())) return '';
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return normalized.includes('T')
+    ? parsed.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+    : parsed.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+function getAgeFromDate(value?: string | null): string {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const today = new Date();
+  let age = today.getFullYear() - parsed.getFullYear();
+  if (today.getMonth() < parsed.getMonth() || (today.getMonth() === parsed.getMonth() && today.getDate() < parsed.getDate())) age--;
+  return age >= 0 ? ` (${age})` : '';
+}
+
 function mapDbPerson(row: Record<string, unknown>): Person {
   return {
     id: String(row.id ?? ''),
@@ -92,7 +133,7 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     occupation: row.occupation ? String(row.occupation) : undefined,
     emergency_contact_name: row.emergency_contact_name ? String(row.emergency_contact_name) : undefined,
     emergency_contact_phone: row.emergency_contact_phone ? String(row.emergency_contact_phone) : undefined,
-    gang_affiliation: row.gang_affiliation ? String(row.gang_affiliation) : undefined,
+    gang_affiliation: getMeaningfulRecordValue(row.gang_affiliation),
     is_sex_offender: row.is_sex_offender === 1 || row.is_sex_offender === true,
     is_veteran: row.is_veteran === 1 || row.is_veteran === true,
     language: row.language ? String(row.language) : undefined,
@@ -107,7 +148,7 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     blood_type: row.blood_type ? String(row.blood_type) : undefined,
     phone_secondary: row.phone_secondary ? String(row.phone_secondary) : undefined,
     social_media: row.social_media ? String(row.social_media) : undefined,
-    probation_parole: row.probation_parole ? String(row.probation_parole) : undefined,
+    probation_parole: getMeaningfulRecordValue(row.probation_parole),
     probation_parole_officer: row.probation_parole_officer ? String(row.probation_parole_officer) : undefined,
     known_associates: row.known_associates ? String(row.known_associates) : undefined,
     emergency_contact_relationship: row.emergency_contact_relationship ? String(row.emergency_contact_relationship) : undefined,
@@ -493,7 +534,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   <WarrantBadge flags={person.flags} size="sm" />
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {person.date_of_birth && <span>DOB: {person.date_of_birth}{(() => { const b = new Date(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+                  {person.date_of_birth && safeDateDisplay(person.date_of_birth) && <span>DOB: {safeDateDisplay(person.date_of_birth)}{getAgeFromDate(person.date_of_birth)}</span>}
                   {person.gender && <span>{humanizeGender(person.gender)}</span>}
                   {person.race && <span>{humanizeRace(person.race)}</span>}
                   {person.phone && (
@@ -607,7 +648,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />
         {/* Special Flags */}
-        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
+        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || selectedPerson.probation_parole) && (
           <div className="flex flex-wrap gap-2 mt-1">
             {selectedPerson.flags.map((flag, i) => {
               const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
@@ -621,12 +662,12 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
             {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
-            {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
+            {selectedPerson.probation_parole && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
           </div>
         )}
         {/* Compact person ID line */}
         <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-          {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}{(() => { const b = new Date(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+          {selectedPerson.date_of_birth && safeDateDisplay(selectedPerson.date_of_birth) && <span>DOB: {safeDateDisplay(selectedPerson.date_of_birth)}{getAgeFromDate(selectedPerson.date_of_birth)}</span>}
           {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
           {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
         </div>
@@ -713,7 +754,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     <div><span className="text-rmpg-400">DL:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.dl_number}</span></div>
                     {selectedPerson.dl_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.dl_state}</span></div>}
                     {selectedPerson.dl_class && <div><span className="text-rmpg-400">Class:</span> <span className="text-rmpg-200">{selectedPerson.dl_class}</span></div>}
-                    {selectedPerson.dl_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.dl_expiry}</span></div>}
+                    {selectedPerson.dl_expiry && safeDateDisplay(selectedPerson.dl_expiry) && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{safeDateDisplay(selectedPerson.dl_expiry)}</span></div>}
                   </div>
                 )}
                 {selectedPerson.id_number && (
@@ -723,7 +764,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                       <span className="text-rmpg-200 font-mono">{selectedPerson.id_number}</span>
                     </div>
                     {selectedPerson.id_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.id_state}</span></div>}
-                    {selectedPerson.id_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.id_expiry}</span></div>}
+                    {selectedPerson.id_expiry && safeDateDisplay(selectedPerson.id_expiry) && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{safeDateDisplay(selectedPerson.id_expiry)}</span></div>}
                   </div>
                 )}
                 {/* SSN Section */}

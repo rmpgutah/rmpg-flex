@@ -32,8 +32,8 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
     <nav
       style={{
         height: 56,
-        background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-        borderTop: '1px solid #1e3048',
+        background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)',
+        borderTop: '1px solid #2b313a',
         display: 'flex',
         alignItems: 'stretch',
         zIndex: 50,

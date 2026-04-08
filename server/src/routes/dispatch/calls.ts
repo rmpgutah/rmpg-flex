@@ -634,7 +634,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           threatContext: {
             threatLevel: ctx.threatLevel,
             briefingSummary: ctx.briefingSummary,
-            premiseHistoryCount: ctx.premiseHistory.length,
+            premiseHistoryCount: ctx.premiseHistory.totalCalls,
             activeWarrantCount: ctx.activeWarrants.length,
           },
           nearestUnits,

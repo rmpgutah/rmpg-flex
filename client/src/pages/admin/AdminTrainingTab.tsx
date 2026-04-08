@@ -196,7 +196,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
 
       {/* Category Compliance Bars */}
-      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#162236] pb-1.5">
+      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#242a32] pb-1.5">
         <GraduationCap style={{ width: 10, height: 10 }} />
         Compliance by Category
       </div>

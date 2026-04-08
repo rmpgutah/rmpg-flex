@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { apiFetch } from '../hooks/useApi';
+import { applyThemePreference, getStoredThemePreference } from '../utils/theme';
 
 interface UserPreferences {
   font_scale: number;
@@ -16,6 +17,7 @@ interface UserPreferences {
   default_map_style: string;
   dispatch_sort: string;
   dispatch_show_cleared: number;
+  theme_preference: 'dark' | 'light';
   [key: string]: any;
 }
 
@@ -26,6 +28,7 @@ const DEFAULTS: UserPreferences = {
   default_map_style: 'dark',
   dispatch_sort: 'priority',
   dispatch_show_cleared: 0,
+  theme_preference: getStoredThemePreference(),
 };
 
 interface UserPreferencesContextValue {
@@ -88,6 +91,11 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       document.documentElement.classList.remove('compact-mode');
     }
   }, [prefs.compact_mode]);
+
+  // Apply theme preference to browser/native chrome and cache it for boot-time restore.
+  useEffect(() => {
+    applyThemePreference(prefs.theme_preference);
+  }, [prefs.theme_preference]);
 
   return (
     <UserPreferencesContext.Provider value={{ prefs, reload: fetchPrefs, isLoading, error }}>

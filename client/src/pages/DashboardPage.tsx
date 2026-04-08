@@ -590,7 +590,7 @@ export default function DashboardPage() {
           </div>
           <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span className="border-l border-[#1e3048] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-[#2b313a] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
@@ -703,7 +703,7 @@ export default function DashboardPage() {
             </div>
             {/* Progress Bar */}
             <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
-              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#1e3048] shadow-inner">
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b313a] shadow-inner">
                 <div
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
@@ -720,7 +720,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-2 border-t border-[#1e3048]">
+            <div className="flex items-center gap-2 pt-2 border-t border-[#2b313a]">
               {[
                 { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
                 { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
@@ -748,7 +748,7 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#1e3048] shadow-inner">
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#2b313a] shadow-inner">
                       <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
                     </div>
                     <div>
@@ -778,7 +778,7 @@ export default function DashboardPage() {
                     </div>
                   )}
                   {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#1e3048]">
+                  <div className="flex items-center gap-2 pt-2 border-t border-[#2b313a]">
                     <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
                       Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -821,7 +821,7 @@ export default function DashboardPage() {
                 <button type="button"
                   key={label}
                   onClick={() => action ? action() : navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#3a3a3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
                   aria-label={label}
                 >
                   <ActionIcon
@@ -876,19 +876,19 @@ export default function DashboardPage() {
                 <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
                 </div>
@@ -955,7 +955,7 @@ export default function DashboardPage() {
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#0a0a0a',
-                  border: '1px solid #2a3e58',
+                  border: '1px solid #3a3a3a',
                   borderRadius: '2px',
                   color: '#cccccc',
                   fontSize: '11px',
@@ -1015,7 +1015,7 @@ export default function DashboardPage() {
                     <Tooltip
                       contentStyle={{
                         backgroundColor: '#0a0a0a',
-                        border: '1px solid #2a3e58',
+                        border: '1px solid #3a3a3a',
                         borderRadius: '2px',
                         color: '#cccccc',
                         fontSize: '11px',
@@ -1035,7 +1035,7 @@ export default function DashboardPage() {
             })()}
 
             {/* Pie Legend */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#1e3048]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#2b313a]">
               {[
                 { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
                 { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
@@ -1052,7 +1052,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions — compact */}
-          <div className="border-t border-[#1e3048] px-3 py-2.5 space-y-1.5">
+          <div className="border-t border-[#2b313a] px-3 py-2.5 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest select-none">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
@@ -1572,7 +1572,7 @@ export default function DashboardPage() {
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
               <table className="w-full text-xs" role="table" aria-label="Expiring credentials list">
                 <thead>
-                  <tr className="border-b border-[#1e3048]">
+                  <tr className="border-b border-[#2b313a]">
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Officer</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Credential</th>
                     {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Expiry Date</th>}
@@ -1665,7 +1665,7 @@ export default function DashboardPage() {
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#0a0a0a',
-                      border: '1px solid #2a3e58',
+                      border: '1px solid #3a3a3a',
                       borderRadius: '2px',
                       color: '#e0e0e0',
                       fontSize: '11px',

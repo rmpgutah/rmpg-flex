@@ -84,7 +84,7 @@ function Section({
       {/* #34: Section toggle with smooth chevron rotation */}
       <button type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 w-full text-left py-1 hover:bg-[#1a2636]/30 rounded-sm transition-colors duration-100"
+        className="flex items-center gap-1 w-full text-left py-1 hover:bg-[#1b2128]/30 rounded-sm transition-colors duration-100"
         aria-expanded={open}
       >
         <ChevronRight size={10} className="text-rmpg-500 transition-transform duration-200" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
@@ -126,14 +126,14 @@ export default function ThreatAssessmentPanel({
             Threat Assessment
           </span>
         </div>
-        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close threat assessment">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1b2128] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close threat assessment">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
+        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Action Buttons ──────────────────────────────── */}
@@ -291,7 +291,7 @@ export default function ThreatAssessmentPanel({
                   {assessment.armed_history.map((entry, i) => (
                     <div
                       key={`armed-${i}`}
-                      className="flex items-center gap-1.5 text-[9px] font-mono hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150"
+                      className="flex items-center gap-1.5 text-[9px] font-mono hover:bg-[#1b2128]/50 rounded-sm px-1 -mx-1 transition-colors duration-150"
                     >
                       <span className="led-dot" style={{ background: '#ef4444' }} />
                       <span className="text-red-300 font-semibold tabular-nums">

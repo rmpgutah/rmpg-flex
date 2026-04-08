@@ -133,7 +133,7 @@ export default function ForgotPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #1e3048' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b313a' }}>
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors"

@@ -326,16 +326,16 @@ function DossierSection({ title, icon: Icon, count, defaultOpen, children }: {
     <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
       <button type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2 bg-[#1a2636] hover:bg-[#1e2d40] transition-colors text-left"
+        className="w-full flex items-center gap-2 px-3 py-2 bg-[#1b2128] hover:bg-[#1e2d40] transition-colors text-left"
       >
         <Chevron size={12} className="text-[#556677] flex-shrink-0" />
         <Icon size={13} className="text-[#8899aa] flex-shrink-0" />
         <span className="text-[11px] font-bold text-[#c0ccdd] uppercase tracking-wider flex-1">{title}</span>
         {count !== undefined && count > 0 && (
-          <span className="text-[9px] font-mono bg-[#0d1520] text-[#8899aa] px-1.5 py-0.5 rounded-sm min-w-[20px] text-center">{count}</span>
+          <span className="text-[9px] font-mono bg-[#0c0f13] text-[#8899aa] px-1.5 py-0.5 rounded-sm min-w-[20px] text-center">{count}</span>
         )}
       </button>
-      {open && <div className="p-3 bg-[#0d1520]">{children}</div>}
+      {open && <div className="p-3 bg-[#0c0f13]">{children}</div>}
     </div>
   );
 }
@@ -359,12 +359,12 @@ function DataTable({ headers, children }: { headers: string[]; children: React.R
 
 function SkeletonCard() {
   return (
-    <div className="p-3 border border-[#1e2d40] rounded-sm bg-[#1a2636] animate-pulse space-y-2">
-      <div className="h-3 bg-[#0d1520] rounded-sm w-3/4" />
-      <div className="h-2.5 bg-[#0d1520] rounded-sm w-1/2" />
+    <div className="p-3 border border-[#1e2d40] rounded-sm bg-[#1b2128] animate-pulse space-y-2">
+      <div className="h-3 bg-[#0c0f13] rounded-sm w-3/4" />
+      <div className="h-2.5 bg-[#0c0f13] rounded-sm w-1/2" />
       <div className="flex gap-1">
-        <div className="h-2 bg-[#0d1520] rounded-sm w-10" />
-        <div className="h-2 bg-[#0d1520] rounded-sm w-10" />
+        <div className="h-2 bg-[#0c0f13] rounded-sm w-10" />
+        <div className="h-2 bg-[#0c0f13] rounded-sm w-10" />
       </div>
     </div>
   );
@@ -804,7 +804,7 @@ export default function SkipTracerV2Page() {
 
   // ─── Tab bar ──────────────────────────────────────────────
   const tabBar = (
-    <div className="flex items-center gap-0 border-b border-[#1e2d40] bg-[#0d1520] overflow-x-auto flex-shrink-0">
+    <div className="flex items-center gap-0 border-b border-[#1e2d40] bg-[#0c0f13] overflow-x-auto flex-shrink-0">
       {TABS.map(tab => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
@@ -814,8 +814,8 @@ export default function SkipTracerV2Page() {
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${
               isActive
-                ? 'border-[#888888] text-[#60a5fa] bg-[#141e2b]'
-                : 'border-transparent text-[#556677] hover:text-[#8899aa] hover:bg-[#141e2b]/50'
+                ? 'border-[#888888] text-[#60a5fa] bg-[#161b21]'
+                : 'border-transparent text-[#556677] hover:text-[#8899aa] hover:bg-[#161b21]/50'
             }`}
           >
             <Icon size={13} />
@@ -834,7 +834,7 @@ export default function SkipTracerV2Page() {
 
   // ─── Search Panel (left side for search tab) ──────────────
   const searchPanel = (
-    <div className={`flex flex-col ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1e2d40] bg-[#141e2b]`}>
+    <div className={`flex flex-col ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1e2d40] bg-[#161b21]`}>
       <PanelTitleBar title="MicroBilt" icon={Search} statusLed="blue" ledPulse={loading}>
         {result && (
           <span className="text-[9px] font-mono text-[#556677]">
@@ -855,7 +855,7 @@ export default function SkipTracerV2Page() {
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="Name, phone, email, or address..."
-              className="w-full pl-8 pr-24 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#888888] font-mono"
+              className="w-full pl-8 pr-24 py-2 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#888888] font-mono"
             />
             {query.trim() && (
               <>
@@ -881,7 +881,7 @@ export default function SkipTracerV2Page() {
           <button type="button"
             onClick={() => setBatchOpen(!batchOpen)}
             className={`px-2 py-2 rounded-sm text-[10px] font-bold transition-colors flex items-center gap-1 ${
-              batchOpen ? 'bg-[#888888] text-white' : 'bg-[#1a2636] text-[#8899aa] hover:text-white hover:bg-[#1e2d40] border border-[#1e2d40]'
+              batchOpen ? 'bg-[#888888] text-white' : 'bg-[#1b2128] text-[#8899aa] hover:text-white hover:bg-[#1e2d40] border border-[#1e2d40]'
             }`}
             title="Batch search multiple names"
           >
@@ -904,7 +904,7 @@ export default function SkipTracerV2Page() {
               className={`px-2 py-1 rounded-sm text-[9px] font-bold uppercase tracking-wider transition-all ${
                 searchEngine === eng.id
                   ? 'text-white shadow-sm'
-                  : 'text-[#556677] hover:text-[#8899aa] bg-[#0d1520] border border-[#1e2d40]'
+                  : 'text-[#556677] hover:text-[#8899aa] bg-[#0c0f13] border border-[#1e2d40]'
               }`}
               style={searchEngine === eng.id ? { backgroundColor: eng.color + '33', color: eng.color, border: `1px solid ${eng.color}55` } : undefined}
               title={eng.desc}
@@ -916,14 +916,14 @@ export default function SkipTracerV2Page() {
 
         {/* Batch search textarea */}
         {batchOpen && (
-          <div className="p-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm space-y-2">
+          <div className="p-2 bg-[#0c0f13] border border-[#1e2d40] rounded-sm space-y-2">
             <div className="text-[9px] text-[#8899aa] uppercase tracking-wider font-bold">Batch Search — one name per line</div>
             <textarea
               value={batchText}
               onChange={e => setBatchText(e.target.value)}
               placeholder={"John Smith\nJane Doe\nBob Johnson"}
               rows={5}
-              className="w-full px-2 py-1.5 bg-[#141e2b] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888] resize-y"
+              className="w-full px-2 py-1.5 bg-[#161b21] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888] resize-y"
             />
             <div className="flex items-center justify-between">
               <span className="text-[9px] text-[#556677] font-mono">
@@ -963,7 +963,7 @@ export default function SkipTracerV2Page() {
         </div>
 
         {advancedOpen && (
-          <div className="grid grid-cols-2 gap-1.5 p-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm">
+          <div className="grid grid-cols-2 gap-1.5 p-2 bg-[#0c0f13] border border-[#1e2d40] rounded-sm">
             {[
               { key: 'firstName', label: 'First Name', icon: User },
               { key: 'lastName', label: 'Last Name', icon: User },
@@ -978,7 +978,7 @@ export default function SkipTracerV2Page() {
                   type="text"
                   value={advancedFields[field.key] || ''}
                   onChange={e => setAdvancedFields(prev => ({ ...prev, [field.key]: e.target.value }))}
-                  className="w-full px-2 py-1 bg-[#141e2b] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono focus:outline-none focus:border-[#888888]"
+                  className="w-full px-2 py-1 bg-[#161b21] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono focus:outline-none focus:border-[#888888]"
                 />
               </div>
             ))}
@@ -1092,7 +1092,7 @@ export default function SkipTracerV2Page() {
               className={`w-full text-left p-2.5 border rounded-sm transition-all ${
                 isSelected
                   ? 'border-[#888888] bg-[#888888]/15 shadow-lg shadow-[#888888]/10'
-                  : 'border-[#1e2d40] bg-[#1a2636] hover:bg-[#1e2d40] hover:border-[#2a3d50]'
+                  : 'border-[#1e2d40] bg-[#1b2128] hover:bg-[#1e2d40] hover:border-[#2a3d50]'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -1143,7 +1143,7 @@ export default function SkipTracerV2Page() {
   // ─── Dossier Detail Panel ─────────────────────────────────
 
   const dossierDetail = (
-    <div className={`flex-1 flex flex-col bg-[#141e2b] overflow-y-auto ${isMobile ? 'w-full' : ''}`}>
+    <div className={`flex-1 flex flex-col bg-[#161b21] overflow-y-auto ${isMobile ? 'w-full' : ''}`}>
       {!selected ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3 p-8">
           <FileText size={40} className="text-[#1e2d40]" />
@@ -1155,7 +1155,7 @@ export default function SkipTracerV2Page() {
       ) : (
         <div className="p-4 space-y-3">
           {/* Header */}
-          <div className="border border-[#1e2d40] rounded-sm bg-[#1a2636] p-4">
+          <div className="border border-[#1e2d40] rounded-sm bg-[#1b2128] p-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3">
@@ -1183,7 +1183,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   onClick={handleExportFromSearch}
                   disabled={exporting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0d1520] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-white transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0c0f13] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-white transition-colors"
                   title="Save & export as PDF"
                 >
                   {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
@@ -1197,7 +1197,7 @@ export default function SkipTracerV2Page() {
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-bold transition-colors border ${
                       linkDropdownOpen
                         ? 'bg-[#888888] text-white border-[#888888]'
-                        : 'bg-[#0d1520] text-[#8899aa] hover:text-white border-[#1e2d40] hover:bg-[#1e2d40]'
+                        : 'bg-[#0c0f13] text-[#8899aa] hover:text-white border-[#1e2d40] hover:bg-[#1e2d40]'
                     }`}
                   >
                     <Link2 size={12} />
@@ -1205,7 +1205,7 @@ export default function SkipTracerV2Page() {
                     <ChevronDown size={10} />
                   </button>
                   {linkDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-1 w-64 bg-[#1a2636] border border-[#1e2d40] rounded-sm shadow-xl z-50 p-3 space-y-2">
+                    <div className="absolute right-0 top-full mt-1 w-64 bg-[#1b2128] border border-[#1e2d40] rounded-sm shadow-xl z-50 p-3 space-y-2">
                       <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider">Link to Record</div>
                       <div className="flex gap-1">
                         {(['incident', 'case'] as const).map(t => (
@@ -1213,7 +1213,7 @@ export default function SkipTracerV2Page() {
                             key={t}
                             onClick={() => setLinkType(t)}
                             className={`flex-1 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm transition-colors ${
-                              linkType === t ? 'bg-[#888888] text-white' : 'bg-[#0d1520] text-[#556677] hover:text-white'
+                              linkType === t ? 'bg-[#888888] text-white' : 'bg-[#0c0f13] text-[#556677] hover:text-white'
                             }`}
                           >
                             {t}
@@ -1225,7 +1225,7 @@ export default function SkipTracerV2Page() {
                         value={linkValue}
                         onChange={e => setLinkValue(e.target.value)}
                         placeholder={linkType === 'incident' ? 'Incident number...' : 'Case number...'}
-                        className="w-full px-2 py-1.5 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888]"
+                        className="w-full px-2 py-1.5 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888]"
                         onKeyDown={e => e.key === 'Enter' && handleLinkDossier()}
                       />
                       <button type="button"
@@ -1266,7 +1266,7 @@ export default function SkipTracerV2Page() {
                   onChange={e => handleNotesChange(e.target.value, activeDossierId)}
                   placeholder="Add investigative notes..."
                   rows={3}
-                  className="w-full px-2 py-1.5 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888] resize-y"
+                  className="w-full px-2 py-1.5 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888] resize-y"
                 />
               </div>
             )}
@@ -1282,7 +1282,7 @@ export default function SkipTracerV2Page() {
             ].map(item => {
               const I = item.icon;
               return (
-                <div key={item.label} className="border border-[#1e2d40] rounded-sm bg-[#0d1520] p-2 text-center">
+                <div key={item.label} className="border border-[#1e2d40] rounded-sm bg-[#0c0f13] p-2 text-center">
                   <I size={14} className="mx-auto mb-1" style={{ color: item.color }} />
                   <div className="text-[14px] font-bold text-white font-mono">{item.count}</div>
                   <div className="text-[8px] text-[#556677] uppercase tracking-wider">{item.label}</div>
@@ -1685,7 +1685,7 @@ export default function SkipTracerV2Page() {
   // ─── Saved Dossiers Tab ───────────────────────────────────
 
   const dossiersTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-[#141e2b]">
+    <div className="flex-1 overflow-y-auto p-4 bg-[#161b21]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <Bookmark size={16} className="text-[#888888]" /> Saved Dossiers
@@ -1701,7 +1701,7 @@ export default function SkipTracerV2Page() {
           onChange={e => setDossierSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && loadDossiers()}
           placeholder="Search saved dossiers..." aria-label="Search saved dossiers..."
-          className="w-full pl-8 pr-3 py-1.5 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#888888] font-mono"
+          className="w-full pl-8 pr-3 py-1.5 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#888888] font-mono"
         />
       </div>
 
@@ -1712,7 +1712,7 @@ export default function SkipTracerV2Page() {
       ) : (
         <div className="space-y-2">
           {dossiers.map(d => (
-            <div key={d.id} className="border border-[#1e2d40] rounded-sm bg-[#1a2636] p-3 hover:bg-[#1e2d40] transition-colors">
+            <div key={d.id} className="border border-[#1e2d40] rounded-sm bg-[#1b2128] p-3 hover:bg-[#1e2d40] transition-colors">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] font-bold text-white">{d.subject_name}</div>
@@ -1739,7 +1739,7 @@ export default function SkipTracerV2Page() {
   // ─── History Tab ──────────────────────────────────────────
 
   const historyTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-[#141e2b]">
+    <div className="flex-1 overflow-y-auto p-4 bg-[#161b21]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <History size={16} className="text-[#888888]" /> Search History
@@ -1763,7 +1763,7 @@ export default function SkipTracerV2Page() {
             const badgeType = h.search_type === 'name' ? 'Name' : h.search_type === 'phone' ? 'Phone' : h.search_type === 'email' ? 'Email' : 'Address';
 
             return (
-              <div key={h.id} className="border border-[#1e2d40] rounded-sm bg-[#1a2636] p-2.5 hover:bg-[#1e2d40] transition-colors">
+              <div key={h.id} className="border border-[#1e2d40] rounded-sm bg-[#1b2128] p-2.5 hover:bg-[#1e2d40] transition-colors">
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -1798,7 +1798,7 @@ export default function SkipTracerV2Page() {
   // ─── Sources Tab ──────────────────────────────────────────
 
   const sourcesTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-[#141e2b]">
+    <div className="flex-1 overflow-y-auto p-4 bg-[#161b21]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <Database size={16} className="text-[#888888]" /> Data Sources ({sources.length})
@@ -1810,7 +1810,7 @@ export default function SkipTracerV2Page() {
 
       <div className="grid grid-cols-3 gap-2 mb-4">
         {Object.entries(sourceSummary).map(([cat, counts]) => (
-          <div key={cat} className="border border-[#1e2d40] rounded-sm bg-[#0d1520] p-2 text-center">
+          <div key={cat} className="border border-[#1e2d40] rounded-sm bg-[#0c0f13] p-2 text-center">
             <div className="text-[8px] font-bold uppercase tracking-wider mb-1" style={{ color: categoryColor(cat) }}>{cat}</div>
             <div className="text-[12px] font-bold text-white">{counts.healthy}/{counts.total}</div>
             <div className="text-[8px] text-[#556677]">healthy</div>
@@ -1820,7 +1820,7 @@ export default function SkipTracerV2Page() {
 
       <div className="space-y-1.5">
         {sources.map(s => (
-          <div key={s.name} className="border border-[#1e2d40] rounded-sm bg-[#1a2636] p-3">
+          <div key={s.name} className="border border-[#1e2d40] rounded-sm bg-[#1b2128] p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span
@@ -1857,7 +1857,7 @@ export default function SkipTracerV2Page() {
   // ─── Stats Tab ────────────────────────────────────────────
 
   const statsTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-[#141e2b]">
+    <div className="flex-1 overflow-y-auto p-4 bg-[#161b21]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <BarChart3 size={16} className="text-[#888888]" /> Usage Statistics
@@ -1879,20 +1879,20 @@ export default function SkipTracerV2Page() {
               { label: 'This Week', value: stats.totalSearches.week, color: '#22c55e' },
               { label: 'All Time', value: stats.totalSearches.allTime, color: '#a855f7' },
             ].map(item => (
-              <div key={item.label} className="border border-[#1e2d40] rounded-sm bg-[#0d1520] p-4 text-center">
+              <div key={item.label} className="border border-[#1e2d40] rounded-sm bg-[#0c0f13] p-4 text-center">
                 <div className="text-[24px] font-bold font-mono" style={{ color: item.color }}>{item.value}</div>
                 <div className="text-[10px] text-[#556677] uppercase tracking-wider mt-1">{item.label}</div>
               </div>
             ))}
           </div>
 
-          <div className="border border-[#1e2d40] rounded-sm bg-[#0d1520] p-4 text-center">
+          <div className="border border-[#1e2d40] rounded-sm bg-[#0c0f13] p-4 text-center">
             <div className="text-[9px] text-[#556677] uppercase tracking-wider mb-1">Total API Cost</div>
             <div className="text-[20px] font-bold text-[#f59e0b] font-mono">${stats.totalCost.toFixed(2)}</div>
           </div>
 
           {stats.topSources.length > 0 && (
-            <div className="border border-[#1e2d40] rounded-sm bg-[#1a2636]">
+            <div className="border border-[#1e2d40] rounded-sm bg-[#1b2128]">
               <div className="px-3 py-2 border-b border-[#1e2d40] text-[10px] font-bold text-[#8899aa] uppercase tracking-wider">
                 Top Sources by Usage
               </div>
@@ -1903,7 +1903,7 @@ export default function SkipTracerV2Page() {
                   return (
                     <div key={s.name} className="flex items-center gap-2">
                       <span className="text-[9px] text-[#556677] w-4 text-right font-mono">{i + 1}</span>
-                      <div className="flex-1 h-5 bg-[#0d1520] rounded-sm overflow-hidden relative">
+                      <div className="flex-1 h-5 bg-[#0c0f13] rounded-sm overflow-hidden relative">
                         <div className="h-full rounded-sm transition-all" style={{ width: `${pct}%`, backgroundColor: '#888888' }} />
                         <span className="absolute left-2 top-0.5 text-[10px] text-white font-mono">{s.name}</span>
                       </div>
@@ -1925,7 +1925,7 @@ export default function SkipTracerV2Page() {
   useEffect(() => { document.title = 'MicroBilt \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#0d1520]">
+    <div className="flex flex-col h-full overflow-hidden bg-[#0c0f13]">
       {tabBar}
       <div className={`flex ${isMobile ? 'flex-col' : 'flex-row'} flex-1 overflow-hidden`}>
         {activeTab === 'search' && (

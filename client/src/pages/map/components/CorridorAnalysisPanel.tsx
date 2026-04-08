@@ -70,14 +70,14 @@ export default function CorridorAnalysisPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="p-0.5 rounded-sm hover:bg-[#1a2636] text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
+          className="p-0.5 rounded-sm hover:bg-[#1b2128] text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
           aria-label="Close corridor analysis"
         >
           <X size={12} />
         </button>
       </div>
 
-      <div className="p-3 space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+      <div className="p-3 space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         {/* === Corridor Analysis Section === */}
         <section className="space-y-2">
           <h3 className="text-[10px] uppercase tracking-widest text-rmpg-400 font-semibold flex items-center gap-1">
@@ -138,7 +138,7 @@ export default function CorridorAnalysisPanel({
                   </div>
                   <div className="space-y-0.5">
                     {corridorData.segments.map((seg, i) => (
-                      <div key={i} className="flex items-center justify-between text-[9px] font-mono hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
+                      <div key={i} className="flex items-center justify-between text-[9px] font-mono hover:bg-[#1b2128]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                         <div className="flex items-center gap-1">
                           <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getRiskColor(seg.risk_score), boxShadow: `0 0 3px ${getRiskColor(seg.risk_score)}50` }} />
                           <span className="text-rmpg-400">Seg {i + 1}</span>

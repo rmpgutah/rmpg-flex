@@ -186,7 +186,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           {showManual && (
             <div
               className="flex items-center gap-2 p-2 font-mono text-xs"
-              style={{ background: '#050505', border: '1px solid #1e3048' }}
+              style={{ background: '#050505', border: '1px solid #2b313a' }}
             >
               <span className="flex-1 tracking-widest text-center" style={{ color: '#e0e0e0' }}>
                 {manualKey}

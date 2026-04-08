@@ -687,6 +687,7 @@ export interface PropertyPdfData {
   access_instructions?: string;
   post_orders?: string;
   hazard_notes?: string;
+  notes?: string;
   created_at?: string;
   updated_at?: string;
   attachment_images?: PdfImage[];
@@ -744,36 +745,52 @@ function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string
   return { mm, dd, yyyy, hh, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0') };
 }
 
-function fmtTimestamp(ts?: string): string {
-  if (!ts) return '';
+function parsePdfDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  if (!normalized || ['0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified', 'invalid date'].includes(normalized.toLowerCase())) {
+    return null;
+  }
+
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
-    if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
-    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
-  } catch { return ts; }
+    if (normalized.includes('T') && (normalized.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(normalized))) {
+      const parsed = new Date(normalized);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    if (normalized.includes(' ') && !normalized.includes('T')) {
+      const parsed = new Date(normalized.replace(' ', 'T'));
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const parsed = new Date(normalized.includes('T') ? normalized : `${normalized}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  } catch {
+    return null;
+  }
+}
+
+function fmtTimestamp(ts?: string): string {
+  const d = parsePdfDate(ts);
+  if (!d) return '';
+  const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
+  return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
 }
 
 /** Format: MM/DD/YYYY */
 function fmtDate(ts?: string | null): string {
-  if (!ts) return '';
-  try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
-    if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy } = toMountain(d);
-    return `${mm}/${dd}/${yyyy}`;
-  } catch { return ts; }
+  const d = parsePdfDate(ts);
+  if (!d) return '';
+  const { mm, dd, yyyy } = toMountain(d);
+  return `${mm}/${dd}/${yyyy}`;
 }
 
 /** Format: MM/DD/YYYY @ HH:MM:SS (military time) */
 function fmtDateTime(ts?: string | null): string {
-  if (!ts) return '';
-  try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
-    if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
-    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
-  } catch { return ts; }
+  const d = parsePdfDate(ts);
+  if (!d) return '';
+  const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
+  return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
 }
 
 function fmtCurrency(val?: number | null): string {
@@ -787,6 +804,195 @@ function titleCase(str: string): string {
   return str.replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
+function formatDispatchValue(value?: string | null): string {
+  return (value || '').replace(/_/g, ' ').toUpperCase();
+}
+
+function getMeaningfulPdfValue(value?: string | null): string {
+  if (value == null) return '';
+  const normalized = String(value).trim();
+  if (!normalized) return '';
+  if (['0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified', 'invalid date'].includes(normalized.toLowerCase())) return '';
+  return normalized;
+}
+
+function compactCallList(items: Array<string | undefined | null>, maxItems = 4): string {
+  const cleaned = items
+    .map((item) => (item || '').trim())
+    .filter(Boolean)
+    .map((item) => item.toUpperCase());
+
+  if (cleaned.length === 0) return '';
+  if (cleaned.length <= maxItems) return cleaned.join(', ');
+  return `${cleaned.slice(0, maxItems).join(', ')} +${cleaned.length - maxItems} MORE`;
+}
+
+function summarizeAssignedUnits(data: CallPdfData): string {
+  const detailedUnits = compactCallList((data.assigned_units_detail || []).map((unit) => unit.call_sign));
+  if (detailedUnits) return detailedUnits;
+
+  const assignedUnits = compactCallList(data.assigned_units || []);
+  if (assignedUnits) return assignedUnits;
+
+  return 'UNASSIGNED';
+}
+
+function fmtDurationSpan(start?: string | null, end?: string | null): string {
+  if (!start || !end) return '';
+
+  try {
+    const startDate = new Date(start.includes('T') ? start : `${start}T00:00:00`);
+    const endDate = new Date(end.includes('T') ? end : `${end}T00:00:00`);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate.getTime() < startDate.getTime()) {
+      return '';
+    }
+
+    const totalMinutes = Math.floor((endDate.getTime() - startDate.getTime()) / 60000);
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+
+    if (days > 0) return `${days}D ${hours}H ${minutes}M`;
+    if (hours > 0) return `${hours}H ${minutes}M`;
+    if (minutes > 0) return `${minutes} MIN`;
+    return '<1 MIN';
+  } catch {
+    return '';
+  }
+}
+
+function buildCallAlertFlags(data: CallPdfData): string[] {
+  const weaponsValue = (data.weapons_involved || '').trim().toLowerCase();
+  const hasWeaponFlag = weaponsValue !== '' && !['0', 'none', 'no', 'n/a'].includes(weaponsValue);
+
+  const flags = [
+    data.priority === 'P1' ? 'PRIORITY 1' : '',
+    data.officer_safety_caution ? 'OFFICER SAFETY' : '',
+    data.felony_in_progress ? 'FELONY IN PROGRESS' : '',
+    data.domestic_violence ? 'DOMESTIC VIOLENCE' : '',
+    data.mental_health_crisis ? 'MENTAL HEALTH' : '',
+    data.juvenile_involved ? 'JUVENILE' : '',
+    data.injuries_reported ? 'INJURIES' : '',
+    hasWeaponFlag ? 'WEAPONS' : '',
+    data.vehicle_pursuit ? 'VEHICLE PURSUIT' : '',
+    data.foot_pursuit ? 'FOOT PURSUIT' : '',
+    data.hazmat ? 'HAZMAT' : '',
+    data.k9_requested ? 'K9 REQUESTED' : '',
+    data.ems_requested ? 'EMS REQUESTED' : '',
+    data.fire_requested ? 'FIRE REQUESTED' : '',
+    data.le_notified ? 'LE NOTIFIED' : '',
+  ].filter(Boolean);
+
+  return [...new Set(flags)];
+}
+
+function buildCallCautionText(data: CallPdfData, assignedUnitsSummary: string): string {
+  const parts: string[] = [];
+  const sceneSafety = (data.scene_safety || '').trim();
+  const weapons = (data.weapons_involved || '').trim();
+
+  if (data.officer_safety_caution) {
+    parts.push('Officer safety caution flagged for responding personnel.');
+  }
+  if (sceneSafety && !['standard', 'normal', 'clear', 'safe'].includes(sceneSafety.toLowerCase())) {
+    parts.push(`Scene safety notes: ${sceneSafety}.`);
+  }
+  if (weapons && !['0', 'none', 'no', 'n/a'].includes(weapons.toLowerCase())) {
+    parts.push(`Weapons indicated: ${weapons}.`);
+  }
+  if (data.le_agency) {
+    const caseSuffix = data.le_case_number ? ` (${data.le_case_number})` : '';
+    parts.push(`Law enforcement notified: ${data.le_agency}${caseSuffix}.`);
+  }
+  if (assignedUnitsSummary && assignedUnitsSummary !== 'UNASSIGNED') {
+    parts.push(`Assigned units: ${assignedUnitsSummary}.`);
+  }
+
+  return parts.join(' ');
+}
+
+type RecordOverviewField = {
+  label: string;
+  value?: string | number | null;
+};
+
+function addRecordOverviewSection(
+  doc: jsPDF,
+  title: string,
+  fields: RecordOverviewField[],
+  y: number,
+  priority?: string,
+): number {
+  const presentFields = fields.filter((field) => String(field.value ?? '').trim());
+  if (presentFields.length === 0) return y;
+
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const estimatedRows = Math.ceil(presentFields.length / 4);
+  y = checkPageBreak(doc, y, 10 + estimatedRows * SPACING.FIELD_ROW_ADVANCE, priority);
+
+  const sec = openAutoSection(doc, title, y);
+  y = sec.contentY + 0.5;
+
+  for (let i = 0; i < presentFields.length; i += 4) {
+    const row = presentFields.slice(i, i + 4);
+    const colW = ffw / row.length;
+    let maxY = y + SPACING.FIELD_ROW_ADVANCE;
+    row.forEach((field, idx) => {
+      const fy = addFieldPair(doc, field.label, String(field.value ?? ''), lx + idx * colW, y, colW);
+      if (fy > maxY) maxY = fy;
+    });
+    y = maxY;
+  }
+
+  return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+}
+
+function addRecordAlertBadges(
+  doc: jsPDF,
+  label: string,
+  flags: Array<string | undefined | null>,
+  y: number,
+  priority?: string,
+): number {
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const cleanFlags = [...new Set(
+    flags
+      .map((flag) => (flag || '').trim().toUpperCase())
+      .filter(Boolean),
+  )];
+
+  if (cleanFlags.length === 0) return y;
+
+  const cols = 3;
+  const rows = Math.ceil(cleanFlags.length / cols);
+  y = checkPageBreak(doc, y, 8 + rows * (SPACING.LG + 0.5), priority);
+
+  const sec = openAutoSection(doc, label, y);
+  y = sec.contentY + 1;
+
+  const colW = ffw / cols;
+  for (let idx = 0; idx < cleanFlags.length; idx += cols) {
+    const row = cleanFlags.slice(idx, idx + cols);
+    row.forEach((flag, colIdx) => {
+      addCheckboxField(doc, flag, true, lx + colIdx * colW, y);
+    });
+    y += SPACING.LG + 0.5;
+  }
+
+  return closeAutoSection(doc, sec.sectionY, y - 1.2, undefined, sec.sectionPage);
+}
+
+function daysUntilDate(ts?: string | null): number | null {
+  const target = parsePdfDate(ts);
+  if (!target) return null;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  return Math.floor((startOfTarget.getTime() - startOfToday.getTime()) / 86400000);
+}
+
 // ── Call for Service Report ──────────────────────────────────
 
 function generateCallReport(doc: jsPDF, data: CallPdfData) {
@@ -795,6 +1001,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
+  const assignedUnitsSummary = summarizeAssignedUnits(data);
+  const callAlertFlags = buildCallAlertFlags(data);
+  const cautionText = buildCallCautionText(data, assignedUnitsSummary);
+  const leadSummary = data.description || data.narrative || data.action_taken || '';
 
   setActiveCaseNumber(data.call_number);
   let y = drawNibrsHeader(doc, {
@@ -816,15 +1026,20 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
     const numCols = hasContract ? 6 : 5;
     const barH = 8;
+    const districtAccent: [number, number, number] = [212, 160, 23];
+    const districtDivider: [number, number, number] = [82, 88, 96];
     // Black background with white text
     doc.setFillColor(...COLOR.TEXT_PRIMARY);
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
+    doc.setDrawColor(districtDivider[0], districtDivider[1], districtDivider[2]);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH);
 
     const distFields = [
       { label: 'SECTION', value: data.section_name || 'N/A' },
       { label: 'ZONE', value: data.zone_name || 'N/A' },
-      { label: 'BEAT', value: data.beat_id || 'N/A' },
-      { label: 'AREA', value: data.beat_descriptor || 'N/A' },
+      { label: 'BEAT', value: data.beat_name || data.beat_id || 'N/A' },
+      { label: 'AREA', value: data.zone_beat || data.beat_descriptor || 'N/A' },
       { label: 'CODE', value: data.dispatch_code || 'N/A' },
       ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
     ];
@@ -854,37 +1069,70 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const fx = colX + 1.5;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(255, 255, 255);
+      doc.setTextColor(districtAccent[0], districtAccent[1], districtAccent[2]);
       doc.text(f.label, fx, barY + 2.8);
       doc.setFont('courier', 'bold');
       doc.setFontSize(dValSize);
       doc.setTextColor(255, 255, 255);
       doc.text(sanitizePdfText(f.value), fx, barY + 6.5);
+      if (i < distFields.length - 1) {
+        const dividerX = colX + fw;
+        doc.line(dividerX, barY + 1, dividerX, barY + barH - 1);
+      }
       colX += fw;
     });
 
     y = barY + barH + 1.5;
   }
 
-  // Classification
-  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+  // Dispatch overview
+  y = checkPageBreak(doc, y, 20, prio);
+  { const sec = openAutoSection(doc, 'Dispatch Overview', y); y = sec.contentY;
+    const quarterW = ffw / 4;
+    const overviewFields = [
+      { label: 'Priority', value: data.priority || '' },
+      { label: 'Status', value: displayStatus(data.status || '') },
+      { label: 'Source', value: formatDispatchValue(data.source) },
+      { label: 'Dispatcher', value: data.dispatcher_name || data.created_by || '' },
+    ];
+    let maxOverviewY = y + SPACING.FIELD_ROW_ADVANCE;
+    for (let i = 0; i < overviewFields.length; i++) {
+      const fy = addFieldPair(doc, overviewFields[i].label, overviewFields[i].value, lx + i * quarterW, y, quarterW);
+      if (fy > maxOverviewY) maxOverviewY = fy;
+    }
+    y = maxOverviewY;
+
+    { const yL = addFieldPair(doc, 'Incident Type', formatDispatchValue(data.incident_type), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Assigned Units', assignedUnitsSummary, rx, y, hfw);
+      y = Math.max(yL, yR); }
+
+    y = addFieldPair(doc, 'Initial Summary', leadSummary, lx, y, ffw, 6);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  y = addRecordAlertBadges(doc, 'Tactical Alerts', callAlertFlags, y, prio);
+
+  if (cautionText) {
+    y = checkPageBreak(doc, y, 14, prio);
+    y = addCautionBlock(doc, cautionText, lx, y, ffw);
+  }
+
+  // Case linkage
+  { const sec = openAutoSection(doc, 'Case Linkage', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
-      { label: 'Incident Type', value: (data.incident_type || '').replace(/_/g, ' ').toUpperCase() },
-      { label: 'Priority', value: data.priority },
-      { label: 'Status', value: displayStatus(data.status || '') },
-      { label: 'Source', value: (data.source || '').replace(/_/g, ' ').toUpperCase() },
       { label: 'Dispatch Code', value: data.dispatch_code || '' },
       { label: 'Disposition', value: data.disposition || '' },
       { label: 'Case Number', value: data.case_number || '' },
       { label: 'Incident Number', value: data.incident_number || '' },
+      { label: data.contract_id ? 'Contract ID' : 'Secondary Type', value: data.contract_id || formatDispatchValue(data.secondary_type) },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
+  // Response timeline — 3-column grid (timestamps + duration metrics)
   y = checkPageBreak(doc, y, 15, prio);
-  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Response Timeline', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: fmtTimestamp(data.created_at || '') },
       { label: 'Dispatched', value: fmtTimestamp(data.dispatched_at || '') },
@@ -893,12 +1141,18 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Cleared', value: fmtTimestamp(data.cleared_at || '') },
       { label: 'Closed', value: fmtTimestamp(data.closed_at || '') },
     ], y);
+    y = addThreeColumnFields(doc, [
+      { label: 'Dispatch Lag', value: fmtDurationSpan(data.created_at || '', data.dispatched_at || '') },
+      { label: 'Response Time', value: fmtDurationSpan(data.enroute_at || data.dispatched_at || '', data.onscene_at || '') },
+      { label: 'Time On Scene', value: fmtDurationSpan(data.onscene_at || '', data.cleared_at || data.closed_at || '') },
+      { label: data.closed_at || data.cleared_at ? 'Total Duration' : 'Call Age', value: fmtDurationSpan(data.created_at || '', data.closed_at || data.cleared_at || new Date().toISOString()) },
+    ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Caller Information
+  // Reporting party
   y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Reporting Party', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
       y = Math.max(yL, yR); }
@@ -947,9 +1201,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
   }
 
-  // Location
+  // Location & premise
   y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Location & Premise', y); y = sec.contentY;
     // Row 1: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     // Row 2: Latitude | Longitude | Dispatch Code (3 columns)
@@ -982,9 +1236,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Flags — before Scene Conditions
+  // Operational checklist — before Scene Conditions
   y = checkPageBreak(doc, y, 15, prio);
-  { const flagSec = openAutoSection(doc, 'Flags', y);
+  { const flagSec = openAutoSection(doc, 'Operational Checklist', y);
     // Checkboxes draw at y-1.5, so need extra offset to clear header bar
     y = flagSec.contentY + 2;
     const flagCols = 6;
@@ -1207,9 +1461,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Incident Details — dynamic page break ──
+  // ── Call Description — dynamic page break ──
   y = checkPageBreak(doc, y, 25, prio);
-  { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Call Description', y); y = sec.contentY;
     y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
@@ -1229,14 +1483,14 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_INVERTED);
       const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
+      doc.text('CALL DESCRIPTION -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       // Extra padding so text clears the header bar (matching other section body spacing)
       return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     };
-    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
+    y = addFormattedText(doc, data.description || '', lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
     y += SPACING.SM;
     // Pack remaining fields tightly — check page break before each group
     y = checkPageBreak(doc, y, 10, prio);
@@ -1507,6 +1761,21 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // Determine priority — escalate if active warrants or BOLO
   const hasActiveWarrants = data.warrants && data.warrants.some(w => w.status === 'active');
   const prio = hasActiveWarrants ? 'critical' : data.bolo_active ? 'high' : 'routine';
+  const personAlertFlags = [
+    hasActiveWarrants ? 'ACTIVE WARRANT' : '',
+    data.bolo_active ? 'ACTIVE BOLO' : '',
+    data.is_sex_offender ? 'SEX OFFENDER' : '',
+    data.is_veteran ? 'VETERAN' : '',
+    getMeaningfulPdfValue(data.gang_affiliation) ? 'GANG AFFILIATION' : '',
+    getMeaningfulPdfValue(data.probation_parole) ? 'PROBATION / PAROLE' : '',
+    ...(data.flags || []),
+  ];
+  const personCautionText = [
+    data.caution_flags || '',
+    getMeaningfulPdfValue(data.gang_affiliation) ? `Gang affiliation: ${getMeaningfulPdfValue(data.gang_affiliation)}.` : '',
+    getMeaningfulPdfValue(data.probation_parole) ? `Probation/parole status: ${getMeaningfulPdfValue(data.probation_parole)}${getMeaningfulPdfValue(data.probation_parole_officer) ? ` (${getMeaningfulPdfValue(data.probation_parole_officer)})` : ''}.` : '',
+    data.known_associates ? `Known associates: ${data.known_associates}.` : '',
+  ].filter(Boolean).join(' ');
 
   const personName = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
   setActiveCaseNumber(personName);
@@ -1528,6 +1797,22 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     doc.setDrawColor(...COLOR.BORDER_FIELD);
     doc.setLineWidth(BORDER.FIELD);
     doc.rect(photoX, y - 3, photoW, photoH);
+    y += photoH + 2;
+  }
+
+  y = addRecordOverviewSection(doc, 'Person Overview', [
+    { label: 'Record ID', value: String(data.id || '') },
+    { label: 'Subject', value: personName },
+    { label: 'Date of Birth', value: fmtDate(data.date_of_birth) },
+    { label: 'Alias', value: data.alias_nickname || '' },
+    { label: 'Phone', value: data.phone || '' },
+    { label: 'Employer', value: data.employer || '' },
+    { label: 'Address', value: [data.address, data.city, data.state, data.zip].filter(Boolean).join(', ') },
+    { label: 'Created', value: fmtTimestamp(data.created_at || '') },
+  ], y, prio);
+  y = addRecordAlertBadges(doc, 'PERSON ALERTS', personAlertFlags, y, prio);
+  if (personCautionText) {
+    y = addCautionBlock(doc, personCautionText, lx, y, ffw);
   }
 
   // ── 1. Subject Identification ─────────────────────────────
@@ -1645,9 +1930,12 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
     y += SPACING.LG;
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
-    const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
+    const gangAffiliation = getMeaningfulPdfValue(data.gang_affiliation);
+    const probationParoleValue = getMeaningfulPdfValue(data.probation_parole);
+    const probationOfficer = getMeaningfulPdfValue(data.probation_parole_officer);
+    const probParole = `${probationParoleValue}${probationOfficer ? ` (Officer: ${probationOfficer})` : ''}`.trim();
     const thirdW = ffw / 3;
-    const f1 = addFieldPair(doc, 'Gang Affiliation', data.gang_affiliation || '', lx, y, thirdW);
+    const f1 = addFieldPair(doc, 'Gang Affiliation', gangAffiliation, lx, y, thirdW);
     const f2 = addFieldPair(doc, 'Probation / Parole', probParole, lx + thirdW, y, thirdW * 2);
     y = Math.max(f1, f2);
     // Row 3: Known Associates (if present)
@@ -1666,11 +1954,6 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y += 2.5;
     y = addFlagBadges(doc, data.flags, lx, y, ffw, prio);
     y += 0.5;
-  }
-
-  // Caution block — amber warning styling for officer safety (kept as-is)
-  if (data.caution_flags) {
-    y = addCautionBlock(doc, data.caution_flags, lx, y, ffw);
   }
 
   // ── 9. Emergency Contact ──────────────────────────────────
@@ -1934,6 +2217,26 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
+  const stolenStatus = (data.stolen_status || '').trim();
+  const hasStolenStatus = !!stolenStatus && !['not stolen', 'not_stolen', 'none', 'clear', 'recovered'].includes(stolenStatus.toLowerCase());
+  const regDays = daysUntilDate(data.registration_expiry);
+  const vehicleAlertFlags = [
+    hasStolenStatus ? 'STOLEN' : '',
+    data.commercial_vehicle ? 'COMMERCIAL' : '',
+    data.hazmat ? 'HAZMAT' : '',
+    data.tow_status ? 'TOW STATUS' : '',
+    regDays != null && regDays < 0 ? 'REGISTRATION EXPIRED' : '',
+    regDays != null && regDays >= 0 && regDays <= 30 ? 'REGISTRATION EXPIRING' : '',
+    ...(data.flags || []),
+  ];
+  const vehicleCautionText = [
+    hasStolenStatus ? `Vehicle status is ${stolenStatus.toUpperCase()}.` : '',
+    data.tow_company ? `Tow company: ${data.tow_company}.` : '',
+    data.tow_date ? `Tow date: ${fmtDate(data.tow_date)}.` : '',
+    regDays != null && regDays < 0 ? `Registration expired on ${fmtDate(data.registration_expiry)}.` : '',
+    regDays != null && regDays >= 0 && regDays <= 30 ? `Registration expires on ${fmtDate(data.registration_expiry)}.` : '',
+    data.lien_holder ? `Lien holder on file: ${data.lien_holder}.` : '',
+  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.license_plate || 'N/A');
   let y = drawNibrsHeader(doc, {
@@ -1943,6 +2246,21 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     formNumber: 'FORM PS-203',
     caseNumber: data.license_plate || 'N/A',
   });
+
+  y = addRecordOverviewSection(doc, 'Vehicle Overview', [
+    { label: 'Plate', value: data.license_plate || '' },
+    { label: 'Registered State', value: data.plate_state || '' },
+    { label: 'Primary Status', value: hasStolenStatus ? stolenStatus.toUpperCase() : displayStatus(data.tow_status || 'Active') },
+    { label: 'Record Updated', value: fmtTimestamp(data.updated_at || data.created_at) },
+    { label: 'Owner', value: data.owner_name || '' },
+    { label: 'Year / Make / Model', value: [data.year, data.make, data.model].filter(Boolean).join(' ') },
+    { label: 'Color', value: [data.color, data.secondary_color].filter(Boolean).join(' / ') },
+    { label: 'VIN', value: data.vin || '' },
+  ], y);
+  y = addRecordAlertBadges(doc, 'VEHICLE ALERTS', vehicleAlertFlags, y);
+  if (vehicleCautionText) {
+    y = addCautionBlock(doc, vehicleCautionText, lx, y, ffw);
+  }
 
   // ── Vehicle Identification ──
   y = checkPageBreak(doc, y, 25);
@@ -1985,6 +2303,7 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     // Row 2: Owner Address (full width)
     y = addFieldPair(doc, 'Owner Address', data.owner_address || '', lx, y, ffw);
     // Row 3: Checkboxes + Lien Holder
+    y += 1.2;
     let flagX = lx;
     flagX = addCheckboxField(doc, 'Commercial', !!data.commercial_vehicle, flagX, y);
     flagX = addCheckboxField(doc, 'Hazmat', !!data.hazmat, flagX + SPACING.SM, y);
@@ -2004,9 +2323,9 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Legal Status ──
+  // ── Recovery & Tow Status ──
   y = checkPageBreak(doc, y, 18);
-  { const sec = openAutoSection(doc, 'Legal Status', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Recovery & Tow Status', y); y = sec.contentY;
     const thirdW = ffw / 3;
     // Row 1: Stolen Status, Stolen Date, Recovery Date
     const r1a = addFieldPair(doc, 'Stolen Status', (data.stolen_status || 'Not Stolen').toUpperCase(), lx, y, thirdW);
@@ -2021,17 +2340,22 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── Vehicle Flags ──
+  if ((data.flags && data.flags.length > 0) || data.notes) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Vehicle Flags & Notes', y); y = sec.contentY;
+    if (data.flags && data.flags.length > 0) {
+      y = addFieldPair(doc, 'Flags', data.flags.join(', '), lx, y, ffw);
+    }
+    if (data.notes) {
+      y = addFieldPair(doc, 'Summary Notes', data.notes, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // Free-form sections (keep as narrative — these have long text)
   y = addNarrativeSection(doc, 'Distinguishing Features', data.distinguishing_features || '', y);
   y = addNarrativeSection(doc, 'Damage Description', data.damage_description || '', y);
-
-  if (data.flags && data.flags.length > 0) {
-    y = checkPageBreak(doc, y, 10);
-    { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-      y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
-      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-    }
-  }
 
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
@@ -2051,6 +2375,22 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   const ffw = getFullFieldWidth(doc);
 
   const statusPrio = data.status === 'active' ? 'critical' : data.status === 'served' ? 'low' : 'medium';
+  const warrantExpiryDays = daysUntilDate(data.expires_at);
+  const warrantAlertFlags = [
+    data.status === 'active' ? 'ACTIVE WARRANT' : '',
+    data.status === 'served' ? 'SERVED' : '',
+    warrantExpiryDays != null && warrantExpiryDays < 0 ? 'EXPIRED' : '',
+    warrantExpiryDays != null && warrantExpiryDays >= 0 && warrantExpiryDays <= 14 ? 'EXPIRING SOON' : '',
+    data.offense_level ? data.offense_level.toUpperCase() : '',
+    data.verified_by ? 'VERIFIED' : '',
+  ];
+  const warrantCautionText = [
+    data.status === 'active' ? 'Warrant remains active and should be confirmed before field contact.' : '',
+    data.issuing_court ? `Issuing court: ${data.issuing_court}.` : '',
+    data.case_number ? `Case number: ${data.case_number}.` : '',
+    data.expires_at ? `Expiration date: ${fmtDate(data.expires_at)}.` : '',
+    data.served_location ? `Service location: ${data.served_location}.` : '',
+  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.warrant_number);
   let y = drawNibrsHeader(doc, {
@@ -2062,9 +2402,24 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
+  y = addRecordOverviewSection(doc, 'Warrant Overview', [
+    { label: 'Warrant Number', value: data.warrant_number || '' },
+    { label: 'Status', value: displayStatus(data.status || '') },
+    { label: 'Type', value: (data.type || '').toUpperCase() },
+    { label: 'Offense Level', value: (data.offense_level || '').toUpperCase() },
+    { label: 'Subject', value: [data.subject_last_name, data.subject_first_name].filter(Boolean).join(', ') },
+    { label: 'Issuing Court', value: data.issuing_court || '' },
+    { label: 'Bail', value: fmtCurrency(data.bail_amount) },
+    { label: 'Expires', value: fmtDate(data.expires_at) },
+  ], y, statusPrio);
+  y = addRecordAlertBadges(doc, 'WARRANT ALERTS', warrantAlertFlags, y, statusPrio);
+  if (warrantCautionText) {
+    y = addCautionBlock(doc, warrantCautionText, lx, y, ffw);
+  }
+
   // ── Warrant Information ──
   y = checkPageBreak(doc, y, 18, statusPrio);
-  { const sec = openAutoSection(doc, 'Warrant Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Warrant Details', y); y = sec.contentY;
     const quarterW = ffw / 4;
     // Row 1: Warrant Number (2/5), Type (1/5), Status (1/5), Offense Level (1/5)
     const fifthW = ffw / 5;
@@ -2103,9 +2458,9 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Court Information ──
+  // ── Judicial Authority ──
   y = checkPageBreak(doc, y, 18, statusPrio);
-  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Judicial Authority', y); y = sec.contentY;
     // Row 1: Issuing Court (half), Issuing Judge (half)
     const r1a = addFieldPair(doc, 'Issuing Court', data.issuing_court || '', lx, y, hfw);
     const r1b = addFieldPair(doc, 'Issuing Judge', data.issuing_judge || '', rx, y, hfw);
@@ -2136,7 +2491,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   // ── Source / Verification (conditional) ──
   if (data.data_source || data.search_date || data.verified_by) {
     y = checkPageBreak(doc, y, 18, statusPrio);
-    { const sec = openAutoSection(doc, 'Source / Verification', y); y = sec.contentY;
+    { const sec = openAutoSection(doc, 'Source & Verification', y); y = sec.contentY;
       const thirdW = ffw / 3;
       // Row 1: Data Source (2/3), Search Date (1/3)
       const r1a = addFieldPair(doc, 'Data Source', data.data_source || '', lx, y, thirdW * 2);
@@ -2173,6 +2528,18 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
+  const evidenceAlertFlags = [
+    displayStatus((data.status || '').replace(/_/g, ' ')),
+    data.lab_submitted ? 'LAB SUBMITTED' : '',
+    data.photo_taken ? 'PHOTO TAKEN' : '',
+    data.chain_of_custody && data.chain_of_custody.length > 0 ? 'CHAIN OF CUSTODY' : '',
+    data.disposal_method ? 'DISPOSED' : '',
+  ];
+  const evidenceCautionText = [
+    data.storage_location ? `Current storage location: ${data.storage_location}.` : '',
+    data.lab_submitted && data.lab_name ? `Laboratory routing: ${data.lab_name}${data.lab_case_number ? ` (${data.lab_case_number})` : ''}.` : '',
+    data.disposal_method ? `Final disposition: ${data.disposal_method}${data.disposal_date ? ` on ${fmtDate(data.disposal_date)}` : ''}.` : '',
+  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.evidence_number);
   let y = drawNibrsHeader(doc, {
@@ -2182,6 +2549,21 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     formNumber: 'FORM PS-205',
     caseNumber: data.evidence_number,
   });
+
+  y = addRecordOverviewSection(doc, 'Evidence Overview', [
+    { label: 'Evidence Number', value: data.evidence_number || '' },
+    { label: 'Status', value: displayStatus((data.status || '').replace(/_/g, ' ')) },
+    { label: 'Type', value: (data.evidence_type || '').replace(/_/g, ' ').toUpperCase() },
+    { label: 'Category', value: (data.category || '').toUpperCase() },
+    { label: 'Related Incident', value: data.incident_number || '' },
+    { label: 'Collected By', value: data.collected_by || '' },
+    { label: 'Collected', value: fmtTimestamp(data.collected_date) },
+    { label: 'Storage', value: data.storage_location || '' },
+  ], y);
+  y = addRecordAlertBadges(doc, 'EVIDENCE ALERTS', evidenceAlertFlags, y);
+  if (evidenceCautionText) {
+    y = addCautionBlock(doc, evidenceCautionText, lx, y, ffw);
+  }
 
   // ── Evidence Identification ──
   y = checkPageBreak(doc, y, 25);
@@ -2214,9 +2596,9 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = addNarrativeSection(doc, 'Item Description', data.description, y);
   }
 
-  // ── Collection Information ──
+  // ── Collection & Intake ──
   y = checkPageBreak(doc, y, 18);
-  { const sec = openAutoSection(doc, 'Collection Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Collection & Intake', y); y = sec.contentY;
     const quarterW = ffw / 4;
     // Row 1: Collected By (half), Collection Date (quarter), Packaging (quarter)
     const r1a = addFieldPair(doc, 'Collected By', data.collected_by || '', lx, y, hfw);
@@ -2259,10 +2641,10 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Lab Analysis (conditional) ──
+  // ── Laboratory Routing (conditional) ──
   if (data.lab_submitted) {
     y = checkPageBreak(doc, y, 12);
-    { const sec = openAutoSection(doc, 'Lab Analysis', y); y = sec.contentY;
+    { const sec = openAutoSection(doc, 'Laboratory Routing', y); y = sec.contentY;
       let flagX = lx;
       flagX = addCheckboxField(doc, 'Submitted to Lab', true, flagX, y);
       y += SPACING.LG;
@@ -2273,10 +2655,10 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     }
   }
 
-  // ── Disposition / Disposal (conditional) ──
+  // ── Final Disposition (conditional) ──
   if (data.disposal_method) {
     y = checkPageBreak(doc, y, 12);
-    { const sec = openAutoSection(doc, 'Disposition / Disposal', y); y = sec.contentY;
+    { const sec = openAutoSection(doc, 'Final Disposition', y); y = sec.contentY;
       const thirdW = ffw / 3;
       const r1a = addFieldPair(doc, 'Method', data.disposal_method, lx, y, thirdW);
       const r1b = addFieldPair(doc, 'Date', fmtDate(data.disposal_date), lx + thirdW, y, thirdW);
@@ -2315,6 +2697,25 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     maintenance: 'FLEET MAINTENANCE REPORT',
     mileage_summary: 'FLEET MILEAGE SUMMARY REPORT',
   };
+  const serviceDays = daysUntilDate(data.next_service_due);
+  const registrationDays = daysUntilDate(data.registration_expiry);
+  const insuranceDays = daysUntilDate(data.insurance_expiry);
+  const fleetAlertFlags = [
+    displayStatus((data.status || '').replace(/_/g, ' ')),
+    reportType === 'maintenance' ? 'MAINTENANCE' : '',
+    reportType === 'fuel_logs' ? 'FUEL LOGS' : '',
+    reportType === 'mileage_summary' ? 'MILEAGE SUMMARY' : '',
+    serviceDays != null && serviceDays < 0 ? 'SERVICE OVERDUE' : '',
+    serviceDays != null && serviceDays >= 0 && serviceDays <= 30 ? 'SERVICE DUE' : '',
+    registrationDays != null && registrationDays < 0 ? 'REGISTRATION EXPIRED' : '',
+    insuranceDays != null && insuranceDays < 0 ? 'INSURANCE EXPIRED' : '',
+  ];
+  const fleetCautionText = [
+    data.assigned_unit_call_sign ? `Assigned unit: ${data.assigned_unit_call_sign}.` : 'Vehicle is currently unassigned.',
+    serviceDays != null && serviceDays < 0 ? `Next service date passed on ${fmtDate(data.next_service_due)}.` : '',
+    registrationDays != null && registrationDays < 0 ? `Registration expired on ${fmtDate(data.registration_expiry)}.` : '',
+    insuranceDays != null && insuranceDays < 0 ? `Insurance expired on ${fmtDate(data.insurance_expiry)}.` : '',
+  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.vehicle_number);
   let y = drawNibrsHeader(doc, {
@@ -2324,6 +2725,21 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     formNumber: 'FORM PS-206',
     caseNumber: data.vehicle_number,
   });
+
+  y = addRecordOverviewSection(doc, 'Fleet Overview', [
+    { label: 'Unit Number', value: data.vehicle_number || '' },
+    { label: 'Report Type', value: (reportType || 'status').replace(/_/g, ' ').toUpperCase() },
+    { label: 'Status', value: displayStatus((data.status || '').replace(/_/g, ' ')) },
+    { label: 'Assigned Unit', value: data.assigned_unit_call_sign || 'UNASSIGNED' },
+    { label: 'Year / Make / Model', value: [data.year, data.make, data.model].filter(Boolean).join(' ') },
+    { label: 'Current Mileage', value: data.current_mileage != null ? data.current_mileage.toLocaleString() : '' },
+    { label: 'Next Service Due', value: fmtDate(data.next_service_due) },
+    { label: 'Registration / Insurance', value: [fmtDate(data.registration_expiry), fmtDate(data.insurance_expiry)].filter(Boolean).join(' / ') },
+  ], y);
+  y = addRecordAlertBadges(doc, 'FLEET ALERTS', fleetAlertFlags, y);
+  if (fleetCautionText) {
+    y = addCautionBlock(doc, fleetCautionText, lx, y, ffw);
+  }
 
   // ── Vehicle Information ──
   y = checkPageBreak(doc, y, 25);
@@ -2540,6 +2956,24 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   const cw = getContentWidth(doc);
 
   const reportType = data.report_type || 'full';
+  const dlDays = daysUntilDate(data.dl_expiry);
+  const trainingCount = data.training_records?.length || 0;
+  const credentialCount = data.credentials?.length || 0;
+  const personnelAlertFlags = [
+    reportType === 'training' ? 'TRAINING' : '',
+    reportType === 'credentials' ? 'CREDENTIALS' : '',
+    reportType === 'equipment' ? 'EQUIPMENT' : '',
+    reportType === 'time' ? 'TIME & ATTENDANCE' : '',
+    data.termination_date ? 'SEPARATED' : '',
+    dlDays != null && dlDays < 0 ? 'LICENSE EXPIRED' : '',
+    dlDays != null && dlDays >= 0 && dlDays <= 30 ? 'LICENSE EXPIRING' : '',
+  ];
+  const personnelCautionText = [
+    data.termination_date ? `Employment end date: ${fmtDate(data.termination_date)}.` : '',
+    dlDays != null && dlDays < 0 ? `Driver license expired on ${fmtDate(data.dl_expiry)}.` : '',
+    trainingCount > 0 ? `${trainingCount} training record${trainingCount === 1 ? '' : 's'} on file.` : '',
+    credentialCount > 0 ? `${credentialCount} credential${credentialCount === 1 ? '' : 's'} on file.` : '',
+  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.badge_number || data.employee_id || 'N/A');
   const reportTitle = reportType === 'credentials' ? 'CREDENTIALS REPORT'
@@ -2554,6 +2988,21 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     formNumber: 'FORM PS-207',
     caseNumber: data.badge_number || data.employee_id || 'N/A',
   });
+
+  y = addRecordOverviewSection(doc, 'Personnel Overview', [
+    { label: 'Badge Number', value: data.badge_number || '' },
+    { label: 'Employee ID', value: data.employee_id || '' },
+    { label: 'Report Type', value: reportType.replace(/_/g, ' ').toUpperCase() },
+    { label: 'Department', value: data.department || '' },
+    { label: 'Officer', value: [data.last_name, data.first_name].filter(Boolean).join(', ') },
+    { label: 'Rank / Role', value: [data.rank, data.role].filter(Boolean).join(' / ').toUpperCase() },
+    { label: 'Hire Date', value: fmtDate(data.hire_date) },
+    { label: 'Shift Preference', value: data.shift_preference || '' },
+  ], y);
+  y = addRecordAlertBadges(doc, 'PERSONNEL ALERTS', personnelAlertFlags, y);
+  if (personnelCautionText) {
+    y = addCautionBlock(doc, personnelCautionText, lx, y, ffw);
+  }
 
   // ── Officer Identification (always shown) ──
   y = checkPageBreak(doc, y, 20);
@@ -2824,6 +3273,15 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
+  const propertyAlertFlags = [
+    data.is_active ? 'ACTIVE SITE' : 'INACTIVE SITE',
+    data.gate_code || data.alarm_code ? 'CONTROLLED ACCESS' : '',
+    data.hazard_notes ? 'HAZARD NOTES' : '',
+  ];
+  const propertyCautionText = [
+    data.hazard_notes ? `Hazard notes: ${data.hazard_notes}.` : '',
+    data.emergency_contact ? `Emergency contact: ${data.emergency_contact}.` : '',
+  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.name || 'N/A');
   let y = drawNibrsHeader(doc, {
@@ -2833,6 +3291,19 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     formNumber: 'FORM PS-208',
     caseNumber: data.name || 'N/A',
   });
+
+  y = addRecordOverviewSection(doc, 'Property Overview', [
+    { label: 'Property Name', value: data.name || '' },
+    { label: 'Client', value: data.client_name || '' },
+    { label: 'Property Type', value: data.property_type || '' },
+    { label: 'Status', value: data.is_active ? 'ACTIVE' : 'INACTIVE' },
+    { label: 'Emergency Contact', value: data.emergency_contact || '' },
+    { label: 'Coordinates', value: data.latitude != null && data.longitude != null ? `${data.latitude}, ${data.longitude}` : '' },
+  ], y);
+  y = addRecordAlertBadges(doc, 'PROPERTY ALERTS', propertyAlertFlags, y);
+  if (propertyCautionText) {
+    y = addCautionBlock(doc, propertyCautionText, lx, y, ffw);
+  }
 
   // ── Property Information ──
   y = checkPageBreak(doc, y, 18);
@@ -2872,6 +3343,15 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── Property Administration ──
+  y = checkPageBreak(doc, y, 12);
+  { const sec = openAutoSection(doc, 'Property Administration', y); y = sec.contentY;
+    const r1a = addFieldPair(doc, 'Created', fmtTimestamp(data.created_at || ''), lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Updated', fmtTimestamp(data.updated_at || ''), rx, y, hfw);
+    y = Math.max(r1a, r1b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // Access Instructions
   y = addNarrativeSection(doc, 'Access Instructions', data.access_instructions || '', y);
 
@@ -2880,6 +3360,9 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 
   // Hazard Notes
   y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
+
+  // Notes
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -2906,6 +3389,18 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     warning: 'routine',
   };
   const prio = typePrioMap[data.type] || 'routine';
+  const courtDays = daysUntilDate(data.court_date);
+  const citationAlertFlags = [
+    (data.type || '').replace(/_/g, ' ').toUpperCase(),
+    displayStatus((data.status || '').replace(/_/g, ' ')),
+    courtDays != null ? 'COURT DATE' : '',
+    data.fine_amount != null && data.fine_amount > 0 ? 'FINE ASSESSED' : '',
+  ];
+  const citationCautionText = [
+    data.court_name ? `Court venue: ${data.court_name}.` : '',
+    data.court_date ? `Court date: ${fmtDate(data.court_date)}.` : '',
+    courtDays != null && courtDays < 0 ? 'Court date has passed and disposition should be reviewed.' : '',
+  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.citation_number);
   let y = drawNibrsHeader(doc, {
@@ -2915,6 +3410,21 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     formNumber: 'FORM PS-209',
     caseNumber: data.citation_number,
   });
+
+  y = addRecordOverviewSection(doc, 'Citation Overview', [
+    { label: 'Citation Number', value: data.citation_number || '' },
+    { label: 'Type', value: (data.type || '').replace(/_/g, ' ').toUpperCase() },
+    { label: 'Status', value: displayStatus((data.status || '').replace(/_/g, ' ')) },
+    { label: 'Violation Date', value: [data.violation_date, data.violation_time].filter(Boolean).join(' @ ') },
+    { label: 'Subject', value: data.person_name || '' },
+    { label: 'Statute', value: data.statute_citation || '' },
+    { label: 'Fine Amount', value: data.fine_amount != null ? fmtCurrency(data.fine_amount) : '' },
+    { label: 'Issuing Officer', value: data.issuing_officer_name || '' },
+  ], y, prio);
+  y = addRecordAlertBadges(doc, 'CITATION ALERTS', citationAlertFlags, y, prio);
+  if (citationCautionText) {
+    y = addCautionBlock(doc, citationCautionText, lx, y, ffw);
+  }
 
   // ── Citation Information ──
   y = checkPageBreak(doc, y, 18, prio);
@@ -3006,6 +3516,17 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
 
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
+
+  // ── Record Metadata ──
+  if (data.created_at || data.updated_at) {
+    y = checkPageBreak(doc, y, 12, prio);
+    { const sec = openAutoSection(doc, 'Record Metadata', y); y = sec.contentY;
+      const r1a = addFieldPair(doc, 'Created', fmtTimestamp(data.created_at || ''), lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Updated', fmtTimestamp(data.updated_at || ''), rx, y, hfw);
+      y = Math.max(r1a, r1b);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
 
   // Dual Signature Block — full-width stacked
   y = addStackedSignatures(doc, 'Issuing Officer', 'Recipient', y, getOfficerSig(), undefined, prio);
@@ -3107,7 +3628,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const sigDate = parsePdfDate(closedDate) || new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
@@ -3154,7 +3675,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const sigDate = parsePdfDate(closedDate) || new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({

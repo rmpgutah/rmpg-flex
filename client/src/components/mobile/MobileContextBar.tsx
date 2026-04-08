@@ -26,7 +26,7 @@ export default function MobileContextBar({
       style={{
         height: 32,
         background: '#050505',
-        borderBottom: '1px solid #1e3048',
+        borderBottom: '1px solid #2b313a',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',

@@ -80,6 +80,7 @@ import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { useVoiceChannel } from '../hooks/useVoiceChannel';
 import VoiceChannelIndicator from './VoiceChannelIndicator';
+import { applyThemePreference } from '../utils/theme';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -730,7 +731,7 @@ export default function Layout() {
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
               background: '#0a0a0a',
-              border: '1px solid #1e3048',
+              border: '1px solid #2b313a',
               borderTop: '3px solid #888888',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
               WebkitAppRegion: 'no-drag',
@@ -836,14 +837,21 @@ export default function Layout() {
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
             paddingRight: '12px',
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-            borderBottom: '1px solid #1e3048',
+            background: 'linear-gradient(180deg, var(--desktop-shell-start) 0%, var(--desktop-shell-end) 100%)',
+            borderBottom: '1px solid var(--desktop-shell-border)',
             flexShrink: 0,
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
           {/* 1: Blue accent line with subtle glow at top of brand bar */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)', zIndex: 1, boxShadow: '0 1px 4px rgba(26,90,158,0.25)' }} />
+          <div
+            className="absolute top-0 left-0 right-0 h-[2px]"
+            style={{
+              background: 'linear-gradient(90deg, transparent, var(--desktop-shell-accent), transparent)',
+              zIndex: 1,
+              boxShadow: '0 1px 4px var(--desktop-shell-accent-shadow)',
+            }}
+          />
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -852,12 +860,12 @@ export default function Layout() {
               {/* 2: Tighter line-height on app name for compact branding */}
               <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
                 <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
-                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#aaaaaa' }}>FLEX</span>
+                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
               </div>
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#2e2e2e' }} />
+              <div className="w-px h-6" style={{ background: 'var(--desktop-shell-border)' }} />
               {/* 3: Page title with subtle letter-spacing and smoother color */}
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-300" style={{ letterSpacing: '0.08em' }}>
                 {pageTitle.toUpperCase()}
@@ -871,7 +879,7 @@ export default function Layout() {
                   aria-label="Open current page in new window"
                   style={{ padding: '2px 4px' }}
                 >
-                  <ExternalLink className="w-3 h-3" style={{ color: '#666666' }} />
+                  <ExternalLink className="w-3 h-3" style={{ color: 'var(--desktop-shell-icon)' }} />
                 </button>
               )}
             </div>
@@ -932,8 +940,7 @@ export default function Layout() {
                 onClick={() => {
                   const html = document.documentElement;
                   const isLight = html.classList.contains('theme-light');
-                  html.classList.remove('theme-dark', 'theme-light');
-                  html.classList.add(isLight ? 'theme-dark' : 'theme-light');
+                  applyThemePreference(isLight ? 'dark' : 'light');
                   // Persist via API
                   try { apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }); } catch {}
                 }}
@@ -1085,7 +1092,7 @@ export default function Layout() {
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #141e2b, #1e2a1e, #141e2b)',
+            background: 'linear-gradient(90deg, #161b21, #1e2a1e, #161b21)',
             borderBottom: '1px solid #2a3a2a',
             flexShrink: 0,
           }}
@@ -1102,15 +1109,15 @@ export default function Layout() {
       {/* ============================================================ */}
       {/* TOOLBAR ROW 1 — Menu Bar (Spillman Flex style) HIDDEN ON MOBILE */}
       {/* ============================================================ */}
-      <div
-        className="hidden md:flex items-center justify-between px-2"
-        style={{
-          height: '22px',
-          background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
-          borderBottom: '1px solid #141e2b',
-          flexShrink: 0,
-        }}
-      >
+        <div
+          className="hidden md:flex items-center justify-between px-2"
+          style={{
+            height: '22px',
+            background: 'linear-gradient(180deg, var(--desktop-shell-raised-start) 0%, var(--desktop-shell-start) 100%)',
+            borderBottom: '1px solid var(--desktop-shell-border)',
+            flexShrink: 0,
+          }}
+        >
         {/* Menu Bar — File | View | Tools | Help */}
         <MenuBar
           isAdmin={isAdmin}
@@ -1140,8 +1147,8 @@ export default function Layout() {
         aria-label="Module navigation"
         style={{
           height: 46,
-          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-          borderBottom: '1px solid #1e3048',
+          background: 'linear-gradient(180deg, var(--desktop-shell-start) 0%, var(--desktop-shell-end) 100%)',
+          borderBottom: '1px solid var(--desktop-shell-border)',
           flexShrink: 0,
         }}
         data-nav-dropdown
@@ -1284,7 +1291,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141e2b',
+                          borderRadius: 7, border: '1px solid #161b21',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
@@ -1498,8 +1505,8 @@ export default function Layout() {
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
           {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
+          <div className="bg-[#161b21] border border-[#2b313a] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b313a] bg-[#0c0f13]">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
               <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
@@ -1509,11 +1516,11 @@ export default function Layout() {
                 {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
                   <div key={item.shortcut} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{item.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0d1520] border border-[#2a3e58] text-brand-400 rounded-sm">{item.shortcut}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0f13] border border-[#2a3e58] text-brand-400 rounded-sm">{item.shortcut}</kbd>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-[#1e3048] pt-3 space-y-1.5">
+              <div className="border-t border-[#2b313a] pt-3 space-y-1.5">
                 <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
                 {[
                   { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
@@ -1525,7 +1532,7 @@ export default function Layout() {
                 ].map(s => (
                   <div key={s.label} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{s.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0d1520] border border-[#2a3e58] text-brand-400 rounded-sm">{s.keys}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0f13] border border-[#2a3e58] text-brand-400 rounded-sm">{s.keys}</kbd>
                   </div>
                 ))}
               </div>
@@ -1538,8 +1545,8 @@ export default function Layout() {
       {showCommandPalette && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
           {/* 15: Command palette with top accent and deeper shadow */}
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1e3048]">
+          <div className="bg-[#161b21] border border-[#2b313a] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b313a]">
               <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
               <input
                 ref={paletteInputRef}
@@ -1556,7 +1563,7 @@ export default function Layout() {
                 placeholder="Search pages, modules..."
                 className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
               />
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0d1520] border border-[#2a3e58] text-rmpg-500 rounded-sm">ESC</kbd>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0f13] border border-[#2a3e58] text-rmpg-500 rounded-sm">ESC</kbd>
             </div>
             <div className="max-h-80 overflow-y-auto scrollbar-dark">
               {paletteQuery.trim() === '' ? (
@@ -1570,7 +1577,7 @@ export default function Layout() {
                     <button type="button"
                       key={`${result.path}-${idx}`}
                       onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#1e3048]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#2b313a]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
                     >
                       {/* 17: Command palette results with matched text style */}
                       <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />

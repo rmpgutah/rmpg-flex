@@ -162,8 +162,8 @@ export default function MobileDetailView({
             height: 48,
             paddingLeft: 4,
             paddingRight: 8,
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-            borderBottom: '1px solid #1e3048',
+            background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)',
+            borderBottom: '1px solid #2b313a',
           }}
         >
           {/* Blue accent */}
@@ -266,7 +266,7 @@ export default function MobileDetailView({
           <div
             className="flex-shrink-0"
             style={{
-              borderTop: '1px solid #1e3048',
+              borderTop: '1px solid #2b313a',
               background: '#0a0a0a',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}

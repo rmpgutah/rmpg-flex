@@ -99,7 +99,7 @@ export default function AdminAuditTab({
   return (
     <div className="flex flex-col h-full">
       {/* Export toolbar */}
-      <div className="flex items-center gap-2 p-3 border-b border-[#162236] bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
+      <div className="flex items-center gap-2 p-3 border-b border-[#242a32] bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 panel-inset bg-surface-sunken relative">
           <Search className="w-3 h-3 text-rmpg-500 shrink-0" aria-hidden="true" />
           <input

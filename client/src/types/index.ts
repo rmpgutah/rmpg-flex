@@ -172,6 +172,7 @@ export interface Property {
   post_orders?: string;
   hazard_notes?: string;
   access_instructions?: string;
+  notes?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;

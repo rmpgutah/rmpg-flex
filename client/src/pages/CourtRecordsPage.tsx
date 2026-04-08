@@ -306,7 +306,7 @@ export default function CourtRecordsPage() {
               onChange={e => setSearchInput(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               onBlur={() => setSearchTerm(searchInput)}
-              className="w-full pl-7 pr-2 py-1 bg-[#0d1520] border border-[#1e3048] text-[10px] text-white placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+              className="w-full pl-7 pr-2 py-1 bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
             />
           </div>
 
@@ -314,7 +314,7 @@ export default function CourtRecordsPage() {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+            className="bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
           >
             <option value="">All Statuses</option>
             {STATUSES.map(s => (
@@ -326,7 +326,7 @@ export default function CourtRecordsPage() {
           <select
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+            className="bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
           >
             <option value="">All Types</option>
             {EVENT_TYPES.map(t => (
@@ -340,14 +340,14 @@ export default function CourtRecordsPage() {
               type="date"
               value={dateFrom}
               onChange={e => setDateFrom(e.target.value)}
-              className="bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+              className="bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
             />
             <span className="text-[9px] text-rmpg-500">to</span>
             <input
               type="date"
               value={dateTo}
               onChange={e => setDateTo(e.target.value)}
-              className="bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+              className="bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
             />
           </div>
 
@@ -387,7 +387,7 @@ export default function CourtRecordsPage() {
       )}
 
       {/* ── Table ── */}
-      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent mx-2 mt-2 mb-2 card-glass">
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent mx-2 mt-2 mb-2 card-glass">
         {loading ? (
           <div className="flex items-center justify-center h-64 text-rmpg-400">
             <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading court records...
@@ -402,14 +402,14 @@ export default function CourtRecordsPage() {
         ) : (
           <>
             {/* Table header */}
-            <div className="sticky top-0 z-10 grid grid-cols-[100px_1fr_110px_130px_120px_90px_1fr] gap-px bg-[#0d1520] border-b border-[#1e3048] text-[9px] font-bold text-rmpg-400 uppercase tracking-widest">
-              <div className="px-2 py-1.5 bg-[#141e2b]">Event #</div>
-              <div className="px-2 py-1.5 bg-[#141e2b]">Defendant</div>
-              <div className="px-2 py-1.5 bg-[#141e2b]">Court Date</div>
-              <div className="px-2 py-1.5 bg-[#141e2b]">Event Type</div>
-              <div className="px-2 py-1.5 bg-[#141e2b]">Judge</div>
-              <div className="px-2 py-1.5 bg-[#141e2b]">Status</div>
-              <div className="px-2 py-1.5 bg-[#141e2b]">Court / Case #</div>
+            <div className="sticky top-0 z-10 grid grid-cols-[100px_1fr_110px_130px_120px_90px_1fr] gap-px bg-[#0c0f13] border-b border-[#2b313a] text-[9px] font-bold text-rmpg-400 uppercase tracking-widest">
+              <div className="px-2 py-1.5 bg-[#161b21]">Event #</div>
+              <div className="px-2 py-1.5 bg-[#161b21]">Defendant</div>
+              <div className="px-2 py-1.5 bg-[#161b21]">Court Date</div>
+              <div className="px-2 py-1.5 bg-[#161b21]">Event Type</div>
+              <div className="px-2 py-1.5 bg-[#161b21]">Judge</div>
+              <div className="px-2 py-1.5 bg-[#161b21]">Status</div>
+              <div className="px-2 py-1.5 bg-[#161b21]">Court / Case #</div>
             </div>
 
             {/* Table rows */}
@@ -423,8 +423,8 @@ export default function CourtRecordsPage() {
                   {/* Row */}
                   <div
                     onClick={() => toggleExpand(ev.id)}
-                    className={`grid grid-cols-[100px_1fr_110px_130px_120px_90px_1fr] gap-px cursor-pointer transition-colors border-b border-[#1e3048]/50 ${
-                      isExpanded ? 'bg-[#1a2636]' : 'bg-[#141e2b] hover:bg-[#1a2636]/60'
+                    className={`grid grid-cols-[100px_1fr_110px_130px_120px_90px_1fr] gap-px cursor-pointer transition-colors border-b border-[#2b313a]/50 ${
+                      isExpanded ? 'bg-[#1b2128]' : 'bg-[#161b21] hover:bg-[#1b2128]/60'
                     }`}
                   >
                     <div className="px-2 py-1.5 text-[10px] font-mono text-brand-blue truncate flex items-center gap-1">
@@ -452,7 +452,7 @@ export default function CourtRecordsPage() {
 
                   {/* Expanded Detail */}
                   {isExpanded && (
-                    <div className="bg-[#0d1520] border-b border-[#1e3048] px-4 py-3 animate-fadeIn">
+                    <div className="bg-[#0c0f13] border-b border-[#2b313a] px-4 py-3 animate-fadeIn">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Column 1: Event Details */}
                         <div className="space-y-2">
@@ -488,7 +488,7 @@ export default function CourtRecordsPage() {
 
                           {/* Outcome section */}
                           {ev.outcome && (
-                            <div className="mt-3 pt-2 border-t border-[#1e3048]">
+                            <div className="mt-3 pt-2 border-t border-[#2b313a]">
                               <h4 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-1 mb-1">
                                 <Scale className="w-3 h-3" /> Outcome
                               </h4>
@@ -509,7 +509,7 @@ export default function CourtRecordsPage() {
                             <FileText className="w-3 h-3" /> Notes
                           </h4>
                           {ev.notes ? (
-                            <p className="text-[10px] text-rmpg-300 bg-[#141e2b] border border-[#1e3048] p-2 whitespace-pre-wrap max-h-32 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+                            <p className="text-[10px] text-rmpg-300 bg-[#161b21] border border-[#2b313a] p-2 whitespace-pre-wrap max-h-32 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
                               {ev.notes}
                             </p>
                           ) : (
@@ -568,7 +568,7 @@ export default function CourtRecordsPage() {
       {showCreateModal && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div
-            className="bg-[#141e2b] border border-[#1e3048] w-full max-w-lg mx-4 shadow-md animate-fadeIn"
+            className="bg-[#161b21] border border-[#2b313a] w-full max-w-lg mx-4 shadow-md animate-fadeIn"
             onClick={e => e.stopPropagation()}
           >
             <PanelTitleBar title="NEW COURT EVENT" icon={Plus}>
@@ -577,7 +577,7 @@ export default function CourtRecordsPage() {
               </button>
             </PanelTitleBar>
 
-            <div className="p-4 space-y-3 max-h-[70vh] overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+            <div className="p-4 space-y-3 max-h-[70vh] overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
               {/* Event type + date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -585,7 +585,7 @@ export default function CourtRecordsPage() {
                   <select
                     value={formData.event_type}
                     onChange={e => setFormData(p => ({ ...p, event_type: e.target.value }))}
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   >
                     <option value="">Select type...</option>
                     {EVENT_TYPES.map(t => (
@@ -599,7 +599,7 @@ export default function CourtRecordsPage() {
                     type="date"
                     value={formData.event_date}
                     onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))}
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -612,7 +612,7 @@ export default function CourtRecordsPage() {
                     type="time"
                     value={formData.event_time}
                     onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))}
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -622,7 +622,7 @@ export default function CourtRecordsPage() {
                     value={formData.courtroom}
                     onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))}
                     placeholder="e.g., Room 304"
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -636,7 +636,7 @@ export default function CourtRecordsPage() {
                     value={formData.court_name}
                     onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))}
                     placeholder="e.g., 3rd District Court"
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -646,7 +646,7 @@ export default function CourtRecordsPage() {
                     value={formData.judge_name}
                     onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))}
                     placeholder="Judge name"
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -660,7 +660,7 @@ export default function CourtRecordsPage() {
                     value={formData.court_case_number}
                     onChange={e => setFormData(p => ({ ...p, court_case_number: e.target.value }))}
                     placeholder="Case number"
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -670,7 +670,7 @@ export default function CourtRecordsPage() {
                     value={formData.defendant_name}
                     onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))}
                     placeholder="Defendant name"
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -684,7 +684,7 @@ export default function CourtRecordsPage() {
                     value={formData.prosecutor}
                     onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))}
                     placeholder="Prosecutor name"
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -694,7 +694,7 @@ export default function CourtRecordsPage() {
                     value={formData.defense_attorney}
                     onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))}
                     placeholder="Defense attorney name"
-                    className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -707,12 +707,12 @@ export default function CourtRecordsPage() {
                   onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
                   placeholder="Additional notes..."
-                  className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
+                  className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
                 />
               </div>
 
               {/* Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e3048]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#2b313a]">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="toolbar-btn text-[10px]">Cancel</button>
                 <button type="button"
                   onClick={handleCreate}
@@ -732,7 +732,7 @@ export default function CourtRecordsPage() {
       {showOutcomeModal !== null && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowOutcomeModal(null)}>
           <div
-            className="bg-[#141e2b] border border-[#1e3048] w-full max-w-md mx-4 shadow-md animate-fadeIn"
+            className="bg-[#161b21] border border-[#2b313a] w-full max-w-md mx-4 shadow-md animate-fadeIn"
             onClick={e => e.stopPropagation()}
           >
             <PanelTitleBar title="RECORD OUTCOME" icon={Scale}>
@@ -747,7 +747,7 @@ export default function CourtRecordsPage() {
                 <select
                   value={outcomeData.outcome}
                   onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))}
-                  className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                  className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                 >
                   <option value="">Select outcome...</option>
                   {OUTCOMES.map(o => (
@@ -763,7 +763,7 @@ export default function CourtRecordsPage() {
                   value={outcomeData.sentence}
                   onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))}
                   placeholder="e.g., 30 days jail, 1 year probation"
-                  className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                  className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                 />
               </div>
 
@@ -775,7 +775,7 @@ export default function CourtRecordsPage() {
                   value={outcomeData.fine_amount}
                   onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))}
                   placeholder="0.00"
-                  className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                  className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                 />
               </div>
 
@@ -786,11 +786,11 @@ export default function CourtRecordsPage() {
                   onChange={e => setOutcomeData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
                   placeholder="Additional outcome notes..."
-                  className="w-full bg-[#0d1520] border border-[#1e3048] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
+                  className="w-full bg-[#0c0f13] border border-[#2b313a] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e3048]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#2b313a]">
                 <button type="button" onClick={() => setShowOutcomeModal(null)} className="toolbar-btn text-[10px]">Cancel</button>
                 <button type="button"
                   onClick={handleOutcome}

@@ -297,8 +297,8 @@ export default function MobileDrawer({
         <div
           className="flex items-center gap-3 px-4 py-4"
           style={{
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-            borderBottom: '1px solid #1e3048',
+            background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)',
+            borderBottom: '1px solid #2b313a',
           }}
         >
           {/* Avatar */}

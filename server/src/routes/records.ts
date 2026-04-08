@@ -1101,7 +1101,7 @@ router.post('/properties', (req: Request, res: Response) => {
     const {
       client_id, name, address, city, state, zip, latitude, longitude, property_type,
       gate_code, alarm_code, emergency_contact, post_orders, hazard_notes,
-      access_instructions, is_active,
+      access_instructions, is_active, notes,
     } = req.body;
 
     if (!client_id) {
@@ -1115,14 +1115,14 @@ router.post('/properties', (req: Request, res: Response) => {
 
     const result = db.prepare(`
       INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
-        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
       latitude || null, longitude || null,
       property_type || null, gate_code || null, alarm_code || null,
       emergency_contact || null, post_orders || null, hazard_notes || null,
-      access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
+      access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1, notes || null,
     );
 
     // Activity log
@@ -1993,7 +1993,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       property_type: v => v ?? null, gate_code: v => v ?? null,
       alarm_code: v => v ?? null, emergency_contact: v => v ?? null,
       post_orders: v => v ?? null, hazard_notes: v => v ?? null,
-      access_instructions: v => v ?? null,
+      access_instructions: v => v ?? null, notes: v => v ?? null,
       is_active: v => v ? 1 : 0,
       client_id: v => v || null,
     };

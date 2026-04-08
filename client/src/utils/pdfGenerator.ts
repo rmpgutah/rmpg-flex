@@ -150,6 +150,16 @@ export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string
   return lines.length ? lines : [''];
 }
 
+function isNarrativeLikePdfText(text: string, width: number): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  return width > 160 || trimmed.length > 120 || /[\n.!?;:]/.test(trimmed);
+}
+
+function getPdfTextLineHeight(fontSize: number, readable = false): number {
+  return readable ? fontSize * 0.44 + 0.35 : fontSize * 0.35 + 0.2;
+}
+
 // Cached images (loaded once per session)
 let cachedSeal: string | null = null;
 let cachedLogoDark: string | null = null;
@@ -475,10 +485,8 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const labelH = 2.5;        // Height reserved for label above value
-  const baseBoxH = 3;        // Minimum value area height
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
-  const lineStep = FONT.SIZE_FIELD_VALUE * 0.35 + 0.2; // Y-step per extra line
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
@@ -489,13 +497,14 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x + innerPad, y + 2);
 
-  // Determine value text and line count — Courier for values
-  doc.setFont('courier', 'normal');
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
-  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
+  const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
+  const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
+  const baseBoxH = useReadableText ? 3.6 : 3;
+  const displayText = isEmpty ? 'N/A' : useReadableText ? sanitized : sanitized.toUpperCase();
+  doc.setFont(useReadableText ? 'helvetica' : 'courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
@@ -592,18 +601,58 @@ export function addFlagBadges(
 
   // Flag → color mapping (red for danger, amber for warnings, gray for info)
   const flagColors: Record<string, [number, number, number]> = {
+    'PRIORITY 1': [180, 20, 20],
+    'ACTIVE WARRANT': [180, 20, 20],
     'ARMED & DANGEROUS': [180, 20, 20],
     'VIOLENT': [180, 20, 20],
     'FLIGHT RISK': [180, 20, 20],
+    'STOLEN': [180, 20, 20],
     'WARRANT': [180, 20, 20],
     'SEX OFFENDER': [180, 20, 20],
     'GANG MEMBER': [180, 20, 20],
+    'WEAPONS': [180, 20, 20],
+    'EXPIRED': [180, 20, 20],
+    'USE OF FORCE': [180, 20, 20],
+    'SERVICE OVERDUE': [180, 20, 20],
+    'REGISTRATION EXPIRED': [180, 20, 20],
+    'INSURANCE EXPIRED': [180, 20, 20],
     'BOLO': [200, 80, 10],
     'CAUTION': [200, 80, 10],
     'SUICIDAL': [200, 80, 10],
     'MENTAL HEALTH': [200, 80, 10],
+    'DOMESTIC VIOLENCE': [200, 80, 10],
+    'INJURIES': [200, 80, 10],
+    'JUVENILE': [200, 80, 10],
     'DRUG USER': [200, 80, 10],
     'OFFICER SAFETY': [200, 80, 10],
+    'EMS REQUESTED': [200, 80, 10],
+    'FIRE REQUESTED': [200, 80, 10],
+    'ACCIDENT': [200, 80, 10],
+    'EXPIRING SOON': [200, 80, 10],
+    'SERVICE DUE': [200, 80, 10],
+    'REGISTRATION EXPIRING': [200, 80, 10],
+    'LICENSE EXPIRED': [200, 80, 10],
+    'LICENSE EXPIRING': [200, 80, 10],
+    'INACTIVE SITE': [200, 80, 10],
+    'K9 REQUESTED': [70, 75, 88],
+    'LE NOTIFIED': [70, 75, 88],
+    'PROCESS SERVICE': [70, 75, 88],
+    'DISPATCH LINK': [70, 75, 88],
+    'CLIENT CONTRACT': [70, 75, 88],
+    'LAB SUBMITTED': [70, 75, 88],
+    'CHAIN OF CUSTODY': [70, 75, 88],
+    'MAINTENANCE': [70, 75, 88],
+    'FUEL LOGS': [70, 75, 88],
+    'MILEAGE SUMMARY': [70, 75, 88],
+    'CONTROLLED ACCESS': [70, 75, 88],
+    'COURT DATE': [70, 75, 88],
+    'FINE ASSESSED': [70, 75, 88],
+    'PHOTO TAKEN': [70, 75, 88],
+    'DISPOSED': [70, 75, 88],
+    'VERIFIED': [70, 75, 88],
+    'SEPARATED': [70, 75, 88],
+    'ACTIVE SITE': [60, 130, 80],
+    'SERVED': [60, 130, 80],
     'RESTRICTED': [120, 80, 160],
   };
   const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
@@ -671,12 +720,12 @@ export function addCautionBlock(
 
   const innerPad = 2;
   const maxW = width - innerPad * 2;
-  doc.setFont('courier', 'normal');
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allLines = wordWrapText(doc, sanitizePdfText(cautionText), maxW - 1);
   const lines = allLines.slice(0, 6);
   if (allLines.length > 6) lines[5] = lines[5].length > 3 ? lines[5].slice(0, -3) + '...' : '...';
-  const lineH = 3.5;
+  const lineH = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, true);
   const boxH = Math.max(8, lines.length * lineH + 4);
 
   // Amber warning background
@@ -697,7 +746,7 @@ export function addCautionBlock(
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
 
   // Text content
-  doc.setFont('courier', 'normal');
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(80, 40, 0);
   let textY = y + 6;
@@ -949,7 +998,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = fontSize * 0.35 + 0.05;
+  const lineH = getPdfTextLineHeight(fontSize, true);
   const paragraphGap = SPACING.MD;
 
   const paragraphs = text.split(/\n\n+/);
@@ -1000,7 +1049,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
   const text = sanitizePdfText(rawText);
-  const lineH = fontSize * 0.35 + 0.05; // Consistent line spacing across all text renderers
+  const lineH = getPdfTextLineHeight(fontSize, true);
   const paragraphGap = SPACING.MD;
   // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
   const safeMaxWidth = maxWidth - 2;
@@ -1155,7 +1204,7 @@ export function addNarrativeSection(
   priority?: string,
 ): number {
   if (!rawText) return y;
-  const text = sanitizePdfText(rawText).toUpperCase();
+  const text = sanitizePdfText(rawText);
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
   y = sec.contentY;
@@ -1164,7 +1213,7 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = fontSize * 0.35 + 0.05; // Match addFormattedText lineStep
+  const lineH = getPdfTextLineHeight(fontSize, true);
   const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
@@ -1853,6 +1902,128 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
   return y;
 }
 
+type IncidentOverviewField = {
+  label: string;
+  value?: string | number | null;
+};
+
+function addIncidentOverviewSection(
+  doc: jsPDF,
+  title: string,
+  fields: IncidentOverviewField[],
+  y: number,
+  priority?: string,
+): number {
+  const presentFields = fields.filter((field) => String(field.value ?? '').trim());
+  if (presentFields.length === 0) return y;
+
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const estimatedRows = Math.ceil(presentFields.length / 4);
+  y = checkPageBreak(doc, y, 10 + estimatedRows * SPACING.FIELD_ROW_ADVANCE, priority);
+
+  const sec = openAutoSection(doc, title, y);
+  y = sec.contentY + 0.5;
+
+  for (let i = 0; i < presentFields.length; i += 4) {
+    const row = presentFields.slice(i, i + 4);
+    const colW = ffw / row.length;
+    let maxY = y + SPACING.FIELD_ROW_ADVANCE;
+    row.forEach((field, idx) => {
+      const fy = addFieldPair(doc, field.label, String(field.value ?? ''), lx + idx * colW, y, colW);
+      if (fy > maxY) maxY = fy;
+    });
+    y = maxY;
+  }
+
+  return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+}
+
+function addIncidentAlertBadges(
+  doc: jsPDF,
+  label: string,
+  flags: Array<string | undefined | null>,
+  y: number,
+  priority?: string,
+): number {
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const cleanFlags = [...new Set(
+    flags
+      .map((flag) => (flag || '').trim().toUpperCase())
+      .filter(Boolean),
+  )];
+  if (cleanFlags.length === 0) return y;
+
+  const cols = 3;
+  const rows = Math.ceil(cleanFlags.length / cols);
+  y = checkPageBreak(doc, y, 8 + rows * (SPACING.LG + 0.5), priority);
+
+  const sec = openAutoSection(doc, label, y);
+  y = sec.contentY + 1;
+
+  const colW = ffw / cols;
+  for (let idx = 0; idx < cleanFlags.length; idx += cols) {
+    const row = cleanFlags.slice(idx, idx + cols);
+    row.forEach((flag, colIdx) => {
+      addCheckboxField(doc, flag, true, lx + colIdx * colW, y);
+    });
+    y += SPACING.LG + 0.5;
+  }
+
+  return closeAutoSection(doc, sec.sectionY, y - 1.2, undefined, sec.sectionPage);
+}
+
+function hasIncidentWeaponFlag(weapons?: string | null): boolean {
+  const normalized = (weapons || '').trim().toLowerCase();
+  return !!normalized && !['0', 'none', 'no', 'n/a'].includes(normalized);
+}
+
+function buildIncidentAlertFlags(
+  data: IncidentData,
+  extraFlags: Array<string | undefined | null> = [],
+): string[] {
+  return [
+    ...extraFlags,
+    data.priority ? data.priority.toUpperCase() : '',
+    data.injuries_reported || !!data.injuries ? 'INJURIES' : '',
+    data.domestic_violence ? 'DOMESTIC VIOLENCE' : '',
+    data.mental_health_crisis ? 'MENTAL HEALTH' : '',
+    data.juvenile_involved ? 'JUVENILE' : '',
+    data.felony_in_progress ? 'FELONY IN PROGRESS' : '',
+    data.officer_safety_caution ? 'OFFICER SAFETY' : '',
+    hasIncidentWeaponFlag(data.weapons_involved) ? 'WEAPONS' : '',
+    data.vehicle_pursuit ? 'VEHICLE PURSUIT' : '',
+    data.foot_pursuit ? 'FOOT PURSUIT' : '',
+    data.k9_requested ? 'K9 REQUESTED' : '',
+    data.ems_requested || !!data.ems_transport ? 'EMS REQUESTED' : '',
+    data.fire_requested ? 'FIRE REQUESTED' : '',
+    data.hazmat ? 'HAZMAT' : '',
+    data.le_notified ? 'LE NOTIFIED' : '',
+    data.trespass_warning_issued || data.trespass_issued ? 'TRESPASS WARNING' : '',
+  ].filter(Boolean) as string[];
+}
+
+function buildIncidentCautionText(
+  data: IncidentData,
+  extraParts: Array<string | undefined | null> = [],
+): string {
+  const parts = [
+    ...extraParts,
+    data.officer_safety_caution ? 'Officer safety caution flagged for responding personnel.' : '',
+    data.scene_safety && !['standard', 'normal', 'clear', 'safe'].includes(data.scene_safety.toLowerCase())
+      ? `Scene safety notes: ${data.scene_safety}.`
+      : '',
+    hasIncidentWeaponFlag(data.weapons_involved) ? `Weapons indicated: ${data.weapons_involved}.` : '',
+    data.responding_le_agency
+      ? `External agency coordination: ${data.responding_le_agency}${data.le_case_number ? ` (${data.le_case_number})` : ''}.`
+      : '',
+    data.patient_status ? `Patient status: ${data.patient_status}.` : '',
+  ];
+
+  return parts.filter(Boolean).join(' ');
+}
+
 // ── Report Templates ─────────────────────────────────────────
 
 function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
@@ -1866,6 +2037,15 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
   const formatServiceType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
   const formatDocumentType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
+  const incidentAlertFlags = buildIncidentAlertFlags(data, [
+    data.call_number ? 'DISPATCH LINK' : '',
+    data.contract_id ? 'CLIENT CONTRACT' : '',
+    data.process_service_type ? 'PROCESS SERVICE' : '',
+  ]);
+  const incidentCautionText = buildIncidentCautionText(data, [
+    data.dispatch_code ? `Dispatch code: ${data.dispatch_code}.` : '',
+    data.property_name ? `Property: ${data.property_name}.` : '',
+  ]);
 
 
   let y = drawNibrsHeader(doc, {
@@ -1876,6 +2056,21 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     caseNumber: data.incident_number,
     reportDate: data.occurred_date || data.created_at || '',
   });
+
+  y = addIncidentOverviewSection(doc, 'Incident Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Incident Type', value: formatIncidentType(data.incident_type) },
+    { label: 'Status', value: displayStatus(data.status || '') },
+    { label: 'Priority', value: data.priority || '' },
+    { label: 'Reporting Officer', value: data.officer_name || '' },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Disposition', value: data.disposition || '' },
+    { label: 'Location', value: data.location || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'TACTICAL ALERTS', incidentAlertFlags, y, data.priority);
+  if (incidentCautionText) {
+    y = addCautionBlock(doc, incidentCautionText, lx, y, ffw);
+  }
 
   // ═══════════════════════════════════════════════════════════
   // SECTION 1 — ADMINISTRATIVE DATA
@@ -2003,7 +2198,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     if (data.call_number) classFields.push({ label: 'CFS Call #', value: data.call_number });
     if (classFields.length > 0) {
       y = checkPageBreak(doc, y, 18);
-      const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+      const sec = openAutoSection(doc, 'Case Linkage', y); y = sec.contentY;
       const colW = ffw / classFields.length;
       let maxCY = y;
       for (let i = 0; i < classFields.length; i++) {
@@ -2021,7 +2216,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   { const hasScene = data.scene_safety || data.weather_conditions || data.lighting_conditions || data.weapons_involved || data.direction_of_travel;
     if (hasScene) {
       y = checkPageBreak(doc, y, 20);
-      const sec = openAutoSection(doc, 'Scene / Conditions', y); y = sec.contentY;
+      const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
       // Row 1: Scene Safety, Weather, Lighting
       const w3 = ffw / 3;
       const fy1 = addFieldPair(doc, 'Scene Safety', data.scene_safety || 'N/A', lx, y, w3);
@@ -2102,45 +2297,19 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   if (persons.length > 0) {
     y = checkPageBreak(doc, y, 20, data.priority);
     const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
-    const pHeaders = ['NAME', 'ROLE', 'DOB'];
-    const pColW = [ffw * 0.40, ffw * 0.30, ffw * 0.30];
-    const rowH = 4.5;
-    // Light gray header row
-    doc.setFillColor(...COLOR.BG_ZEBRA);
-    doc.rect(lx, y, ffw, rowH, 'F');
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    let phx = lx;
-    for (let i = 0; i < pHeaders.length; i++) {
-      doc.text(pHeaders[i], phx + 1.5, y + rowH * 0.65);
-      phx += pColW[i];
-    }
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(lx, y + rowH, lx + ffw, y + rowH);
-    y += rowH;
-    // Data rows
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    for (const p of persons) {
-      y = checkPageBreak(doc, y, rowH);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const pVals = [
-        `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '—',
-        capFirst(p.role?.replace(/_/g, ' ') || '').toUpperCase() || '—',
-        (p.dob || '—').toUpperCase(),
-      ];
-      let pdx = lx;
-      for (let i = 0; i < pVals.length; i++) {
-        doc.text(pVals[i], pdx + 1.5, y + rowH * 0.65);
-        pdx += pColW[i];
-      }
-      y += rowH;
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y, lx + ffw, y);
-    }
+    const colPositions = [lx, lx + ffw * 0.40, lx + ffw * 0.70];
+    const tableHeaders = [
+      { label: 'NAME', x: colPositions[0] },
+      { label: 'ROLE', x: colPositions[1] },
+      { label: 'DOB', x: colPositions[2] },
+    ];
+    const tableRows = persons.map((p) => [
+      `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '—',
+      capFirst(p.role?.replace(/_/g, ' ') || '').toUpperCase() || '—',
+      (p.dob || '—').toUpperCase(),
+    ]);
+    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+    y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2205,7 +2374,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   if (data.responding_le_agency || data.le_case_number) {
     y = checkPageBreak(doc, y, 14, data.priority);
-    const sec = openAutoSection(doc, 'External Agency', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
     const w3 = ffw / 3;
     const fy1 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx, y, w3 * 2);
     const fy2 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + w3 * 2, y, w3);
@@ -2220,7 +2389,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     y = checkPageBreak(doc, y, 22, data.priority);
     const hasDispatchFields = data.call_number || data.call_type || data.call_created_at || data.caller_name || data.caller_phone || (data.latitude != null && data.longitude != null);
     if (hasDispatchFields || data.call_notes) {
-      const sec = openAutoSection(doc, 'Dispatch Data', y); y = sec.contentY;
+      const sec = openAutoSection(doc, 'Dispatch Linkage', y); y = sec.contentY;
       // Row 1: CFS Call #, Call Type, Dispatched
       const r1Fields: { label: string; value: string }[] = [];
       if (data.call_number) r1Fields.push({ label: 'CFS Call #', value: data.call_number });
@@ -2275,7 +2444,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 25, data.priority);
   { const sec = openAutoSection(doc, 'Narrative / Service Notes', y); y = sec.contentY;
-    y += SPACING.MD;
+    y += SPACING.LG;
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -2432,6 +2601,11 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   const rx = getRightColumnX(doc);
   const gridX = getGridStartX();
   const gridW = getGridContentWidth(doc);
+  const accidentAlertFlags = buildIncidentAlertFlags(data, ['ACCIDENT']);
+  const accidentCautionText = buildIncidentCautionText(data, [
+    data.road_conditions ? `Road conditions: ${data.road_conditions}.` : '',
+    data.traffic_control ? `Traffic control: ${data.traffic_control}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2442,11 +2616,26 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Accident Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Date', value: data.occurred_date || '' },
+    { label: 'Time', value: data.occurred_time || '' },
+    { label: 'Investigating Officer', value: data.officer_name || '' },
+    { label: 'Location', value: data.location || '' },
+    { label: 'Road Conditions', value: data.road_conditions || '' },
+    { label: 'Traffic Control', value: data.traffic_control || '' },
+    { label: 'Weather / Lighting', value: [data.weather_conditions, data.lighting_conditions].filter(Boolean).join(' / ') },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'ACCIDENT ALERTS', accidentAlertFlags, y, data.priority);
+  if (accidentCautionText) {
+    y = addCautionBlock(doc, accidentCautionText, lx, y, ffw);
+  }
+
   // ═══════════════════════════════════════════════════════════
   // ADMINISTRATIVE — incident + conditions
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 25);
-  { const sec = openAutoSection(doc, 'Administrative', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     // Row 1: Incident # (2/6), Date (1/6), Time (1/6), Investigating Officer (2/6)
     const w6 = ffw / 6;
     const fy1 = addFieldPair(doc, 'Incident #', data.incident_number || '', lx, y, w6 * 2);
@@ -2463,47 +2652,6 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     const fy7 = addFieldPair(doc, 'Weather', data.weather_conditions || '', lx + w4 * 2, y, w4);
     const fy8 = addFieldPair(doc, 'Lighting', data.lighting_conditions || '', lx + w4 * 3, y, w4);
     y = Math.max(fy5, fy6, fy7, fy8);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = addThreeColumnFields(doc, [
-      { label: 'Date', value: data.occurred_date || '' },
-      { label: 'Time', value: data.occurred_time || '' },
-      { label: 'Officer', value: data.officer_name },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Road Conditions
-  { const sec = openAutoSection(doc, 'Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Road Conditions', value: data.road_conditions || '' },
-      { label: 'Traffic Control', value: data.traffic_control || '' },
-      { label: 'Weather', value: data.weather_conditions || '' },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Flags
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2575,6 +2723,10 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
 
   const persons = data.linked_persons || [];
   const patient = persons[0] || { first_name: '', last_name: '', dob: '' };
+  const medicalAlertFlags = buildIncidentAlertFlags(data, ['MEDICAL']);
+  const medicalCautionText = buildIncidentCautionText(data, [
+    data.ems_transport ? `Transport disposition: ${data.ems_transport}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2585,8 +2737,23 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Medical Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Priority', value: data.priority || '' },
+    { label: 'Officer', value: data.officer_name || '' },
+    { label: 'Patient', value: `${patient.last_name}, ${patient.first_name}`.replace(/^,\s*/, '') },
+    { label: 'Patient Status', value: data.patient_status || '' },
+    { label: 'EMS Transport', value: data.ems_transport || '' },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Location', value: data.location || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'MEDICAL ALERTS', medicalAlertFlags, y, data.priority);
+  if (medicalCautionText) {
+    y = addCautionBlock(doc, medicalCautionText, lx, y, ffw);
+  }
+
   // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Response Overview', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Type', value: formatIncidentType(data.incident_type) },
       { label: 'Priority', value: data.priority },
@@ -2597,7 +2764,7 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Patient Information
-  { const sec = openAutoSection(doc, 'Patient Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Patient Profile', y); y = sec.contentY;
     const persons = data.linked_persons || [];
     if (persons.length > 0) {
       const patient = persons[0];
@@ -2645,6 +2812,14 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
 
   const persons = data.linked_persons || [];
   const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
+  const forceAlertFlags = buildIncidentAlertFlags(data, [
+    'USE OF FORCE',
+    data.subject_injuries ? 'INJURIES' : '',
+    data.officer_injuries ? 'OFFICER INJURIES' : '',
+  ]);
+  const forceCautionText = buildIncidentCautionText(data, [
+    data.force_type ? `Force type: ${data.force_type}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2670,8 +2845,22 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   y += 12;
 
+  y = addIncidentOverviewSection(doc, 'Force Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Priority', value: data.priority || '' },
+    { label: 'Officer', value: data.officer_name || '' },
+    { label: 'Force Type', value: data.force_type || '' },
+    { label: 'Subject', value: `${subj.last_name}, ${subj.first_name}`.replace(/^,\s*/, '') },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Location', value: data.location || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'FORCE ALERTS', forceAlertFlags, y, data.priority);
+  if (forceCautionText) {
+    y = addCautionBlock(doc, forceCautionText, lx, y, ffw);
+  }
+
   // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Incident Summary', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Type', value: formatIncidentType(data.incident_type) },
       { label: 'Date/Time', value: `${data.occurred_date || ''} ${data.occurred_time || ''}` },
@@ -2682,7 +2871,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Subject Information
-  { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Subject Profile', y); y = sec.contentY;
     const persons = data.linked_persons || [];
     if (persons.length > 0) {
       const subj = persons[0];
@@ -2748,7 +2937,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   const ffw = getFullFieldWidth(doc);
   y = checkPageBreak(doc, y, 20);
-  { const sec = openAutoSection(doc, 'Shift Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Daily Activity Overview', y); y = sec.contentY;
     // Row 1: Officer Name (2/5), Section (1/5), Zone (1/5), Beat (1/5)
     const w5 = ffw / 5;
     const fy1 = addFieldPair(doc, 'Officer Name', data.officer_name || '', lx, y, w5 * 2);
@@ -2762,17 +2951,6 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     const fy6 = addFieldPair(doc, 'Shift Start', data.occurred_time || '', lx + w3, y, w3);
     const fy7 = addFieldPair(doc, 'Shift End', data.end_time || '', lx + w3 * 2, y, w3);
     y = Math.max(fy5, fy6, fy7);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Officer / Shift Info
-  { const sec = openAutoSection(doc, 'Officer / Shift Information', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Officer', data.officer_name, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Sec/Zone/Beat', [data.section_id, data.zone_id, data.beat_id].filter(Boolean).join(' / ') || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Shift Date', data.occurred_date || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Shift Time', `${data.occurred_time || ''} -- ${data.end_time || ''}`, rx, y, hfw);
-      y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2839,6 +3017,12 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
 
   const persons = data.linked_persons || [];
   const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
+  const arrestAlertFlags = buildIncidentAlertFlags(data, [
+    data.weapons_involved ? `WEAPONS` : '',
+  ]);
+  const arrestCautionText = buildIncidentCautionText(data, [
+    data.disposition ? `Disposition: ${data.disposition}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2849,8 +3033,22 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Arrest Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Officer', value: data.officer_name || '' },
+    { label: 'Location', value: data.location || '' },
+    { label: 'Arrestee', value: `${subj.last_name}, ${subj.first_name}`.replace(/^,\s*/, '') },
+    { label: 'DOB', value: subj.dob || '' },
+    { label: 'Disposition', value: data.disposition || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'CUSTODY ALERTS', arrestAlertFlags, y, data.priority);
+  if (arrestCautionText) {
+    y = addCautionBlock(doc, arrestCautionText, lx, y, ffw);
+  }
+
   // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Custody Incident', y); y = sec.contentY;
     y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
     { const yL = addFieldPair(doc, 'Date', data.occurred_date || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Time', data.occurred_time || '', rx, y, hfw);
@@ -2859,7 +3057,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Subject Details
-  { const sec = openAutoSection(doc, 'Subject Details', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Arrestee Profile', y); y = sec.contentY;
     const persons = data.linked_persons || [];
     if (persons.length > 0) {
       const subj = persons[0];
@@ -2881,32 +3079,6 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // CHARGES — charges table
   // ═══════════════════════════════════════════════════════════
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'DV', !!data.domestic_violence, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Felony IP', !!data.felony_in_progress, flagX, y);
-    flagX = addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX + SPACING.SM, y);
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
   // Charges table
   { const sec = openAutoSection(doc, 'Charges', y); y = sec.contentY;
     const colPositions = [lx, LAYOUT.PAGE_MARGIN + 90, LAYOUT.PAGE_MARGIN + 130];
@@ -2979,6 +3151,14 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   const gridW = getGridContentWidth(doc);
 
   const serviceTypeLabel = (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() || 'GENERAL';
+  const processAlertFlags = buildIncidentAlertFlags(data, [
+    'PROCESS SERVICE',
+    data.process_service_result ? data.process_service_result.replace(/_/g, ' ').toUpperCase() : '',
+  ]);
+  const processCautionText = buildIncidentCautionText(data, [
+    data.process_served_address ? `Service address: ${data.process_served_address}.` : '',
+    data.process_served_to ? `Serve to: ${data.process_served_to}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2989,8 +3169,23 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Process Service Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Service Type', value: serviceTypeLabel },
+    { label: 'Status', value: displayStatus(data.status || '') },
+    { label: 'Disposition', value: data.disposition || '' },
+    { label: 'Serve To', value: data.process_served_to || '' },
+    { label: 'Attempts', value: String(data.process_attempts || 0) },
+    { label: 'Served At', value: data.process_served_at || '' },
+    { label: 'Officer', value: data.officer_name || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'SERVICE ALERTS', processAlertFlags, y, data.priority);
+  if (processCautionText) {
+    y = addCautionBlock(doc, processCautionText, lx, y, ffw);
+  }
+
   // Classification
-  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Case Linkage', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Incident Number', value: data.incident_number },
       { label: 'Priority', value: data.priority },
@@ -3019,7 +3214,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
   // Service of Process Details
   y = checkPageBreak(doc, y, 35, data.priority);
-  { const sec = openAutoSection(doc, 'Service of Process Details', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Service Attempt Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Document Type', serviceTypeLabel, lx, y, hfw);
       const yR = addFieldPair(doc, 'Serve To (Name)', data.process_served_to || '', rx, y, hfw);
       y = Math.max(yL, yR); }
@@ -3057,7 +3252,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
   // Date / Time — all 4 fields on one row
   y = checkPageBreak(doc, y, 18, data.priority);
-  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Service Timeline', y); y = sec.contentY;
     const dtW = ffw / 4;
     const dtFields = [
       { label: 'Occurred Date', value: data.occurred_date || '' },
@@ -3071,25 +3266,6 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
       if (fy > maxDTY) maxDTY = fy;
     }
     y = maxDTY;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Flags — evenly spaced across full width
-  y = checkPageBreak(doc, y, 18, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    y += 1;
-    const flagItems = [
-      { label: 'Evidence', checked: !!data.evidence_collected },
-      { label: 'BWC Active', checked: !!data.body_camera_active },
-      { label: 'Photos', checked: !!data.photos_taken },
-      { label: 'LE Notified', checked: !!data.le_notified },
-      { label: 'Supvr Notified', checked: !!data.supervisor_notified },
-    ];
-    const flagColW = ffw / flagItems.length;
-    for (let i = 0; i < flagItems.length; i++) {
-      addCheckboxField(doc, flagItems[i].label, flagItems[i].checked, lx + i * flagColW, y);
-    }
-    y += 4;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

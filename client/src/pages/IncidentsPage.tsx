@@ -186,6 +186,47 @@ const timeAgo = (date: string): string => {
   return `${days}d ago`;
 };
 
+type IncidentOfficerOption = {
+  id: string;
+  full_name: string;
+  badge_number?: string;
+  call_sign?: string;
+};
+
+const INCIDENT_OFFICER_ALLOWED_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+
+function toIncidentOfficerOption(user: any): IncidentOfficerOption | null {
+  if (!user || !user.id) return null;
+  if (user.status !== 'active') return null;
+  if (!INCIDENT_OFFICER_ALLOWED_ROLES.has(user.role)) return null;
+
+  const fullName =
+    user.full_name
+    || `${user.first_name || ''} ${user.last_name || ''}`.trim()
+    || user.username
+    || `User ${user.id}`;
+
+  return {
+    id: String(user.id),
+    full_name: fullName,
+    badge_number: user.badge_number || '',
+    call_sign: user.unit_call_sign || user.call_sign || '',
+  };
+}
+
+function formatIncidentOfficerOptionLabel(officer: IncidentOfficerOption): string {
+  const meta = [
+    officer.badge_number ? `#${officer.badge_number}` : '',
+    officer.call_sign || '',
+  ].filter(Boolean).join(' • ');
+
+  return meta ? `${officer.full_name} (${meta})` : officer.full_name;
+}
+
+function isIncidentOfficerLinked(detailOfficers: any[], officerId: string): boolean {
+  return detailOfficers.some((officer) => String(officer.officer_id || '') === officerId);
+}
+
 export default function IncidentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -229,6 +270,8 @@ export default function IncidentsPage() {
   const [detailOffenses, setDetailOffenses] = useState<any[]>([]);
   const [detailOfficers, setDetailOfficers] = useState<any[]>([]);
   const [detailLinks, setDetailLinks] = useState<any[]>([]);
+  const [incidentOfficerOptions, setIncidentOfficerOptions] = useState<IncidentOfficerOption[]>([]);
+  const [incidentOfficerOptionsLoading, setIncidentOfficerOptionsLoading] = useState(false);
   const [showAddOffenseModal, setShowAddOffenseModal] = useState(false);
   const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
   const [showAddLinkModal, setShowAddLinkModal] = useState(false);
@@ -431,6 +474,40 @@ export default function IncidentsPage() {
       setDetailLinks([]);
     }
   }, [selectedIncident?.id, fetchIncidentDetail, fetchSupplements]);
+
+  useEffect(() => {
+    if (!showAddOfficerModal || incidentOfficerOptions.length > 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setIncidentOfficerOptionsLoading(true);
+        const res = await apiFetch<any>('/personnel?status=active');
+        if (cancelled) return;
+
+        const list = Array.isArray(res) ? res : res?.data ?? [];
+        const rosterById = new Map<string, IncidentOfficerOption>();
+
+        for (const row of list) {
+          const option = toIncidentOfficerOption(row);
+          if (option && !rosterById.has(option.id)) {
+            rosterById.set(option.id, option);
+          }
+        }
+
+        setIncidentOfficerOptions(Array.from(rosterById.values()));
+      } catch {
+        if (!cancelled) setIncidentOfficerOptions([]);
+      } finally {
+        if (!cancelled) setIncidentOfficerOptionsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showAddOfficerModal, incidentOfficerOptions.length]);
 
   const handleUnlinkPerson = async (personId: string | number) => {
     if (!selectedIncident) return;
@@ -831,9 +908,9 @@ export default function IncidentsPage() {
             <span className="text-amber-400 font-bold">{incidentStats.draft}</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            <div className="w-2 h-2 rounded-full bg-rmpg-300" />
             <span className="text-rmpg-400">Submitted:</span>
-            <span className="text-blue-400 font-bold">{incidentStats.submitted}</span>
+            <span className="text-rmpg-200 font-bold">{incidentStats.submitted}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-purple-500" />
@@ -859,7 +936,7 @@ export default function IncidentsPage() {
       )}
 
       {/* Table / Loading / Error */}
-      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <table className="table-dark">
             <thead className="sticky top-0 z-10">
@@ -1217,7 +1294,7 @@ export default function IncidentsPage() {
         const currentIdx = steps.indexOf(selectedIncident.status as any);
         const idx = currentIdx >= 0 ? currentIdx : selectedIncident.status === 'returned' ? 1 : 0;
         return (
-          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#1e3048]" style={{ background: '#050505' }}>
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#2b313a]" style={{ background: '#050505' }}>
             {labels.map((label, i) => (
               <div key={label} className="flex items-center flex-1">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px #22c55e' } : {}} />
@@ -1230,7 +1307,7 @@ export default function IncidentsPage() {
       })()}
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">
@@ -1253,7 +1330,7 @@ export default function IncidentsPage() {
             {inc.domestic_violence && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">DV</span>}
             {inc.felony_in_progress && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Felony IP</span>}
             {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
-            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Mental Health</span>}
+            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">Mental Health</span>}
             {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
             {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
             {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
@@ -1264,11 +1341,11 @@ export default function IncidentsPage() {
             {inc.trespass_issued && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Trespass</span>}
             {inc.vehicle_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Veh Pursuit</span>}
             {inc.foot_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Foot Pursuit</span>}
-            {inc.k9_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">K9</span>}
-            {inc.ems_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">EMS</span>}
+            {inc.k9_requested && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">K9</span>}
+            {inc.ems_requested && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">EMS</span>}
             {inc.fire_requested && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Fire</span>}
-            {inc.le_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">LE Notified</span>}
-            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Supvr</span>}
+            {inc.le_notified && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">LE Notified</span>}
+            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">Supvr</span>}
           </div>
         )}
 
@@ -1654,18 +1731,18 @@ export default function IncidentsPage() {
           {detailOffenses.length > 0 ? (
             <div className="space-y-1.5">
               {detailOffenses.map((offense: any) => (
-                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
+                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #2b313a' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#666666' }}>
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-white font-medium truncate">{offense.description}</span>
-                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-[#141e2b] text-gray-400 border border-gray-700'}`}>
+                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-[#161b21] text-gray-400 border border-gray-700'}`}>
                         {(offense.offense_level || 'other').toUpperCase()}
                       </span>
                       {offense.attempted_completed === 'attempted' && <span className="text-[8px] text-purple-400 bg-purple-900/30 px-1 py-0.5 rounded-sm border border-purple-700/30">ATTEMPTED</span>}
-                      {offense.counts > 1 && <span className="text-[8px] text-blue-400">×{offense.counts}</span>}
+                      {offense.counts > 1 && <span className="text-[8px] text-rmpg-200">×{offense.counts}</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                       {offense.statute_number && <span className="font-mono">§{offense.statute_number}</span>}
@@ -1707,12 +1784,12 @@ export default function IncidentsPage() {
           {detailOfficers.length > 0 ? (
             <div className="space-y-1">
               {detailOfficers.map((officer: any) => (
-                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
+                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #2b313a' }}>
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase ${
-                    officer.role === 'primary' ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50' :
+                    officer.role === 'primary' ? 'bg-rmpg-700/25 text-rmpg-200 border border-rmpg-600/40' :
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
                     officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
-                    'bg-[#141e2b] text-gray-400 border border-gray-700'
+                    'bg-[#161b21] text-gray-400 border border-gray-700'
                   }`}>{officer.role}</span>
                   <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
@@ -1756,7 +1833,7 @@ export default function IncidentsPage() {
                 const typeColors: Record<string, string> = { incident: '#888888', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
-                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #1e3048' }}>
+                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #2b313a' }}>
                     <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#666666', background: (typeColors[link.linked_type] || '#666666') + '20', border: `1px solid ${typeColors[link.linked_type] || '#666666'}40` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
@@ -1912,13 +1989,13 @@ export default function IncidentsPage() {
               <div className="flex items-center gap-4 text-[10px] text-rmpg-400 pb-1 border-b border-rmpg-700/50">
                 <span>Total: <strong className="text-white">{detailSupplements.length}</strong></span>
                 <span>Draft: <strong className="text-amber-400">{detailSupplements.filter((s: any) => s.status === 'draft').length}</strong></span>
-                <span>Submitted: <strong className="text-blue-400">{detailSupplements.filter((s: any) => s.status === 'submitted').length}</strong></span>
+                <span>Submitted: <strong className="text-rmpg-200">{detailSupplements.filter((s: any) => s.status === 'submitted').length}</strong></span>
                 <span>Approved: <strong className="text-green-400">{detailSupplements.filter((s: any) => s.status === 'approved').length}</strong></span>
               </div>
               {detailSupplements.map((sup: any) => {
                 const statusColors: Record<string, string> = {
                   draft: 'border-l-amber-500',
-                  submitted: 'border-l-blue-500',
+                  submitted: 'border-l-rmpg-400',
                   approved: 'border-l-green-500',
                 };
                 const typeIcons: Record<string, string> = {
@@ -1962,7 +2039,7 @@ export default function IncidentsPage() {
                         <summary className="text-[10px] text-brand-400 cursor-pointer hover:text-brand-300 select-none">
                           View narrative ({sup.narrative.length} chars)
                         </summary>
-                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
                           {sup.narrative}
                         </div>
                       </details>
@@ -2011,7 +2088,7 @@ export default function IncidentsPage() {
       {/* Sticky Action Bar */}
       <div
         className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
-        style={{ background: 'linear-gradient(180deg, #141e2b 0%, #0d1520 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #161b21 0%, #0c0f13 100%)' }}
       >
         {!isEditing ? (
           <>
@@ -2387,12 +2464,30 @@ export default function IncidentsPage() {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const data: Record<string, any> = {};
-              fd.forEach((v, k) => { if (v) data[k] = v; });
+              const selectedOfficerId = String(fd.get('officer_select_id') || '').trim();
+              const manualOfficerId = String(fd.get('manual_officer_id') || '').trim();
+              const officerId = selectedOfficerId || manualOfficerId;
+
+              fd.forEach((v, k) => {
+                if (!v || k === 'officer_select_id' || k === 'manual_officer_id') return;
+                data[k] = v;
+              });
+
+              if (!officerId) {
+                addToast('Select an officer or enter an officer user ID', 'error');
+                return;
+              }
+
+              data.officer_id = officerId;
+
               try {
-                await apiFetch(`/incidents/${selectedIncident.id}/officers`, { method: 'POST', body: JSON.stringify(data) });
+                const result = await apiFetch<any>(`/incidents/${selectedIncident.id}/officers`, { method: 'POST', body: JSON.stringify(data) });
                 setShowAddOfficerModal(false);
+                addToast(result?.updated_existing ? 'Officer details updated on incident' : 'Officer added to incident', 'success');
                 fetchIncidentDetail(selectedIncident.id);
-              } catch { /* error */ }
+              } catch (err: any) {
+                addToast(err?.message || 'Failed to add officer', 'error');
+              }
             }}
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
@@ -2401,15 +2496,22 @@ export default function IncidentsPage() {
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
-                <select name="officer_id" required className="input-dark w-full text-xs">
-                  <option value="">Select officer...</option>
-                  {incidents.length > 0 && (() => {
-                    // Use personnel from any loaded data
-                    return null;
-                  })()}
+                <select name="officer_select_id" className="input-dark w-full text-xs">
+                  <option value="">
+                    {incidentOfficerOptionsLoading
+                      ? 'Loading officers...'
+                      : incidentOfficerOptions.length > 0
+                        ? 'Select officer...'
+                        : 'No officers available'}
+                  </option>
+                  {incidentOfficerOptions.map((officer) => (
+                    <option key={officer.id} value={officer.id}>
+                      {formatIncidentOfficerOptionLabel(officer)}{isIncidentOfficerLinked(detailOfficers, officer.id) ? ' — already on incident' : ''}
+                    </option>
+                  ))}
                 </select>
-                <p className="text-[9px] text-rmpg-500 mt-0.5">Enter officer user ID if dropdown is empty</p>
-                <input name="officer_id" type="number" className="input-dark w-full text-xs mt-1" placeholder="Officer User ID" />
+                <p className="text-[9px] text-rmpg-500 mt-0.5">Enter officer user ID if dropdown is empty. Selecting an officer already on the incident updates their role, timing, or notes.</p>
+                <input name="manual_officer_id" type="number" className="input-dark w-full text-xs mt-1" placeholder="Officer User ID" />
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Role</label>
                 <select name="role" className="input-dark w-full text-xs">

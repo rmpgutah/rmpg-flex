@@ -13,6 +13,30 @@ const router = Router();
 
 router.use(authenticateToken);
 
+const INCIDENT_OFFICER_ENTRY_ROLES = new Set([
+  'primary',
+  'responding',
+  'backup',
+  'supervisor',
+  'investigator',
+  'evidence_tech',
+  'other',
+]);
+
+const INCIDENT_OFFICER_USER_ROLES = new Set([
+  'admin',
+  'manager',
+  'supervisor',
+  'officer',
+  'dispatcher',
+  'contract_manager',
+]);
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized ? normalized : null;
+}
+
 // GET /api/incidents - List incidents with filters
 router.get('/', (req: Request, res: Response) => {
   try {
@@ -1818,25 +1842,128 @@ router.get('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 
   }
 });
 
-router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = (req as any).user?.userId || (req as any).user?.id;
-    const { officer_id, role, arrived_at, departed_at, action_taken, notes } = req.body;
-    if (!officer_id) { res.status(400).json({ error: 'officer_id required' }); return; }
+    const incidentId = Number(req.params.id);
+    const officerId = Number(req.body?.officer_id);
+
+    if (!Number.isInteger(officerId) || officerId < 1) {
+      res.status(400).json({ error: 'A valid officer_id is required' });
+      return;
+    }
+
+    const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(incidentId) as { id: number } | undefined;
+    if (!incident) {
+      res.status(404).json({ error: 'Incident not found' });
+      return;
+    }
+
+    const officerUser = db.prepare(`
+      SELECT id, full_name, role, status
+      FROM users
+      WHERE id = ?
+    `).get(officerId) as { id: number; full_name: string; role: string; status: string } | undefined;
+
+    if (!officerUser) {
+      res.status(404).json({ error: 'Officer user not found' });
+      return;
+    }
+
+    if (officerUser.status !== 'active') {
+      res.status(400).json({ error: 'Only active personnel can be added to an incident' });
+      return;
+    }
+
+    if (!INCIDENT_OFFICER_USER_ROLES.has(officerUser.role)) {
+      res.status(400).json({ error: 'Selected user cannot be assigned as an incident officer' });
+      return;
+    }
+
+    const requestedRole = typeof req.body?.role === 'string' && INCIDENT_OFFICER_ENTRY_ROLES.has(req.body.role)
+      ? req.body.role
+      : 'responding';
+    const arrivedAt = normalizeOptionalText(req.body?.arrived_at);
+    const departedAt = normalizeOptionalText(req.body?.departed_at);
+    const actionTaken = normalizeOptionalText(req.body?.action_taken);
+    const notes = normalizeOptionalText(req.body?.notes);
+
+    const existing = db.prepare(`
+      SELECT id, role, arrived_at, departed_at, action_taken, notes
+      FROM incident_officers
+      WHERE incident_id = ? AND officer_id = ?
+    `).get(incidentId, officerId) as {
+      id: number;
+      role: string;
+      arrived_at: string | null;
+      departed_at: string | null;
+      action_taken: string | null;
+      notes: string | null;
+    } | undefined;
+
+    if (existing) {
+      const updates: string[] = [];
+      const values: Array<string | number | null> = [];
+
+      const shouldPromoteRole = requestedRole !== existing.role && (requestedRole !== 'responding' || existing.role === 'responding');
+      if (shouldPromoteRole) {
+        updates.push('role = ?');
+        values.push(requestedRole);
+      }
+      if (arrivedAt) {
+        updates.push('arrived_at = ?');
+        values.push(arrivedAt);
+      }
+      if (departedAt) {
+        updates.push('departed_at = ?');
+        values.push(departedAt);
+      }
+      if (actionTaken) {
+        updates.push('action_taken = ?');
+        values.push(actionTaken);
+      }
+      if (notes) {
+        updates.push('notes = ?');
+        values.push(notes);
+      }
+
+      if (updates.length === 0) {
+        res.status(409).json({ error: `${officerUser.full_name} is already assigned to this incident` });
+        return;
+      }
+
+      values.push(existing.id, incidentId);
+      db.prepare(`
+        UPDATE incident_officers
+        SET ${updates.join(', ')}
+        WHERE id = ? AND incident_id = ?
+      `).run(...values);
+
+      const updatedOfficer = db.prepare(`
+        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+        FROM incident_officers io
+        JOIN users u ON u.id = io.officer_id
+        WHERE io.id = ?
+      `).get(existing.id) as Record<string, unknown>;
+
+      auditLog(req, 'incident_updated', 'incident_officers', existing.id, existing, req.body);
+      res.json({ ...updatedOfficer, updated_existing: true });
+      return;
+    }
+
     const result = db.prepare(`
       INSERT INTO incident_officers (incident_id, officer_id, role, arrived_at, departed_at, action_taken, notes, added_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, officer_id, role || 'responding', arrived_at, departed_at, action_taken, notes, userId);
+    `).run(incidentId, officerId, requestedRole, arrivedAt, departedAt, actionTaken, notes, userId);
     const officer = db.prepare(`
       SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
       FROM incident_officers io JOIN users u ON u.id = io.officer_id
       WHERE io.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(result.lastInsertRowid) as Record<string, unknown>;
     auditLog(req, 'CREATE', 'incident_officers', result.lastInsertRowid as number, null, req.body);
-    res.json(officer);
+    res.json({ ...officer, updated_existing: false });
   } catch (err: any) {
-    if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Officer already added to this incident' }); return; }
     if (err?.message?.includes('no such table')) { res.status(500).json({ error: 'Officer tracking not yet initialized' }); return; }
     res.status(500).json({ error: 'Failed to add officer' });
   }

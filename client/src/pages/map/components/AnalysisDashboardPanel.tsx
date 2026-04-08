@@ -122,7 +122,7 @@ export default function AnalysisDashboardPanel({
         <div className="flex items-center gap-1">
           <button type="button"
             onClick={onRefresh}
-            className="p-1 rounded hover:bg-[#1a2636] transition-colors duration-150"
+            className="p-1 rounded hover:bg-[#1b2128] transition-colors duration-150"
             title="Refresh analysis"
             aria-label="Refresh analysis data"
           >
@@ -133,7 +133,7 @@ export default function AnalysisDashboardPanel({
           </button>
           <button type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-[#1a2636] transition-colors duration-150"
+            className="p-1 rounded hover:bg-[#1b2128] transition-colors duration-150"
             title="Close panel"
             aria-label="Close analysis dashboard"
           >
@@ -143,7 +143,7 @@ export default function AnalysisDashboardPanel({
       </div>
 
       {/* ── Scrollable body ────────────────────────────────── */}
-      <div className="overflow-y-auto flex-1 custom-scrollbar scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+      <div className="overflow-y-auto flex-1 custom-scrollbar scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         {loading && !data ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={18} className="animate-spin text-purple-400" />

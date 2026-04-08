@@ -105,7 +105,7 @@ export default function DataTable<T>({
         <thead className="sticky top-0 z-10">
           <tr
             className="border-b border-rmpg-600"
-            style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
+            style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)' }}
           >
             {showRowNumbers && (
               <th className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8" scope="col">#</th>

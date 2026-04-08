@@ -67,7 +67,7 @@ export default function ContextMenu({ items, children, disabled }: ContextMenuPr
         >
           {items.map((item, i) => (
             item.separator ? (
-              <div key={i} className="border-t border-[#1e3048] my-1" />
+              <div key={i} className="border-t border-[#2b313a] my-1" />
             ) : (
               <button type="button"
                 key={i}

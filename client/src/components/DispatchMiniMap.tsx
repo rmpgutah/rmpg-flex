@@ -283,7 +283,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       : [];
 
     return (
-      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
+      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #161b21' }}>
         {/* Toolbar (same as online mode) */}
         <div style={{
           position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
@@ -345,7 +345,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #161b21' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,

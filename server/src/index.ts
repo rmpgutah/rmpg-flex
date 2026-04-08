@@ -23,21 +23,12 @@ import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
 import { getDb } from './models/database';
+import { getAppVersion } from './utils/appVersion';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Read version — prefer CHANGELOG.json (canonical), fall back to package.json
-let SERVER_VERSION = '0.0.0';
-try {
-  const changelog = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../CHANGELOG.json'), 'utf-8'));
-  SERVER_VERSION = changelog.version || '0.0.0';
-} catch {
-  try {
-    const serverPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
-    SERVER_VERSION = serverPkg.version || '0.0.0';
-  } catch { /* use default */ }
-}
+const SERVER_VERSION = getAppVersion();
 
 // Import routes
 import authRoutes from './routes/auth';

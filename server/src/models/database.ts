@@ -78,6 +78,36 @@ function createTables(): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id INTEGER PRIMARY KEY,
+      notify_dispatch_email INTEGER DEFAULT 1,
+      notify_dispatch_inapp INTEGER DEFAULT 1,
+      notify_bolo_email INTEGER DEFAULT 1,
+      notify_bolo_inapp INTEGER DEFAULT 1,
+      notify_warrant_email INTEGER DEFAULT 0,
+      notify_warrant_inapp INTEGER DEFAULT 1,
+      notify_system_email INTEGER DEFAULT 0,
+      notify_system_inapp INTEGER DEFAULT 1,
+      notify_credential_email INTEGER DEFAULT 1,
+      notify_credential_inapp INTEGER DEFAULT 1,
+      notify_pso_email INTEGER DEFAULT 1,
+      notify_pso_inapp INTEGER DEFAULT 1,
+      quiet_hours_start TEXT,
+      quiet_hours_end TEXT,
+      font_scale REAL DEFAULT 1.0,
+      compact_mode INTEGER DEFAULT 0,
+      show_map_labels INTEGER DEFAULT 1,
+      default_map_style TEXT DEFAULT 'dark',
+      dashboard_widgets TEXT,
+      dispatch_sort TEXT DEFAULT 'priority',
+      dispatch_show_cleared INTEGER DEFAULT 0,
+      theme_preference TEXT DEFAULT 'dark',
+      font_size_preference TEXT DEFAULT 'medium',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS clients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -1685,6 +1715,7 @@ function migrateSchema(): void {
   addCol('properties', 'access_instructions', 'TEXT');
   addCol('properties', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
   addCol('properties', 'updated_at', 'TEXT');
+  addCol('properties', 'notes', 'TEXT');
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema
@@ -3336,6 +3367,38 @@ function migrateSchema(): void {
   addCol('users', 'font_size_preference', "TEXT DEFAULT 'medium'");
   addCol('users', 'favorites', "TEXT DEFAULT '[]'");
   addCol('users', 'recently_viewed', "TEXT DEFAULT '[]'");
+
+  // ── USER_PREFERENCES — persisted per-user UI settings ───────
+  const userPreferenceColumns: Array<[string, string]> = [
+    ['notify_dispatch_email', 'INTEGER DEFAULT 1'],
+    ['notify_dispatch_inapp', 'INTEGER DEFAULT 1'],
+    ['notify_bolo_email', 'INTEGER DEFAULT 1'],
+    ['notify_bolo_inapp', 'INTEGER DEFAULT 1'],
+    ['notify_warrant_email', 'INTEGER DEFAULT 0'],
+    ['notify_warrant_inapp', 'INTEGER DEFAULT 1'],
+    ['notify_system_email', 'INTEGER DEFAULT 0'],
+    ['notify_system_inapp', 'INTEGER DEFAULT 1'],
+    ['notify_credential_email', 'INTEGER DEFAULT 1'],
+    ['notify_credential_inapp', 'INTEGER DEFAULT 1'],
+    ['notify_pso_email', 'INTEGER DEFAULT 1'],
+    ['notify_pso_inapp', 'INTEGER DEFAULT 1'],
+    ['quiet_hours_start', 'TEXT'],
+    ['quiet_hours_end', 'TEXT'],
+    ['font_scale', 'REAL DEFAULT 1.0'],
+    ['compact_mode', 'INTEGER DEFAULT 0'],
+    ['show_map_labels', 'INTEGER DEFAULT 1'],
+    ['default_map_style', "TEXT DEFAULT 'dark'"],
+    ['dashboard_widgets', 'TEXT'],
+    ['dispatch_sort', "TEXT DEFAULT 'priority'"],
+    ['dispatch_show_cleared', 'INTEGER DEFAULT 0'],
+    ['theme_preference', "TEXT DEFAULT 'dark'"],
+    ['font_size_preference', "TEXT DEFAULT 'medium'"],
+    ['created_at', "TEXT DEFAULT (datetime('now','localtime'))"],
+    ['updated_at', "TEXT DEFAULT (datetime('now','localtime'))"],
+  ];
+  for (const [col, type] of userPreferenceColumns) {
+    addCol('user_preferences', col, type);
+  }
 
   // ── CONFIG CHANGE HISTORY table ──
   try {

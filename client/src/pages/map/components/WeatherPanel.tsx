@@ -144,7 +144,7 @@ export default function WeatherPanel({
         <button type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="p-1 rounded-sm text-white/40 hover:text-white/80 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
+          className="p-1 rounded-sm text-white/40 hover:text-white/80 hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
           title="Refresh weather data"
           aria-label="Refresh weather data"
         >
@@ -156,7 +156,7 @@ export default function WeatherPanel({
         </button>
         <button type="button"
           onClick={onClose}
-          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97]"
+          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97]"
           title="Close panel"
           aria-label="Close environment panel"
         >
@@ -164,7 +164,7 @@ export default function WeatherPanel({
         </button>
       </div>
 
-      <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ maxHeight: 480 }}>
+      <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent" style={{ maxHeight: 480 }}>
         {/* ── Section 1: Lighting ───────────────────────── */}
         <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #1e2a3a' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">

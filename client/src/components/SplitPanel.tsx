@@ -120,8 +120,8 @@ export default function SplitPanel({
           <div
             className="flex flex-shrink-0"
             style={{
-              background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
-              borderBottom: '1px solid #141e2b',
+              background: 'linear-gradient(180deg, #2b313a 0%, #1b2128 100%)',
+              borderBottom: '1px solid #161b21',
             }}
           >
             <button type="button"
@@ -191,9 +191,9 @@ export default function SplitPanel({
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
-            background: isDragging ? '#888888' : 'linear-gradient(90deg, #162236, #2a3e58, #162236)',
+            background: isDragging ? '#888888' : 'linear-gradient(90deg, #242a32, #2a3e58, #242a32)',
             borderTop: '1px solid #3a5070',
-            borderBottom: '1px solid #141e2b',
+            borderBottom: '1px solid #161b21',
             transition: isDragging ? 'none' : 'background 0.15s ease',
           }}
           onMouseDown={handleMouseDown}
@@ -202,7 +202,7 @@ export default function SplitPanel({
             if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a3e58, #3a5070, #2a3e58)';
           }}
           onMouseLeave={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #162236, #2a3e58, #162236)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #242a32, #2a3e58, #242a32)';
           }}
         />
       )}

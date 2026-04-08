@@ -706,11 +706,11 @@ export default function AdminPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} aria-hidden="true" />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #9ca4ad 30%, #9ca4ad 70%, #1a1a1a)' }} aria-hidden="true" />
             <RmpgLogo height={64} />
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0', letterSpacing: '0.12em' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide mt-0.5" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
+              <p className="text-[9px] tracking-wide mt-0.5" style={{ color: '#6f747b' }}>Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -726,7 +726,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark"
-          style={{ background: '#050505', borderBottom: '1px solid #162236' }}
+          style={{ background: '#050505', borderBottom: '1px solid #242a32' }}
           role="tablist"
           aria-label="Admin sections"
         >
@@ -743,7 +743,7 @@ export default function AdminPage() {
                 style={{
                   color: isActive ? '#ffffff' : '#888888',
                   background: isActive ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
+                  border: isActive ? '1px solid rgba(167, 177, 188, 0.26)' : '1px solid transparent',
                   borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                 }}
               >
@@ -764,7 +764,7 @@ export default function AdminPage() {
             style={{
               width: 200,
               background: '#050505',
-              borderRight: '1px solid #162236',
+              borderRight: '1px solid #242a32',
             }}
             aria-label="Admin navigation"
             role="tablist"
@@ -772,8 +772,8 @@ export default function AdminPage() {
             {tabGroups.map((group, gi) => (
               <div key={group.category} className={gi > 0 ? 'mt-2' : ''}>
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#162236]/60 mb-0.5"
-                  style={{ color: '#505050' }}
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#242a32]/60 mb-0.5"
+                  style={{ color: '#737b84' }}
                   aria-hidden="true"
                 >
                   {group.category}
@@ -789,7 +789,7 @@ export default function AdminPage() {
                       id={`admin-tab-${tab.id}`}
                       aria-controls={`admin-tabpanel-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(26,90,158,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(167,177,188,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                       style={{
                         color: isActive ? '#ffffff' : '#888888',
                         background: isActive ? 'rgba(136, 136, 136, 0.14)' : undefined,

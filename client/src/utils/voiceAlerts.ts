@@ -392,6 +392,13 @@ function naturalPhrase(text: string): string {
 function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
   const phrases: VoicePhrase[] = [];
   const seen = new Set<string>();
+  const getMeaningfulWarningValue = (value?: string | null): string | null => {
+    if (value == null) return null;
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+    if (['0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified'].includes(normalized.toLowerCase())) return null;
+    return normalized;
+  };
 
   const add = (text: string) => {
     if (!seen.has(text)) { seen.add(text); phrases.push({ text: naturalPhrase(text) }); }
@@ -421,7 +428,7 @@ function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
     if (p.is_sex_offender) add('REGISTERED SEX OFFENDER');
 
     // Gang affiliation
-    if (p.gang_affiliation) add('GANG AFFILIATED');
+    if (getMeaningfulWarningValue(p.gang_affiliation)) add('GANG AFFILIATED');
 
     // OFAC watchlist
     if (p.watchlist_match) add('WATCHLIST MATCH');
@@ -1406,4 +1413,3 @@ export async function demoAllVoiceAlerts(): Promise<void> {
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-

@@ -16,6 +16,16 @@ import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare
 
 const router = Router();
 
+const NON_WARNING_PLACEHOLDERS = new Set(['', '0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified']);
+
+function getMeaningfulWarningValue(value: unknown): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  if (NON_WARNING_PLACEHOLDERS.has(normalized.toLowerCase())) return null;
+  return normalized;
+}
+
 // ── PSO Service Window Classification ──────────────────────────────
 // Required attempt windows for PSO due diligence:
 //   1 attempt between 6AM-9AM (early_morning)
@@ -1104,10 +1114,12 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
       const fullPerson = db.prepare('SELECT caution_flags, is_sex_offender, gang_affiliation, probation_parole, flags FROM persons WHERE id = ?').get(person_id) as any;
       if (fullPerson) {
         const alerts: string[] = [];
+        const gangAffiliation = getMeaningfulWarningValue(fullPerson.gang_affiliation);
+        const probationParole = getMeaningfulWarningValue(fullPerson.probation_parole);
         if (fullPerson.caution_flags) alerts.push(`CAUTION: ${fullPerson.caution_flags}`);
         if (fullPerson.is_sex_offender) alerts.push('SEX OFFENDER');
-        if (fullPerson.gang_affiliation) alerts.push(`GANG: ${fullPerson.gang_affiliation}`);
-        if (fullPerson.probation_parole) alerts.push('PROBATION/PAROLE');
+        if (gangAffiliation) alerts.push(`GANG: ${gangAffiliation}`);
+        if (probationParole) alerts.push('PROBATION/PAROLE');
         if (fullPerson.flags && String(fullPerson.flags).includes('ACTIVE_WARRANT')) alerts.push('ACTIVE WARRANT');
         if (alerts.length > 0) responseData._safety_alerts = alerts;
       }

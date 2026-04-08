@@ -3147,7 +3147,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] min-w-[320px] border-r border-[#1e3048] flex flex-col" style={{ background: 'var(--surface-base)' }}>
+      <div className="w-[35%] min-w-[320px] border-r border-[#2b313a] flex flex-col" style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           {/* Enhancement 27: Live sync indicator */}
@@ -3302,7 +3302,7 @@ export default function DispatchPage() {
         />
 
         {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1.5 border-b border-[#1e3048] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
+        <div className="px-3 py-1.5 border-b border-[#2b313a] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
           {(() => {
             const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
             const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
@@ -3355,7 +3355,7 @@ export default function DispatchPage() {
 
         {/* Feature 9: Call Type Statistics Bar */}
         {callTypeStats.length > 0 && (
-          <div className="px-3 py-1 border-b border-[#1e3048] flex items-center gap-2 flex-shrink-0" style={{ background: '#0d152080' }}>
+          <div className="px-3 py-1 border-b border-[#2b313a] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0f1380' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
@@ -3376,7 +3376,7 @@ export default function DispatchPage() {
 
         {/* Feature 14: Disposition Statistics (collapsed by default) */}
         {dispositionStats.length > 0 && filterTab === 'cleared' && (
-          <div className="px-3 py-1 border-b border-[#1e3048] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: '#0d152080' }}>
+          <div className="px-3 py-1 border-b border-[#2b313a] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: '#0c0f1380' }}>
             <span className="text-rmpg-500 font-bold">DISPS:</span>
             {dispositionStats.slice(0, 5).map(d => (
               <span key={d.disposition} className="text-rmpg-400">
@@ -3390,7 +3390,7 @@ export default function DispatchPage() {
         <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
-              <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0d152050', border: '1px solid #1e304830' }}>
+              <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0c0f1350', border: '1px solid #2b313a30' }}>
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">No calls in this category</p>
@@ -3437,7 +3437,7 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
         {/* ------------------------------------------------------------ */}
-        <div className="flex-1 flex border-b border-[#1e3048] min-h-0">
+        <div className="flex-1 flex border-b border-[#2b313a] min-h-0">
           {/* Call Detail Panel */}
           <div ref={callDetailRef} className={`flex-1 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
           {selectedCall ? (
@@ -3561,7 +3561,7 @@ export default function DispatchPage() {
                   )}
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#1e3048] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#2b313a] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
@@ -3827,7 +3827,7 @@ export default function DispatchPage() {
 
               {/* Call Duration + Response Time + Safety Summary — always visible above tabs */}
               {!isEditing && (
-                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#050505', borderBottom: '1px solid #1e3048' }}>
+                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#050505', borderBottom: '1px solid #2b313a' }}>
                   {/* Call duration — running timer */}
                   <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
                     <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
@@ -3887,7 +3887,7 @@ export default function DispatchPage() {
               )}
 
               {/* Detail Tabs */}
-              <div className="flex border-b border-[#1e3048] flex-shrink-0" style={{ background: '#050505' }}>
+              <div className="flex border-b border-[#2b313a] flex-shrink-0" style={{ background: '#050505' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'flags'] as const).map(tab => {
                   const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', flags: 'Flags' };
                   const icons: Record<string, React.ReactNode> = {
@@ -3920,7 +3920,7 @@ export default function DispatchPage() {
                       <span className="flex items-center gap-1.5">
                         {icons[tab]}
                         {labels[tab]}
-                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#1e304830', color: isActive ? '#999999' : '#666666' }}>{count}</span> : ''}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#2b313a30', color: isActive ? '#999999' : '#666666' }}>{count}</span> : ''}
                       </span>
                     </button>
                   );
@@ -4123,7 +4123,7 @@ export default function DispatchPage() {
                         <label className="field-label">Timeline:</label>
                         {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
                       </div>
-                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #1e3048' }}>
+                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #2b313a' }}>
                         {([
                           { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#666666', showElapsed: true },
                           { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
@@ -4134,7 +4134,7 @@ export default function DispatchPage() {
                           { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#666666' },
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0d1520', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0c0f13', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
                             <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
@@ -4324,7 +4324,7 @@ export default function DispatchPage() {
 
                 {/* ── MILEAGE (primary unit) — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Primary Unit Mileage
                     </label>
@@ -4355,7 +4355,7 @@ export default function DispatchPage() {
 
                 {/* ── EXTENDED DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.section_id || selectedCall.zone_id || selectedCall.beat_id || selectedCall.latitude || selectedCall.dispatch_code) && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
@@ -4438,7 +4438,7 @@ export default function DispatchPage() {
 
                 {/* ── SUBJECT/THREAT INFO — Persons tab ─── */}
                 {(detailTab === 'info' || detailTab === 'persons') && (isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
                     </label>
@@ -4622,7 +4622,7 @@ export default function DispatchPage() {
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
                     </label>
@@ -4710,7 +4710,7 @@ export default function DispatchPage() {
 
                 {/* ── PSO CLIENT REQUEST DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || selectedCall.incident_type === 'pso_client_request') && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
@@ -4966,7 +4966,7 @@ export default function DispatchPage() {
                   ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
                   : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <FileText className="w-3 h-3" /> Process Service Details
                       {!isEditing && selectedCall.process_service_result && (
@@ -5182,7 +5182,7 @@ export default function DispatchPage() {
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
                 {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
                       <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#aaaaaa' }}>
@@ -5243,7 +5243,7 @@ export default function DispatchPage() {
 
                 {/* ── QUICK-TOGGLE FLAGS — Flags tab ─── */}
                 {detailTab === 'flags' && !isEditing && (
-                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                  <div className="border-t border-[#2b313a] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Quick Flags
                     </label>
@@ -5303,7 +5303,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── ACTIVITY LOG / TIMELINE — Timeline tab ─── */}
-                <div className="border-t border-[#1e3048] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
+                <div className="border-t border-[#2b313a] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
                   <div className="flex items-center justify-between mb-2">
                     <label className="field-label !flex items-center gap-1.5" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Activity Log
@@ -5331,9 +5331,9 @@ export default function DispatchPage() {
                           (entry.action || '').includes('note') ? '#666666' :
                           '#888888';
                         return (
-                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#1a263620] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #1e3048' }}>
+                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#1b212820] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #2b313a' }}>
                           {/* Step connector dot */}
-                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0d1520' }} />
+                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0c0f13' }} />
                           <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
                             {entry.created_at ? `${formatTime(entry.created_at)} (${timeAgo(entry.created_at)})` : '--'}
                           </span>
@@ -5370,7 +5370,7 @@ export default function DispatchPage() {
                     </div>
                   ) : (
                     <div className="flex flex-col items-center py-8 text-[#4b5563]">
-                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0d152040', border: '1px solid #1e304830' }}>
+                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0f1340', border: '1px solid #2b313a30' }}>
                         <Clock className="w-5 h-5" style={{ opacity: 0.3 }} />
                       </div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Activity Recorded</p>
@@ -5380,14 +5380,14 @@ export default function DispatchPage() {
                 </div>
 
                 {/* Notes — fills remaining vertical space — Notes tab */}
-                <div className="border-t border-[#1e3048] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
+                <div className="border-t border-[#2b313a] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
                   <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
                   <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
                     {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
                       <div className="flex flex-col items-center py-8 text-[#4b5563]">
-                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0d152040', border: '1px solid #1e304830' }}>
+                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0f1340', border: '1px solid #2b313a30' }}>
                           <MessageSquare className="w-5 h-5" style={{ opacity: 0.3 }} />
                         </div>
                         <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Notes Yet</p>
@@ -5395,7 +5395,7 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #88888840' }}>
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1b212820]" style={{ borderLeft: '2px solid #88888840' }}>
                         <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
@@ -5424,9 +5424,9 @@ export default function DispatchPage() {
                   <div className="flex-shrink-0">
                     {/* Formatting toolbar */}
                     <div className="flex items-center gap-1 mb-1.5">
-                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
+                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b313a] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
+                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b313a] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
+                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b313a] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
                       <span className="text-[8px] text-[#4b5563] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
@@ -5478,7 +5478,7 @@ export default function DispatchPage() {
 
                 {/* Linked Incidents — Notes tab */}
                 {detailTab === 'notes' && linkedIncidents.length > 0 && (
-                  <div className="border-t border-[#1e3048] pt-3 flex-shrink-0">
+                  <div className="border-t border-[#2b313a] pt-3 flex-shrink-0">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Link className="w-3 h-3" /> Linked Incidents
                     </label>
@@ -5489,7 +5489,7 @@ export default function DispatchPage() {
                           className="flex items-center gap-3 px-2.5 py-1.5 cursor-pointer transition-all duration-100 rounded-sm"
                           style={{ border: '1px solid transparent' }}
                           onClick={() => navigate(`/incidents/${inc.id}`)}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a263630'; (e.currentTarget as HTMLElement).style.borderColor = '#1e304840'; }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1b212830'; (e.currentTarget as HTMLElement).style.borderColor = '#2b313a40'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
                           <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
@@ -5546,22 +5546,22 @@ export default function DispatchPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center text-[#6b7280]">
               <div className="text-center">
-                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0d152060', border: '1px solid #1e304840' }}>
+                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0f1360', border: '1px solid #2b313a40' }}>
                   <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
                 </div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
                 <p className="text-[10px] text-[#4b5563] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
                 <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#4b5563]">
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm bg-[#0d152040] text-[#6b7280]">N</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b313a] rounded-sm bg-[#0c0f1340] text-[#6b7280]">N</kbd>
                     <span>New Call</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm bg-[#0d152040] text-[#6b7280]">P</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b313a] rounded-sm bg-[#0c0f1340] text-[#6b7280]">P</kbd>
                     <span>Quick PSO</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm bg-[#0d152040] text-[#6b7280]">R</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b313a] rounded-sm bg-[#0c0f1340] text-[#6b7280]">R</kbd>
                     <span>Refresh</span>
                   </div>
                 </div>
@@ -5592,7 +5592,7 @@ export default function DispatchPage() {
           )}
 
           {/* Dispatch Map Panel (right side, always visible) */}
-          <div className="w-[35%] border-l border-[#1e3048] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+          <div className="w-[35%] border-l border-[#2b313a] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
               <DispatchMiniMap
                 call={selectedCall}
@@ -5603,7 +5603,7 @@ export default function DispatchPage() {
             ) : (
               <div className="flex-1 flex items-center justify-center text-[#4b5563]">
                 <div className="text-center">
-                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0d152050', border: '1px dashed #1e304840' }}>
+                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0f1350', border: '1px dashed #2b313a40' }}>
                     <MapPin className="w-6 h-6" style={{ opacity: 0.25 }} />
                   </div>
                   <p className="text-[10px] font-mono font-bold uppercase tracking-widest mb-1">No Location Data</p>
