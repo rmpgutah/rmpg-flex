@@ -804,7 +804,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
           threatContext: {
             threatLevel: ctx.threatLevel,
             briefingSummary: ctx.briefingSummary,
-            premiseHistoryCount: ctx.premiseHistory.length,
+            premiseHistoryCount: ctx.premiseHistory.totalCalls,
             activeWarrantCount: ctx.activeWarrants.length,
           },
           nearestUnits,
@@ -1211,7 +1211,7 @@ router.post('/districts', requireRole('admin', 'manager'), (req: Request, res: R
 router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
@@ -1226,7 +1226,7 @@ router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res
 router.delete('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
@@ -2079,7 +2079,7 @@ router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'disp
       .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
 
     // Log
-    auditLog(req, 'DISPATCH_ASSIGN', 'calls_for_service', call_id, null, { unit_id, call_sign: unit.call_sign });
+    auditLog(req, 'DISPATCH_ASSIGN', 'calls_for_service', call_id, JSON.stringify({ unit_id, call_sign: unit.call_sign }));
 
     // Broadcast
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: call.status === 'pending' ? 'dispatched' : call.status } });
@@ -2126,7 +2126,7 @@ router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 
     db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, status = ?, dispatched_at = COALESCE(dispatched_at, ?), updated_at = ? WHERE id = ?')
       .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
 
-    auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, null, { unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) });
+    auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, JSON.stringify({ unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) }));
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: 'dispatched' } });
     broadcastUnitUpdate({ action: 'unit_status', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
 

@@ -110,7 +110,7 @@ router.get('/search', (req: Request, res: Response) => {
 router.get('/person/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.personId, 10);
+    const personId = parseInt(req.params.personId as string, 10);
     if (isNaN(personId)) {
       res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
       return;
@@ -215,7 +215,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
@@ -299,7 +299,7 @@ router.post('/', (req: Request, res: Response) => {
     }
 
     // Validate violation_date format
-    if (typeof violation_date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(violation_date)) {
+    if (typeof violation_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(violation_date)) {
       res.status(400).json({ error: 'violation_date must be in YYYY-MM-DD format', code: 'VIOLATIONDATE_MUST_BE_IN' });
       return;
     }
@@ -416,7 +416,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
@@ -536,7 +536,7 @@ router.put('/:id', (req: Request, res: Response) => {
     );
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
-    broadcastCitationUpdate({ type: 'citation_updated', id: parseInt(req.params.id) });
+    broadcastCitationUpdate({ type: 'citation_updated', id: parseInt(req.params.id as string) });
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update citation error:', error);
@@ -549,7 +549,7 @@ router.put('/:id', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
@@ -615,7 +615,7 @@ try {
 router.get('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const paymentCitId = parseInt(req.params.id, 10);
+    const paymentCitId = parseInt(req.params.id as string, 10);
     if (isNaN(paymentCitId)) { res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' }); return; }
     const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(paymentCitId) as any;
     if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
@@ -645,7 +645,7 @@ router.get('/:id/payments', (req: Request, res: Response) => {
 router.post('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const payCitId = parseInt(req.params.id, 10);
+    const payCitId = parseInt(req.params.id as string, 10);
     if (isNaN(payCitId)) { res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' }); return; }
     const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(payCitId) as any;
     if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
@@ -823,7 +823,7 @@ router.get('/:id/completeness', (req: Request, res: Response) => {
 // CITATION VIOLATIONS — Multiple violations per citation
 // ════════════════════════════════════════════════════════════
 
-router.get('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/violations', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const violations = db.prepare(`
@@ -840,7 +840,7 @@ router.get('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor'
   }
 });
 
-router.post('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { statute_id, statute_citation, violation_description, offense_level, fine_amount, speed_recorded, speed_limit, notes } = req.body;
@@ -854,7 +854,7 @@ router.post('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor
     `).run(req.params.id, nextNum, statute_id || null, statute_citation, violation_description, offense_level || 'infraction', fine_amount || 0, speed_recorded, speed_limit, notes);
     // Update total fine on parent citation
     const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
-    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = ? WHERE id = ?').run(totalFine.total, localNow(), req.params.id);
     const violation = db.prepare('SELECT * FROM citation_violations WHERE id = ?').get(result.lastInsertRowid);
     res.json(violation);
   } catch (err: any) {
@@ -863,7 +863,7 @@ router.post('/:id(\\d+)/violations', requireRole('admin', 'manager', 'supervisor
   }
 });
 
-router.put('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/violations/:violationId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const fields = ['statute_id', 'statute_citation', 'violation_description', 'offense_level', 'fine_amount', 'speed_recorded', 'speed_limit', 'plea', 'verdict', 'disposition', 'disposition_date', 'notes'];
@@ -877,19 +877,19 @@ router.put('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'man
     db.prepare(`UPDATE citation_violations SET ${updates.join(', ')} WHERE id = ? AND citation_id = ?`).run(...values);
     // Recalculate total fine
     const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
-    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = ? WHERE id = ?').run(totalFine.total, localNow(), req.params.id);
     const updated = db.prepare('SELECT * FROM citation_violations WHERE id = ?').get(req.params.violationId);
     res.json(updated);
   } catch { res.status(500).json({ error: 'Failed to update violation' }); }
 });
 
-router.delete('/:id(\\d+)/violations/:violationId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/violations/:violationId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM citation_violations WHERE id = ? AND citation_id = ?').run(req.params.violationId, req.params.id);
     // Recalculate total fine
     const totalFine = db.prepare('SELECT COALESCE(SUM(fine_amount), 0) as total FROM citation_violations WHERE citation_id = ?').get(req.params.id) as any;
-    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = datetime(\'now\') WHERE id = ?').run(totalFine.total, req.params.id);
+    db.prepare('UPDATE citations SET fine_amount = ?, updated_at = ? WHERE id = ?').run(totalFine.total, localNow(), req.params.id);
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete violation' }); }
 });
@@ -939,7 +939,7 @@ router.post('/batch/status', requireRole('admin', 'manager', 'supervisor'), (req
 // CITATION FULL — Aggregated view with violations + payments
 // ════════════════════════════════════════════════════════════
 
-router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;

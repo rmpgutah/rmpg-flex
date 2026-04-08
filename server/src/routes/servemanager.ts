@@ -800,7 +800,7 @@ router.get('/jobs/:jobId/geolocation-history', (req: Request, res: Response) => 
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         attempts_with_gps: attempts,
         known_addresses: parsedAddresses,
         total_attempts: attempts.length,
@@ -873,7 +873,7 @@ router.get('/jobs/:jobId/optimal-times', (req: Request, res: Response) => {
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         recipient_name: job.recipient_name,
         total_historical_attempts: attempts.length,
         best_hours: bestHours,
@@ -1070,7 +1070,7 @@ router.get('/jobs/:jobId/geolocation-history', (req: Request, res: Response) => 
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         attempts_with_gps: attempts,
         known_addresses: parsedAddresses,
         total_attempts: attempts.length,
@@ -1143,7 +1143,7 @@ router.get('/jobs/:jobId/optimal-times', (req: Request, res: Response) => {
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         recipient_name: job.recipient_name,
         total_historical_attempts: attempts.length,
         best_hours: bestHours,
@@ -1340,7 +1340,7 @@ router.get('/jobs/:jobId/geolocation-history', (req: Request, res: Response) => 
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         attempts_with_gps: attempts,
         known_addresses: parsedAddresses,
         total_attempts: attempts.length,
@@ -1413,7 +1413,7 @@ router.get('/jobs/:jobId/optimal-times', (req: Request, res: Response) => {
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         recipient_name: job.recipient_name,
         total_historical_attempts: attempts.length,
         best_hours: bestHours,
@@ -1610,7 +1610,7 @@ router.get('/jobs/:jobId/geolocation-history', (req: Request, res: Response) => 
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         attempts_with_gps: attempts,
         known_addresses: parsedAddresses,
         total_attempts: attempts.length,
@@ -1683,7 +1683,7 @@ router.get('/jobs/:jobId/optimal-times', (req: Request, res: Response) => {
 
     res.json({
       data: {
-        job_id: parseInt(req.params.jobId),
+        job_id: parseInt(req.params.jobId as string),
         recipient_name: job.recipient_name,
         total_historical_attempts: attempts.length,
         best_hours: bestHours,

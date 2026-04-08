@@ -648,7 +648,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           threatContext: {
             threatLevel: ctx.threatLevel,
             briefingSummary: ctx.briefingSummary,
-            premiseHistoryCount: ctx.premiseHistory.length,
+            premiseHistoryCount: ctx.premiseHistory.totalCalls,
             activeWarrantCount: ctx.activeWarrants.length,
           },
           nearestUnits,
@@ -855,7 +855,7 @@ router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'offic
 
 // GET /api/dispatch/calls/:id - Get single call with details
 // NOTE: \\d+ constraint ensures this doesn't shadow named routes like /calls/search, /calls/active, /calls/stats/*
-router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -936,7 +936,7 @@ router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

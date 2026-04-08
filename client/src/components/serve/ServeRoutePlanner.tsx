@@ -441,9 +441,7 @@ export default function ServeRoutePlanner({
           ? cluster
           : cluster.slice(1, -1);
 
-        const waypoints: google.maps.DirectionsWaypoint[] = (
-          isFirstCluster && currentLocation ? cluster : cluster.slice(1, -1)
-        ).map(s => ({
+        const waypoints: google.maps.DirectionsWaypoint[] = waypointStops.map(s => ({
           location: new google.maps.LatLng(s.job.recipient_lat!, s.job.recipient_lng!),
           stopover: true,
         }));
@@ -463,7 +461,7 @@ export default function ServeRoutePlanner({
               optimizeWaypoints: true,
               travelMode: google.maps.TravelMode.DRIVING,
             },
-            (res, status) => {
+            (res: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
               if (status === 'OK' && res) resolve(res);
               else reject(new Error(`Directions request failed: ${status}`));
             },
@@ -472,16 +470,16 @@ export default function ServeRoutePlanner({
 
         // Apply waypoint order
         const waypointOrder = result.routes[0]?.waypoint_order || [];
-        const reorderedWaypoints = waypointOrder.map(i => waypointStops[i]);
+        const reorderedWaypoints = waypointOrder.map((i: number) => waypointStops[i]);
 
         if (isFirstCluster && currentLocation) {
           // All stops were waypoints + destination
-          const allClusterStops = [...reorderedWaypoints];
+          const reorderedClusterStops = [...reorderedWaypoints];
           // The destination is the last stop (not reordered)
           // But we need to check if destination was included in waypoints
-          allOrderedStops.push(...allClusterStops);
+          allOrderedStops.push(...reorderedClusterStops);
           // Add the destination stop (last in cluster)
-          if (!allClusterStops.includes(cluster[cluster.length - 1])) {
+          if (!reorderedClusterStops.includes(cluster[cluster.length - 1])) {
             allOrderedStops.push(cluster[cluster.length - 1]);
           }
         } else {
@@ -523,7 +521,7 @@ export default function ServeRoutePlanner({
                 optimizeWaypoints: false, // already optimized
                 travelMode: google.maps.TravelMode.DRIVING,
               },
-              (res, status) => {
+              (res: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
                 if (status === 'OK' && res) resolve(res);
                 else reject(new Error(`Full route render failed: ${status}`));
               },

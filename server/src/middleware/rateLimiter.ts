@@ -24,7 +24,6 @@ export const authRateLimit = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skip,
-  keyGenerator: (req) => `auth:${req.ip || 'unknown'}`,
   message: { error: 'Too many authentication attempts. Please try again in 15 minutes.' },
 });
 
@@ -35,7 +34,6 @@ export const mfaRateLimit = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skip,
-  keyGenerator: (req) => `mfa:${req.ip || 'unknown'}`,
   message: { error: 'Too many MFA attempts. Please try again in 15 minutes.' },
 });
 

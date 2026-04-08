@@ -96,6 +96,12 @@ export interface PersonFormData {
   distinguishing_features: string;
   identifying_marks_location: string;
   notes: string;
+  email_secondary: string;
+  date_last_seen: string;
+  location_last_seen: string;
+  alias_dob: string;
+  home_phone: string;
+  work_phone: string;
 }
 
 const EMPTY_FORM: PersonFormData = {
@@ -178,6 +184,12 @@ const EMPTY_FORM: PersonFormData = {
   distinguishing_features: '',
   identifying_marks_location: '',
   notes: '',
+  email_secondary: '',
+  date_last_seen: '',
+  location_last_seen: '',
+  alias_dob: '',
+  home_phone: '',
+  work_phone: '',
 };
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-Binary', 'Other'];
@@ -305,6 +317,12 @@ export default function PersonFormModal({
           distinguishing_features: editingPerson.distinguishing_features || '',
           identifying_marks_location: editingPerson.identifying_marks_location || '',
           notes: editingPerson.notes || '',
+          email_secondary: (editingPerson as any).email_secondary || '',
+          date_last_seen: (editingPerson as any).date_last_seen || '',
+          location_last_seen: (editingPerson as any).location_last_seen || '',
+          alias_dob: (editingPerson as any).alias_dob || '',
+          home_phone: (editingPerson as any).home_phone || '',
+          work_phone: (editingPerson as any).work_phone || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -461,6 +479,13 @@ export default function PersonFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date of Birth</label>
               <input name="dob" type="date" className="input-dark mt-1" value={form.dob} onChange={handleChange} />
             </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias / Alt. DOB</label>
+              <input name="alias_dob" type="date" className="input-dark mt-1" title="Alternate or reported date of birth" value={form.alias_dob} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Gender</label>
               <select name="gender" className="select-dark mt-1" value={form.gender} onChange={handleChange}>
@@ -911,6 +936,21 @@ export default function PersonFormModal({
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Home Phone</label>
+              <input name="home_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.home_phone} onChange={(e) => setForm(prev => ({ ...prev, home_phone: formatPhoneInput(e.target.value) }))} placeholder="Home landline" />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Work Phone</label>
+              <input name="work_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.work_phone} onChange={(e) => setForm(prev => ({ ...prev, work_phone: formatPhoneInput(e.target.value) }))} placeholder="Work number" />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Secondary Email</label>
+              <input name="email_secondary" type="email" inputMode="email" className="input-dark mt-1" value={form.email_secondary} onChange={handleChange} placeholder="Secondary / alternate email" />
+            </div>
+          </div>
+
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Emergency Contact</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -1045,6 +1085,17 @@ export default function PersonFormModal({
           <div>
             <label className="text-[10px] text-red-400 uppercase font-semibold">Officer Safety / Caution Flags</label>
             <textarea name="caution_flags" rows={2} className="input-dark mt-1" placeholder="Any officer safety concerns, violent history, weapons, etc." value={form.caution_flags} onChange={handleChange} />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date Last Seen</label>
+              <input name="date_last_seen" type="date" className="input-dark mt-1" value={form.date_last_seen} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location Last Seen</label>
+              <input name="location_last_seen" type="text" className="input-dark mt-1" placeholder="Address or description of last known location" value={form.location_last_seen} onChange={handleChange} />
+            </div>
           </div>
 
           <div>

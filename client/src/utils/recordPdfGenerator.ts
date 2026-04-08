@@ -1350,7 +1350,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       // Visit header line
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('courier', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(`Visit #${visit.visit_number}`, lx, y);
@@ -1358,7 +1358,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Status badge
       const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(statusText, lx + visitLabelW, y);
@@ -1367,7 +1367,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
@@ -1385,7 +1385,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
 
       if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
@@ -1402,7 +1402,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
@@ -1411,7 +1411,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       // Disposition
       if (visit.disposition) {
-        doc.setFont('helvetica', 'italic');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
@@ -3463,14 +3463,14 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
     if (subj.hair_color) descParts.push(`Hair: ${subj.hair_color}`);
     if (subj.eye_color) descParts.push(`Eyes: ${subj.eye_color}`);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(descParts.join('  |  '), margin + 2, y + 3);
     y += 5;
 
     if (subj.address) {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
@@ -3508,7 +3508,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
       doc.text('BAIL', margin + contentW - 8, y + 3.5, { align: 'right' });
       y += 6;
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
@@ -3653,7 +3653,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     ty += 6;
 
     // Data rows
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(6.5);
     for (const [label, count] of entries) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -3703,7 +3703,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     doc.text('WARRANTS', margin + contentW - 2, y + 3.5, { align: 'right' });
     y += 6;
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(6.5);
     for (const court of data.topCourts) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);

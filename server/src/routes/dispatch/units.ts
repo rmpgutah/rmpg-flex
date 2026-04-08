@@ -312,7 +312,7 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
 router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.id, 10);
+    const unitId = parseInt(req.params.id as string, 10);
     if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }); return; }
 
     const { mileage } = req.body;
@@ -528,7 +528,7 @@ router.get('/units/stats', requireRole('admin', 'manager', 'supervisor', 'dispat
 router.get('/units/:id/history', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.id, 10);
+    const unitId = parseInt(req.params.id as string, 10);
 
     const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(unitId) as any;
     if (!unit) {
