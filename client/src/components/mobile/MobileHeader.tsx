@@ -99,41 +99,43 @@ export default function MobileHeader({
         </button>
 
         {/* Logo — slightly smaller on mobile */}
-        <RmpgLogo height={28} iconOnly />
+        <RmpgLogo height={30} iconOnly />
 
         {/* Page title */}
-        <div className="w-px h-4 mx-0.5" style={{ background: '#2e2e2e' }} />
+        <div className="w-px h-5 mx-1" style={{ background: 'var(--border-default)' }} />
         <span
-          className="text-[10px] sm:text-[11px] font-mono font-bold tracking-wider text-rmpg-400 truncate"
+          className="text-[13px] font-mono font-bold tracking-wider truncate"
+          style={{ color: 'var(--brand-gold)' }}
         >
           {pageTitle.toUpperCase()}
         </span>
       </div>
 
       {/* Right — PANIC + Profile */}
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {/* PANIC Button */}
         <PanicButton latitude={gpsLatitude} longitude={gpsLongitude} />
 
         {/* Profile Avatar */}
         <button type="button"
           onClick={onProfileTap}
-          className="flex items-center justify-center w-11 h-11"
+          className="flex items-center justify-center"
+          style={{ width: 48, height: 48 }}
         >
           {user?.profile_image ? (
             <img
               src={user.profile_image}
               alt={user.first_name}
-              className="w-7 h-7 sm:w-8 sm:h-8 object-cover"
-              style={{ border: '2px solid #3a5070' }}
+              className="w-9 h-9 object-cover"
+              style={{ border: '2px solid var(--border-strong)' }}
             />
           ) : (
             <div
-              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[10px] font-bold"
+              className="w-9 h-9 flex items-center justify-center text-[11px] font-bold"
               style={{
                 background: 'linear-gradient(135deg, #333333, #888888)',
                 color: '#fff',
-                border: '2px solid #aaaaaa',
+                border: '2px solid var(--border-strong)',
               }}
             >
               {initials}
