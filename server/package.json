@@ -44,7 +44,7 @@
     "turndown": "^7.2.4",
     "uuid": "^10.0.0",
     "whois-json": "^2.0.4",
-    "ws": "^8.18.0"
+    "ws": "^8.20.0"
   },
   "overrides": {
     "dompurify": "file:./stubs/dompurify",
