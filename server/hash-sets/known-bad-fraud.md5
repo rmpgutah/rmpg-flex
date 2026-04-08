@@ -1,0 +1,33 @@
+# Known Bad Hash Set — Financial Fraud & Identity Theft Tools
+# Source: USSS/FBI Cyber Division (simulated)
+# Category: known_bad
+# Hash Type: MD5
+# Description: Tools used in financial fraud, identity theft, credit card
+#              skimming, check fraud, and tax fraud schemes.
+# Last Updated: 2026-03-20
+#
+# Format: md5_hash,filename
+#
+# --- Credit Card Fraud ---
+a1d0c6e83f027327d8461063f4ac58a6,cc_skimmer_firmware.bin
+17e62166fc8586dfa4d1bc0e1742c08b,magstripe_cloner.exe
+d09bf41544a3365a46c9077ebb5e35c3,emv_chip_exploit.py
+07e1cd7dca89a1678042477183b7ac3f,fullz_database_2026.csv
+da4fb5c6e93e74d3df8527599fa62642,carding_forum_scraper.py
+# --- Check Fraud ---
+4c56ff4ce4aaf9573aa5dff913df997a,check_template_generator.psd
+a8baa56554f96369ab93e4f3f17b3203,micr_font_pack.zip
+9a1158154dfa42caddbd0694a4e9bdc8,check_washing_guide.pdf
+# --- Identity Theft ---
+d82c8d1619ad8176d665453cfb2e55f0,ssn_generator.exe
+a684eceee76fc522773286a895bc8436,fake_id_template_pack.zip
+b53b3a3d6ab90ce0268229151c9bde11,dl_photoshop_templates.psd
+9f61408e3afb633e50cdf1b20de6f466,identity_scraper_bot.py
+# --- Tax Fraud ---
+72b32a1f754ba1c09b3c23f1e05d66b6,w2_generator.exe
+66f041e16a60928b05a7e228a89c3799,tax_return_cloner.py
+093f65e080a295f8076b1c5722a46aa2,irs_phishing_kit.zip
+# --- Money Laundering ---
+e2ef524fbf3d9fe611d5a8e90fefdc9c,shell_company_generator.py
+2a38a4a9316c49e5a833517c45d31070,crypto_tumbler_client.exe
+7647966b7343c29048673252e490f736,hawala_ledger_template.xlsx

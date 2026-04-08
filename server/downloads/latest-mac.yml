@@ -1,0 +1,8 @@
+version: 5.7.0
+files:
+  - url: RMPG-Flex-5.7.0-arm64.dmg
+    sha512: mT7qVIcsNNl7cRy14GKc3n0bHV6i4WjtBO8cN+XNW1V82JjWnhX2eRRWZkG4JfwCBoqUjy98bDZQWYwsRYJ2DA==
+    size: 111260353
+path: RMPG-Flex-5.7.0-arm64.dmg
+sha512: mT7qVIcsNNl7cRy14GKc3n0bHV6i4WjtBO8cN+XNW1V82JjWnhX2eRRWZkG4JfwCBoqUjy98bDZQWYwsRYJ2DA==
+releaseDate: '2026-04-02T02:45:54.609Z'

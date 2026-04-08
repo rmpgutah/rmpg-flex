@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- RMPG Flex Brand Colors -->
+    <color name="colorPrimary">#1a5a9e</color>
+    <color name="colorPrimaryDark">#0a0e14</color>
+    <color name="colorAccent">#2563eb</color>
+
+    <!-- Dark theme background -->
+    <color name="splashBackground">#0a0e14</color>
+    <color name="navigationBar">#0a0e14</color>
+    <color name="statusBar">#0a0e14</color>
+</resources>
