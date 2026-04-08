@@ -212,7 +212,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setFont('helvetica', 'bold');
     doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + FONT.SIZE_SECTION_TITLE * 0.14);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += barH + SPACING.LG;
   }
@@ -233,7 +233,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.text(col.label.toUpperCase(), xOff + 1, yPos + 3.5);
       xOff += col.w;
     }
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += hdrH + 1;
   }
@@ -281,7 +281,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.text(sanitizePdfText(branding.report_header_text), pageW / 2, titleY, { align: 'center' });
 
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(sanitizePdfText(branding.report_subheader_text), pageW / 2, titleY + 6, { align: 'center' });
 
@@ -292,7 +292,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_MUTED);
   doc.text(`${formNum}  |  ${FORM_REVISION}`, pageW / 2, titleY + 19, { align: 'center' });
 
@@ -311,7 +311,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // Report metadata
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
 
   const startLabel = data.query.startDate
     ? formatDate(data.query.startDate)
@@ -435,7 +435,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     // Table rows
     doc.setFontSize(5.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
 
     // Sample points for readability — if > 300 points, sample every Nth
     const maxRows = 300;
