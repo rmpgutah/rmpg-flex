@@ -415,11 +415,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
                     <div className="flex items-center gap-1.5">
-<<<<<<< HEAD
                       <span className="text-[8px] px-1 py-0.5 bg-[#1b2128] text-rmpg-400 rounded-sm">{v.source}</span>
-=======
-                      <span className="text-[8px] px-1 py-0.5 bg-[#1a2636] text-rmpg-400 rounded-sm">{v.source}</span>
->>>>>>> main
                       {onAutoFill && (
                         <button
                           type="button"

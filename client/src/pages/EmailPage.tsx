@@ -648,17 +648,10 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
         .replace(/<script[\s\S]*?<\/script>/gi, '')
         .replace(/\bon\w+\s*=/gi, 'data-blocked=');
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none';"><style>
-<<<<<<< HEAD
         body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0f13; margin: 16px; line-height: 1.6; word-wrap: break-word; }
         a { color: #3b82f6; text-decoration: underline; } a:hover { color: #60a5fa; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b313a; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
         pre { background: #161b21; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b313a; margin: 16px 0; }
-=======
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0d1520; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #3b82f6; text-decoration: underline; } a:hover { color: #60a5fa; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #1e3048; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
-        pre { background: #141e2b; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #1e3048; margin: 16px 0; }
->>>>>>> main
       </style></head><body>${sanitized}</body></html>`;
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
@@ -731,11 +724,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-<<<<<<< HEAD
     iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
-=======
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#1a5a9e;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
->>>>>>> main
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');

@@ -78,11 +78,7 @@ function MpgSparkline({ logs }: { logs: FleetFuelLog[] }) {
         <polyline
           points={points.join(' ')}
           fill="none"
-<<<<<<< HEAD
           stroke="#888888"
-=======
-          stroke="#1a5a9e"
->>>>>>> main
           strokeWidth="1.5"
           strokeLinejoin="round"
           strokeLinecap="round"

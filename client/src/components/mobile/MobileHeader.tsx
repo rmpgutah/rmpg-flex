@@ -74,11 +74,7 @@ export default function MobileHeader({
         <button type="button"
           onClick={onMenuOpen}
           className="flex items-center justify-center w-11 h-11"
-<<<<<<< HEAD
           style={{ color: '#aaaaaa' }}
-=======
-          style={{ color: '#b0bcc8' }}
->>>>>>> main
           aria-label="Open navigation"
         >
           <Menu style={{ width: 20, height: 20 }} />
@@ -88,13 +84,8 @@ export default function MobileHeader({
         <button type="button"
           onClick={onNavBack}
           disabled={!canGoBack}
-<<<<<<< HEAD
           className="flex items-center justify-center w-9 h-11"
           style={{ color: canGoBack ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
-=======
-          className="flex items-center justify-center w-11 h-11"
-          style={{ color: canGoBack ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
->>>>>>> main
           aria-label="Go back"
         >
           <ChevronLeft style={{ width: 16, height: 16 }} />
@@ -102,13 +93,8 @@ export default function MobileHeader({
         <button type="button"
           onClick={onNavForward}
           disabled={!canGoForward}
-<<<<<<< HEAD
           className="flex items-center justify-center w-9 h-11"
           style={{ color: canGoForward ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
-=======
-          className="flex items-center justify-center w-11 h-11"
-          style={{ color: canGoForward ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
->>>>>>> main
           aria-label="Go forward"
         >
           <ChevronRight style={{ width: 16, height: 16 }} />

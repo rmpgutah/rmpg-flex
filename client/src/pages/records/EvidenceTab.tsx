@@ -24,11 +24,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-<<<<<<< HEAD
 import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
-=======
-import { safeDateStr } from '../../utils/dateUtils';
->>>>>>> main
 import { useAuth } from '../../context/AuthContext';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';

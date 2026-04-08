@@ -15,10 +15,7 @@ import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
-<<<<<<< HEAD
 import { formatAddressDisplay } from '../utils/statusLabels';
-=======
->>>>>>> main
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },

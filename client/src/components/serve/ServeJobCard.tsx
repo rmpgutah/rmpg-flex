@@ -358,11 +358,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
-<<<<<<< HEAD
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-blue-900/20"
-=======
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-blue-900/20"
->>>>>>> main
           title="Navigate"
           aria-label={`Navigate to ${job.recipient_name}`}
         >
@@ -371,11 +367,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onAttempt(job.id); }}
-<<<<<<< HEAD
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-green-900/20"
-=======
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-green-900/20"
->>>>>>> main
           title="Attempt Service"
           aria-label={`Attempt service for ${job.recipient_name}`}
         >
@@ -384,11 +376,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
-<<<<<<< HEAD
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-cyan-900/20"
-=======
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-cyan-900/20"
->>>>>>> main
           title="Skip Trace"
           aria-label={`Skip trace for ${job.recipient_name}`}
         >
@@ -397,11 +385,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onFlagAddress(job.id); }}
-<<<<<<< HEAD
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"
-=======
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 focus:bg-amber-900/20"
->>>>>>> main
           title="Flag Bad Address"
           aria-label={`Flag bad address for ${job.recipient_name}`}
         >

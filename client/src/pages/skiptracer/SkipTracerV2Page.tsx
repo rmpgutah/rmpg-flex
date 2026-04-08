@@ -834,11 +834,7 @@ export default function SkipTracerV2Page() {
 
   // ─── Search Panel (left side for search tab) ──────────────
   const searchPanel = (
-<<<<<<< HEAD
     <div className={`flex flex-col ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1e2d40] bg-[#161b21]`}>
-=======
-    <div className={`flex flex-col ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1e2d40] bg-[#141e2b]`}>
->>>>>>> main
       <PanelTitleBar title="MicroBilt" icon={Search} statusLed="blue" ledPulse={loading}>
         {result && (
           <span className="text-[9px] font-mono text-[#556677]">
@@ -908,11 +904,7 @@ export default function SkipTracerV2Page() {
               className={`px-2 py-1 rounded-sm text-[9px] font-bold uppercase tracking-wider transition-all ${
                 searchEngine === eng.id
                   ? 'text-white shadow-sm'
-<<<<<<< HEAD
                   : 'text-[#556677] hover:text-[#8899aa] bg-[#0c0f13] border border-[#1e2d40]'
-=======
-                  : 'text-[#556677] hover:text-[#8899aa] bg-[#0d1520] border border-[#1e2d40]'
->>>>>>> main
               }`}
               style={searchEngine === eng.id ? { backgroundColor: eng.color + '33', color: eng.color, border: `1px solid ${eng.color}55` } : undefined}
               title={eng.desc}

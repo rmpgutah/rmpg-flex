@@ -140,11 +140,7 @@ export default function ExportButton({
       {/* Export progress bar (indeterminate while fetching) */}
       {isExporting && exportPhase === 'fetching' && (
         <div className="absolute left-0 right-0" style={{ top: '100%', zIndex: 51 }}>
-<<<<<<< HEAD
           <ProgressBar color="#888888" height={2} showPercent={false} />
-=======
-          <ProgressBar color="#1a5a9e" height={2} showPercent={false} />
->>>>>>> main
         </div>
       )}
 

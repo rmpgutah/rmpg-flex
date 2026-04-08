@@ -42,11 +42,7 @@ export default function UploadProgressBar({
     ? '#d4a017'    // gold for completion
     : phase === 'error'
       ? '#dc2626'
-<<<<<<< HEAD
       : '#888888'; // brand blue
-=======
-      : '#1a5a9e'; // brand blue
->>>>>>> main
 
   return (
     <div className="w-full space-y-1 px-1">
@@ -79,11 +75,7 @@ export default function UploadProgressBar({
 
       {/* Progress bar */}
       <div
-<<<<<<< HEAD
         className="w-full bg-[#0c0f13] border border-[#2b313a] rounded-sm overflow-hidden"
-=======
-        className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm overflow-hidden"
->>>>>>> main
         style={{ height: 4 }}
       >
         {phase === 'processing' ? (

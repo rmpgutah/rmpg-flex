@@ -366,7 +366,6 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
     // Delete associated records
     db.prepare('DELETE FROM case_notes WHERE case_id = ?').run(delId);
     db.prepare('DELETE FROM case_persons WHERE case_id = ?').run(delId);
-<<<<<<< HEAD
     try { db.prepare('DELETE FROM case_calls WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
     try { db.prepare('DELETE FROM case_incidents WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
     try { db.prepare('DELETE FROM case_vehicles WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
@@ -374,8 +373,6 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
     try { db.prepare('DELETE FROM case_evidence WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
     try { db.prepare('DELETE FROM case_warrants WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
     try { db.prepare('DELETE FROM case_citations WHERE case_id = ?').run(delId); } catch { /* table may not exist */ }
-=======
->>>>>>> main
     db.prepare('DELETE FROM cases WHERE id = ?').run(delId);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
