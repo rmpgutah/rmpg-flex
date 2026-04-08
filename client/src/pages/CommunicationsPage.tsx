@@ -970,7 +970,7 @@ export default function CommunicationsPage() {
                                   <div
                                     className="w-6 h-6 flex items-center justify-center text-[9px] font-bold flex-shrink-0"
                                     style={{
-                                      background: isOwnMessage ? 'linear-gradient(135deg, #1e40af, #888888)' : 'linear-gradient(135deg, #333333, #888888)',
+                                      background: isOwnMessage ? 'linear-gradient(135deg, #d4a017, #888888)' : 'linear-gradient(135deg, #333333, #888888)',
                                       color: '#fff',
                                       border: isOwnMessage ? '1px solid #999999' : '1px solid #aaaaaa',
                                       borderRadius: 2,
