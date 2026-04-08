@@ -759,6 +759,21 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {selectedPerson.scars_marks_tattoos && (
             <div className="mt-2"><span className="text-[10px] text-amber-400 uppercase font-semibold">Scars/Marks/Tattoos:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.scars_marks_tattoos}</span></div>
           )}
+          {selectedPerson.scar_description && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Scar Details:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.scar_description}</span></div>
+          )}
+          {selectedPerson.tattoo_description && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Tattoo Details:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.tattoo_description}</span></div>
+          )}
+          {selectedPerson.piercing_description && (
+            <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercings:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.piercing_description}</span></div>
+          )}
+          {selectedPerson.identifying_marks_location && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Marks Location:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.identifying_marks_location}</span></div>
+          )}
+          {selectedPerson.distinguishing_features && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Distinguishing Features:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.distinguishing_features}</span></div>
+          )}
           {selectedPerson.clothing_description && (
             <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Clothing:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.clothing_description}</span></div>
           )}
@@ -858,6 +873,26 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     )}
                   </div>
                 )}
+              {/* ── Law Enforcement IDs ── */}
+              {(selectedPerson.ncic_number || selectedPerson.sor_number || selectedPerson.fbi_number || selectedPerson.state_id_number) && (
+                <div className="border-t border-rmpg-700 pt-1.5 mt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                    {selectedPerson.ncic_number && <div><span className="text-rmpg-400">NCIC #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.ncic_number}</span></div>}
+                    {selectedPerson.fbi_number && <div><span className="text-rmpg-400">FBI #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.fbi_number}</span></div>}
+                    {selectedPerson.state_id_number && <div><span className="text-rmpg-400">State ID #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.state_id_number}</span></div>}
+                    {selectedPerson.sor_number && <div><span className="text-rmpg-400">SOR #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.sor_number}</span></div>}
+                  </div>
+                </div>
+              )}
+              {/* ── Passport ── */}
+              {(selectedPerson.passport_number || selectedPerson.passport_country) && (
+                <div className="border-t border-rmpg-700 pt-1.5 mt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                    {selectedPerson.passport_number && <div><span className="text-rmpg-400">Passport #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.passport_number}</span></div>}
+                    {selectedPerson.passport_country && <div><span className="text-rmpg-400">Country:</span> <span className="text-rmpg-200">{selectedPerson.passport_country}</span></div>}
+                  </div>
+                </div>
+              )}
               </div>
             </div>
           ) : (
@@ -885,6 +920,43 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               {renderInfoRow('Name', selectedPerson.emergency_contact_name)}
               {renderInfoRow('Phone', selectedPerson.emergency_contact_phone, Phone)}
               {renderInfoRow('Relationship', selectedPerson.emergency_contact_relationship)}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Immigration & Demographics ───────────── */}
+        {(selectedPerson.immigration_status || selectedPerson.passport_number || selectedPerson.passport_country) && (
+          <CollapsibleSection title="Immigration & Travel" icon={Shield}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {renderInfoRow('Immigration Status', selectedPerson.immigration_status)}
+              {renderInfoRow('Passport #', selectedPerson.passport_number)}
+              {renderInfoRow('Passport Country', selectedPerson.passport_country)}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Health & Medical (conditional) ────────── */}
+        {(selectedPerson.disability_flags || selectedPerson.mental_health_flags || selectedPerson.substance_abuse || selectedPerson.medication_notes) && (
+          <CollapsibleSection title="Health & Medical" icon={AlertTriangle}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {renderInfoRow('Disabilities', selectedPerson.disability_flags)}
+              {renderInfoRow('Mental Health', selectedPerson.mental_health_flags)}
+              {renderInfoRow('Substance Abuse', selectedPerson.substance_abuse)}
+            </div>
+            {selectedPerson.medication_notes && (
+              <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.medication_notes}</span></div>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* ── Education & Military (conditional) ───── */}
+        {(selectedPerson.education_level || selectedPerson.military_branch || selectedPerson.military_status || selectedPerson.tribal_affiliation) && (
+          <CollapsibleSection title="Education & Military" icon={Shield}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {renderInfoRow('Education', selectedPerson.education_level)}
+              {renderInfoRow('Military Branch', selectedPerson.military_branch)}
+              {renderInfoRow('Military Status', selectedPerson.military_status)}
+              {renderInfoRow('Tribal Affiliation', selectedPerson.tribal_affiliation)}
             </div>
           </CollapsibleSection>
         )}

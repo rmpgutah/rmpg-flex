@@ -33,6 +33,10 @@ import {
   Navigation,
   Mail,
   Zap,
+  ClipboardList,
+  Fingerprint,
+  ShieldBan,
+  Car,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -812,7 +816,7 @@ export default function DashboardPage() {
         <div className="panel-beveled bg-surface-base" role="region" aria-label="Quick actions">
           <PanelTitleBar title="QUICK ACTIONS" icon={Zap} />
           <div className="p-3">
-            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'} gap-2`}>
+            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'} gap-2`}>
               {[
                 { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
                 { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
@@ -820,6 +824,12 @@ export default function DashboardPage() {
                 { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
                 { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
                 { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
+                { icon: Briefcase, label: 'Cases', path: '/cases', color: '#06b6d4' },
+                { icon: ClipboardList, label: 'Field Interviews', path: '/field-interviews', color: '#888888' },
+                { icon: Fingerprint, label: 'Arrest Records', path: '/arrest-records', color: '#ef4444' },
+                { icon: Gavel, label: 'Court Tracker', path: '/court', color: '#f59e0b' },
+                { icon: ShieldBan, label: 'Trespass Orders', path: '/trespass-orders', color: '#f97316' },
+                { icon: Car, label: 'Fleet', path: '/fleet', color: '#888888' },
               ].map(({ icon: ActionIcon, label, path, color, action }) => (
                 <button type="button"
                   key={label}

@@ -7,6 +7,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   FileWarning,
   Plus,
@@ -27,6 +28,7 @@ import {
   FileText,
   Ban,
   RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -302,6 +304,7 @@ export default function CitationsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
 
@@ -1382,8 +1385,15 @@ export default function CitationsPage() {
             </div>
 
             {form.person_id && (
-              <div className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1">
+              <div
+                className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-brand-900/30 transition-colors"
+                onClick={() => navigate(`/records?tab=persons&personId=${form.person_id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/records?tab=persons&personId=${form.person_id}`); }}
+              >
                 <Check size={10} /> Linked to person record #{form.person_id}
+                <ExternalLink size={9} className="ml-1 opacity-60" />
               </div>
             )}
 
