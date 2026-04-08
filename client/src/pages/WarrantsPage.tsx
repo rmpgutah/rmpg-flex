@@ -2282,11 +2282,7 @@ export default function WarrantsPage() {
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
       {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
-<<<<<<< HEAD
         <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
-=======
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
->>>>>>> main
           <div className="p-4 space-y-4">
             {/* Coverage Section */}
             {coverageLoading ? (
@@ -2913,19 +2909,11 @@ export default function WarrantsPage() {
       {utahDetailWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setUtahDetailWarrant(null)}>
           <div
-<<<<<<< HEAD
             className="bg-[#0c0f13] border border-[#2b313a] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b313a] bg-[#161b21]">
-=======
-            className="bg-[#0d1520] border border-[#1e3048] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048] bg-[#141e2b]">
->>>>>>> main
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <span className="text-base font-bold text-white truncate">
                   {utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}
@@ -2949,11 +2937,7 @@ export default function WarrantsPage() {
                 <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Subject Information</span>
                 </div>
-<<<<<<< HEAD
                 <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
-=======
-                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
->>>>>>> main
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Full Name</span>
@@ -2980,11 +2964,7 @@ export default function WarrantsPage() {
                 <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Warrant Details</span>
                 </div>
-<<<<<<< HEAD
                 <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
-=======
-                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
->>>>>>> main
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     {(utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id) && (
                       <div>
@@ -3014,11 +2994,7 @@ export default function WarrantsPage() {
                             utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                             utahDetailWarrant.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                             'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-<<<<<<< HEAD
                           }`}>{(utahDetailWarrant.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-=======
-                          }`}>{utahDetailWarrant.offense_level}</span>
->>>>>>> main
                         </div>
                       </div>
                     )}
@@ -3045,11 +3021,7 @@ export default function WarrantsPage() {
                   <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                     <span className="text-[10px] font-bold text-white uppercase tracking-widest">Court Information</span>
                   </div>
-<<<<<<< HEAD
                   <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
-=======
-                  <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
->>>>>>> main
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                       {utahDetailWarrant.court_name && (
                         <div>
@@ -3083,11 +3055,7 @@ export default function WarrantsPage() {
                 <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Source / Verification</span>
                 </div>
-<<<<<<< HEAD
                 <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
-=======
-                <div className="border border-t-0 border-[#1e3048] rounded-b-sm p-3">
->>>>>>> main
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Data Source</span>
@@ -3113,11 +3081,7 @@ export default function WarrantsPage() {
             </div>
 
             {/* Modal Footer */}
-<<<<<<< HEAD
             <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#2b313a] bg-[#161b21] flex-wrap">
-=======
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#1e3048] bg-[#141e2b] flex-wrap">
->>>>>>> main
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"

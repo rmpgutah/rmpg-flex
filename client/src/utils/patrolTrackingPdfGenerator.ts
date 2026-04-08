@@ -190,11 +190,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     // Footer on ALL pages
     const footerH = 8;
     const footerY = pageH - footerH;
-<<<<<<< HEAD
     doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
-=======
-    doc.setFillColor(240, 240, 245);
->>>>>>> main
     doc.rect(0, footerY, pageW, footerH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
@@ -475,7 +471,6 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         beatCode.toUpperCase(),                                          // Beat
         sector.toUpperCase(),                                            // Sector
         (typeof zoneParts === 'string' ? zoneParts : String(zoneParts)).toUpperCase(), // Zone
-<<<<<<< HEAD
         (pt.road_name || 'N/A').toUpperCase(),                             // Road
         (pt.nearest_intersection || 'N/A').toUpperCase(),                  // Cross St
         pt.speed_mph != null ? `${pt.speed_mph}` : 'N/A',                // Speed
@@ -486,18 +481,6 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         (pt.current_call_type || 'N/A').replace(/_/g, ' ').toUpperCase(), // Call Type
         pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : 'N/A',  // Dist
         pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : 'N/A',  // Lat/Lng
-=======
-        (pt.road_name || '-').toUpperCase(),                             // Road
-        (pt.nearest_intersection || '-').toUpperCase(),                  // Cross St
-        pt.speed_mph != null ? `${pt.speed_mph}` : '-',                // Speed
-        (pt.heading_cardinal || '-').toUpperCase(),                      // Heading
-        (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
-        (pt.status || '-').replace(/_/g, ' ').toUpperCase(),            // Status
-        (pt.current_call_number || '-').toUpperCase(),                   // Call #
-        (pt.current_call_type || '-').replace(/_/g, ' ').toUpperCase(), // Call Type
-        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',  // Dist
-        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : '-',  // Lat/Lng
->>>>>>> main
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
@@ -552,7 +535,6 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let rxOff = margin;
         const rRowData = [
-<<<<<<< HEAD
           (seg.call_number || 'N/A').toUpperCase(),
           (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
           `P${seg.priority}`.toUpperCase(),
@@ -560,15 +542,6 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
           seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',
           seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : 'N/A',
-=======
-          (seg.call_number || '-').toUpperCase(),
-          (seg.incident_type || '-').replace(/_/g, ' ').toUpperCase(),
-          `P${seg.priority}`.toUpperCase(),
-          seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : '-',
-          seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : '-',
-          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : '-',
-          seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : '-',
->>>>>>> main
           String(seg.breadcrumb_count || 0),
         ];
 
@@ -617,15 +590,9 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let zxOff = margin;
         const zRowData = [
-<<<<<<< HEAD
           (beatId || 'N/A').toUpperCase(),
           (zone.beat_code || 'N/A').toUpperCase(),
           (zone.city || 'N/A').toUpperCase(),
-=======
-          (beatId || '-').toUpperCase(),
-          (zone.beat_code || '-').toUpperCase(),
-          (zone.city || '-').toUpperCase(),
->>>>>>> main
           String(zone.point_count || 0),
           formatDuration(zone.time_seconds || 0).toUpperCase(),
           `${zone.percentage || 0}%`,
