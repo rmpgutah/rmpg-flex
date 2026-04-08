@@ -103,6 +103,7 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
       return;
     }
 
+<<<<<<< HEAD
     // Read image file and convert to base64
     const imageBuffer = fs.readFileSync(req.file.path);
     const base64Image = imageBuffer.toString('base64');
@@ -585,6 +586,38 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
       return;
     }
 
+=======
+    // Read image file
+    const imageBuffer = fs.readFileSync(req.file.path);
+
+    // Call RapidAPI U.S. Driver License OCR using native FormData (Node 18+)
+    const blob = new Blob([imageBuffer], { type: req.file.mimetype || 'image/jpeg' });
+    const formData = new FormData();
+    formData.append('image', blob, req.file.originalname || 'dl-scan.jpg');
+
+    const ocrResponse = await fetch('https://u-s-driver-license-ocr.p.rapidapi.com/extract', {
+      method: 'POST',
+      headers: {
+        'x-rapidapi-key': apiKey,
+        'x-rapidapi-host': 'u-s-driver-license-ocr.p.rapidapi.com',
+      },
+      body: formData,
+    });
+
+    // Clean up uploaded file after sending to API
+    try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+
+    if (!ocrResponse.ok) {
+      const errorText = await ocrResponse.text().catch(() => '');
+      console.error(`[DL OCR] API error (${ocrResponse.status}):`, errorText.slice(0, 500));
+      res.status(502).json({ error: `OCR API returned ${ocrResponse.status}`, code: 'OCR_API_ERROR', detail: errorText.slice(0, 200) });
+      return;
+    }
+
+    const ocrData = await ocrResponse.json() as any;
+    console.log('[DL OCR] Raw response keys:', Object.keys(ocrData));
+
+>>>>>>> main
     // Map OCR response to our person/DL record format
     const raw = ocrData.result || ocrData.data || ocrData;
 
@@ -625,6 +658,7 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     const eyeColor = extractField('eyes', 'eye_color', 'eyeColor', 'Eyes', 'EYE');
     const hairColor = extractField('hair', 'hair_color', 'hairColor', 'Hair', 'HAIR');
 
+<<<<<<< HEAD
     // Additional fields from new parser
     const race = extractField('race', 'Race', 'ethnicity');
     const organDonor = raw.organ_donor === true || /donor/i.test(extractField('organ_donor'));
@@ -636,19 +670,28 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
 
     const parsed = {
       document_type: documentType,
+=======
+    const parsed = {
+>>>>>>> main
       first_name: firstName,
       middle_name: middleName,
       last_name: lastName,
       full_name: fullName || [firstName, middleName, lastName].filter(Boolean).join(' '),
       date_of_birth: dob,
       gender: gender,
+<<<<<<< HEAD
       race: race,
+=======
+>>>>>>> main
       height: height,
       weight: weight,
       eye_color: eyeColor,
       hair_color: hairColor,
       address: fullAddress,
+<<<<<<< HEAD
       city_state_zip: cityStateZip,
+=======
+>>>>>>> main
       city: city,
       state: stateVal,
       zip: zip,
@@ -659,10 +702,13 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
       dl_issue_date: dlIssueDate,
       dl_restrictions: dlRestrictions,
       dl_endorsements: dlEndorsements,
+<<<<<<< HEAD
       organ_donor: organDonor,
       veteran: veteran,
       nationality: nationality,
       place_of_birth: placeOfBirth,
+=======
+>>>>>>> main
       source: 'DL_OCR_SCAN',
       raw_ocr: ocrData,
     };

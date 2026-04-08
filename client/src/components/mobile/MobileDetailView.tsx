@@ -180,7 +180,11 @@ export default function MobileDetailView({
             <button type="button"
               onClick={onClose}
               className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
+<<<<<<< HEAD
               style={{ color: '#aaaaaa' }}
+=======
+              style={{ color: '#b0bcc8' }}
+>>>>>>> main
               aria-label="Go back"
             >
               <ArrowLeft style={{ width: 20, height: 20 }} />
@@ -204,7 +208,11 @@ export default function MobileDetailView({
               <button type="button"
                 onClick={() => setMenuOpen((v) => !v)}
                 className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
+<<<<<<< HEAD
                 style={{ color: '#aaaaaa' }}
+=======
+                style={{ color: '#b0bcc8' }}
+>>>>>>> main
                 aria-label="More actions"
               >
                 <MoreVertical style={{ width: 20, height: 20 }} />

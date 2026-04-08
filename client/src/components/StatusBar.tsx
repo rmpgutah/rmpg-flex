@@ -92,6 +92,7 @@ export default function StatusBar({
               <span style={{ color: gpsColor, fontWeight: 700 }}>
                 GPS: {gpsUnitCallSign || 'ON'}
               </span>
+<<<<<<< HEAD
               {gpsAccuracy != null && (
                 <span className="tabular-nums" style={{ color: '#666666', marginLeft: 4 }}>
                   ±{Math.round(gpsAccuracy)}m
@@ -106,6 +107,17 @@ export default function StatusBar({
           );
         })() : (
           <span style={{ color: '#3a3a3a' }}>GPS: OFF</span>
+=======
+            )}
+            {gpsLastSent && (
+              <span className="tabular-nums" style={{ color: '#505050', marginLeft: 4 }}>
+                {safeTimeStr(gpsLastSent)}
+              </span>
+            )}
+          </>
+        ) : (
+          <span style={{ color: '#3a4e60' }}>GPS: OFF</span>
+>>>>>>> main
         )}
       </div>
 

@@ -2194,7 +2194,11 @@ router.post('/purge/sessions', requireRole('admin'), (req: Request, res: Respons
     const db = getDb();
     const now = new Date().toISOString();
 
+<<<<<<< HEAD
     const result = db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now);
+=======
+    const result = db.prepare('DELETE FROM refresh_tokens WHERE expires_at < ?').run(now);
+>>>>>>> main
 
     auditLog(req, 'ADMIN_PURGE_SESSIONS', 'refresh_token', 0,
       `Purged ${result.changes} expired sessions`);
@@ -2214,7 +2218,11 @@ router.get('/system-overview', requireRole('admin'), (req: Request, res: Respons
     const counts: Record<string, number> = {};
     const tables = ['users', 'calls_for_service', 'incidents', 'citations', 'warrants', 'persons', 'vehicles',
                      'cases', 'arrests', 'field_interviews', 'trespass_orders', 'bolos', 'notifications',
+<<<<<<< HEAD
                      'activity_log', 'sessions', 'fleet_vehicles', 'evidence_items'];
+=======
+                     'activity_log', 'refresh_tokens', 'fleet_vehicles', 'evidence_items'];
+>>>>>>> main
 
     for (const table of tables) {
       try {
@@ -2224,7 +2232,11 @@ router.get('/system-overview', requireRole('admin'), (req: Request, res: Respons
 
     // Active users (logged in last 24h)
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+<<<<<<< HEAD
     const activeUsers = (db.prepare('SELECT COUNT(DISTINCT user_id) as c FROM sessions WHERE expires_at > ?').get(dayAgo) as any)?.c || 0;
+=======
+    const activeUsers = (db.prepare('SELECT COUNT(DISTINCT user_id) as c FROM refresh_tokens WHERE expires_at > ?').get(dayAgo) as any)?.c || 0;
+>>>>>>> main
 
     // Server uptime
     const uptime = process.uptime();
@@ -2408,7 +2420,11 @@ router.post('/system/lockdown', requireRole('admin'), (req: Request, res: Respon
     // Optionally kill all non-admin sessions
     let sessionsKilled = 0;
     if (kick_sessions) {
+<<<<<<< HEAD
       const result = db.prepare("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role != 'admin')").run();
+=======
+      const result = db.prepare("DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE role != 'admin')").run();
+>>>>>>> main
       sessionsKilled = result.changes;
     }
 
@@ -2564,9 +2580,15 @@ router.get('/users/presence', requireRole('admin'), (req: Request, res: Response
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const users = db.prepare(`
+<<<<<<< HEAD
       SELECT u.id, u.username, u.full_name, u.role, u.badge_number,
         (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) as last_activity,
         (SELECT COUNT(*) FROM sessions rt WHERE rt.user_id = u.id AND rt.expires_at > datetime('now')) as active_sessions,
+=======
+      SELECT u.id, u.username, u.full_name, u.role, u.call_sign, u.badge_number,
+        (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) as last_activity,
+        (SELECT COUNT(*) FROM refresh_tokens rt WHERE rt.user_id = u.id AND rt.expires_at > datetime('now')) as active_sessions,
+>>>>>>> main
         CASE
           WHEN (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) > ? THEN 'online'
           WHEN (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) > ? THEN 'idle'
@@ -2601,7 +2623,11 @@ router.get('/export/full', requireRole('admin'), (req: Request, res: Response) =
     const data: Record<string, any[]> = {};
     for (const t of tables) {
       // Skip sensitive tables
+<<<<<<< HEAD
       if (['sessions'].includes(t.name)) continue;
+=======
+      if (['refresh_tokens'].includes(t.name)) continue;
+>>>>>>> main
       try {
         data[t.name] = db.prepare(`SELECT * FROM "${t.name}" ORDER BY id DESC LIMIT 50000`).all();
       } catch {
@@ -2639,7 +2665,11 @@ router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response)
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const rows = db.prepare(`
+<<<<<<< HEAD
       SELECT al.*, u.username, u.full_name, u.role
+=======
+      SELECT al.*, u.username, u.full_name, u.role, u.call_sign
+>>>>>>> main
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.created_at > ?
@@ -3010,7 +3040,11 @@ router.post('/records/truncate', requireRole('admin'), (req: Request, res: Respo
     const db = getDb();
     const { table, confirm } = req.body;
     if (!table || confirm !== 'CONFIRM_TRUNCATE') { res.status(400).json({ error: 'table required, confirm must be "CONFIRM_TRUNCATE"' }); return; }
+<<<<<<< HEAD
     const blocked = ['users', 'system_config', 'sessions', 'migrations'];
+=======
+    const blocked = ['users', 'system_config', 'refresh_tokens', 'migrations'];
+>>>>>>> main
     if (blocked.includes(table)) { res.status(403).json({ error: 'Cannot truncate system table' }); return; }
     const count = (db.prepare(`SELECT COUNT(*) as c FROM "${table}"`).get() as any)?.c || 0;
     db.prepare(`DELETE FROM "${table}"`).run();
@@ -3252,7 +3286,11 @@ router.post('/users/toggle-status', requireRole('admin'), (req: Request, res: Re
     if (!user_id || !['active', 'suspended', 'disabled', 'locked'].includes(status)) { res.status(400).json({ error: 'user_id and valid status required' }); return; }
     db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?').run(status, new Date().toISOString(), user_id);
     if (status !== 'active') {
+<<<<<<< HEAD
       db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user_id);
+=======
+      db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user_id);
+>>>>>>> main
     }
     auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Set user #${user_id} status to '${status}'`);
     res.json({ success: true });
@@ -3287,7 +3325,11 @@ router.post('/users/kill-sessions', requireRole('admin'), (req: Request, res: Re
     const db = getDb();
     const { user_id } = req.body;
     if (!user_id) { res.status(400).json({ error: 'user_id required' }); return; }
+<<<<<<< HEAD
     const result = db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user_id);
+=======
+    const result = db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user_id);
+>>>>>>> main
     auditLog(req, 'ADMIN_OVERRIDE', 'users', user_id, `Killed ${result.changes} sessions for user #${user_id}`);
     try { const { broadcast } = require('../utils/websocket'); broadcast('system', 'session:killed', { user_id }); } catch {}
     res.json({ success: true, sessions_killed: result.changes });
@@ -3298,7 +3340,11 @@ router.post('/users/kill-sessions', requireRole('admin'), (req: Request, res: Re
 router.get('/users/all-sessions', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+<<<<<<< HEAD
     const rows = db.prepare(`SELECT rt.id, rt.user_id, rt.created_at, rt.expires_at, rt.ip_address, rt.user_agent, u.username, u.full_name, u.role FROM sessions rt JOIN users u ON rt.user_id = u.id WHERE rt.expires_at > datetime('now') ORDER BY rt.created_at DESC`).all();
+=======
+    const rows = db.prepare(`SELECT rt.id, rt.user_id, rt.created_at, rt.expires_at, rt.ip_address, rt.user_agent, u.username, u.full_name, u.role FROM refresh_tokens rt JOIN users u ON rt.user_id = u.id WHERE rt.expires_at > datetime('now') ORDER BY rt.created_at DESC`).all();
+>>>>>>> main
     res.json({ sessions: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -3365,7 +3411,11 @@ router.post('/users/deactivate', requireRole('admin'), (req: Request, res: Respo
     if (!user_id) { res.status(400).json({ error: 'user_id required' }); return; }
     const now = new Date().toISOString();
     db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?').run('disabled', now, user_id);
+<<<<<<< HEAD
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user_id);
+=======
+    db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user_id);
+>>>>>>> main
     let transferred = 0;
     if (transfer_to_id) {
       const fields = [
@@ -3672,7 +3722,11 @@ router.post('/records/raw-insert', requireRole('admin'), (req: Request, res: Res
     const db = getDb();
     const { table, data } = req.body;
     if (!table || !data || typeof data !== 'object') { res.status(400).json({ error: 'table and data object required' }); return; }
+<<<<<<< HEAD
     const blocked = ['users', 'sessions', 'system_config', 'migrations'];
+=======
+    const blocked = ['users', 'refresh_tokens', 'system_config', 'migrations'];
+>>>>>>> main
     if (blocked.includes(table)) { res.status(403).json({ error: 'Cannot raw-insert into system tables' }); return; }
     if (!data.created_at) data.created_at = new Date().toISOString();
     if (!data.updated_at) data.updated_at = new Date().toISOString();

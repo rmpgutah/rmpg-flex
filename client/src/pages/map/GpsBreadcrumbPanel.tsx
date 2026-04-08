@@ -486,7 +486,11 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
         </button>
       </div>
 
+<<<<<<< HEAD
       <div className="p-2.5 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a]" style={{ maxHeight: 'calc(100dvh -240px)' }}>
+=======
+      <div className="p-2.5 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048]" style={{ maxHeight: 'calc(100dvh -240px)' }}>
+>>>>>>> main
         {/* Unit selector */}
         <div className="space-y-1">
           <label className="text-[9px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Unit / Officer</label>

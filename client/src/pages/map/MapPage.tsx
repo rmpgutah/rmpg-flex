@@ -2411,7 +2411,11 @@ export default function MapPage() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
+<<<<<<< HEAD
           <div className="bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
+=======
+          <div className="bg-surface-deep border border-rmpg-600 shadow-2xl overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate' }} role="region" aria-label="Map layer controls">
+>>>>>>> main
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>

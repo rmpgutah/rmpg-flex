@@ -33,6 +33,7 @@ function lazyRetry<T extends React.ComponentType<any>>(
 }
 
 // Lazy-loaded pages (less frequently accessed)
+<<<<<<< HEAD
 const IncidentsPage = lazyRetry(() => import('./pages/IncidentsPage'));
 const RecordsPage = lazyRetry(() => import('./pages/RecordsPage'));
 const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
@@ -79,6 +80,53 @@ const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
+=======
+const IncidentsPage = lazy(() => import('./pages/IncidentsPage'));
+const RecordsPage = lazy(() => import('./pages/RecordsPage'));
+const PersonnelPage = lazy(() => import('./pages/personnel'));
+const CommunicationsPage = lazy(() => import('./pages/CommunicationsPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
+const PatrolPage = lazy(() => import('./pages/PatrolPage'));
+const FleetPage = lazy(() => import('./pages/fleet'));
+const WarrantsPage = lazy(() => import('./pages/WarrantsPage'));
+const CitationsPage = lazy(() => import('./pages/CitationsPage'));
+const FieldInterviewsPage = lazy(() => import('./pages/FieldInterviewsPage'));
+const TrespassOrdersPage = lazy(() => import('./pages/TrespassOrdersPage'));
+const RadioPage = lazy(() => import('./pages/RadioPage'));
+const MdtPage = lazy(() => import('./pages/MdtPage'));
+const ShiftPlansPage = lazy(() => import('./pages/ShiftPlansPage'));
+const StatuteAnalyticsPage = lazy(() => import('./pages/StatuteAnalyticsPage'));
+const CustomReportBuilder = lazy(() => import('./pages/CustomReportBuilder'));
+const CriminalHistoryPage = lazy(() => import('./pages/CriminalHistoryPage'));
+const EvidencePropertyPage = lazy(() => import('./pages/EvidencePropertyPage'));
+const CaseManagementPage = lazy(() => import('./pages/CaseManagementPage'));
+const CrimeAnalysisPage = lazy(() => import('./pages/CrimeAnalysisPage'));
+const CodeEnforcementPage = lazy(() => import('./pages/CodeEnforcementPage'));
+const CourtTrackerPage = lazy(() => import('./pages/CourtTrackerPage'));
+const DailyActivityReportsPage = lazy(() => import('./pages/DailyActivityReportsPage'));
+const OffenderRegistryPage = lazy(() => import('./pages/OffenderRegistryPage'));
+const SexOffenderRegistryPage = lazy(() => import('./pages/SexOffenderRegistryPage'));
+const NcicPage = lazy(() => import('./pages/NcicPage'));
+const DlSearchPage = lazy(() => import('./pages/DlSearchPage'));
+const BodyCamerasPage = lazy(() => import('./pages/BodyCamerasPage'));
+const DashCamerasPage = lazy(() => import('./pages/DashCamerasPage'));
+const TrainingDocsPage = lazy(() => import('./pages/TrainingDocsPage'));
+const TrainingPage = lazy(() => import('./pages/TrainingPage'));
+const ForensicsPage = lazy(() => import('./pages/ForensicsPage'));
+const ForensicLabPage = lazy(() => import('./pages/ForensicLabPage'));
+const SkipTracerPage = lazy(() => import('./pages/SkipTracerPage'));
+const SkipTracerV2Page = lazy(() => import('./pages/skiptracer/SkipTracerV2Page'));
+const ArrestRecordsPage = lazy(() => import('./pages/ArrestRecordsPage'));
+const EmailPage = lazy(() => import('./pages/EmailPage'));
+const CrmPage = lazy(() => import('./pages/CrmPage'));
+const ServePage = lazy(() => import('./pages/ServePage'));
+const WebResearchPage = lazy(() => import('./pages/WebResearchPage'));
+const HRPage = lazy(() => import('./pages/hr/HrPage'));
+const IncidentDetailWindow = lazy(() => import('./pages/detached/IncidentDetailWindow'));
+const RecordDetailWindow = lazy(() => import('./pages/detached/RecordDetailWindow'));
+>>>>>>> main
 
 
 /** Branded loading splash — matches login page design language */

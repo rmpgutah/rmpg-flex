@@ -53,7 +53,10 @@
     height: 100%; /* fallback for older browsers */
     max-width: 100vw;
     overflow-x: hidden;
+<<<<<<< HEAD
     overscroll-behavior: none;
+=======
+>>>>>>> main
   }
   html {
     font-size: 13px;
@@ -63,6 +66,7 @@
     overflow-x: hidden;
     /* iOS Safari: respect notch/home indicator safe areas */
     padding-bottom: env(safe-area-inset-bottom, 0px);
+<<<<<<< HEAD
     /* Spillman Flex: subtle noise texture on body */
     background-image:
   }
@@ -125,6 +129,8 @@
 @media (display-mode: standalone) {
   body {
     padding-top: env(safe-area-inset-top);
+=======
+>>>>>>> main
   }
 }
 
@@ -226,11 +232,19 @@ body.fx-vignette::before {
   inset: 0;
   pointer-events: none;
   z-index: 99998;
+<<<<<<< HEAD
+=======
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.35) 100%);
+>>>>>>> main
 }
 
 /* --- Phosphor Bloom (subtle glow on bright text) --- */
 body.fx-bloom {
+<<<<<<< HEAD
   --bloom-color: rgba(136, 136, 136, 0.08);
+=======
+  --bloom-color: rgba(26, 90, 158, 0.08);
+>>>>>>> main
 }
 body.fx-bloom * {
   text-shadow: 0 0 4px var(--bloom-color), 0 0 12px var(--bloom-color);
@@ -251,6 +265,7 @@ body.fx-green {
   filter: sepia(0.2) saturate(0.7) hue-rotate(80deg) brightness(0.95);
 }
 
+<<<<<<< HEAD
 /* --- Global Theme Neutralization ---------------------------------
    Existing UI code still contains blue-oriented Tailwind utilities
    and arbitrary dark-blue hex classes. Normalize them to black/gray
@@ -477,6 +492,8 @@ html:not(.theme-light) [class*="hover:bg-\\[\\#0c0f13\\]"]:hover {
   background-color: #111111 !important;
 }
 
+=======
+>>>>>>> main
 /* --- High Contrast (accessibility / bright daylight) --- */
 body.fx-highcontrast {
   filter: contrast(1.25) brightness(1.05);
@@ -1668,9 +1685,15 @@ body.fx-noise::after {
 
   /* PANIC button: sized for mobile header — readable but not oversized */
   .panic-btn {
+<<<<<<< HEAD
     padding: 6px 12px;
     font-size: 11px;
     min-height: 36px;
+=======
+    padding: 8px 16px;
+    font-size: 12px;
+    min-height: 44px;
+>>>>>>> main
   }
 
   /* Cards: full width */
@@ -3540,6 +3563,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
+<<<<<<< HEAD
 /* iOS: safe area insets for modals and fixed overlays */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .fixed.inset-0, [class*="fixed inset-0"] {
@@ -3556,6 +3580,8 @@ button, [role="button"], .toolbar-btn, a, input[type="button"], input[type="subm
   -webkit-tap-highlight-color: transparent;
 }
 
+=======
+>>>>>>> main
 /* iOS-specific overrides (detects iOS Safari via -webkit-touch-callout) */
 @supports (-webkit-touch-callout: none) {
   /* Fix min-h-screen: iOS Safari 100vh includes the URL bar */
@@ -3614,6 +3640,7 @@ button, [role="button"], .toolbar-btn, a, input[type="button"], input[type="subm
   .backdrop-blur-xl {
     -webkit-backdrop-filter: blur(24px);
   }
+<<<<<<< HEAD
 
   /* iOS Safari: prevent button tap issues in scrollable containers */
   button, [role="button"], .toolbar-btn {
@@ -3680,12 +3707,18 @@ button:disabled,
   [data-nav-dropdown] {
     display: none !important;
   }
+=======
+>>>>>>> main
 }
 
 /* Desktop-only hover effects — prevent sticky hover on touch devices */
 @media (hover: hover) and (pointer: fine) {
   .panel-hover-glow:hover {
+<<<<<<< HEAD
     box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+=======
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+>>>>>>> main
   }
 }
 @media (hover: none) {
@@ -3693,6 +3726,7 @@ button:disabled,
     box-shadow: none;
   }
 }
+<<<<<<< HEAD
 
 /* ============================================================
    FIX 1: Touch-action + tap highlight on ALL interactive elements
@@ -4673,3 +4707,5 @@ hr, [class*="divide-"] > * + * {
 [class*="hover\\:bg-"] {
   transition: background-color 0.1s ease, border-color 0.1s ease;
 }
+=======
+>>>>>>> main

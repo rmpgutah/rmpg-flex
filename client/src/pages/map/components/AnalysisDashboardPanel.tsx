@@ -101,7 +101,11 @@ export default function AnalysisDashboardPanel({
       style={{
         width: 320,
         maxHeight: 'calc(100dvh - 160px)',
+<<<<<<< HEAD
         background: '#0a0a0a',
+=======
+        background: '#141e2b',
+>>>>>>> main
         border: '1px solid #1e2a3a',
       }}
     >

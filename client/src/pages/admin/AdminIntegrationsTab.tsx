@@ -112,7 +112,11 @@ function ThirdPartyApiKeysPanel() {
       </div>
       <div className="p-4 space-y-4">
         {THIRD_PARTY_KEYS.map(({ key, label, desc }) => (
+<<<<<<< HEAD
           <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0f13] border border-[#1c2e42] rounded-sm">
+=======
+          <div key={key} className="flex flex-col gap-2 p-3 bg-[#0d1520] border border-[#1c2e42] rounded-sm">
+>>>>>>> main
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold text-rmpg-300">{label}</div>
@@ -137,7 +141,11 @@ function ThirdPartyApiKeysPanel() {
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
                   placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
+<<<<<<< HEAD
                   className="w-full px-3 py-2 pr-8 bg-[#161b21] border border-[#1c2e42] rounded-sm text-xs text-white font-mono placeholder-[#445566] focus:outline-none focus:border-brand-500"
+=======
+                  className="w-full px-3 py-2 pr-8 bg-[#141e2b] border border-[#1c2e42] rounded-sm text-xs text-white font-mono placeholder-[#445566] focus:outline-none focus:border-brand-500"
+>>>>>>> main
                 />
                 <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
                   {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}

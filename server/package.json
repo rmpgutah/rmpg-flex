@@ -28,7 +28,14 @@
     "edge-tts-universal": "^1.4.0",
     "express": "^4.21.1",
     "groq-sdk": "^1.1.1",
+<<<<<<< HEAD
     "html-to-text": "^9.0.5",
+=======
+<<<<<<< HEAD
+    "html-to-text": "^9.0.5",
+=======
+>>>>>>> origin/main
+>>>>>>> main
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.2.0",
     "multer": "^1.4.5-lts.1",

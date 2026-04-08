@@ -514,7 +514,11 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11"
+<<<<<<< HEAD
                       style={{ color: '#666666' }}
+=======
+                      style={{ color: '#5a6e80' }}
+>>>>>>> main
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -596,8 +600,13 @@ export default function LoginPage() {
                     type="checkbox"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
+<<<<<<< HEAD
                     className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                     style={{ accentColor: '#888888' }}
+=======
+                    className="w-4 h-4 rounded-sm accent-[#1a5a9e] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                    style={{ accentColor: '#1a5a9e' }}
+>>>>>>> main
                     aria-label="Trust this device for 30 days"
                   />
                   <span className="text-[10px] group-hover:text-rmpg-200 transition-colors" style={{ color: '#888888' }}>

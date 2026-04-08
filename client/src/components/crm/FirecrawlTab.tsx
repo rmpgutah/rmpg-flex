@@ -77,12 +77,15 @@ import {
   HelpCircle,
   FileType,
   CircleDot,
+<<<<<<< HEAD
   Radio,
   Wrench,
   Shield,
   Mail,
   Download,
   Upload,
+=======
+>>>>>>> main
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -101,6 +104,7 @@ function safeObj(val: any): Record<string, any> {
   return {};
 }
 
+<<<<<<< HEAD
 // ── Result Copy/Export Actions ────────────────────────────────
 // Reusable bar of "Copy JSON" and "Export" buttons for tool result panels
 
@@ -144,6 +148,11 @@ interface PanelChainProps {
   setToolContext: React.Dispatch<React.SetStateAction<ToolContext>>;
   switchTab: (tab: FirecrawlSubTab) => void;
 }
+=======
+// ── Shared Types ──────────────────────────────────────────────
+
+type FirecrawlSubTab = 'scouts' | 'ai-ready' | 'cloner' | 'brand' | 'compare' | 'workflows' | 'search-engine' | 'enrich' | 'researcher' | 'chatbot' | 'observer' | 'deep-search' | 'llmstxt' | 'pdf-inspect' | 'graphs' | 'connectors' | 'rag-eval' | 'trends' | 'gen-ui' | 'qa-cluster' | 'extract' | 'html-to-md' | 'coupons' | 'brand-extend' | 'mcp' | 'examples' | 'llmstxt-v2' | 'mendable' | 'news' | 'drafts' | 'slack' | 'discord' | 'agents' | 'doc-extract' | 'job-match' | 'mhtml' | 'api-console' | 'cli' | 'grok-enrich' | 'docs' | 'n8n' | 'mendable-py' | 'code-analyze' | 'skill-gen' | 'sdks' | 'pipelines' | 'theme' | 'ai-chat' | 'pdf-tools' | 'assistant' | 'lead-gen';
+>>>>>>> main
 
 interface Scout {
   id: number;
@@ -322,6 +331,7 @@ function SmallBtn({
   );
 }
 
+<<<<<<< HEAD
 // ── Tool Categories ───────────────────────────────────────────
 
 const TOOL_CATEGORIES = [
@@ -454,13 +464,73 @@ const WORKFLOW_TEMPLATES = [
     steps: ['scouts', 'observer', 'brand', 'trend-cron'] as FirecrawlSubTab[],
     icon: Radio,
   },
+=======
+// ── Tab Definitions ───────────────────────────────────────────
+
+const TABS: { id: FirecrawlSubTab; label: string; icon: React.ElementType }[] = [
+  { id: 'scouts', label: 'Scouts', icon: Radar },
+  { id: 'ai-ready', label: 'AI Ready', icon: BrainCircuit },
+  { id: 'cloner', label: 'Site Cloner', icon: Copy },
+  { id: 'brand', label: 'Brand Monitor', icon: Megaphone },
+  { id: 'compare', label: 'Page Compare', icon: GitCompareArrows },
+  { id: 'workflows', label: 'Workflows', icon: Workflow },
+  { id: 'search-engine', label: 'Search Engine', icon: Sparkles },
+  { id: 'enrich', label: 'Enrich', icon: Building2 },
+  { id: 'researcher', label: 'Researcher', icon: BookOpen },
+  { id: 'chatbot', label: 'Chatbot', icon: MessageSquare },
+  { id: 'observer', label: 'Observer', icon: Eye },
+  { id: 'deep-search', label: 'Deep Search', icon: ShieldCheck },
+  { id: 'llmstxt', label: 'LLMs.txt', icon: FileText },
+  { id: 'pdf-inspect', label: 'PDF Inspect', icon: FileSearch },
+  { id: 'graphs', label: 'Graphs', icon: BarChart3 },
+  { id: 'connectors', label: 'Connectors', icon: Plug },
+  { id: 'rag-eval', label: 'RAG Eval', icon: Target },
+  { id: 'trends', label: 'Trends', icon: TrendingUp },
+  { id: 'gen-ui', label: 'Gen UI', icon: LayoutDashboard },
+  { id: 'qa-cluster', label: 'QA Cluster', icon: Layers },
+  { id: 'extract', label: 'Extract', icon: Database },
+  { id: 'html-to-md', label: 'HTML→MD', icon: FileCode },
+  { id: 'coupons', label: 'Coupons', icon: Ticket },
+  { id: 'brand-extend', label: 'Brand Extend', icon: Palette },
+  { id: 'mcp', label: 'MCP', icon: Server },
+  { id: 'examples', label: 'Examples', icon: FolderOpen },
+  { id: 'llmstxt-v2', label: 'LLMs.txt V2', icon: FileText2 },
+  { id: 'mendable', label: 'Mendable', icon: Bot },
+  { id: 'news', label: 'News', icon: Newspaper },
+  { id: 'drafts', label: 'Drafts', icon: PenTool },
+  { id: 'slack', label: 'Slack', icon: MessageCircle },
+  { id: 'discord', label: 'Discord', icon: Hash },
+  { id: 'agents', label: 'Agents', icon: Cpu },
+  { id: 'doc-extract', label: 'Doc Extract', icon: FileDown },
+  { id: 'job-match', label: 'Job Match', icon: Briefcase },
+  { id: 'mhtml', label: 'MHTML', icon: Archive },
+  { id: 'api-console', label: 'API Console', icon: Terminal },
+  { id: 'cli', label: 'CLI', icon: Code2 },
+  { id: 'grok-enrich', label: 'Grok Enrich', icon: Zap },
+  { id: 'docs', label: 'Docs', icon: BookMarked },
+  { id: 'n8n', label: 'N8N', icon: GitBranch },
+  { id: 'mendable-py', label: 'Mendable Py', icon: Database },
+  { id: 'code-analyze', label: 'Code Analyze', icon: FileCode },
+  { id: 'skill-gen', label: 'Skill Gen', icon: Wand2 },
+  { id: 'sdks', label: 'SDKs', icon: Package },
+  { id: 'pipelines', label: 'Pipelines', icon: Filter },
+  { id: 'theme', label: 'Theme', icon: Palette },
+  { id: 'ai-chat', label: 'AI Chat', icon: MessageSquare },
+  { id: 'pdf-tools', label: 'PDF Tools', icon: FileType },
+  { id: 'assistant', label: 'Assistant', icon: HelpCircle },
+  { id: 'lead-gen', label: 'Lead Gen', icon: Users },
+>>>>>>> main
 ];
 
 // ══════════════════════════════════════════════════════════════
 // ██ SCOUTS PANEL
 // ══════════════════════════════════════════════════════════════
 
+<<<<<<< HEAD
 function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
+=======
+function ScoutsPanel() {
+>>>>>>> main
   const { addToast } = useToast();
   const [scouts, setScouts] = useState<Scout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -480,12 +550,15 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
   const [formInterval, setFormInterval] = useState('24');
   const [formEmail, setFormEmail] = useState('');
 
+<<<<<<< HEAD
   // Auto-fill from cross-tool context
   useEffect(() => {
     if (toolContext.url && !formUrl) setFormUrl(toolContext.url);
     if (toolContext.name && !formName) setFormName(toolContext.name);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+=======
+>>>>>>> main
   const load = useCallback(async () => {
     try {
       const data = await apiFetch<Scout[]>('/firecrawl-tools/scouts');
@@ -610,6 +683,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
       {/* New Scout Form */}
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+<<<<<<< HEAD
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Scout</span>
             <button type="button" onClick={() => {
@@ -617,6 +691,8 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               setFormInterval('24'); setFormEmail('');
             }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
           </div>
+=======
+>>>>>>> main
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
@@ -727,6 +803,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
                         {run.error && (
                           <span className="text-red-400 truncate max-w-[300px]">{run.error}</span>
                         )}
+<<<<<<< HEAD
                         {!run.error && run.matched > 0 && (
                           <>
                             <button type="button" onClick={() => {
@@ -738,6 +815,8 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
                             }} className="text-[9px] text-brand-400 hover:text-brand-300">Enrich contacts &rarr;</button>
                           </>
                         )}
+=======
+>>>>>>> main
                       </div>
                     ))
                   )}
@@ -1645,7 +1724,10 @@ function WorkflowsPanel() {
           </div>
 
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Steps</div>
+<<<<<<< HEAD
           <div className="text-[8px] text-rmpg-500 mt-0.5 mb-1">Each step runs in sequence. Choose scrape to fetch a URL, search to find results, or extract to pull structured data.</div>
+=======
+>>>>>>> main
           <div className="space-y-1.5">
             {formSteps.map((step, idx) => (
               <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
@@ -1731,7 +1813,11 @@ function WorkflowsPanel() {
                                 ? 'bg-amber-500/20 text-amber-400'
                                 : 'bg-emerald-500/20 text-emerald-400'
                           }`}>
+<<<<<<< HEAD
                             {(step.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+=======
+                            {step.type}
+>>>>>>> main
                           </span>
                           <span className="text-rmpg-300 font-mono truncate">{step.url_or_query}</span>
                         </div>
@@ -1966,7 +2052,11 @@ interface EnrichResult {
   created_at: string;
 }
 
+<<<<<<< HEAD
 function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
+=======
+function EnrichPanel() {
+>>>>>>> main
   const { addToast } = useToast();
   const [input, setInput] = useState('');
   const [enriching, setEnriching] = useState(false);
@@ -1979,12 +2069,15 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [bulkResults, setBulkResults] = useState<EnrichResult[]>([]);
 
+<<<<<<< HEAD
   // Auto-fill from cross-tool context
   useEffect(() => {
     if (toolContext.email && !input) setInput(toolContext.email);
     else if (toolContext.url && !input) setInput(toolContext.url);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+=======
+>>>>>>> main
   const loadHistory = useCallback(async () => {
     try {
       const data = await apiFetch<EnrichResult[]>('/firecrawl-tools/enrich/history');
@@ -2053,6 +2146,7 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
 
       {/* Single Input */}
       {!bulkMode && (
+<<<<<<< HEAD
         <div className="space-y-1">
           <div className="flex items-center justify-end">
             <button type="button" onClick={() => setInput('info@rmpgutah.us')} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
@@ -2069,6 +2163,19 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               <Building2 className="w-3 h-3" /> Enrich
             </SmallBtn>
           </div>
+=======
+        <div className="flex items-center gap-2">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && enrich()}
+            className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+            placeholder="email@company.com or company.com"
+          />
+          <SmallBtn onClick={enrich} loading={enriching} variant="primary">
+            <Building2 className="w-3 h-3" /> Enrich
+          </SmallBtn>
+>>>>>>> main
         </div>
       )}
 
@@ -2169,6 +2276,7 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               <div className="text-[10px] text-rmpg-300 font-mono whitespace-pre-wrap">{typeof result.contact_info === 'string' ? result.contact_info : JSON.stringify(safeObj(result.contact_info), null, 2)}</div>
             </div>
           )}
+<<<<<<< HEAD
 
           {/* Chain action buttons */}
           <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
@@ -2185,6 +2293,8 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
             )}
           </div>
           <ResultActions result={result} toolName="enrich" />
+=======
+>>>>>>> main
         </div>
       )}
 
@@ -2236,7 +2346,11 @@ interface ResearchResult {
   created_at: string;
 }
 
+<<<<<<< HEAD
 function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
+=======
+function ResearcherPanel() {
+>>>>>>> main
   const { addToast } = useToast();
   const [topic, setTopic] = useState('');
   const [questions, setQuestions] = useState('');
@@ -2248,11 +2362,14 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
   const [showHistory, setShowHistory] = useState(false);
   const [expandedFinding, setExpandedFinding] = useState<number | null>(null);
 
+<<<<<<< HEAD
   // Auto-fill from cross-tool context
   useEffect(() => {
     if (toolContext.topic && !topic) setTopic(toolContext.topic);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+=======
+>>>>>>> main
   const loadHistory = useCallback(async () => {
     try {
       const data = await apiFetch<ResearchResult[]>('/firecrawl-tools/research/history');
@@ -2302,11 +2419,14 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
 
       {/* Topic Input */}
       <div className="space-y-2">
+<<<<<<< HEAD
         <div className="flex items-center justify-end">
           <button type="button" onClick={() => {
             setTopic('Process serving laws and requirements in Utah'); setDepth('thorough');
           }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
         </div>
+=======
+>>>>>>> main
         <div className="flex items-center gap-2">
           <input
             value={topic}
@@ -2438,6 +2558,7 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
               </div>
             </div>
           )}
+<<<<<<< HEAD
 
           {/* Chain action buttons */}
           <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
@@ -2455,6 +2576,8 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
             )}
           </div>
           <ResultActions result={result} toolName="researcher" />
+=======
+>>>>>>> main
         </div>
       )}
 
@@ -2757,7 +2880,11 @@ interface ObserverChange {
   detected_at: string;
 }
 
+<<<<<<< HEAD
 function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
+=======
+function ObserverPanel() {
+>>>>>>> main
   const { addToast } = useToast();
   const [watches, setWatches] = useState<ObserverWatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2774,12 +2901,15 @@ function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainPro
   const [formUrl, setFormUrl] = useState('');
   const [formInterval, setFormInterval] = useState('24');
 
+<<<<<<< HEAD
   // Auto-fill from cross-tool context
   useEffect(() => {
     if (toolContext.url && !formUrl) setFormUrl(toolContext.url);
     if (toolContext.name && !formName) setFormName(toolContext.name);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+=======
+>>>>>>> main
   const load = useCallback(async () => {
     try {
       const data = await apiFetch<ObserverWatch[]>('/firecrawl-tools/observer/watches');
@@ -2883,12 +3013,15 @@ function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainPro
       {/* Create Form */}
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
+<<<<<<< HEAD
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">New Watch</span>
             <button type="button" onClick={() => {
               setFormName('Utah Courts Monitor'); setFormUrl('https://www.utcourts.gov'); setFormInterval('12');
             }} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
           </div>
+=======
+>>>>>>> main
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
@@ -3005,7 +3138,11 @@ interface DeepSearchResult {
   created_at: string;
 }
 
+<<<<<<< HEAD
 function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainProps) {
+=======
+function DeepSearchPanel() {
+>>>>>>> main
   const { addToast } = useToast();
   const [query, setQuery] = useState('');
   const [validate, setValidate] = useState(true);
@@ -3016,11 +3153,14 @@ function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainP
   const [showHistory, setShowHistory] = useState(false);
   const [expandedClaim, setExpandedClaim] = useState<number | null>(null);
 
+<<<<<<< HEAD
   // Auto-fill from cross-tool context
   useEffect(() => {
     if (toolContext.query && !query) setQuery(toolContext.query);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+=======
+>>>>>>> main
   const loadHistory = useCallback(async () => {
     try {
       const data = await apiFetch<DeepSearchResult[]>('/firecrawl-tools/deep-search/history');
@@ -3064,6 +3204,7 @@ function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainP
       </PanelTitleBar>
 
       {/* Query Input */}
+<<<<<<< HEAD
       <div className="space-y-1">
         <div className="flex items-center justify-end">
           <button type="button" onClick={() => setQuery('How do Utah courts issue and serve warrants?')} className="text-[9px] text-brand-400 hover:text-brand-300 underline">Try an example</button>
@@ -3089,6 +3230,28 @@ function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainP
             <ShieldCheck className="w-3 h-3" /> Search
           </SmallBtn>
         </div>
+=======
+      <div className="flex items-center gap-2">
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
+          placeholder="Enter a claim or question to verify..."
+        />
+        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
+          <input
+            type="checkbox"
+            checked={validate}
+            onChange={e => setValidate(e.target.checked)}
+            className="rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/50 w-3 h-3"
+          />
+          Validate
+        </label>
+        <SmallBtn onClick={search} loading={searching} variant="primary">
+          <ShieldCheck className="w-3 h-3" /> Search
+        </SmallBtn>
+>>>>>>> main
       </div>
 
       {/* History Dropdown */}
@@ -3130,7 +3293,10 @@ function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainP
           {result.duration_ms != null && (
             <span className="text-[9px] text-rmpg-500">{(result.duration_ms / 1000).toFixed(1)}s</span>
           )}
+<<<<<<< HEAD
           <ResultActions result={result} toolName="deep_search" />
+=======
+>>>>>>> main
         </div>
       )}
 
@@ -3303,7 +3469,10 @@ function PdfInspectPanel() {
   const [history, setHistory] = useState<PdfInspectResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+<<<<<<< HEAD
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+=======
+>>>>>>> main
 
   const loadHistory = useCallback(async () => {
     try {
@@ -3333,6 +3502,7 @@ function PdfInspectPanel() {
     }
   };
 
+<<<<<<< HEAD
   const uploadFile = async (file: File) => {
     setInspecting(true);
     try {
@@ -3357,6 +3527,8 @@ function PdfInspectPanel() {
     }
   };
 
+=======
+>>>>>>> main
   const viewHistoryItem = (item: PdfInspectResult) => {
     setResult(item);
     setUrl(item.url);
@@ -3382,7 +3554,11 @@ function PdfInspectPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
+<<<<<<< HEAD
       {/* URL Input + File Upload */}
+=======
+      {/* URL Input */}
+>>>>>>> main
       <div className="flex items-center gap-2">
         <input
           value={url}
@@ -3394,10 +3570,13 @@ function PdfInspectPanel() {
         <SmallBtn onClick={inspect} loading={inspecting} variant="primary">
           <FileSearch className="w-3 h-3" /> Inspect
         </SmallBtn>
+<<<<<<< HEAD
         <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadFile(e.target.files[0]); e.target.value = ''; }} />
         <SmallBtn onClick={() => fileInputRef.current?.click()} loading={inspecting}>
           <Upload className="w-3 h-3" /> Upload
         </SmallBtn>
+=======
+>>>>>>> main
       </div>
 
       {/* History Dropdown */}
@@ -3484,12 +3663,19 @@ function PdfInspectPanel() {
               </div>
             </div>
           )}
+<<<<<<< HEAD
           <ResultActions result={result} toolName="pdf_inspect" />
+=======
+>>>>>>> main
         </div>
       )}
 
       {!result && !inspecting && (
+<<<<<<< HEAD
         <EmptyState icon={FileSearch} message="Enter a PDF URL or upload a file to inspect its structure and extract entities." />
+=======
+        <EmptyState icon={FileSearch} message="Enter a PDF URL to inspect its structure and extract entities." />
+>>>>>>> main
       )}
     </div>
   );
@@ -3545,7 +3731,11 @@ function GraphsPanel() {
   useEffect(() => { load(); }, [load]);
 
   const addDataset = () => {
+<<<<<<< HEAD
     setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#888888' }]);
+=======
+    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#3b82f6' }]);
+>>>>>>> main
   };
 
   const removeDataset = (idx: number) => {
@@ -3985,7 +4175,11 @@ function ConnectorsPanel() {
                 </button>
                 <StatusLed status={c.status} />
                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${typeBadgeColor(c.type)}`}>
+<<<<<<< HEAD
                   {(c.type || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}
+=======
+                  {c.type}
+>>>>>>> main
                 </span>
                 <span className="text-[10px] text-white font-medium truncate flex-1">{c.name}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono shrink-0">every {c.schedule_hours}h</span>
@@ -4806,11 +5000,14 @@ function ExtractPanel() {
   const [history, setHistory] = useState<ExtractResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+<<<<<<< HEAD
   const [batchMode, setBatchMode] = useState(false);
   const [batchUrls, setBatchUrls] = useState('');
   const [batchExtracting, setBatchExtracting] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const [batchResults, setBatchResults] = useState<ExtractResult[]>([]);
+=======
+>>>>>>> main
 
   const loadHistory = useCallback(async () => {
     try {
@@ -4854,6 +5051,7 @@ function ExtractPanel() {
     }
   };
 
+<<<<<<< HEAD
   const batchExtract = async () => {
     const urls = batchUrls.split('\n').map(u => u.trim()).filter(Boolean);
     if (urls.length === 0) { addToast('Enter at least one URL', 'warning'); return; }
@@ -4894,25 +5092,34 @@ function ExtractPanel() {
     URL.revokeObjectURL(u);
   };
 
+=======
+>>>>>>> main
   const viewHistoryItem = (item: ExtractResult) => {
     setResult(item);
     setUrl(item.url);
     setFields(safeArr(item.schema_fields).length > 0 ? safeArr(item.schema_fields) : [{ name: '', type: 'string', description: '' }]);
     setShowHistory(false);
+<<<<<<< HEAD
     setBatchMode(false);
+=======
+>>>>>>> main
   };
 
   return (
     <div className="space-y-3">
       <PanelTitleBar title="Structured Extract" icon={Database} statusLed="bg-orange-400">
+<<<<<<< HEAD
         <SmallBtn onClick={() => setBatchMode(!batchMode)} variant={batchMode ? 'primary' : 'default'}>
           <Layers className="w-3 h-3" /> {batchMode ? 'Single' : 'Batch'}
         </SmallBtn>
+=======
+>>>>>>> main
         <SmallBtn onClick={() => setShowHistory(!showHistory)}>
           <Clock className="w-3 h-3" /> History ({history.length})
         </SmallBtn>
       </PanelTitleBar>
 
+<<<<<<< HEAD
       {/* URL Input (single mode) */}
       {!batchMode && (
         <div className="flex items-center gap-2">
@@ -4939,6 +5146,17 @@ function ExtractPanel() {
           <div className="text-[9px] text-rmpg-500">{batchUrls.split('\n').filter(u => u.trim()).length} URLs</div>
         </div>
       )}
+=======
+      {/* URL Input */}
+      <div className="flex items-center gap-2">
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
+          placeholder="https://example.com"
+        />
+      </div>
+>>>>>>> main
 
       {/* Schema Builder */}
       <div className="space-y-1.5">
@@ -4946,7 +5164,10 @@ function ExtractPanel() {
           <span className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider">Schema Fields</span>
           <SmallBtn onClick={addField}><Plus className="w-3 h-3" /> Add Field</SmallBtn>
         </div>
+<<<<<<< HEAD
         <div className="text-[8px] text-rmpg-500 -mt-1">{'Define what data to extract. Example: name (string), price (number), description (string).'}</div>
+=======
+>>>>>>> main
         {fields.map((f, idx) => (
           <div key={idx} className="flex items-center gap-2 bg-surface-sunken border border-rmpg-700 rounded-sm p-1.5">
             <input
@@ -4977,6 +5198,7 @@ function ExtractPanel() {
         ))}
       </div>
 
+<<<<<<< HEAD
       {!batchMode ? (
         <SmallBtn onClick={extract} loading={extracting} variant="primary">
           <Database className="w-3 h-3" /> Extract
@@ -5025,6 +5247,11 @@ function ExtractPanel() {
           </div>
         </div>
       )}
+=======
+      <SmallBtn onClick={extract} loading={extracting} variant="primary">
+        <Database className="w-3 h-3" /> Extract
+      </SmallBtn>
+>>>>>>> main
 
       {/* History */}
       {showHistory && (
@@ -5092,7 +5319,10 @@ function ExtractPanel() {
               </tbody>
             </table>
           </div>
+<<<<<<< HEAD
           <ResultActions result={result} toolName="extract" />
+=======
+>>>>>>> main
         </div>
       )}
 
@@ -6052,7 +6282,11 @@ function ExamplesPanel() {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1 truncate">{ex.name}</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${categoryColors[ex.category] || 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
+<<<<<<< HEAD
                   {(ex.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+=======
+                  {ex.category}
+>>>>>>> main
                 </span>
               </div>
               {ex.description && <div className="text-[10px] text-rmpg-400 leading-relaxed">{ex.description}</div>}
@@ -7473,7 +7707,10 @@ function DocExtractPanel() {
   const [history, setHistory] = useState<DocExtractResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+<<<<<<< HEAD
   const docExtractFileRef = React.useRef<HTMLInputElement>(null);
+=======
+>>>>>>> main
 
   const loadHistory = useCallback(async () => {
     try {
@@ -7503,6 +7740,7 @@ function DocExtractPanel() {
     }
   };
 
+<<<<<<< HEAD
   const uploadDocFile = async (file: File) => {
     setExtracting(true);
     try {
@@ -7524,6 +7762,8 @@ function DocExtractPanel() {
     } catch (err: any) { addToast(err.message || 'Upload failed', 'error'); } finally { setExtracting(false); }
   };
 
+=======
+>>>>>>> main
   const viewHistoryItem = (item: DocExtractResult) => {
     setResult(item);
     setUrl(item.url);
@@ -7539,7 +7779,11 @@ function DocExtractPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
+<<<<<<< HEAD
       {/* Input + Upload */}
+=======
+      {/* Input */}
+>>>>>>> main
       <div className="flex items-center gap-2">
         <input
           value={url}
@@ -7559,10 +7803,13 @@ function DocExtractPanel() {
         <SmallBtn onClick={extract} loading={extracting} variant="primary">
           <FileDown className="w-3 h-3" /> Extract
         </SmallBtn>
+<<<<<<< HEAD
         <input ref={docExtractFileRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadDocFile(e.target.files[0]); e.target.value = ''; }} />
         <SmallBtn onClick={() => docExtractFileRef.current?.click()} loading={extracting}>
           <Upload className="w-3 h-3" /> Upload
         </SmallBtn>
+=======
+>>>>>>> main
       </div>
 
       {/* History */}
@@ -7602,7 +7849,11 @@ function DocExtractPanel() {
           <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">
             {result.content_preview || 'No content'}
           </pre>
+<<<<<<< HEAD
           {result.metadata && typeof result.metadata === 'object' && Object.keys(result.metadata).length > 0 && (
+=======
+          {Object.keys(result.metadata).length > 0 && (
+>>>>>>> main
             <div>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Metadata</div>
               <div className="grid grid-cols-2 gap-1">
@@ -7614,12 +7865,19 @@ function DocExtractPanel() {
               </div>
             </div>
           )}
+<<<<<<< HEAD
           <ResultActions result={result} toolName="doc_extract" />
+=======
+>>>>>>> main
         </div>
       )}
 
       {!result && !extracting && (
+<<<<<<< HEAD
         <EmptyState icon={FileDown} message="Enter a document URL or upload a file to extract content, tables, and metadata." />
+=======
+        <EmptyState icon={FileDown} message="Enter a document URL to extract content, tables, and metadata." />
+>>>>>>> main
       )}
     </div>
   );
@@ -7997,9 +8255,12 @@ function ApiConsolePanel() {
   const [mapResult, setMapResult] = useState<ConsoleMapResult | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
+<<<<<<< HEAD
   // Scrape result view tab
   const [scrapeViewTab, setScrapeViewTab] = useState<'preview' | 'raw' | 'markdown'>('preview');
 
+=======
+>>>>>>> main
   const doScrape = async () => {
     if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
     setLoading(true);
@@ -8160,6 +8421,7 @@ function ApiConsolePanel() {
         </SmallBtn>
       )}
 
+<<<<<<< HEAD
       {/* Scrape Result with Tabbed Preview */}
       {mode === 'scrape' && scrapeResult && (
         <div className="space-y-2">
@@ -8223,6 +8485,33 @@ function ApiConsolePanel() {
           )}
 
           <ResultActions result={scrapeResult} toolName="api_console_scrape" />
+=======
+      {/* Scrape Result */}
+      {mode === 'scrape' && scrapeResult && (
+        <div className="space-y-2">
+          {scrapeResult.markdown && (
+            <div>
+              <div className="text-[10px] text-orange-400 font-medium mb-1">Markdown Output</div>
+              <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-64 overflow-auto scrollbar-dark whitespace-pre-wrap">{scrapeResult.markdown}</pre>
+            </div>
+          )}
+          {scrapeResult.html && (
+            <div>
+              <div className="text-[10px] text-orange-400 font-medium mb-1">HTML Output</div>
+              <pre className="bg-surface-sunken border border-rmpg-700 rounded-sm p-3 text-[10px] text-rmpg-300 font-mono max-h-48 overflow-auto scrollbar-dark whitespace-pre-wrap">{scrapeResult.html}</pre>
+            </div>
+          )}
+          {safeArr(scrapeResult.links).length > 0 && (
+            <div>
+              <div className="text-[10px] text-orange-400 font-medium mb-1">Links ({safeArr(scrapeResult.links).length})</div>
+              <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 max-h-48 overflow-auto scrollbar-dark space-y-0.5">
+                {safeArr(scrapeResult.links).map((link, i) => (
+                  <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-brand-400 hover:underline font-mono truncate">{link}</a>
+                ))}
+              </div>
+            </div>
+          )}
+>>>>>>> main
         </div>
       )}
 
@@ -8951,7 +9240,11 @@ function N8nPanel() {
                       {runs.map(run => (
                         <div key={run.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800 rounded-sm border border-rmpg-700">
                           <StatusLed status={run.status} />
+<<<<<<< HEAD
                           <span className="text-[10px] text-rmpg-300 flex-1">{(run.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+=======
+                          <span className="text-[10px] text-rmpg-300 flex-1">{run.status}</span>
+>>>>>>> main
                           {run.error && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error}</span>}
                           <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.started_at)}</span>
                         </div>
@@ -9653,7 +9946,10 @@ function PipelinesPanel() {
               <label className="text-[10px] text-rmpg-400">Steps</label>
               <SmallBtn onClick={addStep}><Plus className="w-3 h-3" /> Add Step</SmallBtn>
             </div>
+<<<<<<< HEAD
             <div className="text-[8px] text-rmpg-500 mb-1">Ingest fetches data, Transform reshapes it, Filter removes unwanted rows, Enrich adds metadata, Output saves results.</div>
+=======
+>>>>>>> main
             {formSteps.map((step, idx) => (
               <div key={idx} className="flex items-center gap-2 mb-1">
                 <span className="text-[9px] text-rmpg-500 w-4 text-right">{idx + 1}</span>
@@ -10028,7 +10324,10 @@ function PdfToolsPanel() {
   const [history, setHistory] = useState<PdfToolsResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+<<<<<<< HEAD
   const pdfToolsFileRef = React.useRef<HTMLInputElement>(null);
+=======
+>>>>>>> main
 
   const loadHistory = useCallback(async () => {
     try {
@@ -10039,6 +10338,7 @@ function PdfToolsPanel() {
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
+<<<<<<< HEAD
   const getSelectedOps = () => {
     const ops: string[] = [];
     if (opExtractText) ops.push('extract_text');
@@ -10048,6 +10348,8 @@ function PdfToolsPanel() {
     return ops;
   };
 
+=======
+>>>>>>> main
   const process = async () => {
     if (!url.trim()) { addToast('Enter a URL', 'warning'); return; }
     setProcessing(true);
@@ -10066,6 +10368,7 @@ function PdfToolsPanel() {
     } catch { addToast('Processing failed', 'error'); } finally { setProcessing(false); }
   };
 
+<<<<<<< HEAD
   const uploadPdfFile = async (file: File) => {
     setProcessing(true);
     try {
@@ -10087,6 +10390,8 @@ function PdfToolsPanel() {
     } catch (err: any) { addToast(err.message || 'Upload failed', 'error'); } finally { setProcessing(false); }
   };
 
+=======
+>>>>>>> main
   const viewHistoryItem = (item: PdfToolsResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   return (
@@ -10097,7 +10402,11 @@ function PdfToolsPanel() {
         </SmallBtn>
       </PanelTitleBar>
 
+<<<<<<< HEAD
       {/* URL Input + Upload */}
+=======
+      {/* URL Input */}
+>>>>>>> main
       <div className="flex items-center gap-2">
         <input
           value={url} onChange={e => setUrl(e.target.value)}
@@ -10105,10 +10414,13 @@ function PdfToolsPanel() {
           className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
           placeholder="https://example.com/document.pdf"
         />
+<<<<<<< HEAD
         <input ref={pdfToolsFileRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadPdfFile(e.target.files[0]); e.target.value = ''; }} />
         <SmallBtn onClick={() => pdfToolsFileRef.current?.click()} loading={processing}>
           <Upload className="w-3 h-3" /> Upload
         </SmallBtn>
+=======
+>>>>>>> main
       </div>
 
       {/* Operation Checkboxes */}
@@ -10203,12 +10515,19 @@ function PdfToolsPanel() {
               </table>
             </div>
           )}
+<<<<<<< HEAD
           <ResultActions result={result} toolName="pdf_tools" />
+=======
+>>>>>>> main
         </div>
       )}
 
       {!result && !processing && (
+<<<<<<< HEAD
         <EmptyState icon={FileType} message="Enter a PDF URL or upload a file and select operations to process." />
+=======
+        <EmptyState icon={FileType} message="Enter a PDF URL and select operations to process." />
+>>>>>>> main
       )}
     </div>
   );
@@ -10269,9 +10588,15 @@ function LeadGenPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-3">
+<<<<<<< HEAD
         <Users size={16} className="text-[#888888]" />
         <h3 className="text-sm font-bold text-white uppercase tracking-wider">Lead Generation</h3>
         <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#60a5fa] font-bold uppercase">Firecrawl</span>
+=======
+        <Users size={16} className="text-[#1a5a9e]" />
+        <h3 className="text-sm font-bold text-white uppercase tracking-wider">Lead Generation</h3>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#1a5a9e]/20 text-[#60a5fa] font-bold uppercase">Firecrawl</span>
+>>>>>>> main
       </div>
 
       {configured === false && (
@@ -10284,7 +10609,11 @@ function LeadGenPanel() {
         <select
           value={searchType}
           onChange={e => setSearchType(e.target.value as any)}
+<<<<<<< HEAD
           className="px-2 py-2 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[11px] text-white"
+=======
+          className="px-2 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white"
+>>>>>>> main
         >
           <option value="company">Company</option>
           <option value="person">Person</option>
@@ -10297,13 +10626,21 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
+<<<<<<< HEAD
           className="flex-1 px-3 py-2 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
+=======
+          className="flex-1 px-3 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#1a5a9e]"
+>>>>>>> main
         />
         <button
           type="button"
           onClick={handleSearch}
           disabled={loading || !query.trim()}
+<<<<<<< HEAD
           className="px-4 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
+=======
+          className="px-4 py-2 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
+>>>>>>> main
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
           Search
@@ -10312,6 +10649,7 @@ function LeadGenPanel() {
 
       {results && (
         <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
+<<<<<<< HEAD
           <div className="px-3 py-2 bg-[#1b2128] border-b border-[#1e2d40] flex items-center justify-between">
             <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
             <span className="text-[9px] text-[#556677] font-mono">
@@ -10319,6 +10657,15 @@ function LeadGenPanel() {
             </span>
           </div>
           <div className="p-3 bg-[#0c0f13] max-h-[500px] overflow-y-auto">
+=======
+          <div className="px-3 py-2 bg-[#1a2636] border-b border-[#1e2d40] flex items-center justify-between">
+            <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
+            <span className="text-[9px] text-[#556677] font-mono">
+              {Array.isArray(results.results) ? results.results.length : typeof results.results === 'object' ? Object.keys(results.results).length : '—'} entries
+            </span>
+          </div>
+          <div className="p-3 bg-[#0d1520] max-h-[500px] overflow-y-auto">
+>>>>>>> main
             <pre className="text-[10px] text-[#8899aa] font-mono whitespace-pre-wrap break-words">
               {JSON.stringify(results.results, null, 2)}
             </pre>
@@ -10459,6 +10806,7 @@ function AssistantPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════
+<<<<<<< HEAD
 // ██ SUPPORT BOT PANEL (ai-customer-support-bot)
 // ══════════════════════════════════════════════════════════════
 
@@ -11245,10 +11593,32 @@ export default function FirecrawlTab() {
             onClick={() => { setActiveCategory('all'); setToolSearch(''); }}
             className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
               activeCategory === 'all' && !toolSearch
+=======
+// ██ MAIN FIRECRAWL TAB COMPONENT
+// ══════════════════════════════════════════════════════════════
+
+export default function FirecrawlTab() {
+  const [activeTab, setActiveTab] = useState<FirecrawlSubTab>('scouts');
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Sub-tab bar */}
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark">
+        <span className="text-[10px] font-bold text-orange-400 tracking-wider uppercase mr-3 shrink-0">
+          FIRECRAWL
+        </span>
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-sm border transition-colors shrink-0 whitespace-nowrap ${
+              activeTab === tab.id
+>>>>>>> main
                 ? 'border-orange-500/50 bg-orange-500/10 text-orange-300'
                 : 'border-transparent text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
             }`}
           >
+<<<<<<< HEAD
             All
           </button>
           {TOOL_CATEGORIES.map(cat => {
@@ -11332,23 +11702,41 @@ export default function FirecrawlTab() {
             ))}
           </div>
         )}
+=======
+            <tab.icon className="w-3 h-3" />
+            {tab.label}
+          </button>
+        ))}
+>>>>>>> main
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-dark">
+<<<<<<< HEAD
         {!activeTab && <TemplatesLanding onSelect={handleWorkflowSelect} />}
         {activeTab === 'scouts' && <ScoutsPanel {...chainProps} />}
+=======
+        {activeTab === 'scouts' && <ScoutsPanel />}
+>>>>>>> main
         {activeTab === 'ai-ready' && <AiReadyPanel />}
         {activeTab === 'cloner' && <ClonerPanel />}
         {activeTab === 'brand' && <BrandMonitorPanel />}
         {activeTab === 'compare' && <PageComparePanel />}
         {activeTab === 'workflows' && <WorkflowsPanel />}
         {activeTab === 'search-engine' && <SearchEnginePanel />}
+<<<<<<< HEAD
         {activeTab === 'enrich' && <EnrichPanel {...chainProps} />}
         {activeTab === 'researcher' && <ResearcherPanel {...chainProps} />}
         {activeTab === 'chatbot' && <ChatbotPanel />}
         {activeTab === 'observer' && <ObserverPanel {...chainProps} />}
         {activeTab === 'deep-search' && <DeepSearchPanel {...chainProps} />}
+=======
+        {activeTab === 'enrich' && <EnrichPanel />}
+        {activeTab === 'researcher' && <ResearcherPanel />}
+        {activeTab === 'chatbot' && <ChatbotPanel />}
+        {activeTab === 'observer' && <ObserverPanel />}
+        {activeTab === 'deep-search' && <DeepSearchPanel />}
+>>>>>>> main
         {activeTab === 'llmstxt' && <LlmsTxtPanel />}
         {activeTab === 'pdf-inspect' && <PdfInspectPanel />}
         {activeTab === 'graphs' && <GraphsPanel />}
@@ -11388,10 +11776,13 @@ export default function FirecrawlTab() {
         {activeTab === 'pdf-tools' && <PdfToolsPanel />}
         {activeTab === 'assistant' && <AssistantPanel />}
         {activeTab === 'lead-gen' && <LeadGenPanel />}
+<<<<<<< HEAD
         {activeTab === 'support-bot' && <SupportBotPanel />}
         {activeTab === 'trend-cron' && <TrendCronPanel />}
         {activeTab === 'site-migrator' && <SiteMigratorPanel />}
         {activeTab === 'code-repo' && <CodeRepoPanel />}
+=======
+>>>>>>> main
       </div>
     </div>
   );
