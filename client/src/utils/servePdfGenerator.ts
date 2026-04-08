@@ -214,14 +214,14 @@ function addPhotos(doc: jsPDF, photos: string[], y: number, label?: string): num
       doc.setDrawColor(...COLOR.BORDER_FIELD);
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(lx, y, imgMaxW, imgMaxH);
-      doc.setFont('helvetica', 'italic');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.text('[Image unavailable]', lx + imgMaxW / 2, y + imgMaxH / 2, { align: 'center' });
     }
 
     // Caption
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text(`Photo ${i + 1}`, lx, y + imgMaxH + 3);
