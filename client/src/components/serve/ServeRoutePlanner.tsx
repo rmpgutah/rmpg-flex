@@ -441,9 +441,7 @@ export default function ServeRoutePlanner({
           ? cluster
           : cluster.slice(1, -1);
 
-        const waypoints: google.maps.DirectionsWaypoint[] = (
-          isFirstCluster && currentLocation ? cluster : cluster.slice(1, -1)
-        ).map(s => ({
+        const waypoints: google.maps.DirectionsWaypoint[] = waypointStops.map(s => ({
           location: new google.maps.LatLng(s.job.recipient_lat!, s.job.recipient_lng!),
           stopover: true,
         }));
@@ -476,12 +474,12 @@ export default function ServeRoutePlanner({
 
         if (isFirstCluster && currentLocation) {
           // All stops were waypoints + destination
-          const allClusterStops = [...reorderedWaypoints];
+          const reorderedClusterStops = [...reorderedWaypoints];
           // The destination is the last stop (not reordered)
           // But we need to check if destination was included in waypoints
-          allOrderedStops.push(...allClusterStops);
+          allOrderedStops.push(...reorderedClusterStops);
           // Add the destination stop (last in cluster)
-          if (!allClusterStops.includes(cluster[cluster.length - 1])) {
+          if (!reorderedClusterStops.includes(cluster[cluster.length - 1])) {
             allOrderedStops.push(cluster[cluster.length - 1]);
           }
         } else {

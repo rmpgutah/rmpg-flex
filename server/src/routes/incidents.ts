@@ -148,8 +148,7 @@ router.get('/map', (req: Request, res: Response) => {
         SUBSTR(i.narrative, 1, 100) as narrative_preview,
         o.full_name as officer_name,
         i.created_at,
-        c.call_number,
-        i.incident_number
+        c.call_number
       FROM incidents i
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
@@ -301,7 +300,6 @@ router.get('/:id', (req: Request, res: Response) => {
     // Get evidence
     const evidence = db.prepare(`
       SELECT * FROM evidence WHERE incident_id = ?
-    
       LIMIT 1000
     `).all(incident.id);
 
@@ -316,7 +314,6 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON ip.added_by = u.id
       WHERE ip.incident_id = ?
       ORDER BY ip.created_at
-    
       LIMIT 1000
     `).all(incident.id);
 
@@ -331,7 +328,6 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON iv.added_by = u.id
       WHERE iv.incident_id = ?
       ORDER BY iv.created_at
-    
       LIMIT 1000
     `).all(incident.id);
 
@@ -342,7 +338,6 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'incident' AND al.entity_id = ?
       ORDER BY al.created_at DESC
-    
       LIMIT 1000
     `).all(incident.id);
 
