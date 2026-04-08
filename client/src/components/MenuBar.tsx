@@ -479,6 +479,7 @@ export default function MenuBar({
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
           { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'National Warrant Search', icon: Gavel, action: () => navigate('/national-warrants') },
           { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
           { type: 'separator' },

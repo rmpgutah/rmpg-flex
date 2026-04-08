@@ -26,6 +26,7 @@ const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazy(() => import('./pages/PatrolPage'));
 const FleetPage = lazy(() => import('./pages/fleet'));
 const WarrantsPage = lazy(() => import('./pages/WarrantsPage'));
+const NationalWarrantSearchPage = lazy(() => import('./pages/NationalWarrantSearchPage'));
 const CitationsPage = lazy(() => import('./pages/CitationsPage'));
 const FieldInterviewsPage = lazy(() => import('./pages/FieldInterviewsPage'));
 const TrespassOrdersPage = lazy(() => import('./pages/TrespassOrdersPage'));
@@ -201,6 +202,7 @@ function AppRoutes() {
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
+            <Route path="/national-warrants" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
