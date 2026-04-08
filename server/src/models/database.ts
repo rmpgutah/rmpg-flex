@@ -1245,6 +1245,139 @@ function createTables(): void {
       is_default INTEGER DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
+
+    CREATE TABLE IF NOT EXISTS geofences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      zone_type TEXT NOT NULL DEFAULT 'general',
+      polygon_coords TEXT,
+      alert_on_enter INTEGER DEFAULT 1,
+      alert_on_exit INTEGER DEFAULT 0,
+      color TEXT DEFAULT '#ff0000',
+      is_active INTEGER DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS arrest_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      jailbase_id TEXT,
+      source_id TEXT,
+      source_name TEXT,
+      full_name TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      middle_name TEXT,
+      date_of_birth TEXT,
+      booking_date TEXT,
+      charges TEXT,
+      mugshot_url TEXT,
+      details_url TEXT,
+      county TEXT,
+      status TEXT DEFAULT 'active',
+      raw_record TEXT,
+      fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(jailbase_id, source_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS arrest_cross_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      arrest_record_id INTEGER NOT NULL,
+      linked_type TEXT NOT NULL,
+      linked_id INTEGER NOT NULL,
+      match_type TEXT,
+      match_confidence REAL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id),
+      UNIQUE(arrest_record_id, linked_type, linked_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS serve_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER,
+      sm_job_id INTEGER,
+      officer_id INTEGER,
+      serve_date TEXT,
+      recipient_name TEXT,
+      recipient_address TEXT,
+      recipient_city TEXT,
+      recipient_state TEXT,
+      recipient_zip TEXT,
+      recipient_lat REAL,
+      recipient_lng REAL,
+      document_type TEXT,
+      case_number TEXT,
+      court_name TEXT,
+      jurisdiction TEXT,
+      client_name TEXT,
+      attorney_name TEXT,
+      priority TEXT DEFAULT 'normal',
+      time_window TEXT,
+      deadline TEXT,
+      max_attempts INTEGER DEFAULT 3,
+      service_instructions TEXT,
+      notes TEXT,
+      status TEXT DEFAULT 'pending',
+      attempt_count INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS serve_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      serve_queue_id INTEGER NOT NULL,
+      attempt_number INTEGER DEFAULT 1,
+      attempt_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      officer_id INTEGER,
+      result TEXT,
+      latitude REAL,
+      longitude REAL,
+      notes TEXT,
+      attempt_type TEXT,
+      photo_ids TEXT,
+      signature_data TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (serve_queue_id) REFERENCES serve_queue(id),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS serve_routes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      route_date TEXT,
+      optimized_order_json TEXT,
+      waypoints_json TEXT,
+      total_distance_miles REAL,
+      total_time_minutes REAL,
+      start_lat REAL,
+      start_lng REAL,
+      end_lat REAL,
+      end_lng REAL,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS serve_skip_traces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      serve_queue_id INTEGER NOT NULL,
+      searched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      search_type TEXT,
+      search_query TEXT,
+      results_json TEXT,
+      addresses_found_json TEXT,
+      searched_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (serve_queue_id) REFERENCES serve_queue(id),
+      FOREIGN KEY (searched_by) REFERENCES users(id)
+    );
   `);
 }
 
@@ -4605,6 +4738,25 @@ function createIndexes(): void {
     -- Geofences indexes
     CREATE INDEX IF NOT EXISTS idx_geofences_active ON geofences(is_active);
     CREATE INDEX IF NOT EXISTS idx_geofences_zone_type ON geofences(zone_type);
+
+    -- Arrest records indexes
+    CREATE INDEX IF NOT EXISTS idx_arrest_records_name ON arrest_records(last_name, first_name);
+    CREATE INDEX IF NOT EXISTS idx_arrest_records_booking ON arrest_records(booking_date);
+    CREATE INDEX IF NOT EXISTS idx_arrest_records_status ON arrest_records(status);
+    CREATE INDEX IF NOT EXISTS idx_arrest_cross_links_record ON arrest_cross_links(arrest_record_id);
+    CREATE INDEX IF NOT EXISTS idx_arrest_cross_links_linked ON arrest_cross_links(linked_type, linked_id);
+
+    -- Serve queue indexes
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_status ON serve_queue(status);
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_officer ON serve_queue(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_deadline ON serve_queue(deadline);
+    CREATE INDEX IF NOT EXISTS idx_serve_attempts_queue ON serve_attempts(serve_queue_id);
+    CREATE INDEX IF NOT EXISTS idx_serve_routes_officer ON serve_routes(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_serve_routes_date ON serve_routes(route_date);
+    CREATE INDEX IF NOT EXISTS idx_serve_skip_traces_queue ON serve_skip_traces(serve_queue_id);
+
+    -- Calls for service incident type index (high-frequency filter)
+    CREATE INDEX IF NOT EXISTS idx_cfs_incident_type ON calls_for_service(incident_type);
 
     -- Shift plans indexes
     CREATE INDEX IF NOT EXISTS idx_shift_plans_date ON shift_plans(date);
