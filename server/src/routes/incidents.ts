@@ -307,7 +307,9 @@ router.get('/:id', (req: Request, res: Response) => {
 
     // Get linked persons
     const linked_persons = db.prepare(`
-      SELECT ip.*, p.first_name, p.last_name, p.dob, p.phone, p.flags,
+      SELECT ip.*, p.first_name, p.last_name, p.dob, p.phone, p.address, p.gender, p.race,
+        p.dl_number, p.dl_state, p.height, p.weight, p.hair_color, p.eye_color,
+        p.photo_url, p.flags,
         u.full_name as added_by_name
       FROM incident_persons ip
       LEFT JOIN persons p ON ip.person_id = p.id
@@ -380,6 +382,11 @@ router.post('/', async (req: Request, res: Response) => {
       patient_status, ems_transport, patient_vitals, treatment_rendered,
       trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
       force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
+      // Operational boolean flags
+      mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
+      gang_related, k9_requested, ems_requested, fire_requested, hazmat,
+      evidence_collected, body_camera_active, photos_taken, vehicle_pursuit, foot_pursuit,
+      le_notified, supervisor_notified, injuries_reported,
     } = req.body;
 
     if (!incident_type) {
@@ -455,6 +462,10 @@ router.post('/', async (req: Request, res: Response) => {
         patient_status, ems_transport, patient_vitals, treatment_rendered,
         trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
         force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
+        mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
+        gang_related, k9_requested, ems_requested, fire_requested, hazmat,
+        evidence_collected, body_camera_active, photos_taken, vehicle_pursuit, foot_pursuit,
+        le_notified, supervisor_notified, injuries_reported,
         created_at)
       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
@@ -469,6 +480,10 @@ router.post('/', async (req: Request, res: Response) => {
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
         ?)
     `).run(
       incidentNumber, call_id || null, incident_type, priority || 'P3',
@@ -491,6 +506,10 @@ router.post('/', async (req: Request, res: Response) => {
       patient_status || null, ems_transport || null, patient_vitals || null, treatment_rendered || null,
       trespass_warning_issued ? 1 : 0, trespass_effective_date || null, trespass_expiry_date || null, property_boundaries || null,
       force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
+      mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
+      gang_related ? 1 : 0, k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
+      evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
+      le_notified ? 1 : 0, supervisor_notified ? 1 : 0, injuries_reported ? 1 : 0,
       (req.user?.role === 'admin' && req.body.created_at) ? req.body.created_at : localNow(),
     );
 
@@ -498,12 +517,38 @@ router.post('/', async (req: Request, res: Response) => {
       auditLog(req, 'ADMIN_OVERRIDE', 'incident', 0, `Admin God Mode: overrode created_at to ${req.body.created_at} on new incident`);
     }
 
-    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    const incidentId = result.lastInsertRowid;
+
+    // ── Auto-link persons and vehicles from originating call ──
+    if (call_id) {
+      try {
+        const callPersons = db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(call_id) as any[];
+        for (const cp of callPersons) {
+          try {
+            db.prepare(
+              'INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+            ).run(incidentId, cp.person_id, cp.role || 'involved', cp.notes || null, req.user!.userId);
+          } catch { /* duplicate or FK error — skip */ }
+        }
+        const callVehicles = db.prepare('SELECT vehicle_id, role, notes FROM call_vehicles WHERE call_id = ?').all(call_id) as any[];
+        for (const cv of callVehicles) {
+          try {
+            db.prepare(
+              'INSERT OR IGNORE INTO incident_vehicles (incident_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+            ).run(incidentId, cv.vehicle_id, cv.role || 'involved', cv.notes || null, req.user!.userId);
+          } catch { /* duplicate or FK error — skip */ }
+        }
+      } catch (linkErr) {
+        console.error('[Incident] Auto-link from call failed (non-critical):', linkErr);
+      }
+    }
+
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incidentId);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
+    `).run(req.user!.userId, incidentId, `Created ${incidentNumber}`, req.ip || 'unknown');
 
     res.status(201).json(incident);
   } catch (error: any) {
@@ -566,6 +611,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const iBodyKeys = Object.keys(req.body);
 
     const iFieldMap: Record<string, (v: any) => any> = {
+      call_id: v => v ?? null,
       incident_type: v => v ?? null, priority: v => v ?? null,
       location_address: v => v ?? null, property_id: v => v ?? null,
       latitude: v => v ?? null, longitude: v => v ?? null,
@@ -611,6 +657,24 @@ router.put('/:id', async (req: Request, res: Response) => {
       process_attempts: v => v != null ? Number(v) || null : null,
       // Contract / Client
       contract_id: v => v ?? null,
+      // Operational boolean flags
+      mental_health_crisis: v => v ? 1 : 0,
+      juvenile_involved: v => v ? 1 : 0,
+      felony_in_progress: v => v ? 1 : 0,
+      officer_safety_caution: v => v ? 1 : 0,
+      gang_related: v => v ? 1 : 0,
+      k9_requested: v => v ? 1 : 0,
+      ems_requested: v => v ? 1 : 0,
+      fire_requested: v => v ? 1 : 0,
+      hazmat: v => v ? 1 : 0,
+      evidence_collected: v => v ? 1 : 0,
+      body_camera_active: v => v ? 1 : 0,
+      photos_taken: v => v ? 1 : 0,
+      vehicle_pursuit: v => v ? 1 : 0,
+      foot_pursuit: v => v ? 1 : 0,
+      le_notified: v => v ? 1 : 0,
+      supervisor_notified: v => v ? 1 : 0,
+      injuries_reported: v => v ? 1 : 0,
     };
 
     for (const [key, transform] of Object.entries(iFieldMap)) {
@@ -804,7 +868,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
     db.prepare(`
       UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ?
       WHERE id = ?
-    `).run(req.user!.userId, now, localNow(), incident.id);
+    `).run(req.user!.userId, now, now, incident.id);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1857,6 +1921,38 @@ router.post('/:id(\\d+)/officers', requireRole('admin', 'manager', 'supervisor',
   }
 });
 
+// PUT /api/incidents/:id/officers/:linkId — Update officer assignment details
+router.put('/:id(\\d+)/officers/:linkId(\\d+)', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fields = ['role', 'arrived_at', 'departed_at', 'action_taken', 'notes'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) {
+        updates.push(`${f} = ?`);
+        values.push(req.body[f] ?? null);
+      }
+    }
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'No fields to update' });
+      return;
+    }
+    values.push(req.params.linkId, req.params.id);
+    db.prepare(`UPDATE incident_officers SET ${updates.join(', ')} WHERE id = ? AND incident_id = ?`).run(...values);
+    const updated = db.prepare(`
+      SELECT io.*, u.full_name as officer_name, u.badge_number, u.rank
+      FROM incident_officers io
+      LEFT JOIN users u ON u.id = io.officer_id
+      WHERE io.id = ?
+    `).get(req.params.linkId);
+    res.json(updated || { success: true });
+  } catch (err: any) {
+    console.error('Update officer error:', err);
+    res.status(500).json({ error: 'Failed to update officer' });
+  }
+});
+
 router.delete('/:id(\\d+)/officers/:linkId(\\d+)', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -1868,6 +1964,92 @@ router.delete('/:id(\\d+)/officers/:linkId(\\d+)', requireRole('admin', 'manager
 // ════════════════════════════════════════════════════════════
 // INCIDENT LINKS — Cross-reference to other records
 // ════════════════════════════════════════════════════════════
+
+// GET /api/incidents/link-search — Search linkable records by human-readable identifier
+router.get('/link-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const type = req.query.type as string;
+    const q = (req.query.q as string || '').trim();
+    if (!type || q.length < 2) {
+      res.status(400).json({ error: 'type and q (min 2 chars) are required' });
+      return;
+    }
+    const searchTerm = `%${q}%`;
+    let results: { id: number; label: string; status: string }[] = [];
+
+    switch (type) {
+      case 'incident':
+        results = (db.prepare(`
+          SELECT id, incident_number, incident_type, status FROM incidents
+          WHERE incident_number LIKE ? ORDER BY created_at DESC LIMIT 15
+        `).all(searchTerm) as any[]).map(r => ({
+          id: r.id,
+          label: `${r.incident_number} — ${(r.incident_type || '').replace(/_/g, ' ')}`,
+          status: r.status || '',
+        }));
+        break;
+      case 'call':
+        results = (db.prepare(`
+          SELECT id, call_number, incident_type, status FROM calls_for_service
+          WHERE call_number LIKE ? ORDER BY created_at DESC LIMIT 15
+        `).all(searchTerm) as any[]).map(r => ({
+          id: r.id,
+          label: `${r.call_number} — ${(r.incident_type || '').replace(/_/g, ' ')}`,
+          status: r.status || '',
+        }));
+        break;
+      case 'case':
+        results = (db.prepare(`
+          SELECT id, case_number, case_type, status FROM cases
+          WHERE case_number LIKE ? ORDER BY created_at DESC LIMIT 15
+        `).all(searchTerm) as any[]).map(r => ({
+          id: r.id,
+          label: `${r.case_number} — ${r.case_type || ''}`,
+          status: r.status || '',
+        }));
+        break;
+      case 'warrant':
+        results = (db.prepare(`
+          SELECT id, warrant_number, charge_description, status FROM warrants
+          WHERE warrant_number LIKE ? ORDER BY created_at DESC LIMIT 15
+        `).all(searchTerm) as any[]).map(r => ({
+          id: r.id,
+          label: `${r.warrant_number} — ${(r.charge_description || '').substring(0, 40)}`,
+          status: r.status || '',
+        }));
+        break;
+      case 'citation':
+        results = (db.prepare(`
+          SELECT id, citation_number, violation_description, status FROM citations
+          WHERE citation_number LIKE ? ORDER BY created_at DESC LIMIT 15
+        `).all(searchTerm) as any[]).map(r => ({
+          id: r.id,
+          label: `${r.citation_number} — ${(r.violation_description || '').substring(0, 40)}`,
+          status: r.status || '',
+        }));
+        break;
+      case 'arrest':
+        results = (db.prepare(`
+          SELECT id, booking_number, charges, status FROM arrest_records
+          WHERE booking_number LIKE ? ORDER BY created_at DESC LIMIT 15
+        `).all(searchTerm) as any[]).map(r => ({
+          id: r.id,
+          label: r.booking_number || `Arrest #${r.id}`,
+          status: r.status || '',
+        }));
+        break;
+      default:
+        res.status(400).json({ error: `Invalid type. Must be: incident, call, case, warrant, citation, arrest` });
+        return;
+    }
+    res.json(results);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    console.error('[Incidents] Link search error:', err?.message);
+    res.status(500).json({ error: 'Link search failed' });
+  }
+});
 
 router.get('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -1906,6 +2088,11 @@ router.post('/:id(\\d+)/links', requireRole('admin', 'manager', 'supervisor', 'o
     const userId = (req as any).user?.userId || (req as any).user?.id;
     const { linked_type, linked_id, link_reason } = req.body;
     if (!linked_type || !linked_id) { res.status(400).json({ error: 'linked_type and linked_id required' }); return; }
+    const validLinkTypes = ['incident', 'call', 'case', 'warrant', 'citation', 'arrest', 'person', 'vehicle', 'property', 'evidence'];
+    if (!validLinkTypes.includes(linked_type)) {
+      res.status(400).json({ error: `Invalid linked_type. Must be one of: ${validLinkTypes.join(', ')}`, code: 'INVALID_LINKED_TYPE' });
+      return;
+    }
     const result = db.prepare(`
       INSERT INTO incident_links (incident_id, linked_type, linked_id, link_reason, added_by)
       VALUES (?, ?, ?, ?, ?)
@@ -1951,8 +2138,8 @@ router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'off
 
     try {
       persons = db.prepare(`
-        SELECT ip.*, p.first_name, p.last_name, p.date_of_birth, p.gender, p.race, p.phone, p.address,
-          p.drivers_license_number, p.flags
+        SELECT ip.*, p.first_name, p.last_name, p.dob, p.gender, p.race, p.phone, p.address,
+          p.dl_number, p.flags
         FROM incident_persons ip JOIN persons p ON p.id = ip.person_id
         WHERE ip.incident_id = ? ORDER BY CASE ip.role WHEN 'suspect' THEN 0 WHEN 'victim' THEN 1 WHEN 'witness' THEN 2 ELSE 3 END
       `).all(req.params.id);
@@ -2006,6 +2193,19 @@ router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'off
       `).all(req.params.id);
     } catch { /* table may not exist */ }
 
+    // Fetch originating call data if this incident was promoted from dispatch
+    let call: any = null;
+    if (incident.call_id) {
+      try {
+        call = db.prepare(`
+          SELECT call_number, incident_type, priority, status, location_address,
+            caller_name, caller_phone, description, disposition,
+            created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at
+          FROM calls_for_service WHERE id = ?
+        `).get(incident.call_id);
+      } catch { /* non-critical */ }
+    }
+
     res.json({
       ...incident,
       persons,
@@ -2015,6 +2215,7 @@ router.get('/:id(\\d+)/full', requireRole('admin', 'manager', 'supervisor', 'off
       links,
       evidence,
       supplements,
+      call,
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to load full incident' });
@@ -2035,15 +2236,15 @@ router.get('/mni/search', requireRole('admin', 'manager', 'supervisor', 'officer
 
     // Search persons table
     const persons = db.prepare(`
-      SELECT p.id, p.first_name, p.last_name, p.date_of_birth, p.gender, p.race,
-        p.drivers_license_number, p.phone, p.address, p.flags,
+      SELECT p.id, p.first_name, p.last_name, p.dob, p.gender, p.race,
+        p.dl_number, p.phone, p.address, p.flags,
         (SELECT COUNT(*) FROM incident_persons WHERE person_id = p.id) as incident_count,
         (SELECT COUNT(*) FROM call_persons WHERE person_id = p.id) as call_count,
         (SELECT GROUP_CONCAT(DISTINCT ip.role) FROM incident_persons ip WHERE ip.person_id = p.id) as known_roles
       FROM persons p
       WHERE p.first_name || ' ' || p.last_name LIKE ?
         OR p.last_name LIKE ?
-        OR p.drivers_license_number LIKE ?
+        OR p.dl_number LIKE ?
         OR p.phone LIKE ?
         OR p.ssn LIKE ?
       ORDER BY p.last_name, p.first_name

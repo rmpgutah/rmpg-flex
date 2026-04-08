@@ -596,9 +596,18 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
     }
 
     const {
-      result, gps_lat, gps_lng, notes, method, recipient_response,
-      photo_url, signature_url, mileage,
+      result, gps_lat, gps_lng, latitude, longitude, notes,
+      method, attempt_type, recipient_response,
+      photo_url, photo_ids, signature_url, signature_data, mileage,
+      person_served_name, person_served_relationship, person_served_description,
     } = req.body;
+
+    // Accept both field naming conventions from client
+    const resolvedLat = gps_lat ?? latitude ?? null;
+    const resolvedLng = gps_lng ?? longitude ?? null;
+    const resolvedAttemptType = attempt_type || method || 'personal';
+    const resolvedPhotoIds = photo_url ? JSON.stringify([photo_url]) : (photo_ids ? JSON.stringify(photo_ids) : '[]');
+    const resolvedSignature = signature_url || signature_data || null;
 
     // Validate result enum
     const VALID_RESULTS = ['served', 'no_answer', 'refused', 'posted', 'left_with', 'other', 'unable_to_locate'];
@@ -608,21 +617,21 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
 
     // Validate method enum
     const VALID_METHODS = ['personal', 'substitute', 'posting', 'abode', 'mail', 'other'];
-    if (method && !VALID_METHODS.includes(method)) {
-      return res.status(400).json({ error: `Invalid method. Must be one of: ${VALID_METHODS.join(', ')}`, code: 'INVALID_ATTEMPT_METHOD' });
+    if (resolvedAttemptType && !VALID_METHODS.includes(resolvedAttemptType)) {
+      return res.status(400).json({ error: `Invalid attempt type. Must be one of: ${VALID_METHODS.join(', ')}`, code: 'INVALID_ATTEMPT_METHOD' });
     }
 
     // Validate GPS coordinates for serve attempt location tracking
-    if (gps_lat !== undefined && gps_lat !== null) {
-      const lat = parseFloat(gps_lat);
+    if (resolvedLat !== undefined && resolvedLat !== null) {
+      const lat = parseFloat(resolvedLat);
       if (isNaN(lat) || lat < -90 || lat > 90) {
-        return res.status(400).json({ error: 'gps_lat must be between -90 and 90', code: 'GPSLAT_MUST_BE_BETWEEN' });
+        return res.status(400).json({ error: 'latitude must be between -90 and 90', code: 'LATITUDE_MUST_BE_BETWEEN' });
       }
     }
-    if (gps_lng !== undefined && gps_lng !== null) {
-      const lng = parseFloat(gps_lng);
+    if (resolvedLng !== undefined && resolvedLng !== null) {
+      const lng = parseFloat(resolvedLng);
       if (isNaN(lng) || lng < -180 || lng > 180) {
-        return res.status(400).json({ error: 'gps_lng must be between -180 and 180', code: 'GPSLNG_MUST_BE_BETWEEN' });
+        return res.status(400).json({ error: 'longitude must be between -180 and 180', code: 'LONGITUDE_MUST_BE_BETWEEN' });
       }
     }
 
@@ -650,9 +659,9 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.params.id, attemptNumber, now, req.user!.userId,
-      result || 'no_answer', gps_lat ?? null, gps_lng ?? null,
-      notes ?? '', method ?? 'personal',
-      photo_url ? JSON.stringify([photo_url]) : '[]', signature_url ?? null, now,
+      result || 'no_answer', resolvedLat, resolvedLng,
+      notes ?? '', resolvedAttemptType,
+      resolvedPhotoIds, resolvedSignature, now,
     );
     const attemptId = attemptInfo.lastInsertRowid;
 

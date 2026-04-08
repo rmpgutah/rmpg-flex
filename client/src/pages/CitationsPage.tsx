@@ -619,6 +619,9 @@ export default function CitationsPage() {
       court_time: (c as any).court_time || '',
       court_room: (c as any).court_room || '',
       appearance_required: !!(c as any).appearance_required,
+      weather_conditions: (c as any).weather_conditions || '',
+      road_conditions: (c as any).road_conditions || '',
+      is_equipment_violation: !!(c as any).is_equipment_violation,
     });
     setPersonSearch(c.person_name || '');
     setSaveError('');

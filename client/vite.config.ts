@@ -10,6 +10,21 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core — cached across all pages
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // PDF generation — only loaded when printing
+          'vendor-pdf': ['jspdf'],
+          // Icons — large import tree, separate cache
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
   server: {
     port: 5173,
     proxy: {

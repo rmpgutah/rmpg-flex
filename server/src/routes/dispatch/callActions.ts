@@ -268,14 +268,15 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
 
     // Transaction: update call + unit + activity log atomically
     const assignTx = db.transaction(() => {
-      // Update call: add unit to assigned_unit_ids, set dispatched if pending
+      // Update call: add unit to assigned_unit_ids, set dispatched if pending, record dispatcher
       db.prepare(`
         UPDATE calls_for_service SET
           status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
           assigned_unit_ids = ?,
-          dispatched_at = COALESCE(dispatched_at, ?)
+          dispatched_at = COALESCE(dispatched_at, ?),
+          dispatcher_id = COALESCE(dispatcher_id, ?)
         WHERE id = ?
-      `).run(JSON.stringify(currentUnits), now, call.id);
+      `).run(JSON.stringify(currentUnits), now, req.user!.userId, call.id);
 
       // Update unit: set status to dispatched and link to this call
       db.prepare(`
@@ -488,6 +489,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       cleared: 'cleared_at',
       closed: 'closed_at',
       archived: 'archived_at',
+      on_hold: 'status_changed_at', // on_hold uses status_changed_at as its timestamp
     };
 
     const tsField = timestampField[status];
@@ -866,6 +868,18 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    // Prevent duplicate promotion — if an incident already exists for this call, return it
+    const existingIncident = db.prepare('SELECT id, incident_number FROM incidents WHERE call_id = ?').get(call.id) as any;
+    if (existingIncident) {
+      res.status(409).json({
+        error: 'Incident already exists for this call',
+        code: 'INCIDENT_ALREADY_EXISTS',
+        incident_id: existingIncident.id,
+        incident_number: existingIncident.incident_number,
+      });
+      return;
+    }
 
     // Generate incident number
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');

@@ -33,6 +33,27 @@ export interface PropertyFormData {
   longitude: string;
   is_active: boolean;
   notes: string;
+  business_type: string;
+  structure_type: string;
+  occupancy_status: string;
+  year_built: string;
+  square_footage: string;
+  number_of_stories: string;
+  security_features: string;
+  key_holder_name: string;
+  key_holder_phone: string;
+  key_holder_relationship: string;
+  owner_name: string;
+  owner_phone: string;
+  last_inspection_date: string;
+  inspection_status: string;
+  alarm_company: string;
+  alarm_account: string;
+  camera_system: string;
+  parking_info: string;
+  roof_access: string;
+  utility_shutoffs: string;
+  known_hazards: string;
 }
 
 const EMPTY_FORM: PropertyFormData = {
@@ -53,6 +74,27 @@ const EMPTY_FORM: PropertyFormData = {
   longitude: '',
   is_active: true,
   notes: '',
+  business_type: '',
+  structure_type: '',
+  occupancy_status: '',
+  year_built: '',
+  square_footage: '',
+  number_of_stories: '',
+  security_features: '',
+  key_holder_name: '',
+  key_holder_phone: '',
+  key_holder_relationship: '',
+  owner_name: '',
+  owner_phone: '',
+  last_inspection_date: '',
+  inspection_status: '',
+  alarm_company: '',
+  alarm_account: '',
+  camera_system: '',
+  parking_info: '',
+  roof_access: '',
+  utility_shutoffs: '',
+  known_hazards: '',
 };
 
 const US_STATES = [
@@ -65,6 +107,14 @@ const PROPERTY_TYPES = [
   'Commercial', 'Residential', 'Industrial', 'Government', 'Education',
   'Healthcare', 'Retail', 'Mixed Use', 'Other',
 ];
+
+const BUSINESS_TYPE_OPTIONS = ['Office', 'Retail', 'Restaurant', 'Warehouse', 'Medical', 'Financial', 'Church', 'School', 'Government', 'Parking', 'Gas Station', 'Hotel', 'Bar/Nightclub', 'Gym/Fitness', 'Auto Dealer', 'Storage Facility', 'Construction Site', 'Other'];
+const STRUCTURE_TYPE_OPTIONS = ['Single Building', 'Multi-Building Complex', 'High-Rise', 'Strip Mall', 'Shopping Center', 'Standalone', 'Warehouse', 'Open Lot', 'Gated Community', 'Other'];
+const OCCUPANCY_OPTIONS = ['Occupied', 'Vacant', 'Seasonal', 'Under Construction', 'Condemned', 'Partially Occupied', 'Unknown'];
+const SECURITY_FEATURES_OPTIONS = ['None', 'Cameras', 'Alarm System', 'Guard Service', 'Fenced', 'Gated', 'Key Card Access', 'Cameras + Alarm', 'Full Security Suite', 'Other'];
+const INSPECTION_STATUS_OPTIONS = ['Current', 'Expired', 'Pending', 'Failed', 'Not Required', 'Unknown'];
+const CAMERA_SYSTEM_OPTIONS = ['None', 'Analog CCTV', 'IP/Network', 'Cloud-Based', 'Ring/Doorbell', 'Body Worn', 'Unknown'];
+const ROOF_ACCESS_OPTIONS = ['None', 'Ladder', 'Stairwell', 'Hatch', 'Fire Escape', 'Elevator', 'Unknown'];
 
 export default function PropertyFormModal({
   isOpen,
@@ -99,6 +149,27 @@ export default function PropertyFormModal({
           longitude: editingProperty.longitude != null ? String(editingProperty.longitude) : '',
           is_active: editingProperty.is_active ?? true,
           notes: (editingProperty as any).notes || '',
+          business_type: (editingProperty as any).business_type || '',
+          structure_type: (editingProperty as any).structure_type || '',
+          occupancy_status: (editingProperty as any).occupancy_status || '',
+          year_built: (editingProperty as any).year_built || '',
+          square_footage: (editingProperty as any).square_footage || '',
+          number_of_stories: (editingProperty as any).number_of_stories || '',
+          security_features: (editingProperty as any).security_features || '',
+          key_holder_name: (editingProperty as any).key_holder_name || '',
+          key_holder_phone: (editingProperty as any).key_holder_phone || '',
+          key_holder_relationship: (editingProperty as any).key_holder_relationship || '',
+          owner_name: (editingProperty as any).owner_name || '',
+          owner_phone: (editingProperty as any).owner_phone || '',
+          last_inspection_date: (editingProperty as any).last_inspection_date || '',
+          inspection_status: (editingProperty as any).inspection_status || '',
+          alarm_company: (editingProperty as any).alarm_company || '',
+          alarm_account: (editingProperty as any).alarm_account || '',
+          camera_system: (editingProperty as any).camera_system || '',
+          parking_info: (editingProperty as any).parking_info || '',
+          roof_access: (editingProperty as any).roof_access || '',
+          utility_shutoffs: (editingProperty as any).utility_shutoffs || '',
+          known_hazards: (editingProperty as any).known_hazards || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -218,8 +289,8 @@ export default function PropertyFormModal({
         </div>
       </div>
 
-      {/* Row 4: Client, Property Type */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Row 4: Client, Property Type, Business Type */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Client</label>
           <select name="client_id" className="select-dark w-full text-xs" value={form.client_id} onChange={handleChange}>
@@ -235,6 +306,68 @@ export default function PropertyFormModal({
             <option value="">-- Select --</option>
             {PROPERTY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Business Type</label>
+          <select name="business_type" className="select-dark w-full text-xs" value={form.business_type} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {BUSINESS_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Property Details */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Structure Type</label>
+          <select name="structure_type" className="select-dark w-full text-xs" value={form.structure_type} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {STRUCTURE_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Occupancy Status</label>
+          <select name="occupancy_status" className="select-dark w-full text-xs" value={form.occupancy_status} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {OCCUPANCY_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Year Built</label>
+          <input
+            name="year_built"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="e.g. 2005"
+            value={form.year_built}
+            onChange={handleChange}
+            maxLength={4}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Square Footage</label>
+          <input
+            name="square_footage"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="e.g. 12000"
+            value={form.square_footage}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Number of Stories</label>
+          <input
+            name="number_of_stories"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="e.g. 3"
+            value={form.number_of_stories}
+            onChange={handleChange}
+          />
         </div>
       </div>
 
@@ -301,6 +434,157 @@ export default function PropertyFormModal({
         </div>
       </div>
 
+      {/* ── Security & Access ── */}
+      <div className="mt-3 pt-3 border-t border-rmpg-700">
+        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Security & Access</div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Security Features</label>
+          <select name="security_features" className="select-dark w-full text-xs" value={form.security_features} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {SECURITY_FEATURES_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Camera System</label>
+          <select name="camera_system" className="select-dark w-full text-xs" value={form.camera_system} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {CAMERA_SYSTEM_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Roof Access</label>
+          <select name="roof_access" className="select-dark w-full text-xs" value={form.roof_access} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {ROOF_ACCESS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Alarm Company</label>
+          <input
+            name="alarm_company"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="e.g. ADT, Vivint"
+            value={form.alarm_company}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Alarm Account #</label>
+          <input
+            name="alarm_account"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="Account number"
+            value={form.alarm_account}
+            onChange={handleChange}
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Parking Info</label>
+        <textarea
+          name="parking_info"
+          rows={2}
+          className="input-dark w-full text-xs"
+          placeholder="Parking layout, reserved spots, lot access"
+          value={form.parking_info}
+          onChange={handleChange}
+        />
+      </div>
+
+      {/* ── Key Holder / Owner ── */}
+      <div className="mt-3 pt-3 border-t border-rmpg-700">
+        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Key Holder / Owner</div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Key Holder Name</label>
+          <input
+            name="key_holder_name"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="Full name"
+            value={form.key_holder_name}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Key Holder Phone</label>
+          <input
+            name="key_holder_phone"
+            type="tel"
+            className="input-dark w-full text-xs"
+            placeholder="(801) 555-0100"
+            value={form.key_holder_phone}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Key Holder Relationship</label>
+          <input
+            name="key_holder_relationship"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="e.g. Property Manager"
+            value={form.key_holder_relationship}
+            onChange={handleChange}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Owner Name</label>
+          <input
+            name="owner_name"
+            type="text"
+            className="input-dark w-full text-xs"
+            placeholder="Property owner full name"
+            value={form.owner_name}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Owner Phone</label>
+          <input
+            name="owner_phone"
+            type="tel"
+            className="input-dark w-full text-xs"
+            placeholder="(801) 555-0100"
+            value={form.owner_phone}
+            onChange={handleChange}
+          />
+        </div>
+      </div>
+
+      {/* ── Inspection ── */}
+      <div className="mt-3 pt-3 border-t border-rmpg-700">
+        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Inspection</div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Last Inspection Date</label>
+          <input
+            name="last_inspection_date"
+            type="date"
+            className="input-dark w-full text-xs"
+            value={form.last_inspection_date}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Inspection Status</label>
+          <select name="inspection_status" className="select-dark w-full text-xs" value={form.inspection_status} onChange={handleChange}>
+            <option value="">-- Select --</option>
+            {INSPECTION_STATUS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
       {/* Row 7: Post Orders */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Post Orders</label>
@@ -329,6 +613,30 @@ export default function PropertyFormModal({
           maxLength={3000}
         />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.hazard_notes.length}/3000</div>
+      </div>
+
+      {/* ── Safety ── */}
+      <div>
+        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Utility Shutoffs</label>
+        <textarea
+          name="utility_shutoffs"
+          rows={2}
+          className="input-dark w-full text-xs"
+          placeholder="Gas, water, electric shutoff locations"
+          value={form.utility_shutoffs}
+          onChange={handleChange}
+        />
+      </div>
+      <div>
+        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Known Hazards</label>
+        <textarea
+          name="known_hazards"
+          rows={2}
+          className="input-dark w-full text-xs"
+          placeholder="Chemical storage, structural issues, aggressive animals, etc."
+          value={form.known_hazards}
+          onChange={handleChange}
+        />
       </div>
 
       {/* Row 9: Access Instructions */}

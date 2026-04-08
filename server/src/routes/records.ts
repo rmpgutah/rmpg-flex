@@ -414,6 +414,12 @@ router.post('/persons', (req: Request, res: Response) => {
       phone_secondary, social_media,
       probation_parole, probation_parole_officer, known_associates,
       emergency_contact_relationship, caution_flags,
+      ncic_number, sor_number, fbi_number, state_id_number,
+      passport_number, passport_country, immigration_status,
+      disability_flags, mental_health_flags, substance_abuse, medication_notes,
+      education_level, military_branch, military_status, tribal_affiliation,
+      identifying_marks_location, tattoo_description, scar_description,
+      piercing_description, distinguishing_features,
       photo_url, flags, notes,
     } = req.body;
 
@@ -435,8 +441,14 @@ router.post('/persons', (req: Request, res: Response) => {
         phone_secondary, social_media,
         probation_parole, probation_parole_officer, known_associates,
         emergency_contact_relationship, caution_flags,
+        ncic_number, sor_number, fbi_number, state_id_number,
+        passport_number, passport_country, immigration_status,
+        disability_flags, mental_health_flags, substance_abuse, medication_notes,
+        education_level, military_branch, military_status, tribal_affiliation,
+        identifying_marks_location, tattoo_description, scar_description,
+        piercing_description, distinguishing_features,
         photo_url, flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
@@ -454,6 +466,12 @@ router.post('/persons', (req: Request, res: Response) => {
       phone_secondary || null, social_media || null,
       probation_parole || null, probation_parole_officer || null, known_associates || null,
       emergency_contact_relationship || null, caution_flags || null,
+      ncic_number || null, sor_number || null, fbi_number || null, state_id_number || null,
+      passport_number || null, passport_country || null, immigration_status || null,
+      disability_flags || null, mental_health_flags || null, substance_abuse || null, medication_notes || null,
+      education_level || null, military_branch || null, military_status || null, tribal_affiliation || null,
+      identifying_marks_location || null, tattoo_description || null, scar_description || null,
+      piercing_description || null, distinguishing_features || null,
       photo_url || null, JSON.stringify(flags || []), notes || null,
     );
 
@@ -497,6 +515,12 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       phone_secondary, social_media,
       probation_parole, probation_parole_officer, known_associates,
       emergency_contact_relationship, caution_flags,
+      ncic_number, sor_number, fbi_number, state_id_number,
+      passport_number, passport_country, immigration_status,
+      disability_flags, mental_health_flags, substance_abuse, medication_notes,
+      education_level, military_branch, military_status, tribal_affiliation,
+      identifying_marks_location, tattoo_description, scar_description,
+      piercing_description, distinguishing_features,
       photo_url, flags, notes,
     } = req.body;
 
@@ -535,6 +559,17 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       probation_parole: v => v ?? null, probation_parole_officer: v => v ?? null,
       known_associates: v => v ?? null,
       emergency_contact_relationship: v => v ?? null, caution_flags: v => v ?? null,
+      ncic_number: v => v ?? null, sor_number: v => v ?? null,
+      fbi_number: v => v ?? null, state_id_number: v => v ?? null,
+      passport_number: v => v ?? null, passport_country: v => v ?? null,
+      immigration_status: v => v ?? null,
+      disability_flags: v => v ?? null, mental_health_flags: v => v ?? null,
+      substance_abuse: v => v ?? null, medication_notes: v => v ?? null,
+      education_level: v => v ?? null, military_branch: v => v ?? null,
+      military_status: v => v ?? null, tribal_affiliation: v => v ?? null,
+      identifying_marks_location: v => v ?? null, tattoo_description: v => v ?? null,
+      scar_description: v => v ?? null, piercing_description: v => v ?? null,
+      distinguishing_features: v => v ?? null,
       photo_url: v => v ?? null, notes: v => v ?? null,
     };
 
@@ -821,6 +856,9 @@ router.post('/vehicles', (req: Request, res: Response) => {
       commercial_vehicle, hazmat, odometer,
       owner_address, owner_phone, lien_holder,
       stolen_status, stolen_date, recovery_date,
+      title_status, exterior_condition, interior_condition, estimated_value,
+      window_tint, modifications, equipment_notes,
+      owner_name, registered_owner, registration_state,
       flags, notes,
     } = req.body;
 
@@ -834,8 +872,11 @@ router.post('/vehicles', (req: Request, res: Response) => {
         commercial_vehicle, hazmat, odometer,
         owner_address, owner_phone, lien_holder,
         stolen_status, stolen_date, recovery_date,
+        title_status, exterior_condition, interior_condition, estimated_value,
+        window_tint, modifications, equipment_notes,
+        owner_name, registered_owner, registration_state,
         flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       plate_number || null, state || null, make || null, model || null,
       year || null, color || null, secondary_color || null,
@@ -847,6 +888,9 @@ router.post('/vehicles', (req: Request, res: Response) => {
       commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer || null,
       owner_address || null, owner_phone || null, lien_holder || null,
       stolen_status || null, stolen_date || null, recovery_date || null,
+      title_status || null, exterior_condition || null, interior_condition || null, estimated_value || null,
+      window_tint || null, modifications || null, equipment_notes || null,
+      owner_name || null, registered_owner || null, registration_state || null,
       JSON.stringify(flags || []), notes || null,
     );
 
@@ -884,6 +928,9 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       commercial_vehicle, hazmat, odometer,
       owner_address, owner_phone, lien_holder,
       stolen_status, stolen_date, recovery_date,
+      title_status, exterior_condition, interior_condition, estimated_value,
+      window_tint, modifications, equipment_notes,
+      owner_name, registered_owner, registration_state,
       flags, notes,
     } = req.body;
 
@@ -909,6 +956,11 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       owner_phone: v => v ?? null, lien_holder: v => v ?? null,
       stolen_status: v => v ?? null, stolen_date: v => v ?? null,
       recovery_date: v => v ?? null, notes: v => v ?? null,
+      title_status: v => v ?? null, exterior_condition: v => v ?? null,
+      interior_condition: v => v ?? null, estimated_value: v => v ?? null,
+      window_tint: v => v ?? null, modifications: v => v ?? null,
+      equipment_notes: v => v ?? null, owner_name: v => v ?? null,
+      registered_owner: v => v ?? null, registration_state: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(vFieldMap)) {
@@ -1101,13 +1153,14 @@ router.post('/properties', (req: Request, res: Response) => {
     const {
       client_id, name, address, city, state, zip, latitude, longitude, property_type,
       gate_code, alarm_code, emergency_contact, post_orders, hazard_notes,
-      access_instructions, is_active,
+      access_instructions, is_active, notes,
+      business_type, structure_type, occupancy_status, year_built, square_footage,
+      number_of_stories, security_features, key_holder_name, key_holder_phone,
+      key_holder_relationship, owner_name, owner_phone, last_inspection_date,
+      inspection_status, alarm_company, alarm_account, camera_system, parking_info,
+      roof_access, utility_shutoffs, known_hazards,
     } = req.body;
 
-    if (!client_id) {
-      res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' });
-      return;
-    }
     if (!name || !address) {
       res.status(400).json({ error: 'name and address are required', code: 'NAME_AND_ADDRESS_ARE' });
       return;
@@ -1115,14 +1168,28 @@ router.post('/properties', (req: Request, res: Response) => {
 
     const result = db.prepare(`
       INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
-        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes,
+        business_type, structure_type, occupancy_status, year_built, square_footage,
+        number_of_stories, security_features, key_holder_name, key_holder_phone,
+        key_holder_relationship, owner_name, owner_phone, last_inspection_date,
+        inspection_status, alarm_company, alarm_account, camera_system, parking_info,
+        roof_access, utility_shutoffs, known_hazards)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
       latitude || null, longitude || null,
       property_type || null, gate_code || null, alarm_code || null,
       emergency_contact || null, post_orders || null, hazard_notes || null,
       access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
+      notes || null,
+      business_type || null, structure_type || null, occupancy_status || null,
+      year_built || null, square_footage || null, number_of_stories || null,
+      security_features || null, key_holder_name || null, key_holder_phone || null,
+      key_holder_relationship || null, owner_name || null, owner_phone || null,
+      last_inspection_date || null, inspection_status || null,
+      alarm_company || null, alarm_account || null, camera_system || null,
+      parking_info || null, roof_access || null,
+      utility_shutoffs || null, known_hazards || null,
     );
 
     // Activity log
@@ -1996,6 +2063,18 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       access_instructions: v => v ?? null,
       is_active: v => v ? 1 : 0,
       client_id: v => v || null,
+      notes: v => v ?? null,
+      business_type: v => v ?? null, structure_type: v => v ?? null,
+      occupancy_status: v => v ?? null, year_built: v => v ?? null,
+      square_footage: v => v ?? null, number_of_stories: v => v ?? null,
+      security_features: v => v ?? null, key_holder_name: v => v ?? null,
+      key_holder_phone: v => v ?? null, key_holder_relationship: v => v ?? null,
+      owner_name: v => v ?? null, owner_phone: v => v ?? null,
+      last_inspection_date: v => v ?? null, inspection_status: v => v ?? null,
+      alarm_company: v => v ?? null, alarm_account: v => v ?? null,
+      camera_system: v => v ?? null, parking_info: v => v ?? null,
+      roof_access: v => v ?? null, utility_shutoffs: v => v ?? null,
+      known_hazards: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {
@@ -2356,14 +2435,16 @@ router.get('/connections/:type/:id', (req: Request, res: Response) => {
       return { ...link, linked_type: linkedType, linked_id: linkedId, linked_label: getRecordLabel(db, linkedType, linkedId) };
     });
 
-    // Person-specific: incidents, calls, warrants, citations, arrests
+    // Type-specific cross-references
     let incidents: any[] = [], calls: any[] = [], warrants: any[] = [], citations: any[] = [], arrests: any[] = [], associates: any[] = [];
+    let trespassOrders: any[] = [];
+
     if (type === 'person') {
       try { incidents = db.prepare('SELECT i.id, i.incident_number, i.incident_type, i.status, ip.role, i.created_at FROM incident_persons ip JOIN incidents i ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50').all(id); } catch {}
       try { calls = db.prepare('SELECT c.id, c.call_number, c.incident_type, c.status, cp.role, c.created_at FROM call_persons cp JOIN calls_for_service c ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50').all(id); } catch {}
       try { warrants = db.prepare('SELECT id, warrant_number, type, status, charge_description, created_at FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
       try { citations = db.prepare('SELECT id, citation_number, type, status, violation_description, created_at FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
-      try { arrests = db.prepare('SELECT id, booking_number, charges, arrest_date FROM arrest_records WHERE person_id = ? ORDER BY arrest_date DESC LIMIT 20').all(id); } catch {}
+      try { arrests = db.prepare('SELECT id, booking_number, charges, booking_date FROM arrest_records WHERE person_id = ? ORDER BY booking_date DESC LIMIT 20').all(id); } catch {}
       try {
         associates = db.prepare(`
           SELECT pa.*, p.first_name, p.last_name, p.photo_url
@@ -2378,10 +2459,22 @@ router.get('/connections/:type/:id', (req: Request, res: Response) => {
       } catch {}
     }
 
+    if (type === 'vehicle') {
+      try { incidents = db.prepare('SELECT i.id, i.incident_number, i.incident_type, i.status, iv.role, i.created_at FROM incident_vehicles iv JOIN incidents i ON i.id = iv.incident_id WHERE iv.vehicle_id = ? ORDER BY i.created_at DESC LIMIT 50').all(id); } catch {}
+      try { calls = db.prepare('SELECT c.id, c.call_number, c.incident_type, c.status, cv.role, c.created_at FROM call_vehicles cv JOIN calls_for_service c ON c.id = cv.call_id WHERE cv.vehicle_id = ? ORDER BY c.created_at DESC LIMIT 50').all(id); } catch {}
+      try { citations = db.prepare('SELECT id, citation_number, type, status, violation_description, created_at FROM citations WHERE vehicle_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
+    }
+
+    if (type === 'property') {
+      try { incidents = db.prepare('SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE property_id = ? ORDER BY created_at DESC LIMIT 50').all(id); } catch {}
+      try { calls = db.prepare('SELECT id, call_number, incident_type, status, created_at FROM calls_for_service WHERE property_id = ? ORDER BY created_at DESC LIMIT 50').all(id); } catch {}
+      try { trespassOrders = db.prepare('SELECT id, order_number, status, subject_name, created_at FROM trespass_orders WHERE property_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
+    }
+
     res.json({
       links: enrichedLinks,
-      incidents, calls, warrants, citations, arrests, associates,
-      total: enrichedLinks.length + incidents.length + calls.length + warrants.length + citations.length + arrests.length + associates.length,
+      incidents, calls, warrants, citations, arrests, associates, trespassOrders,
+      total: enrichedLinks.length + incidents.length + calls.length + warrants.length + citations.length + arrests.length + associates.length + trespassOrders.length,
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to load connections' });
@@ -3053,6 +3146,34 @@ router.get('/ncic-query', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════════
 // Feature 21: Person Merge Tool — Detect and merge duplicate persons
 // ═══════════════════════════════════════════════════════════════════
+
+// POST /api/records/persons/check-duplicates — Lightweight duplicate check before creating a person
+router.post('/persons/check-duplicates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { first_name, last_name, dob } = req.body;
+    if (!first_name || !last_name) {
+      res.status(400).json({ error: 'first_name and last_name required', code: 'NAME_REQUIRED' });
+      return;
+    }
+    const params: any[] = [last_name.toLowerCase(), first_name.toLowerCase()];
+    let dobClause = '';
+    if (dob) { dobClause = ' OR p.dob = ?'; params.push(dob); }
+    const matches = db.prepare(`
+      SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.phone, p.dl_number
+      FROM persons p
+      WHERE p.archived_at IS NULL
+        AND LOWER(p.last_name) = ?
+        AND (LOWER(p.first_name) = ?${dobClause})
+      ORDER BY p.last_name, p.first_name
+      LIMIT 5
+    `).all(...params);
+    res.json({ matches });
+  } catch (error: any) {
+    console.error('Check duplicates error:', error);
+    res.status(500).json({ error: 'Failed to check duplicates', code: 'CHECK_DUPLICATES_ERROR' });
+  }
+});
 
 // GET /api/records/persons/duplicates - Find potential duplicate persons
 router.get('/persons/duplicates', (req: Request, res: Response) => {
@@ -4373,5 +4494,743 @@ router.post('/plate-check', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Plate check failed', code: 'PLATE_CHECK_ERROR' });
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPOUND SEARCH — NCIC-style multi-field search across persons and vehicles
+// ══════════════════════════════════════════════════════════════════════════════
+
+router.get('/compound-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const {
+      name, dob_from, dob_to, race, gender,
+      height_min, height_max, weight_min, weight_max,
+      hair_color, eye_color, build,
+      address, alias, ssn_last4,
+      plate, dl_number, flags, limit,
+    } = req.query;
+
+    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
+
+    // ── Build person query ──
+    const personConditions: string[] = [];
+    const personParams: any[] = [];
+    let paramCount = 0;
+
+    if (name) {
+      const nameStr = (name as string).replace(/\*/g, '%');
+      personConditions.push("(last_name LIKE ? OR first_name LIKE ? OR (last_name || ', ' || first_name) LIKE ?)");
+      personParams.push(nameStr, nameStr, nameStr);
+      paramCount++;
+    }
+    if (dob_from) {
+      personConditions.push('dob >= ?');
+      personParams.push(dob_from as string);
+      paramCount++;
+    }
+    if (dob_to) {
+      personConditions.push('dob <= ?');
+      personParams.push(dob_to as string);
+      paramCount++;
+    }
+    if (race) {
+      personConditions.push('race = ?');
+      personParams.push(race as string);
+      paramCount++;
+    }
+    if (gender) {
+      personConditions.push('gender = ?');
+      personParams.push(gender as string);
+      paramCount++;
+    }
+    if (height_min) {
+      personConditions.push('(COALESCE(height_feet,0) * 12 + COALESCE(height_inches,0)) >= ?');
+      personParams.push(parseInt(height_min as string, 10));
+      paramCount++;
+    }
+    if (height_max) {
+      personConditions.push('(COALESCE(height_feet,0) * 12 + COALESCE(height_inches,0)) <= ?');
+      personParams.push(parseInt(height_max as string, 10));
+      paramCount++;
+    }
+    if (weight_min) {
+      personConditions.push('CAST(weight AS INTEGER) >= ?');
+      personParams.push(parseInt(weight_min as string, 10));
+      paramCount++;
+    }
+    if (weight_max) {
+      personConditions.push('CAST(weight AS INTEGER) <= ?');
+      personParams.push(parseInt(weight_max as string, 10));
+      paramCount++;
+    }
+    if (hair_color) {
+      personConditions.push('hair_color = ?');
+      personParams.push(hair_color as string);
+      paramCount++;
+    }
+    if (eye_color) {
+      personConditions.push('eye_color = ?');
+      personParams.push(eye_color as string);
+      paramCount++;
+    }
+    if (build) {
+      personConditions.push('build = ?');
+      personParams.push(build as string);
+      paramCount++;
+    }
+    if (address) {
+      personConditions.push('address LIKE ?');
+      personParams.push(`%${address}%`);
+      paramCount++;
+    }
+    if (alias) {
+      personConditions.push('alias_nickname LIKE ?');
+      personParams.push(`%${alias}%`);
+      paramCount++;
+    }
+    if (ssn_last4) {
+      personConditions.push('ssn_last4 = ?');
+      personParams.push(ssn_last4 as string);
+      paramCount++;
+    }
+    if (dl_number) {
+      personConditions.push('dl_number LIKE ?');
+      personParams.push(`%${dl_number}%`);
+      paramCount++;
+    }
+
+    // Flags filter: comma-separated flag names to check in JSON flags column
+    if (flags) {
+      const flagList = (flags as string).split(',').map(f => f.trim()).filter(Boolean);
+      for (const flag of flagList) {
+        personConditions.push('flags LIKE ?');
+        personParams.push(`%"${flag}"%`);
+        paramCount++;
+      }
+    }
+
+    let persons: any[] = [];
+    if (personConditions.length > 0) {
+      try {
+        const whereClause = personConditions.join(' AND ');
+        persons = db.prepare(`
+          SELECT * FROM persons
+          WHERE ${whereClause}
+          ORDER BY last_name, first_name
+          LIMIT ?
+        `).all(...personParams, limitNum);
+
+        // Compute match_score for each person
+        persons = persons.map((p: any) => {
+          let score = 0;
+          if (name) {
+            const nameStr = (name as string).replace(/\*/g, '').toUpperCase();
+            if ((p.last_name || '').toUpperCase().includes(nameStr) || (p.first_name || '').toUpperCase().includes(nameStr)) score++;
+          }
+          if (dob_from || dob_to) score++;
+          if (race && p.race === race) score++;
+          if (gender && p.gender === gender) score++;
+          if (height_min || height_max) score++;
+          if (weight_min || weight_max) score++;
+          if (hair_color && p.hair_color === hair_color) score++;
+          if (eye_color && p.eye_color === eye_color) score++;
+          if (build && p.build === build) score++;
+          if (address) score++;
+          if (alias) score++;
+          if (ssn_last4) score++;
+          if (dl_number) score++;
+          if (flags) score++;
+          return { ...p, match_score: score };
+        });
+
+        // Sort by match_score descending
+        persons.sort((a: any, b: any) => b.match_score - a.match_score);
+      } catch (e) {
+        console.warn('[Compound Search] Person query error:', (e as Error).message);
+      }
+    }
+
+    // ── Build vehicle query (only if plate provided) ──
+    let vehicles: any[] = [];
+    if (plate) {
+      try {
+        const plateStr = (plate as string).replace(/\*/g, '%');
+        vehicles = db.prepare(`
+          SELECT * FROM vehicles_records
+          WHERE plate_number LIKE ?
+          ORDER BY plate_number
+          LIMIT ?
+        `).all(plateStr, limitNum);
+
+        vehicles = vehicles.map((v: any) => ({
+          ...v,
+          match_score: 1,
+        }));
+      } catch (e) {
+        console.warn('[Compound Search] Vehicle query error:', (e as Error).message);
+      }
+    }
+
+    res.json({
+      persons,
+      vehicles,
+      total: persons.length + vehicles.length,
+      params_used: paramCount,
+    });
+  } catch (err: any) {
+    console.error('[Compound Search] Error:', err);
+    res.status(500).json({ error: 'Compound search failed', code: 'COMPOUND_SEARCH_ERROR' });
+  }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UNIVERSAL SEARCH — Single search bar across all record types
+// ══════════════════════════════════════════════════════════════════════════════
+
+router.get('/universal-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q, limit } = req.query;
+
+    if (!q || (q as string).length < 2) {
+      res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'QUERY_TOO_SHORT' });
+      return;
+    }
+
+    const searchTerm = `%${q}%`;
+    const limitNum = Math.min(parseInt(limit as string, 10) || 5, 50);
+
+    // ── Persons ──
+    let persons: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, first_name, last_name, middle_name, dob, gender, race
+        FROM persons
+        WHERE (first_name || ' ' || last_name) LIKE ? OR alias_nickname LIKE ? OR dl_number LIKE ?
+        ORDER BY last_name, first_name
+        LIMIT ?
+      `).all(searchTerm, searchTerm, searchTerm, limitNum);
+      persons = rows.map((r: any) => ({
+        id: r.id,
+        type: 'person',
+        label: `${(r.last_name || '').toUpperCase()}, ${(r.first_name || '').toUpperCase()}${r.middle_name ? ' ' + (r.middle_name as string).charAt(0).toUpperCase() : ''}`,
+        subtitle: `DOB: ${r.dob || 'UNK'} | ${r.gender || '?'}/${r.race || '?'}`,
+      }));
+    } catch (e) { console.warn('[Universal Search] persons query failed:', (e as Error).message); }
+
+    // ── Vehicles ──
+    let vehicles: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, plate_number, plate_state, vin, year, make, model, color
+        FROM vehicles_records
+        WHERE plate_number LIKE ? OR vin LIKE ? OR (make || ' ' || model) LIKE ?
+        ORDER BY plate_number
+        LIMIT ?
+      `).all(searchTerm, searchTerm, searchTerm, limitNum);
+      vehicles = rows.map((r: any) => ({
+        id: r.id,
+        type: 'vehicle',
+        label: `${r.plate_state || ''} ${r.plate_number || r.vin || 'NO PLATE'}`.trim(),
+        subtitle: `${r.year || ''} ${r.make || ''} ${r.model || ''} ${(r.color || '').toUpperCase()}`.trim(),
+      }));
+    } catch (e) { console.warn('[Universal Search] vehicles query failed:', (e as Error).message); }
+
+    // ── Properties ──
+    let properties: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, address, name
+        FROM properties
+        WHERE address LIKE ? OR name LIKE ?
+        ORDER BY address
+        LIMIT ?
+      `).all(searchTerm, searchTerm, limitNum);
+      properties = rows.map((r: any) => ({
+        id: r.id,
+        type: 'property',
+        label: r.address || r.name || 'Unknown Property',
+        subtitle: r.name || '',
+      }));
+    } catch (e) { console.warn('[Universal Search] properties query failed:', (e as Error).message); }
+
+    // ── Calls for Service ──
+    let calls: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, call_number, incident_type, location_address, status
+        FROM calls_for_service
+        WHERE call_number LIKE ? OR location_address LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(searchTerm, searchTerm, limitNum);
+      calls = rows.map((r: any) => ({
+        id: r.id,
+        type: 'call',
+        label: r.call_number || `CFS-${r.id}`,
+        subtitle: `${r.incident_type || 'Unknown'} - ${r.location_address || ''}`.trim(),
+      }));
+    } catch (e) { console.warn('[Universal Search] calls query failed:', (e as Error).message); }
+
+    // ── Incidents ──
+    let incidents: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, incident_number, incident_type, status
+        FROM incidents
+        WHERE incident_number LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(searchTerm, limitNum);
+      incidents = rows.map((r: any) => ({
+        id: r.id,
+        type: 'incident',
+        label: r.incident_number || `INC-${r.id}`,
+        subtitle: `${r.incident_type || 'Unknown'} [${(r.status || '').toUpperCase()}]`,
+      }));
+    } catch (e) { console.warn('[Universal Search] incidents query failed:', (e as Error).message); }
+
+    // ── Warrants ──
+    let warrants: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, warrant_number, type, status, charge_description
+        FROM warrants
+        WHERE warrant_number LIKE ? OR charge_description LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(searchTerm, searchTerm, limitNum);
+      warrants = rows.map((r: any) => ({
+        id: r.id,
+        type: 'warrant',
+        label: r.warrant_number || `WRN-${r.id}`,
+        subtitle: `${r.type || 'Warrant'} - ${r.charge_description || ''} [${(r.status || '').toUpperCase()}]`.trim(),
+      }));
+    } catch (e) { console.warn('[Universal Search] warrants query failed:', (e as Error).message); }
+
+    // ── Citations ──
+    let citations: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, citation_number, type, status
+        FROM citations
+        WHERE citation_number LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(searchTerm, limitNum);
+      citations = rows.map((r: any) => ({
+        id: r.id,
+        type: 'citation',
+        label: r.citation_number || `CIT-${r.id}`,
+        subtitle: `${r.type || 'Citation'} [${(r.status || '').toUpperCase()}]`,
+      }));
+    } catch (e) { console.warn('[Universal Search] citations query failed:', (e as Error).message); }
+
+    // ── Cases ──
+    let cases: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, case_number, case_type, status
+        FROM cases
+        WHERE case_number LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(searchTerm, limitNum);
+      cases = rows.map((r: any) => ({
+        id: r.id,
+        type: 'case',
+        label: r.case_number || `CASE-${r.id}`,
+        subtitle: `${r.case_type || 'Case'} [${(r.status || '').toUpperCase()}]`,
+      }));
+    } catch (e) { console.warn('[Universal Search] cases query failed:', (e as Error).message); }
+
+    // ── Arrests ──
+    let arrests: any[] = [];
+    try {
+      const rows = db.prepare(`
+        SELECT id, booking_number, full_name, charges, status
+        FROM arrest_records
+        WHERE booking_number LIKE ? OR full_name LIKE ?
+        ORDER BY booking_date DESC
+        LIMIT ?
+      `).all(searchTerm, searchTerm, limitNum);
+      arrests = rows.map((r: any) => ({
+        id: r.id,
+        type: 'arrest',
+        label: r.booking_number || `ARR-${r.id}`,
+        subtitle: `${r.full_name || 'Unknown'} - ${r.charges || ''}`.trim(),
+      }));
+    } catch (e) { console.warn('[Universal Search] arrests query failed:', (e as Error).message); }
+
+    const total = persons.length + vehicles.length + properties.length + calls.length +
+      incidents.length + warrants.length + citations.length + cases.length + arrests.length;
+
+    res.json({
+      persons,
+      vehicles,
+      properties,
+      calls,
+      incidents,
+      warrants,
+      citations,
+      cases,
+      arrests,
+      total,
+    });
+  } catch (err: any) {
+    console.error('[Universal Search] Error:', err);
+    res.status(500).json({ error: 'Universal search failed', code: 'UNIVERSAL_SEARCH_ERROR' });
+  }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PERSON DOSSIER — Master Name Index complete intelligence package
+// ══════════════════════════════════════════════════════════════════════════════
+
+router.get('/persons/:id/dossier', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const personId = parseInt(req.params.id, 10);
+    if (isNaN(personId)) {
+      res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
+      return;
+    }
+
+    // ── 1. Person record ──
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
+    if (!person) {
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
+      return;
+    }
+
+    // ── 2. Criminal history ──
+    let criminal_history: any[] = [];
+    try {
+      criminal_history = db.prepare('SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC').all(personId);
+    } catch (e) { console.warn('[Dossier] criminal_history query failed:', (e as Error).message); }
+
+    // ── 3. Warrants ──
+    let warrants: any[] = [];
+    try {
+      warrants = db.prepare('SELECT * FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC').all(personId);
+    } catch (e) { console.warn('[Dossier] warrants query failed:', (e as Error).message); }
+
+    // ── 4. Field interviews ──
+    let field_interviews: any[] = [];
+    try {
+      field_interviews = db.prepare(`
+        SELECT fi.*, u.full_name as officer_name
+        FROM field_interviews fi
+        LEFT JOIN users u ON fi.officer_id = u.id
+        WHERE fi.person_id = ?
+        ORDER BY fi.date DESC
+      `).all(personId);
+    } catch (e) { console.warn('[Dossier] field_interviews query failed:', (e as Error).message); }
+
+    // ── 5. Calls for service ──
+    let calls: any[] = [];
+    try {
+      calls = db.prepare(`
+        SELECT c.id, c.call_number, c.incident_type, c.status, c.location_address,
+               cp.role, c.created_at
+        FROM call_persons cp
+        JOIN calls_for_service c ON c.id = cp.call_id
+        WHERE cp.person_id = ?
+        ORDER BY c.created_at DESC
+        LIMIT 50
+      `).all(personId);
+    } catch (e) { console.warn('[Dossier] calls query failed:', (e as Error).message); }
+
+    // ── 6. Incidents ──
+    let incidents: any[] = [];
+    try {
+      incidents = db.prepare(`
+        SELECT i.id, i.incident_number, i.incident_type, i.status,
+               ip.role, i.created_at
+        FROM incident_persons ip
+        JOIN incidents i ON i.id = ip.incident_id
+        WHERE ip.person_id = ?
+        ORDER BY i.created_at DESC
+        LIMIT 50
+      `).all(personId);
+    } catch (e) { console.warn('[Dossier] incidents query failed:', (e as Error).message); }
+
+    // ── 7. Vehicles owned ──
+    let vehicles: any[] = [];
+    try {
+      vehicles = db.prepare('SELECT * FROM vehicles_records WHERE owner_person_id = ?').all(personId);
+    } catch (e) { console.warn('[Dossier] vehicles query failed:', (e as Error).message); }
+
+    // ── 8. Cases ──
+    let cases: any[] = [];
+    try {
+      cases = db.prepare(`
+        SELECT c.id, c.case_number, c.case_type, c.status, cp.role
+        FROM case_persons cp
+        JOIN cases c ON c.id = cp.case_id
+        WHERE cp.person_id = ?
+        ORDER BY c.created_at DESC
+      `).all(personId);
+    } catch (e) { console.warn('[Dossier] cases query failed:', (e as Error).message); }
+
+    // ── 9. Citations ──
+    let citations: any[] = [];
+    try {
+      citations = db.prepare(`
+        SELECT id, citation_number, type, status, violation_description, created_at
+        FROM citations
+        WHERE person_id = ?
+        ORDER BY created_at DESC
+      `).all(personId);
+    } catch (e) { console.warn('[Dossier] citations query failed:', (e as Error).message); }
+
+    // ── 10. Arrests ──
+    let arrests: any[] = [];
+    try {
+      arrests = db.prepare(`
+        SELECT id, booking_number, charges, booking_date, status
+        FROM arrest_records
+        WHERE person_id = ?
+        ORDER BY booking_date DESC
+      `).all(personId);
+    } catch (e) { console.warn('[Dossier] arrests query failed:', (e as Error).message); }
+
+    // ── 11. Associates (both directions) ──
+    let associates: any[] = [];
+    try {
+      associates = db.prepare(`
+        SELECT pa.id as link_id, pa.relationship_type, pa.notes,
+               CASE WHEN pa.person_id = ? THEN pa.associate_id ELSE pa.person_id END as associate_person_id,
+               p.first_name, p.last_name, p.dob, p.gender, p.race
+        FROM person_associates pa
+        JOIN persons p ON p.id = CASE WHEN pa.person_id = ? THEN pa.associate_id ELSE pa.person_id END
+        WHERE pa.person_id = ? OR pa.associate_id = ?
+        ORDER BY pa.created_at DESC
+      `).all(personId, personId, personId, personId);
+    } catch (e) { console.warn('[Dossier] associates query failed:', (e as Error).message); }
+
+    // ── 12. Photos / uploads ──
+    let photos: any[] = [];
+    try {
+      photos = db.prepare("SELECT * FROM uploads WHERE entity_type = 'person' AND entity_id = ?").all(personId);
+    } catch (e) { console.warn('[Dossier] photos query failed:', (e as Error).message); }
+
+    // ── Build flags summary ──
+    const flags_summary = {
+      active_warrants: warrants.filter((w: any) => w.status === 'active').length,
+      total_warrants: warrants.length,
+      criminal_records: criminal_history.length,
+      field_contacts: field_interviews.length,
+      calls_involved: calls.length,
+      incidents_involved: incidents.length,
+      vehicles_owned: vehicles.length,
+      is_sex_offender: !!(person.is_sex_offender),
+      has_gang_affiliation: !!(person.gang_affiliation && person.gang_affiliation !== 'None'),
+    };
+
+    res.json({
+      person,
+      criminal_history,
+      warrants,
+      field_interviews,
+      calls,
+      incidents,
+      vehicles,
+      cases,
+      citations,
+      arrests,
+      associates,
+      photos,
+      flags_summary,
+    });
+  } catch (err: any) {
+    console.error('[Person Dossier] Error:', err);
+    res.status(500).json({ error: 'Failed to build person dossier', code: 'DOSSIER_ERROR' });
+  }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SAVED SEARCHES — CRUD for user-saved search queries
+// ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/records/saved-searches — List user's saved + shared searches
+router.get('/saved-searches', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+
+    const searches = db.prepare(`
+      SELECT ss.*, u.full_name as creator_name
+      FROM saved_searches ss
+      LEFT JOIN users u ON ss.user_id = u.id
+      WHERE ss.user_id = ? OR ss.is_shared = 1
+      ORDER BY ss.use_count DESC, ss.last_used_at DESC
+    `).all(userId);
+
+    res.json(searches);
+  } catch (err: any) {
+    console.error('[Saved Searches] List error:', err);
+    res.status(500).json({ error: 'Failed to list saved searches', code: 'SAVED_SEARCHES_LIST_ERROR' });
+  }
+});
+
+// POST /api/records/saved-searches — Create a new saved search
+router.post('/saved-searches', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const { name, search_type, query_params, is_shared } = req.body;
+
+    if (!name || !query_params) {
+      res.status(400).json({ error: 'Name and query_params are required', code: 'MISSING_FIELDS' });
+      return;
+    }
+
+    const paramsStr = typeof query_params === 'string' ? query_params : JSON.stringify(query_params);
+
+    const result = db.prepare(`
+      INSERT INTO saved_searches (user_id, name, search_type, query_params, is_shared, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+    `).run(userId, name, search_type || 'compound', paramsStr, is_shared ? 1 : 0);
+
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) {
+    console.error('[Saved Searches] Create error:', err);
+    res.status(500).json({ error: 'Failed to create saved search', code: 'SAVED_SEARCH_CREATE_ERROR' });
+  }
+});
+
+// PUT /api/records/saved-searches/:id — Update a saved search (owner or admin)
+router.put('/saved-searches/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const searchId = parseInt(req.params.id, 10);
+    if (isNaN(searchId)) {
+      res.status(400).json({ error: 'Invalid search ID', code: 'INVALID_SEARCH_ID' });
+      return;
+    }
+
+    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(searchId) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Saved search not found', code: 'SEARCH_NOT_FOUND' });
+      return;
+    }
+
+    // Only owner or admin can update
+    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
+    if (existing.user_id !== userId && user?.role !== 'admin') {
+      res.status(403).json({ error: 'Not authorized to update this search', code: 'UNAUTHORIZED' });
+      return;
+    }
+
+    const { name, query_params, is_shared } = req.body;
+    const paramsStr = query_params
+      ? (typeof query_params === 'string' ? query_params : JSON.stringify(query_params))
+      : existing.query_params;
+
+    db.prepare(`
+      UPDATE saved_searches
+      SET name = ?, query_params = ?, is_shared = ?
+      WHERE id = ?
+    `).run(
+      name || existing.name,
+      paramsStr,
+      is_shared !== undefined ? (is_shared ? 1 : 0) : existing.is_shared,
+      searchId,
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Saved Searches] Update error:', err);
+    res.status(500).json({ error: 'Failed to update saved search', code: 'SAVED_SEARCH_UPDATE_ERROR' });
+  }
+});
+
+// DELETE /api/records/saved-searches/:id — Delete a saved search (owner or admin)
+router.delete('/saved-searches/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const searchId = parseInt(req.params.id, 10);
+    if (isNaN(searchId)) {
+      res.status(400).json({ error: 'Invalid search ID', code: 'INVALID_SEARCH_ID' });
+      return;
+    }
+
+    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(searchId) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Saved search not found', code: 'SEARCH_NOT_FOUND' });
+      return;
+    }
+
+    // Only owner or admin can delete
+    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
+    if (existing.user_id !== userId && user?.role !== 'admin') {
+      res.status(403).json({ error: 'Not authorized to delete this search', code: 'UNAUTHORIZED' });
+      return;
+    }
+
+    db.prepare('DELETE FROM saved_searches WHERE id = ?').run(searchId);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Saved Searches] Delete error:', err);
+    res.status(500).json({ error: 'Failed to delete saved search', code: 'SAVED_SEARCH_DELETE_ERROR' });
+  }
+});
+
+// POST /api/records/saved-searches/:id/run — Run a saved search (increment use_count, return params)
+router.post('/saved-searches/:id/run', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const searchId = parseInt(req.params.id, 10);
+    if (isNaN(searchId)) {
+      res.status(400).json({ error: 'Invalid search ID', code: 'INVALID_SEARCH_ID' });
+      return;
+    }
+
+    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(searchId) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Saved search not found', code: 'SEARCH_NOT_FOUND' });
+      return;
+    }
+
+    // Verify access: must be owner or search must be shared
+    const userId = req.user!.userId;
+    if (existing.user_id !== userId && !existing.is_shared) {
+      res.status(403).json({ error: 'Not authorized to run this search', code: 'UNAUTHORIZED' });
+      return;
+    }
+
+    // Increment use_count and update last_used_at
+    db.prepare(`
+      UPDATE saved_searches
+      SET use_count = use_count + 1, last_used_at = datetime('now','localtime')
+      WHERE id = ?
+    `).run(searchId);
+
+    let query_params: any;
+    try {
+      query_params = JSON.parse(existing.query_params);
+    } catch {
+      query_params = existing.query_params;
+    }
+
+    res.json({
+      id: existing.id,
+      name: existing.name,
+      search_type: existing.search_type,
+      query_params,
+      use_count: existing.use_count + 1,
+    });
+  } catch (err: any) {
+    console.error('[Saved Searches] Run error:', err);
+    res.status(500).json({ error: 'Failed to run saved search', code: 'SAVED_SEARCH_RUN_ERROR' });
+  }
+});
+
 
 export default router;

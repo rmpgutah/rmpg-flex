@@ -28,6 +28,7 @@ import UtahVoterRecordsSource from './utahVoterRecords';
 import PacerLookupSource from './pacerLookup';
 import UccFilingsSource from './uccFilings';
 import SocialBladeSource from './socialBlade';
+import ProgrammableWebSource from './programmableWeb';
 
 /** Lazy-initialized sources (avoids calling getDb() before initDatabase()) */
 let sources: DataSource[] | null = null;
@@ -56,6 +57,7 @@ function ensureSources(): DataSource[] {
       new PacerLookupSource(),
       new UccFilingsSource(),
       new SocialBladeSource(),
+      new ProgrammableWebSource(),
     ];
   }
   return sources;

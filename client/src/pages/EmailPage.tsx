@@ -641,25 +641,29 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 // ============================================================
 const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
   ({ bodyHtml, onLoad }, ref) => {
-    const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
-    React.useEffect(() => {
-      // Sanitize: strip <script> tags + inline event handlers
+    const srcdocHtml = React.useMemo(() => {
+      // Sanitize: strip <script> tags + inline event handlers (keep images/styles intact)
       const sanitized = bodyHtml
         .replace(/<script[\s\S]*?<\/script>/gi, '')
         .replace(/\bon\w+\s*=/gi, 'data-blocked=');
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none';"><style>
+      return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
         body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #050505; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #999999; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        a { color: #888888; text-decoration: underline; } a:hover { color: #999999; } img { max-width: 100%; height: auto; display: inline-block; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #222222; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
         pre { background: #0a0a0a; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #222222; margin: 16px 0; }
       </style></head><body>${sanitized}</body></html>`;
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      setBlobUrl(url);
-      return () => URL.revokeObjectURL(url);
     }, [bodyHtml]);
-    if (!blobUrl) return null;
-    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
+    return (
+      <iframe
+        ref={ref}
+        srcDoc={srcdocHtml}
+        sandbox="allow-same-origin allow-popups"
+        onLoad={onLoad}
+        className="w-full border-0"
+        style={{ minHeight: 200 }}
+        title="Email body"
+      />
+    );
   }
 );
 EmailBodyFrame.displayName = 'EmailBodyFrame';
@@ -1629,10 +1633,47 @@ export default function EmailPage() {
     setLoadingMessage(true);
     try {
       const msg = await apiFetch<EmailMessage>(`/email/messages/${id}`);
-      setFullMessage(msg);
+      let atts: EmailAttachment[] = [];
+      try { atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); } catch { /* no attachments */ }
+      setAttachments(atts);
+
+      // Resolve cid: inline image references → data URLs
+      let resolvedHtml = msg.bodyHtml || '';
+      if (resolvedHtml && atts.length > 0) {
+        const inlineAtts = atts.filter(a => a.isInline && a.contentId && a.contentType?.startsWith('image/'));
+        if (inlineAtts.length > 0) {
+          const token = localStorage.getItem('rmpg_token');
+          const authHeader = token ? `Bearer ${token}` : '';
+          const cidReplacements = await Promise.allSettled(
+            inlineAtts.map(async (att) => {
+              try {
+                const res = await fetch(`/api/email/messages/${id}/attachments/${att.id}`, {
+                  headers: authHeader ? { Authorization: authHeader } : {},
+                });
+                if (!res.ok) return null;
+                const blob = await res.blob();
+                return new Promise<{ cid: string; dataUrl: string } | null>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve({ cid: att.contentId!, dataUrl: reader.result as string });
+                  reader.onerror = () => resolve(null);
+                  reader.readAsDataURL(blob);
+                });
+              } catch { return null; }
+            })
+          );
+          for (const result of cidReplacements) {
+            if (result.status === 'fulfilled' && result.value) {
+              const { cid, dataUrl } = result.value;
+              // Replace all cid: variations (with or without angle brackets, URL-encoded)
+              resolvedHtml = resolvedHtml
+                .replace(new RegExp(`src=["']cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`)
+                .replace(new RegExp(`src=["']cid:${cid.replace(/@.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`);
+            }
+          }
+        }
+      }
+      setFullMessage({ ...msg, bodyHtml: resolvedHtml });
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
-      try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
-      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 

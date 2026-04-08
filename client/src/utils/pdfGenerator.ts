@@ -542,7 +542,7 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
 
   if (checked) {
     // Filled dark square with white checkmark
-    doc.setFillColor(40, 40, 40);
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(x, y - 1.5, boxSize, boxSize, 'F');
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(BORDER.CHECK_MARK);
@@ -693,7 +693,7 @@ export function addCautionBlock(
   doc.setFillColor(...COLOR.CAUTION_ACCENT);
   doc.rect(x, y, 2, boxH, 'F');
   // Border
-  doc.setDrawColor(200, 160, 80);
+  doc.setDrawColor(...COLOR.CAUTION_ACCENT);
   doc.setLineWidth(0.3);
   doc.rect(x, y, width, boxH);
 
@@ -706,7 +706,7 @@ export function addCautionBlock(
   // Text content
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setTextColor(80, 40, 0);
+  doc.setTextColor(...COLOR.CAUTION_TEXT);
   let textY = y + 6;
   for (const line of lines) {
     doc.text(line, x + innerPad + 2, textY);
@@ -1202,7 +1202,7 @@ export function addNarrativeSection(
   // Draw background tint sized to actual content (subtle light gray) — first page only
   const pageH = doc.internal.pageSize.getHeight();
   const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(246, 246, 250);
+  doc.setFillColor(...COLOR.BG_ZEBRA);
   doc.rect(lx - 2, y - 2, ffw + 4, maxTintH, 'F');
 
   // Page break callback: draw section continuation sub-header + fresh tint
@@ -1224,7 +1224,7 @@ export function addNarrativeSection(
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     // Draw fresh background tint for remaining text on this page
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
-    doc.setFillColor(246, 246, 250);
+    doc.setFillColor(...COLOR.BG_ZEBRA);
     doc.rect(lx - 2, contentStartY - 2, ffw + 4, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont('courier', 'normal');
@@ -1543,7 +1543,7 @@ export function addTableWithShading(
   const headerRowH = SPACING.SECTION_HEADER_H; // Match section header bar height
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
-      doc.setFillColor(240, 240, 240);
+      doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
       doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setFont('helvetica', 'bold');
@@ -2981,6 +2981,9 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   const gridX = getGridStartX();
   const gridW = getGridContentWidth(doc);
 
+  // Safety: ensure all data fields are strings (prevents NaN in rect calculations)
+  const safeStr = (v: any): string => (v == null || v === undefined) ? '' : String(v);
+
   const serviceTypeLabel = (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() || 'GENERAL';
 
   let y = drawNibrsHeader(doc, {
@@ -2995,12 +2998,12 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   // Classification
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
-      { label: 'Incident Number', value: data.incident_number },
-      { label: 'Priority', value: data.priority },
-      { label: 'Status', value: displayStatus(data.status || '') },
-      { label: 'Disposition', value: data.disposition || '' },
+      { label: 'Incident Number', value: safeStr(data.incident_number) },
+      { label: 'Priority', value: safeStr(data.priority) },
+      { label: 'Status', value: displayStatus(safeStr(data.status)) },
+      { label: 'Disposition', value: safeStr(data.disposition) },
       { label: 'Service Type', value: serviceTypeLabel },
-      { label: 'Contract ID', value: data.contract_id || '' },
+      { label: 'Contract ID', value: safeStr(data.contract_id) },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -3008,14 +3011,14 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   // Client / Requestor Information
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Client / Requestor Information', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Name', safeStr(data.pso_requestor_name), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Requestor Phone', safeStr(data.pso_requestor_phone), rx, y, hfw);
       y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Email', safeStr(data.pso_requestor_email), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Billing Code', safeStr(data.pso_billing_code), rx, y, hfw);
       y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'PSO Service Type', (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Authorization / PO#', safeStr(data.pso_authorization), lx, y, hfw);
+      const yR = addFieldPair(doc, 'PSO Service Type', safeStr(data.pso_service_type).replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -3024,13 +3027,13 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 35, data.priority);
   { const sec = openAutoSection(doc, 'Service of Process Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Document Type', serviceTypeLabel, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Serve To (Name)', data.process_served_to || '', rx, y, hfw);
+      const yR = addFieldPair(doc, 'Serve To (Name)', safeStr(data.process_served_to), rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Service Address', data.process_served_address || data.location || '', lx, y, ffw);
-    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts || 0), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Served At', data.process_served_at || '', rx, y, hfw);
+    y = addFieldPair(doc, 'Service Address', safeStr(data.process_served_address || data.location), lx, y, ffw);
+    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts ?? 0), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Served At', safeStr(data.process_served_at), rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Service Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), lx, y, ffw);
+    y = addFieldPair(doc, 'Service Result', safeStr(data.process_service_result).replace(/_/g, ' ').toUpperCase(), lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3038,11 +3041,11 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 18, data.priority);
   { const sec = openAutoSection(doc, 'Officer / Location', y); y = sec.contentY;
     const olFields = [
-      { label: 'Officer', value: data.officer_name || '' },
-      { label: 'Location', value: data.location || '' },
-      { label: 'Section ID', value: data.section_id || '' },
-      { label: 'Zone ID', value: data.zone_id || '' },
-      { label: 'Beat ID', value: data.beat_id || '' },
+      { label: 'Officer', value: safeStr(data.officer_name) },
+      { label: 'Location', value: safeStr(data.location) },
+      { label: 'Section ID', value: safeStr(data.section_id) },
+      { label: 'Zone ID', value: safeStr(data.zone_id) },
+      { label: 'Beat ID', value: safeStr(data.beat_id) },
     ];
     const olRatios = [2, 3, 1, 1, 1]; // Officer wider, Location widest, IDs narrow
     const olTotal = olRatios.reduce((a, b) => a + b, 0);
@@ -3063,10 +3066,10 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
     const dtW = ffw / 4;
     const dtFields = [
-      { label: 'Occurred Date', value: data.occurred_date || '' },
-      { label: 'Occurred Time', value: data.occurred_time || '' },
-      { label: 'End Date', value: data.end_date || '' },
-      { label: 'End Time', value: data.end_time || '' },
+      { label: 'Occurred Date', value: safeStr(data.occurred_date) },
+      { label: 'Occurred Time', value: safeStr(data.occurred_time) },
+      { label: 'End Date', value: safeStr(data.end_date) },
+      { label: 'End Time', value: safeStr(data.end_time) },
     ];
     let maxDTY = y + SPACING.FIELD_ROW_ADVANCE;
     for (let i = 0; i < 4; i++) {
@@ -3097,7 +3100,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Narrative
-  y = addNarrativeSection(doc, 'Narrative / Service Notes', data.narrative || '', y, data.priority);
+  y = addNarrativeSection(doc, 'Narrative / Service Notes', safeStr(data.narrative), y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
   // Linked Persons

@@ -409,13 +409,14 @@ body.fx-noise::after {
   .table-dark thead {
     @apply border-b;
     background: var(--grid-header-bg);
-    border-color: #2e2e2e;
+    border-color: #1a1a1a;
   }
 
   .table-dark thead th {
-    @apply px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
-    color: #888888;
-    border-right: 1px solid rgba(30, 48, 72, 0.5);
+    @apply px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider;
+    color: #666666;
+    border-right: 1px solid rgba(20, 20, 20, 0.4);
+    line-height: 1.1;
   }
 
   .table-dark thead th:last-child {
@@ -423,12 +424,12 @@ body.fx-noise::after {
   }
 
   .table-dark tbody tr {
-    @apply transition-colors duration-150;
-    border-bottom: 1px solid rgba(30, 48, 72, 0.5);
+    @apply transition-colors duration-100;
+    border-bottom: 1px solid #141414;
   }
 
   .table-dark tbody tr:hover {
-    background: rgba(136, 136, 136, 0.15);
+    background: rgba(255, 255, 255, 0.03);
   }
 
   .table-dark tbody tr:nth-child(even) {
@@ -436,8 +437,8 @@ body.fx-noise::after {
   }
 
   .table-dark tbody td {
-    @apply px-3 py-1.5;
-    color: #aaaaaa;
+    @apply px-2 py-[2px];
+    color: #999999;
     font-size: 11px;
   }
 
@@ -3276,14 +3277,7 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
 }
 
 /* iOS: safe area insets for modals and fixed overlays */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .fixed.inset-0, [class*="fixed inset-0"] {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-  }
-}
+/* Safe-area padding handled by individual components (MobileHeader, MobileBottomNav) */
 
 /* iOS Safari: eliminate 300ms click delay on all interactive elements */
 button, [role="button"], .toolbar-btn, a, input[type="button"], input[type="submit"] {
@@ -3368,14 +3362,14 @@ button, [role="button"], .toolbar-btn, a, input[type="button"], input[type="subm
 /* Responsive breakpoints for very small phones */
 @media (max-width: 480px) {
   .toolbar-btn {
-    min-height: 48px;
-    min-width: 48px;
-    padding: 8px 10px;
-    font-size: 12px;
+    min-height: 40px;
+    min-width: 40px;
+    padding: 6px 8px;
+    font-size: 11px;
   }
   .toolbar-btn-primary {
-    min-height: 48px;
-    padding: 10px 16px;
+    min-height: 40px;
+    padding: 8px 12px;
   }
 }
 
@@ -3441,10 +3435,10 @@ input[type="checkbox"], input[type="radio"] {
 }
 
 /* ============================================================
-   FIX 2: Minimum touch target on mobile (36px relaxed for inline)
+   FIX 2: Minimum touch target on mobile (only nav/toolbar buttons)
    ============================================================ */
 @media (max-width: 768px) {
-  button:not(.no-min-touch), [role="button"]:not(.no-min-touch) {
+  .toolbar-btn, .btn-primary, .btn-secondary {
     min-height: 36px;
   }
 }
@@ -4237,9 +4231,7 @@ a:focus-visible {
 }
 
 /* --- 9. TOOLTIP CONSISTENCY --- */
-[title]:not([title=""]) {
-  cursor: help;
-}
+/* Removed: [title] { cursor: help } — was overriding normal pointer/default cursors app-wide */
 
 /* --- 10. BACKDROP BLUR — Consistent overlay treatment --- */
 .backdrop-blur-sm { backdrop-filter: blur(4px) !important; -webkit-backdrop-filter: blur(4px) !important; }

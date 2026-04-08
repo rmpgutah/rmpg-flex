@@ -912,6 +912,48 @@ function createTables(): void {
       FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE
     );
 
+    -- Arrest Records
+    CREATE TABLE IF NOT EXISTS arrest_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      jailbase_id TEXT,
+      source_id TEXT,
+      source_name TEXT,
+      person_id INTEGER,
+      full_name TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      middle_name TEXT,
+      date_of_birth TEXT,
+      booking_date TEXT,
+      release_date TEXT,
+      charges TEXT,
+      county TEXT,
+      state TEXT,
+      status TEXT DEFAULT 'in_custody',
+      booking_number TEXT,
+      agency TEXT,
+      gender TEXT,
+      race TEXT,
+      height TEXT,
+      weight TEXT,
+      hair_color TEXT,
+      eye_color TEXT,
+      address TEXT,
+      bail_amount REAL,
+      hold_reason TEXT,
+      notes TEXT,
+      mugshot_url TEXT,
+      entry_source TEXT DEFAULT 'manual',
+      entered_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL,
+      FOREIGN KEY (entered_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_arrest_records_person ON arrest_records(person_id);
+    CREATE INDEX IF NOT EXISTS idx_arrest_records_name ON arrest_records(last_name, first_name);
+    CREATE INDEX IF NOT EXISTS idx_arrest_records_booking ON arrest_records(booking_number);
+
     -- Geofences
     CREATE TABLE IF NOT EXISTS geofences (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1433,6 +1475,26 @@ function migrateSchema(): void {
   addCol('persons', 'id_number', 'TEXT');
   addCol('persons', 'id_state', 'TEXT');
   addCol('persons', 'id_expiry', 'TEXT');
+  addCol('persons', 'ncic_number', 'TEXT');
+  addCol('persons', 'sor_number', 'TEXT');
+  addCol('persons', 'fbi_number', 'TEXT');
+  addCol('persons', 'state_id_number', 'TEXT');
+  addCol('persons', 'passport_number', 'TEXT');
+  addCol('persons', 'passport_country', 'TEXT');
+  addCol('persons', 'immigration_status', 'TEXT');
+  addCol('persons', 'disability_flags', 'TEXT');
+  addCol('persons', 'mental_health_flags', 'TEXT');
+  addCol('persons', 'substance_abuse', 'TEXT');
+  addCol('persons', 'medication_notes', 'TEXT');
+  addCol('persons', 'education_level', 'TEXT');
+  addCol('persons', 'military_branch', 'TEXT');
+  addCol('persons', 'military_status', 'TEXT');
+  addCol('persons', 'tribal_affiliation', 'TEXT');
+  addCol('persons', 'identifying_marks_location', 'TEXT');
+  addCol('persons', 'tattoo_description', 'TEXT');
+  addCol('persons', 'scar_description', 'TEXT');
+  addCol('persons', 'piercing_description', 'TEXT');
+  addCol('persons', 'distinguishing_features', 'TEXT');
 
   // ── VEHICLES — new detail fields ──────────────────────
   addCol('vehicles_records', 'body_style', 'TEXT');
@@ -1464,6 +1526,18 @@ function migrateSchema(): void {
   addCol('vehicles_records', 'stolen_status', 'TEXT');
   addCol('vehicles_records', 'stolen_date', 'TEXT');
   addCol('vehicles_records', 'recovery_date', 'TEXT');
+
+  // ── VEHICLES — title / condition / owner fields ────────
+  addCol('vehicles_records', 'title_status', 'TEXT');
+  addCol('vehicles_records', 'exterior_condition', 'TEXT');
+  addCol('vehicles_records', 'interior_condition', 'TEXT');
+  addCol('vehicles_records', 'estimated_value', 'TEXT');
+  addCol('vehicles_records', 'window_tint', 'TEXT');
+  addCol('vehicles_records', 'modifications', 'TEXT');
+  addCol('vehicles_records', 'equipment_notes', 'TEXT');
+  addCol('vehicles_records', 'owner_name', 'TEXT');
+  addCol('vehicles_records', 'registered_owner', 'TEXT');
+  addCol('vehicles_records', 'registration_state', 'TEXT');
 
   // ── CALLS_FOR_SERVICE — new dispatcher fields ─────────
   addCol('calls_for_service', 'caller_relationship', "TEXT DEFAULT ''");
@@ -1842,6 +1916,112 @@ function migrateSchema(): void {
   addCol('properties', 'access_instructions', 'TEXT');
   addCol('properties', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
   addCol('properties', 'updated_at', 'TEXT');
+  addCol('properties', 'notes', 'TEXT');
+  addCol('properties', 'business_type', 'TEXT');
+  addCol('properties', 'structure_type', 'TEXT');
+  addCol('properties', 'occupancy_status', 'TEXT');
+  addCol('properties', 'year_built', 'TEXT');
+  addCol('properties', 'square_footage', 'TEXT');
+  addCol('properties', 'number_of_stories', 'TEXT');
+  addCol('properties', 'security_features', 'TEXT');
+  addCol('properties', 'key_holder_name', 'TEXT');
+  addCol('properties', 'key_holder_phone', 'TEXT');
+  addCol('properties', 'key_holder_relationship', 'TEXT');
+  addCol('properties', 'owner_name', 'TEXT');
+  addCol('properties', 'owner_phone', 'TEXT');
+  addCol('properties', 'last_inspection_date', 'TEXT');
+  addCol('properties', 'inspection_status', 'TEXT');
+  addCol('properties', 'alarm_company', 'TEXT');
+  addCol('properties', 'alarm_account', 'TEXT');
+  addCol('properties', 'camera_system', 'TEXT');
+  addCol('properties', 'parking_info', 'TEXT');
+  addCol('properties', 'roof_access', 'TEXT');
+  addCol('properties', 'utility_shutoffs', 'TEXT');
+  addCol('properties', 'known_hazards', 'TEXT');
+  addCol('properties', 'previous_incidents_count', 'INTEGER DEFAULT 0');
+
+  // ── serve_queue — columns expected by serve.ts and serveQueueLinker.ts ──
+  addCol('serve_queue', 'sm_job_id', 'TEXT');
+  addCol('serve_queue', 'officer_id', 'INTEGER');
+  addCol('serve_queue', 'serve_date', 'TEXT');
+  addCol('serve_queue', 'recipient_name', 'TEXT');
+  addCol('serve_queue', 'recipient_address', 'TEXT');
+  addCol('serve_queue', 'recipient_city', 'TEXT');
+  addCol('serve_queue', 'recipient_state', 'TEXT');
+  addCol('serve_queue', 'recipient_zip', 'TEXT');
+  addCol('serve_queue', 'recipient_lat', 'REAL');
+  addCol('serve_queue', 'recipient_lng', 'REAL');
+  addCol('serve_queue', 'document_type', 'TEXT');
+  addCol('serve_queue', 'case_number', 'TEXT');
+  addCol('serve_queue', 'court_name', 'TEXT');
+  addCol('serve_queue', 'jurisdiction', 'TEXT');
+  addCol('serve_queue', 'client_name', 'TEXT');
+  addCol('serve_queue', 'attorney_name', 'TEXT');
+  addCol('serve_queue', 'deadline', 'TEXT');
+  addCol('serve_queue', 'time_window', 'TEXT');
+  addCol('serve_queue', 'service_instructions', 'TEXT');
+  addCol('serve_queue', 'sort_order', 'INTEGER DEFAULT 999');
+
+  // ── serve_attempts — rename queue_id → also add serve_queue_id alias ──
+  addCol('serve_attempts', 'serve_queue_id', 'INTEGER');
+  addCol('serve_attempts', 'attempt_at', 'TEXT');
+  addCol('serve_attempts', 'attempt_type', 'TEXT');
+  addCol('serve_attempts', 'photo_ids', 'TEXT');
+  addCol('serve_attempts', 'signature_data', 'TEXT');
+  // Backfill serve_queue_id from queue_id for existing rows
+  try {
+    db.exec(`UPDATE serve_attempts SET serve_queue_id = queue_id WHERE serve_queue_id IS NULL AND queue_id IS NOT NULL`);
+  } catch { /* safe — either column may not exist yet */ }
+
+  // ── serve_routes — optimization columns ──
+  addCol('serve_routes', 'optimized_order_json', 'TEXT');
+  addCol('serve_routes', 'waypoints_json', 'TEXT');
+  addCol('serve_routes', 'total_distance_miles', 'REAL');
+  addCol('serve_routes', 'total_time_minutes', 'INTEGER');
+  addCol('serve_routes', 'start_lat', 'REAL');
+  addCol('serve_routes', 'start_lng', 'REAL');
+  addCol('serve_routes', 'end_lat', 'REAL');
+  addCol('serve_routes', 'end_lng', 'REAL');
+
+  // ── serve_skip_traces — table for skip trace results on serve jobs ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS serve_skip_traces (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        serve_queue_id INTEGER NOT NULL,
+        searched_at TEXT,
+        search_type TEXT,
+        search_query TEXT,
+        results_json TEXT,
+        addresses_found_json TEXT,
+        searched_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (serve_queue_id) REFERENCES serve_queue(id) ON DELETE CASCADE,
+        FOREIGN KEY (searched_by) REFERENCES users(id)
+      )
+    `);
+  } catch { /* table already exists */ }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_serve_skip_traces_queue ON serve_skip_traces(serve_queue_id)`);
+  } catch { /* index exists */ }
+
+  // ── call_visit_history — missing columns for redispatch ──────────
+  addCol('call_visit_history', 'status', 'TEXT');
+  addCol('call_visit_history', 'responding_vehicle_id', 'INTEGER');
+  addCol('call_visit_history', 'starting_mileage', 'TEXT');
+  addCol('call_visit_history', 'ending_mileage', 'TEXT');
+  addCol('call_visit_history', 'time_window', 'TEXT');
+  addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
+
+  // ── call_persons — add missing constraints via index ──────────
+  // (SQLite can't ALTER TABLE to add FK constraints, but we can add a unique index)
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_persons_unique ON call_persons(call_id, person_id)`);
+  } catch { /* index already exists */ }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_call_persons_call_id ON call_persons(call_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_call_persons_person_id ON call_persons(person_id)`);
+  } catch { /* indexes exist */ }
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema
@@ -1923,18 +2103,16 @@ function migrateSchema(): void {
 
   // ── Expand record_links to support incident/call/case/warrant types ──
   try {
-    const rlInfo = db.prepare("PRAGMA table_info(record_links)").all() as any[];
-    const checkCol = rlInfo.find((c: any) => c.name === 'source_type');
-    // If the CHECK constraint is the old 4-type version, recreate with expanded types
-    if (checkCol) {
-      // Test if new types work — if INSERT fails, we need to recreate
+    // Test if new types work — if INSERT fails, the old CHECK constraint is blocking
+    try {
+      db.prepare("INSERT INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES ('incident', -999, 'person', -999, 'test', 1)").run();
+      db.prepare("DELETE FROM record_links WHERE source_id = -999").run();
+    } catch {
+      // CHECK constraint blocks new types — recreate table without CHECK
       try {
-        db.prepare("INSERT INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES ('incident', -999, 'person', -999, 'test', 1)").run();
-        db.prepare("DELETE FROM record_links WHERE source_id = -999").run();
-      } catch {
-        // CHECK constraint blocks new types — recreate table
+        db.exec(`DROP TABLE IF EXISTS record_links_new`);
         db.exec(`
-          CREATE TABLE IF NOT EXISTS record_links_new (
+          CREATE TABLE record_links_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_type TEXT NOT NULL,
             source_id INTEGER NOT NULL,
@@ -1946,12 +2124,18 @@ function migrateSchema(): void {
             created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (created_by) REFERENCES users(id),
             UNIQUE(source_type, source_id, target_type, target_id)
-          );
-          INSERT INTO record_links_new SELECT * FROM record_links;
-          DROP TABLE record_links;
-          ALTER TABLE record_links_new RENAME TO record_links;
+          )
         `);
-        console.log('[migrate] Expanded record_links to support incident/call/case/warrant types');
+        // Copy existing data using explicit column names (safe even if schema differs)
+        db.exec(`
+          INSERT INTO record_links_new (id, source_type, source_id, target_type, target_id, relationship, notes, created_by, created_at)
+          SELECT id, source_type, source_id, target_type, target_id, relationship, notes, created_by, created_at FROM record_links
+        `);
+        db.exec(`DROP TABLE record_links`);
+        db.exec(`ALTER TABLE record_links_new RENAME TO record_links`);
+        console.log('[migrate] Expanded record_links to support incident/call/case/warrant/citation/arrest types');
+      } catch (innerErr) {
+        console.error('[migrate] record_links rebuild failed:', (innerErr as Error).message);
       }
     }
   } catch (err) {
@@ -3821,6 +4005,446 @@ function migrateSchema(): void {
   addCol('fleet_vehicles', 'total_fuel_cost', 'REAL DEFAULT 0');
   addCol('fleet_vehicles', 'total_trips', 'INTEGER DEFAULT 0');
   addCol('fleet_vehicles', 'avg_mpg', 'REAL');
+  addCol('fleet_vehicles', 'next_service_mileage', 'REAL');
+
+  // ── HR Module — missing tables ──────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS leave_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        type TEXT NOT NULL DEFAULT 'vacation',
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        hours_requested REAL DEFAULT 0,
+        reason TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        review_notes TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (reviewed_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_leave_requests_officer ON leave_requests(officer_id);
+      CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
+
+      CREATE TABLE IF NOT EXISTS leave_balances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        vacation_total REAL DEFAULT 80,
+        vacation_used REAL DEFAULT 0,
+        sick_total REAL DEFAULT 40,
+        sick_used REAL DEFAULT 0,
+        personal_total REAL DEFAULT 24,
+        personal_used REAL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        UNIQUE(officer_id, year)
+      );
+
+      CREATE TABLE IF NOT EXISTS disciplinary_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        type TEXT DEFAULT 'verbal_warning',
+        severity TEXT DEFAULT 'minor',
+        incident_date TEXT,
+        description TEXT,
+        action_taken TEXT,
+        follow_up_date TEXT,
+        follow_up_notes TEXT,
+        status TEXT DEFAULT 'open',
+        issued_by INTEGER,
+        witness TEXT,
+        attachments TEXT DEFAULT '[]',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (issued_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_disciplinary_officer ON disciplinary_records(officer_id);
+
+      CREATE TABLE IF NOT EXISTS performance_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        reviewer_id INTEGER,
+        review_period_start TEXT,
+        review_period_end TEXT,
+        review_date TEXT,
+        type TEXT DEFAULT 'annual',
+        overall_rating REAL,
+        categories TEXT DEFAULT '{}',
+        strengths TEXT,
+        areas_for_improvement TEXT,
+        goals TEXT,
+        status TEXT DEFAULT 'draft',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (reviewer_id) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_perf_reviews_officer ON performance_reviews(officer_id);
+
+      CREATE TABLE IF NOT EXISTS review_cycles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'annual',
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS overtime_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        officer_name TEXT,
+        requested_date TEXT NOT NULL,
+        hours_requested REAL DEFAULT 0,
+        reason TEXT,
+        status TEXT DEFAULT 'requested',
+        approved_by INTEGER,
+        approved_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (approved_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_overtime_officer ON overtime_requests(officer_id);
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── HR Payroll + Advanced HR tables ──────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS hr_pay_periods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        pay_date TEXT,
+        status TEXT DEFAULT 'open',
+        created_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS hr_pay_rates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        pay_type TEXT DEFAULT 'hourly',
+        rate REAL NOT NULL DEFAULT 0,
+        overtime_rate REAL DEFAULT 1.5,
+        holiday_rate REAL DEFAULT 1.5,
+        effective_date TEXT,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS hr_payroll_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        pay_period_id INTEGER NOT NULL,
+        pay_rate_id INTEGER,
+        regular_hours REAL DEFAULT 0,
+        overtime_hours REAL DEFAULT 0,
+        holiday_hours REAL DEFAULT 0,
+        pto_hours REAL DEFAULT 0,
+        sick_hours REAL DEFAULT 0,
+        other_hours REAL DEFAULT 0,
+        other_hours_description TEXT,
+        base_pay REAL DEFAULT 0,
+        overtime_pay REAL DEFAULT 0,
+        holiday_pay REAL DEFAULT 0,
+        gross_pay REAL DEFAULT 0,
+        total_deductions REAL DEFAULT 0,
+        net_pay REAL DEFAULT 0,
+        status TEXT DEFAULT 'draft',
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (pay_period_id) REFERENCES hr_pay_periods(id),
+        FOREIGN KEY (pay_rate_id) REFERENCES hr_pay_rates(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_payroll_user ON hr_payroll_entries(user_id);
+      CREATE INDEX IF NOT EXISTS idx_payroll_period ON hr_payroll_entries(pay_period_id);
+
+      CREATE TABLE IF NOT EXISTS hr_performance_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        reviewer_id INTEGER,
+        review_type TEXT DEFAULT 'annual',
+        review_date TEXT,
+        period_start TEXT,
+        period_end TEXT,
+        overall_rating REAL,
+        strengths TEXT,
+        areas_for_improvement TEXT,
+        goals TEXT,
+        comments TEXT,
+        status TEXT DEFAULT 'draft',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (reviewer_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS hr_disciplinary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        issued_by INTEGER,
+        action_type TEXT DEFAULT 'written_warning',
+        severity TEXT DEFAULT 'minor',
+        description TEXT,
+        issued_date TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (issued_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS arrest_cross_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        arrest_record_id INTEGER NOT NULL,
+        linked_type TEXT NOT NULL,
+        linked_id INTEGER NOT NULL,
+        match_type TEXT DEFAULT 'manual',
+        match_confidence REAL DEFAULT 1.0,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id) ON DELETE CASCADE,
+        UNIQUE(arrest_record_id, linked_type, linked_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_arrest_cross_links_arrest ON arrest_cross_links(arrest_record_id);
+
+      CREATE TABLE IF NOT EXISTS call_unit_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        call_id INTEGER NOT NULL,
+        unit_id INTEGER NOT NULL,
+        assigned_at TEXT DEFAULT (datetime('now','localtime')),
+        cleared_at TEXT,
+        role TEXT DEFAULT 'primary',
+        FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+        FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE,
+        UNIQUE(call_id, unit_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_call_unit_assignments_call ON call_unit_assignments(call_id);
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── Case Management junction tables ──────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS case_persons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        person_id INTEGER NOT NULL,
+        role TEXT DEFAULT 'involved',
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE,
+        UNIQUE(case_id, person_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_vehicles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        vehicle_id INTEGER NOT NULL,
+        role TEXT DEFAULT 'involved',
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE,
+        UNIQUE(case_id, vehicle_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_incidents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        incident_id INTEGER NOT NULL,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+        UNIQUE(case_id, incident_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        call_id INTEGER NOT NULL,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+        UNIQUE(case_id, call_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_evidence (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        evidence_id INTEGER NOT NULL,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (evidence_id) REFERENCES evidence(id) ON DELETE CASCADE,
+        UNIQUE(case_id, evidence_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_citations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        citation_id INTEGER NOT NULL,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (citation_id) REFERENCES citations(id) ON DELETE CASCADE,
+        UNIQUE(case_id, citation_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_warrants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        warrant_id INTEGER NOT NULL,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (warrant_id) REFERENCES warrants(id) ON DELETE CASCADE,
+        UNIQUE(case_id, warrant_id)
+      );
+      CREATE TABLE IF NOT EXISTS case_properties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        property_id INTEGER NOT NULL,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        UNIQUE(case_id, property_id)
+      );
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── Shift Management tables ──────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS shift_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        officer_id INTEGER,
+        shift_date TEXT NOT NULL,
+        start_time TEXT,
+        end_time TEXT,
+        shift_type TEXT DEFAULT 'regular',
+        status TEXT DEFAULT 'scheduled',
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_shift_plans_date ON shift_plans(shift_date);
+      CREATE INDEX IF NOT EXISTS idx_shift_plans_officer ON shift_plans(officer_id);
+
+      CREATE TABLE IF NOT EXISTS shift_swap_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        requester_id INTEGER NOT NULL,
+        original_shift_id INTEGER,
+        target_shift_id INTEGER,
+        target_officer_id INTEGER,
+        status TEXT DEFAULT 'pending',
+        reason TEXT,
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (requester_id) REFERENCES users(id),
+        FOREIGN KEY (original_shift_id) REFERENCES shift_plans(id),
+        FOREIGN KEY (target_officer_id) REFERENCES users(id)
+      );
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── Notification Rules table ─────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notification_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        conditions TEXT DEFAULT '{}',
+        actions TEXT DEFAULT '{}',
+        is_active INTEGER DEFAULT 1,
+        created_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table exists */ }
+
+  // ── Use of Force reporting table ─────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS use_of_force (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_id INTEGER,
+        officer_id INTEGER NOT NULL,
+        subject_person_id INTEGER,
+        force_type TEXT,
+        force_level TEXT,
+        justification TEXT,
+        subject_injuries TEXT,
+        officer_injuries TEXT,
+        de_escalation_attempted INTEGER DEFAULT 0,
+        de_escalation_details TEXT,
+        weapons_used TEXT,
+        body_camera_active INTEGER DEFAULT 0,
+        witness_officers TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'draft',
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        narrative TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (incident_id) REFERENCES incidents(id),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (subject_person_id) REFERENCES persons(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_uof_incident ON use_of_force(incident_id);
+      CREATE INDEX IF NOT EXISTS idx_uof_officer ON use_of_force(officer_id);
+    `);
+  } catch { /* table exists */ }
+
+  // ── Trespass Violations table ────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS trespass_violations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trespass_order_id INTEGER NOT NULL,
+        person_id INTEGER,
+        violation_date TEXT,
+        location TEXT,
+        description TEXT,
+        action_taken TEXT,
+        officer_id INTEGER,
+        incident_id INTEGER,
+        status TEXT DEFAULT 'documented',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (trespass_order_id) REFERENCES trespass_orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (person_id) REFERENCES persons(id),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (incident_id) REFERENCES incidents(id)
+      );
+    `);
+  } catch { /* table exists */ }
+
   addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
 
   // ── HR — performance review template field ──
@@ -3945,6 +4569,32 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'status_changed_at', 'TEXT');
   addCol('calls_for_service', 'onscene_duration_seconds', 'REAL');
 
+  // ── PSO redispatch + deadline columns ──
+  addCol('calls_for_service', 'pso_attempt_number', 'INTEGER DEFAULT 1');
+  addCol('calls_for_service', 'parent_call_id', 'INTEGER');
+  addCol('calls_for_service', 'pso_service_windows', 'TEXT');
+  addCol('calls_for_service', 'received_at', 'TEXT');
+  addCol('calls_for_service', 'pso_72hr_deadline', 'TEXT');
+  addCol('calls_for_service', 'pso_72hr_notified', 'TEXT');
+  addCol('calls_for_service', 'responding_vehicle_id', 'INTEGER');
+  // ── PSO requestor fields ──
+  addCol('calls_for_service', 'pso_requestor_name', 'TEXT');
+  addCol('calls_for_service', 'pso_requestor_phone', 'TEXT');
+  addCol('calls_for_service', 'pso_requestor_email', 'TEXT');
+  addCol('calls_for_service', 'pso_service_type', 'TEXT');
+  addCol('calls_for_service', 'pso_billing_code', 'TEXT');
+  addCol('calls_for_service', 'pso_authorization', 'TEXT');
+  // ── Tactical / safety flag columns ──
+  addCol('calls_for_service', 'mental_health_crisis', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'juvenile_involved', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'felony_in_progress', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'officer_safety_caution', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'gang_related', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'k9_requested', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'ems_requested', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'fire_requested', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'hazmat', 'INTEGER DEFAULT 0');
+
   // ── Feature 5: Shift handoff notes ──
   // Stored in system_config table with config_key='shift_handoff_notes'
 
@@ -3991,6 +4641,20 @@ function migrateSchema(): void {
   addCol('incidents', 'weather_conditions', 'TEXT');
   addCol('incidents', 'weather_temperature', 'REAL');
   addCol('incidents', 'weather_recorded_at', 'TEXT');
+  // ── Incident operational boolean flags ──
+  addCol('incidents', 'mental_health_crisis', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'juvenile_involved', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'felony_in_progress', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'officer_safety_caution', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'gang_related', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'k9_requested', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'ems_requested', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'fire_requested', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'hazmat', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'evidence_collected', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'photos_taken', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'vehicle_pursuit', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'foot_pursuit', 'INTEGER DEFAULT 0');
 
   // ── Feature 10: Case priority auto-calculation (uses existing priority field on cases) ──
   // No schema change needed - logic is in backend route
@@ -4260,6 +4924,222 @@ function migrateSchema(): void {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
+
+  // ══════════════════════════════════════════════════════════════
+  // Phase 1: Dispatch & Records Spillman-Grade Overhaul
+  // ══════════════════════════════════════════════════════════════
+
+  // ── Field Interviews (FI Cards) ─────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS field_interviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fi_number TEXT UNIQUE NOT NULL,
+        officer_id INTEGER NOT NULL,
+        person_id INTEGER,
+        date TEXT NOT NULL,
+        time TEXT,
+        location TEXT,
+        latitude REAL,
+        longitude REAL,
+        contact_reason TEXT DEFAULT 'other',
+        contact_type TEXT DEFAULT 'field',
+        action_taken TEXT DEFAULT 'none',
+        narrative TEXT,
+        vehicle_id INTEGER,
+        vehicle_plate TEXT,
+        vehicle_description TEXT,
+        subject_first_name TEXT,
+        subject_last_name TEXT,
+        subject_dob TEXT,
+        subject_gender TEXT,
+        subject_race TEXT,
+        subject_height TEXT,
+        subject_weight TEXT,
+        subject_hair TEXT,
+        subject_eye TEXT,
+        subject_clothing TEXT,
+        subject_description TEXT,
+        gang_affiliation TEXT,
+        associated_call_id TEXT,
+        associated_incident_id TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        archived_at TEXT,
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (person_id) REFERENCES persons(id),
+        FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_fi_person ON field_interviews(person_id);
+      CREATE INDEX IF NOT EXISTS idx_fi_officer ON field_interviews(officer_id);
+      CREATE INDEX IF NOT EXISTS idx_fi_date ON field_interviews(date);
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Dispatch Messages ───────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        recipient_id INTEGER,
+        recipient_unit_id INTEGER,
+        channel TEXT DEFAULT 'dispatch',
+        call_id INTEGER,
+        text TEXT NOT NULL,
+        read_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (sender_id) REFERENCES users(id),
+        FOREIGN KEY (recipient_id) REFERENCES users(id),
+        FOREIGN KEY (recipient_unit_id) REFERENCES units(id),
+        FOREIGN KEY (call_id) REFERENCES calls_for_service(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_dm_recipient ON dispatch_messages(recipient_id);
+      CREATE INDEX IF NOT EXISTS idx_dm_unit ON dispatch_messages(recipient_unit_id);
+      CREATE INDEX IF NOT EXISTS idx_dm_call ON dispatch_messages(call_id);
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Photo Lineups ──────────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS photo_lineups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lineup_number TEXT UNIQUE,
+        case_id INTEGER,
+        incident_id INTEGER,
+        suspect_person_id INTEGER NOT NULL,
+        filler_person_ids TEXT DEFAULT '[]',
+        suspect_position INTEGER,
+        witness_person_id INTEGER,
+        witness_name TEXT,
+        administered_by INTEGER,
+        administered_at TEXT,
+        identification_result TEXT,
+        identified_position INTEGER,
+        notes TEXT,
+        status TEXT DEFAULT 'created',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (suspect_person_id) REFERENCES persons(id),
+        FOREIGN KEY (witness_person_id) REFERENCES persons(id),
+        FOREIGN KEY (administered_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── NIBRS Submissions ──────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS nibrs_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        incident_count INTEGER DEFAULT 0,
+        offense_count INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'draft',
+        submitted_at TEXT,
+        submitted_by INTEGER,
+        validation_errors TEXT DEFAULT '[]',
+        export_data TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (submitted_by) REFERENCES users(id),
+        UNIQUE(year, month)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Saved Searches ─────────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS saved_searches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        search_type TEXT DEFAULT 'compound',
+        query_params TEXT NOT NULL,
+        is_shared INTEGER DEFAULT 0,
+        use_count INTEGER DEFAULT 0,
+        last_used_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Record Merge Log ───────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS record_merge_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        surviving_id INTEGER NOT NULL,
+        merged_id INTEGER NOT NULL,
+        entity_type TEXT NOT NULL DEFAULT 'person',
+        merged_data TEXT,
+        conflict_resolutions TEXT,
+        merged_by INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (merged_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Officer Activity Summary ───────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS officer_activity_summary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        shift_date TEXT NOT NULL,
+        calls_responded INTEGER DEFAULT 0,
+        citations_issued INTEGER DEFAULT 0,
+        arrests_made INTEGER DEFAULT 0,
+        field_interviews INTEGER DEFAULT 0,
+        reports_written INTEGER DEFAULT 0,
+        mileage_driven REAL DEFAULT 0,
+        time_on_calls_minutes INTEGER DEFAULT 0,
+        time_available_minutes INTEGER DEFAULT 0,
+        time_admin_minutes INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        UNIQUE(officer_id, shift_date)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── Warrants: NCIC fields + assignment ──────────────────────
+  addCol('warrants', 'oca_number', 'TEXT');
+  addCol('warrants', 'ori', 'TEXT');
+  addCol('warrants', 'ncic_entry_number', 'TEXT');
+  addCol('warrants', 'extradition', 'TEXT');
+  addCol('warrants', 'assigned_officer_id', 'INTEGER');
+  addCol('warrants', 'assigned_unit_id', 'INTEGER');
+  addCol('warrants', 'priority_score', 'INTEGER DEFAULT 0');
+
+  // ── Vehicles: NCIC + stolen tracking ────────────────────────
+  addCol('vehicles_records', 'nic_number', 'TEXT');
+  addCol('vehicles_records', 'oca_number_v', 'TEXT');
+  addCol('vehicles_records', 'stolen_agency', 'TEXT');
+  addCol('vehicles_records', 'recovery_location', 'TEXT');
+
+  // ── Calls: premise history + ETA + stacking ─────────────────
+  addCol('calls_for_service', 'premise_history_count', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'eta_seconds', 'INTEGER');
+  addCol('calls_for_service', 'call_stack_position', 'INTEGER');
+
+  // ── Persons: FI tracking + merge ────────────────────────────
+  addCol('persons', 'fi_count', 'INTEGER DEFAULT 0');
+  addCol('persons', 'last_fi_date', 'TEXT');
+  addCol('persons', 'merge_source_ids', 'TEXT');
+
+  // ── Warrant service attempts: GPS + photos ──────────────────
+  addCol('warrant_service_attempts', 'gps_lat', 'REAL');
+  addCol('warrant_service_attempts', 'gps_lng', 'REAL');
+  addCol('warrant_service_attempts', 'gps_accuracy', 'REAL');
+  addCol('warrant_service_attempts', 'badge_number', 'TEXT');
+  addCol('warrant_service_attempts', 'photos', "TEXT DEFAULT '[]'");
+  addCol('warrant_service_attempts', 'signature_data', 'TEXT');
+  addCol('warrant_service_attempts', 'attempt_duration_minutes', 'INTEGER');
 
   console.log('Schema migration completed.');
 }

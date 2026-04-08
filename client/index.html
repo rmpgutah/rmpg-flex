@@ -7,16 +7,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0a" />
     <script>
-      // Nuclear SW cache buster — unregister all old service workers on every page load
+      // Register service worker for offline caching
+      // Cache versioning (CACHE_NAME in sw.js) handles invalidation naturally
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-          regs.forEach(function(r) { r.unregister(); });
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').catch(function() {});
         });
-        if ('caches' in window) {
-          caches.keys().then(function(keys) {
-            keys.forEach(function(k) { caches.delete(k); });
-          });
-        }
       }
     </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -43,7 +39,7 @@
   <body class="bg-[#0a0a0a] text-white">
     <div id="root">
       <!-- Pre-React branded splash — hidden once React hydrates -->
-      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0a0a">
+      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0a0a;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)">
         <div style="display:flex;flex-direction:column;align-items:center">
           <img src="/rmpg flex.png" alt="RMPG Flex" width="88" height="88"
                style="filter:drop-shadow(0 0 20px rgba(136,136,136,0.3));object-fit:contain" draggable="false" />
