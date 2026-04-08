@@ -99,6 +99,7 @@ import PersonFormModal, { type PersonFormData } from '../../components/PersonFor
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
+import FileAttachments from '../../components/FileAttachments';
 import { humanizeStatus, humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay, formatAddressDisplay, timeAgo } from '../../utils/statusLabels';
 
 // Label maps for human-readable display of stored values
@@ -364,7 +365,7 @@ export default function DispatchPage() {
   const [callWarnings, setCallWarnings] = useState<WarningTag[]>([]);
   // NCIC Query Panel
   const [showNcicPanel, setShowNcicPanel] = useState(false);
-  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'flags'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'flags' | 'attachments'>('info');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; call: CallForService } | null>(null);
   const [ncicInitialQuery, setNcicInitialQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   // Timeline / activity log entries for selected call
@@ -4010,13 +4011,14 @@ export default function DispatchPage() {
 
               {/* Detail Tabs */}
               <div className="flex border-b border-[#2b313a] flex-shrink-0" style={{ background: '#050505' }}>
-                {(['info', 'persons', 'timeline', 'notes', 'flags'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', flags: 'Flags' };
+                {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags'] as const).map(tab => {
+                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags' };
                   const icons: Record<string, React.ReactNode> = {
                     info: <FileText style={{ width: 9, height: 9 }} />,
                     persons: <User style={{ width: 9, height: 9 }} />,
                     timeline: <Clock style={{ width: 9, height: 9 }} />,
                     notes: <MessageSquare style={{ width: 9, height: 9 }} />,
+                    attachments: <FileText style={{ width: 9, height: 9 }} />,
                     flags: <Shield style={{ width: 9, height: 9 }} />,
                   };
                   const counts: Record<string, number> = {
@@ -5744,6 +5746,16 @@ export default function DispatchPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* ── ATTACHMENTS TAB ─── */}
+                {detailTab === 'attachments' && selectedCall.id && (
+                  <div className="px-3 py-2">
+                    <FileAttachments
+                      entityType="call"
+                      entityId={selectedCall.id}
+                    />
                   </div>
                 )}
               </div>
