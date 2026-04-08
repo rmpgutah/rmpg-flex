@@ -43,6 +43,7 @@ const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazy(() => import('./pages/PatrolPage'));
 const FleetPage = lazy(() => import('./pages/fleet'));
 const WarrantsPage = lazy(() => import('./pages/WarrantsPage'));
+const NationalWarrantSearchPage = lazy(() => import('./pages/NationalWarrantSearchPage'));
 const CitationsPage = lazy(() => import('./pages/CitationsPage'));
 const FieldInterviewsPage = lazy(() => import('./pages/FieldInterviewsPage'));
 const TrespassOrdersPage = lazy(() => import('./pages/TrespassOrdersPage'));
