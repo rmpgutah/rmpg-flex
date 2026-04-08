@@ -80,6 +80,7 @@ import crmRoutes from './routes/crm';
 import crmLeadsRoutes from './routes/crmLeads';
 import crmProposalsRoutes from './routes/crmProposals';
 import crmFirecrawlRoutes from './routes/crmFirecrawl';
+import crmCompetitorMonitorRoutes from './routes/crmCompetitorMonitor';
 import userPreferencesRoutes from './routes/userPreferences';
 import serveRoutes from './routes/serve';
 import hrRoutes from './routes/hr';
