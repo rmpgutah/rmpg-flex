@@ -223,6 +223,7 @@ export default function FieldInterviewsPage() {
       section_id: (fi as any).section_id || '',
       zone_id: (fi as any).zone_id || '',
       beat_id: (fi as any).beat_id || '',
+      gang_affiliation: (fi as any).gang_affiliation || '',
     });
     setFormOpen(true);
   };
@@ -316,7 +317,7 @@ export default function FieldInterviewsPage() {
       <PanelTitleBar icon={ClipboardList} title="FIELD INTERVIEWS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/field-interviews?per_page=9999" exportFilename="field_interviews_export.csv" />
+        <ExportButton exportUrl="/field-interviews/export/csv" exportFilename="field_interviews_export.csv" />
         <button type="button" onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New FI Card
         </button>

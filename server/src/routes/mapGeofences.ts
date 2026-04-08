@@ -161,7 +161,7 @@ router.post('/', requireRole('admin', 'supervisor'), (req: Request, res: Respons
 router.put('/:id', requireRole('admin', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid geofence ID', code: 'INVALID_GEOFENCE_ID' });
       return;
@@ -258,7 +258,7 @@ router.put('/:id', requireRole('admin', 'supervisor'), (req: Request, res: Respo
 router.delete('/:id', requireRole('admin', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid geofence ID', code: 'INVALID_GEOFENCE_ID' });
       return;

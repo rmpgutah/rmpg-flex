@@ -327,7 +327,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     if (address) {
       try {
         const geo = await geocodeAddress(address);
-        if (geo) { latitude = geo.lat; longitude = geo.lng; }
+        if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
       } catch { /* geocode failed — continue without coords */ }
     }
 
@@ -465,7 +465,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)').run(callId, personId, 'involved', userId, now);
     } catch { /* already linked */ }
 
-    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, null, { person_id: personId, property_id: propertyId, job_number: jobNumber });
+    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, JSON.stringify({ person_id: personId, property_id: propertyId, job_number: jobNumber }));
 
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 

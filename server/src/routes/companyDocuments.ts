@@ -96,7 +96,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(title, description || null, category, file_id || null, content_type, external_url || null, is_required_reading ? 1 : 0, published ? 1 : 0, sort_order, userId, userId);
     const doc = db.prepare('SELECT * FROM company_documents WHERE id = ?').get(result.lastInsertRowid) as any;
-    auditLog(req, 'CREATE', 'company_documents', result.lastInsertRowid as number, null, doc);
+    auditLog(req, 'CREATE', 'company_documents', result.lastInsertRowid as number, JSON.stringify(doc));
     res.json({ success: true, data: doc });
   } catch (error: any) {
     console.error('Create company document error:', error);
@@ -121,7 +121,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     values.push((req as any).user?.id, req.params.id);
     db.prepare(`UPDATE company_documents SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
     const updated = db.prepare('SELECT * FROM company_documents WHERE id = ?').get(req.params.id) as any;
-    auditLog(req, 'UPDATE', 'company_documents', parseInt(req.params.id), existing, updated);
+    auditLog(req, 'UPDATE', 'company_documents', parseInt(req.params.id as string), JSON.stringify(updated));
     res.json({ success: true, data: updated });
   } catch (error: any) {
     console.error('Update company document error:', error);
@@ -136,7 +136,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     const existing = db.prepare('SELECT * FROM company_documents WHERE id = ?').get(req.params.id) as any;
     if (!existing) { res.status(404).json({ error: 'Document not found', code: 'DOC_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM company_documents WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE', 'company_documents', parseInt(req.params.id), existing, null);
+    auditLog(req, 'DELETE', 'company_documents', parseInt(req.params.id as string), '');
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete company document error:', error);

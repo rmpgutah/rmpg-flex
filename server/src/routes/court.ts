@@ -117,7 +117,7 @@ router.get('/calendar', (req: Request, res: Response) => {
 router.get('/events/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' }); return; }
     const row = db.prepare(`
       SELECT e.*, p.first_name || ' ' || p.last_name as defendant_full_name
@@ -213,7 +213,7 @@ router.put('/events/:id', (req: Request, res: Response) => {
       const eventDate = courtEvent.event_date;
       const today = localToday();
       if (eventDate && eventDate < today && req.body.event_date) {
-        auditLog(req, 'ADMIN_OVERRIDE', 'court_event', parseInt(req.params.id), `Admin God Mode: rescheduling past court date (${eventDate} → ${req.body.event_date})`);
+        auditLog(req, 'ADMIN_OVERRIDE', 'court_event', parseInt(req.params.id as string), `Admin God Mode: rescheduling past court date (${eventDate} → ${req.body.event_date})`);
       }
     }
 
@@ -246,14 +246,14 @@ router.put('/events/:id', (req: Request, res: Response) => {
             `Court Event Updated: ${eventRow?.event_number || ''}`,
             `A court event on ${eventRow?.event_date || ''}${eventRow?.court_name ? ` at ${eventRow.court_name}` : ''} has been updated.`,
             'court_event',
-            parseInt(req.params.id),
+            parseInt(req.params.id as string),
             'normal'
           );
         }
       }
     }
 
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
@@ -261,7 +261,7 @@ router.put('/events/:id', (req: Request, res: Response) => {
 router.put('/events/:id/outcome', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' }); return; }
     const existing = db.prepare('SELECT id FROM court_events WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' }); return; }
@@ -300,7 +300,7 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
 router.delete('/events/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' }); return; }
     const existing = db.prepare('SELECT * FROM court_events WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' }); return; }
@@ -455,7 +455,7 @@ router.post('/events/:id/continuance', (req: Request, res: Response) => {
       VALUES (?, 'continuance', 'court_event', ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ reason, new_date }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), continuance_count: updates.continuance_count } });
+    res.json({ data: { id: parseInt(req.params.id as string), continuance_count: updates.continuance_count } });
   } catch (error: any) {
     console.error('Continuance error:', error);
     res.status(500).json({ error: 'Failed to continuance', code: 'CONTINUANCE_ERROR' });
@@ -487,7 +487,7 @@ router.put('/events/:id/bail', (req: Request, res: Response) => {
     const { bail_amount, bond_status, surety_info } = req.body;
     db.prepare(`UPDATE court_events SET bail_amount = ?, bond_status = ?, surety_info = ?, updated_at = ? WHERE id = ?`)
       .run(bail_amount ?? null, bond_status ?? null, surety_info ?? null, now, req.params.id);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
@@ -519,7 +519,7 @@ router.put('/events/:id/judge-notes', (req: Request, res: Response) => {
     const { judge_notes } = req.body;
     db.prepare('UPDATE court_events SET judge_notes = ?, updated_at = ? WHERE id = ?')
       .run(judge_notes ?? null, now, req.params.id);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
@@ -645,7 +645,7 @@ router.put('/events/:id/prosecutor', (req: Request, res: Response) => {
     db.prepare('UPDATE court_events SET prosecutor = ?, updated_at = ? WHERE id = ?')
       .run(prosecutorInfo, now, req.params.id);
 
-    res.json({ data: { id: parseInt(req.params.id), prosecutor: JSON.parse(prosecutorInfo) } });
+    res.json({ data: { id: parseInt(req.params.id as string), prosecutor: JSON.parse(prosecutorInfo) } });
   } catch (error: any) {
     console.error('Prosecutor update error:', error);
     res.status(500).json({ error: 'Failed to prosecutor update', code: 'PROSECUTOR_UPDATE_ERROR' });
@@ -676,7 +676,7 @@ router.put('/events/:id/fees', (req: Request, res: Response) => {
     db.prepare('UPDATE court_events SET court_fees = ?, updated_at = ? WHERE id = ?')
       .run(JSON.stringify(fees), now, req.params.id);
 
-    res.json({ data: { id: parseInt(req.params.id), fees } });
+    res.json({ data: { id: parseInt(req.params.id as string), fees } });
   } catch (error: any) {
     console.error('Court fees error:', error);
     res.status(500).json({ error: 'Failed to court fees', code: 'COURT_FEES_ERROR' });
@@ -835,7 +835,7 @@ router.post('/events/generate-7day-reminders', (req: Request, res: Response) => 
 router.put('/events/:id/verdict', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' });
 
     const existing = db.prepare('SELECT * FROM court_events WHERE id = ?').get(id) as any;
@@ -933,7 +933,7 @@ router.post('/subpoenas', (req: Request, res: Response) => {
 router.get('/subpoenas/officer/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const officerId = parseInt(req.params.officerId, 10);
+    const officerId = parseInt(req.params.officerId as string, 10);
     if (isNaN(officerId)) return res.status(400).json({ error: 'Invalid officer ID', code: 'INVALID_OFFICER_ID' });
 
     const rows = db.prepare(`

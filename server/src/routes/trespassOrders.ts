@@ -116,7 +116,7 @@ router.get('/check', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid trespass order ID', code: 'INVALID_TRESPASS_ORDER_ID' }); return; }
     const row = db.prepare(`
       SELECT t.*, u.full_name as issued_by_display,
@@ -211,7 +211,7 @@ router.post('/', (req: Request, res: Response) => {
 router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'Trespass order not found', code: 'TRESPASS_ORDER_NOT_FOUND' }); return; }
@@ -262,7 +262,7 @@ router.put('/:id', (req: Request, res: Response) => {
     db.prepare(`UPDATE trespass_orders SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    auditLog(req, 'UPDATE', 'trespass_order', req.params.id, `Updated trespass order #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'trespass_order', req.params.id as string, `Updated trespass order #${req.params.id}`);
     broadcast('alerts', 'trespass_order_updated', updated);
     res.json({ data: updated });
   } catch (err: any) {
@@ -277,7 +277,7 @@ router.put('/:id/serve', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found', code: 'TRESPASS_ORDER_NOT_FOUND' }); return; }
@@ -298,7 +298,7 @@ router.put('/:id/lift', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found', code: 'TRESPASS_ORDER_NOT_FOUND' }); return; }
@@ -318,7 +318,7 @@ router.put('/:id/violate', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found', code: 'TRESPASS_ORDER_NOT_FOUND' }); return; }
@@ -405,7 +405,7 @@ router.put('/:id/photo', (req: Request, res: Response) => {
       .run(photo_url, now, req.params.id);
 
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    auditLog(req, 'UPDATE', 'trespass_order', req.params.id, `Updated photo on trespass order #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'trespass_order', req.params.id as string, `Updated photo on trespass order #${req.params.id}`);
     res.json({ data: updated });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
@@ -688,7 +688,7 @@ router.post('/:id/violations', (req: Request, res: Response) => {
     );
     db.prepare("UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?").run(now, req.params.id);
     auditLog(req, 'CREATE', 'trespass_violation', Number(result.lastInsertRowid), `Violation recorded on order ${order.order_number}`);
-    broadcast('alerts', 'trespass_violation_recorded', { order_id: parseInt(req.params.id), order_number: order.order_number });
+    broadcast('alerts', 'trespass_violation_recorded', { order_id: parseInt(req.params.id as string), order_number: order.order_number });
     const created = db.prepare('SELECT * FROM trespass_violations WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: created });
   } catch (err: any) { console.error('[TrespassOrders] Create violation error:', err?.message); res.status(500).json({ error: 'Failed to record violation', code: 'CREATE_VIOLATION_ERROR' }); }

@@ -110,7 +110,7 @@ router.get('/search', (req: Request, res: Response) => {
 router.get('/person/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.personId, 10);
+    const personId = parseInt(req.params.personId as string, 10);
     if (isNaN(personId)) {
       res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
       return;
@@ -215,7 +215,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
@@ -416,7 +416,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
@@ -536,7 +536,7 @@ router.put('/:id', (req: Request, res: Response) => {
     );
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
-    broadcastCitationUpdate({ type: 'citation_updated', id: parseInt(req.params.id) });
+    broadcastCitationUpdate({ type: 'citation_updated', id: parseInt(req.params.id as string) });
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update citation error:', error);
@@ -549,7 +549,7 @@ router.put('/:id', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
@@ -615,7 +615,7 @@ try {
 router.get('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const paymentCitId = parseInt(req.params.id, 10);
+    const paymentCitId = parseInt(req.params.id as string, 10);
     if (isNaN(paymentCitId)) { res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' }); return; }
     const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(paymentCitId) as any;
     if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
@@ -645,7 +645,7 @@ router.get('/:id/payments', (req: Request, res: Response) => {
 router.post('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const payCitId = parseInt(req.params.id, 10);
+    const payCitId = parseInt(req.params.id as string, 10);
     if (isNaN(payCitId)) { res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' }); return; }
     const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(payCitId) as any;
     if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }

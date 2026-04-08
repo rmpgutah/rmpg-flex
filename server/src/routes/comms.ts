@@ -156,7 +156,7 @@ router.get('/messages', (req: Request, res: Response) => {
 router.put('/messages/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' }); return; }
     const now = localNow();
 
@@ -192,7 +192,7 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
 router.delete('/messages/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' }); return; }
     const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as any;
     if (!message) { res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' }); return; }
@@ -354,7 +354,7 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 router.get('/bolos/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const boloId = parseInt(req.params.id, 10);
+    const boloId = parseInt(req.params.id as string, 10);
     if (isNaN(boloId)) { res.status(400).json({ error: 'Invalid BOLO ID', code: 'INVALID_BOLO_ID' }); return; }
     const bolo = db.prepare(`
       SELECT b.*, u.full_name as issued_by_name
@@ -1394,7 +1394,7 @@ router.get('/messages/:id/read-receipts', (req: Request, res: Response) => {
       name: data.name,
     }));
 
-    res.json({ message_id: parseInt(req.params.id), receipts: receiptList, total_read: receiptList.length });
+    res.json({ message_id: parseInt(req.params.id as string), receipts: receiptList, total_read: receiptList.length });
   } catch (error: any) {
     console.error('Read receipts error:', error);
     res.status(500).json({ error: 'Failed to get read receipts', code: 'READ_RECEIPTS_ERROR' });

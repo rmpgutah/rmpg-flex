@@ -188,7 +188,7 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 router.get('/check/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.personId, 10);
+    const personId = parseInt(req.params.personId as string, 10);
     if (isNaN(personId)) {
       res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
       return;
@@ -739,7 +739,7 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), (req: 
 router.post('/check/:personId', (req: Request, res: Response) => {
   (async () => {
     try {
-      const personId = parseInt(req.params.personId, 10);
+      const personId = parseInt(req.params.personId as string, 10);
       if (isNaN(personId)) {
         res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
         return;
@@ -1592,7 +1592,7 @@ router.post('/:id/service-attempts', requireRole('dispatcher', 'supervisor', 'ad
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'warrant_service_attempt', 'warrant', ?, ?, ?)`).run(req.user!.userId, req.params.id, `Service attempt on ${warrant.warrant_number}: ${attemptResult || 'unsuccessful'}`, req.ip || 'unknown');
     if (attemptResult === 'served') {
       db.prepare("UPDATE warrants SET status = 'served', served_by = ?, served_at = ?, served_location = ?, updated_at = ? WHERE id = ?").run(req.user!.userId, now, location || null, now, req.params.id);
-      broadcast('alerts', 'warrant_served', { id: parseInt(req.params.id), warrant_number: warrant.warrant_number });
+      broadcast('alerts', 'warrant_served', { id: parseInt(req.params.id as string), warrant_number: warrant.warrant_number });
     }
     res.status(201).json({ data: { id: insertResult.lastInsertRowid } });
   } catch (error: any) { console.error('Create service attempt error:', error); res.status(500).json({ error: 'Failed to record service attempt', code: 'CREATE_SERVICE_ATTEMPT_ERROR' }); }
@@ -1628,7 +1628,7 @@ router.put('/:id/service-attempts/:attemptId', requireRole('dispatcher', 'superv
       db.prepare("UPDATE warrants SET status = 'served', served_by = ?, served_at = ?, served_location = ?, updated_at = ? WHERE id = ?").run(
         req.user!.userId, now, req.body.location || attempt.location || null, now, req.params.id
       );
-      broadcast('alerts', 'warrant_served', { id: parseInt(req.params.id), warrant_number: warrant.warrant_number });
+      broadcast('alerts', 'warrant_served', { id: parseInt(req.params.id as string), warrant_number: warrant.warrant_number });
     }
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'warrant_service_attempt_updated', 'warrant', ?, ?, ?)`).run(
@@ -1817,10 +1817,10 @@ router.post('/search-all', (req: Request, res: Response) => {
       const duration = Date.now() - startTime;
       const totalHits = localWarrants.length + utahResults.length + scrapedWarrants.length;
 
-      auditLog(req, 'SEARCH', 'warrants', 0, null, {
+      auditLog(req, 'SEARCH', 'warrants', 0, JSON.stringify({
         params: { firstName, lastName, dob, warrantNumber, court, source, offenseLevel, status, type, chargeKeyword, dateFrom, dateTo },
         totalHits, duration
-      });
+      }));
 
       res.json({
         local: localWarrants,
@@ -1842,7 +1842,7 @@ router.post('/search-all', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/summary-report — Warrant summary/breakdown report
-router.get('/summary-report', requireRole(['dispatcher', 'supervisor', 'admin', 'manager']), (req: Request, res: Response) => {
+router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { from, to } = req.query;
@@ -2158,18 +2158,19 @@ router.post('/national-search', async (req: Request, res: Response) => {
               const utahResults = await searchUtahWarrantsLive(first_name, last_name);
               if (utahResults && utahResults.length > 0) {
                 for (const w of utahResults) {
+                  const wu = w as any;
                   liveResults.push({
-                    first_name: w.first_name || first_name,
-                    last_name: w.last_name || last_name,
-                    date_of_birth: w.date_of_birth || dob || null,
+                    first_name: wu.first_name || first_name,
+                    last_name: wu.last_name || last_name,
+                    date_of_birth: wu.date_of_birth || dob || null,
                     state: 'UT',
-                    warrant_type: w.warrant_type || 'arrest',
-                    charge_description: w.charges || w.charge_description || '',
-                    court_name: w.court_name || 'Utah Courts',
-                    case_number: w.case_number || '',
-                    issue_date: w.issue_date || null,
-                    bail_amount: w.bail_amount || null,
-                    offense_level: w.offense_level || null,
+                    warrant_type: wu.warrant_type || 'arrest',
+                    charge_description: wu.charges || wu.charge_description || '',
+                    court_name: wu.court_name || 'Utah Courts',
+                    case_number: wu.case_number || wu.case_id || '',
+                    issue_date: wu.issue_date || null,
+                    bail_amount: wu.bail_amount || null,
+                    offense_level: wu.offense_level || null,
                     status: 'active',
                     source_display_name: 'Utah Warrants API (Live)',
                     search_source: 'live_utah',

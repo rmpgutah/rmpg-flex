@@ -206,7 +206,7 @@ router.put('/:id/review', requireRole('admin', 'manager', 'supervisor'), (req: R
     `).run(newStatus, req.user!.userId, now, now, req.params.id);
 
     auditLog(req, 'UPDATE', 'use_of_force', Number(req.params.id), `UoF report ${decision}: ${review_notes || ''}`);
-    broadcast('alerts', 'uof_reviewed', { id: parseInt(req.params.id), decision });
+    broadcast('alerts', 'uof_reviewed', { id: parseInt(req.params.id as string), decision });
 
     const updated = db.prepare(`
       SELECT uof.*, u.full_name as officer_name, r.full_name as reviewer_name
