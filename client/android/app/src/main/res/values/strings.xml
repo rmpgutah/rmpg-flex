@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">RMPG Flex</string>
-    <string name="title_activity_main">RMPG Flex</string>
-    <string name="package_name">com.rmpg.flex</string>
-    <string name="custom_url_scheme">com.rmpg.flex</string>
-</resources>
