@@ -1538,17 +1538,23 @@ body.fx-noise::after {
    Optimized for 360-430px phone screens
    ============================================================ */
 @media (max-width: 768px) {
-  /* Prevent sub-11px text on mobile — officers need readability in sunlight */
+  /* ── MOBILE FONT READABILITY ─────────────────────────────
+     Officers need to read screens in direct sunlight, at arm's
+     length, and while moving. Base font bumped to 15px with
+     minimum floor of 12px for any text element.
+     ──────────────────────────────────────────────────────── */
   .text-\[8px\], .text-\[9px\] {
-    font-size: 11px !important;
+    font-size: 12px !important;
   }
   .text-\[10px\] {
-    font-size: 11px !important;
+    font-size: 12px !important;
+  }
+  .text-\[11px\] {
+    font-size: 13px !important;
   }
 
-  /* Increase base font for readability on phones */
   html {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   /* Remove CRT scanlines on mobile (performance) */
@@ -1562,9 +1568,28 @@ body.fx-noise::after {
     padding-bottom: env(safe-area-inset-bottom);
   }
 
-  /* --- Layout: Hide desktop toolbars, show compact header --- */
+  /* ── LAYOUT ──────────────────────────────────────────────
+     Hide desktop-only elements, ensure mobile shell components
+     have proper spacing.
+     ──────────────────────────────────────────────────────── */
   .mobile-hidden {
     display: none !important;
+  }
+
+  /* Page content area: add horizontal breathing room */
+  .p-4 {
+    padding: 12px !important;
+  }
+  .p-6 {
+    padding: 16px !important;
+  }
+  .px-4 {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  .px-6 {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
   }
 
   /* Status bar: horizontal scroll on small screens */
@@ -1573,13 +1598,15 @@ body.fx-noise::after {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
   }
-
   .status-bar-section {
     white-space: nowrap;
     flex-shrink: 0;
   }
 
-  /* Tables: horizontal scroll wrapper */
+  /* ── TABLES ─────────────────────────────────────────────
+     Mobile tables get bigger cells, better spacing, and
+     horizontal scroll. Data density reduced for usability.
+     ──────────────────────────────────────────────────────── */
   .table-dark {
     display: block;
     overflow-x: auto;
@@ -1592,65 +1619,116 @@ body.fx-noise::after {
   }
 
   .table-dark tbody td {
-    font-size: 12px;
-    padding: 6px 8px;
+    font-size: 13px;
+    padding: 10px 12px;
+    line-height: 1.4;
   }
 
   .table-dark thead th {
     font-size: 11px;
-    padding: 6px 8px;
+    padding: 10px 12px;
     white-space: nowrap;
   }
 
-  /* Tab bars: scrollable on mobile */
+  /* ── TAB BARS ───────────────────────────────────────────
+     Scrollable pill-style tabs with 48px min touch targets.
+     ──────────────────────────────────────────────────────── */
   .tab-bar {
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
+    gap: 2px;
+    padding: 4px 8px;
   }
 
   .tab-bar-item {
     white-space: nowrap;
     flex-shrink: 0;
-    padding: 6px 14px;
-    font-size: 11px;
+    padding: 10px 16px;
+    font-size: 12px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
   }
 
-  /* Buttons: larger touch targets (44px min) */
+  /* ── BUTTONS ────────────────────────────────────────────
+     All interactive elements get 48px minimum touch targets
+     for reliable one-thumb operation.
+     ──────────────────────────────────────────────────────── */
   .toolbar-btn {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 6px 8px;
-    font-size: 11px;
+    min-height: 48px;
+    min-width: 48px;
+    padding: 8px 12px;
+    font-size: 13px;
   }
 
   .btn-primary,
   .btn-secondary,
   .btn-danger,
   .btn-success,
-  .toolbar-btn-primary {
-    min-height: 44px;
-    padding: 8px 14px;
+  .toolbar-btn-primary,
+  .toolbar-btn-danger,
+  .toolbar-btn-success {
+    min-height: 48px;
+    padding: 10px 18px;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+  }
+
+  .btn-sm {
+    min-height: 40px;
+    padding: 6px 12px;
     font-size: 12px;
   }
 
-  /* Input fields: larger for touch */
-  .input-dark,
-  .select-dark,
-  .textarea-dark {
-    min-height: 44px;
-    font-size: 14px;
-    padding: 8px 12px;
-  }
-
-  /* Panel title bars: slightly larger */
-  .panel-title-bar {
-    padding: 6px 10px;
+  .btn-xs {
+    min-height: 36px;
+    padding: 4px 10px;
     font-size: 11px;
   }
 
-  /* Menu dropdowns: full width on mobile */
+  /* ── FORM INPUTS ────────────────────────────────────────
+     Inputs sized for fat-finger touch. 16px font prevents
+     iOS auto-zoom on focus.
+     ──────────────────────────────────────────────────────── */
+  .input-dark,
+  .select-dark,
+  .textarea-dark {
+    min-height: 48px;
+    font-size: 16px;
+    padding: 10px 14px;
+    border-width: 1.5px;
+  }
+
+  /* Field labels: slightly larger for readability */
+  .field-label {
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+
+  /* Section headers: more breathing room */
+  .section-header,
+  .section-header-bordered {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  .section-header-bordered {
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+  }
+
+  /* ── PANEL TITLE BARS ──────────────────────────────────── */
+  .panel-title-bar {
+    padding: 8px 12px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+
+  /* ── MENU DROPDOWNS ─────────────────────────────────────
+     Full-screen-width dropdowns for reliable selection.
+     ──────────────────────────────────────────────────────── */
   .menu-dropdown {
     position: fixed !important;
     left: 8px !important;
@@ -1661,40 +1739,137 @@ body.fx-noise::after {
   }
 
   .menu-item {
-    padding: 10px 12px;
-    font-size: 13px;
-    min-height: 44px;
+    padding: 12px 14px;
+    font-size: 14px;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
   }
 
-  /* PANIC button: sized for mobile header — readable but not oversized */
+  /* ── PANIC BUTTON ──────────────────────────────────────── */
   .panic-btn {
-    padding: 6px 12px;
-    font-size: 11px;
-    min-height: 36px;
+    padding: 8px 14px;
+    font-size: 12px;
+    min-height: 40px;
   }
 
-  /* Cards: full width */
+  /* ── CARDS ──────────────────────────────────────────────
+     Full-width cards with more internal padding.
+     ──────────────────────────────────────────────────────── */
   .card-dark,
   .card-dark-hover {
     margin: 0;
+    padding: 14px;
   }
 
-  /* Badges: slightly larger for readability */
+  /* ── BADGES ────────────────────────────────────────────── */
   .badge {
-    font-size: 10px;
-    padding: 2px 6px;
+    font-size: 11px;
+    padding: 3px 8px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
   }
 
-  /* LED dots: larger */
+  /* ── LED DOTS ──────────────────────────────────────────── */
   .led-dot {
     width: 10px;
     height: 10px;
   }
 
-  /* Scrollbar: thinner on mobile */
+  /* ── MOBILE CARD LIST ──────────────────────────────────── */
+  .mobile-card {
+    padding: 14px;
+    min-height: 56px;
+  }
+
+  /* ── MOBILE PILL TABS ──────────────────────────────────── */
+  .mobile-pill-tab {
+    padding: 8px 16px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+
+  /* ── MOBILE SEARCH BAR ─────────────────────────────────── */
+  .mobile-search-bar {
+    height: 48px;
+    font-size: 16px;
+  }
+  .mobile-search-bar input {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  /* ── MOBILE FAB ────────────────────────────────────────── */
+  .mobile-fab {
+    width: 60px;
+    height: 60px;
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  /* ── CONFIRM / DISCARD DIALOGS ─────────────────────────── */
+  .toolbar-btn:not(.btn-xs):not(.btn-sm) {
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  /* ── SCROLLBAR: hidden on mobile (use native) ──────────── */
   ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 3px;
+    height: 3px;
+  }
+
+  /* ── GRID LAYOUT HELPERS ───────────────────────────────── */
+  /* Force 1-column on small phones for grid layouts */
+  .grid-cols-2,
+  .sm\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+  .grid-cols-3,
+  .sm\:grid-cols-3,
+  .md\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+  .grid-cols-4,
+  .sm\:grid-cols-4,
+  .md\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* ── STATS CARDS ───────────────────────────────────────── */
+  /* Make stats cards stack better on mobile */
+  .grid.gap-2, .grid.gap-3, .grid.gap-4 {
+    gap: 8px !important;
+  }
+
+  /* ── FORM MODAL MOBILE ─────────────────────────────────── */
+  /* Modals go full-width on mobile */
+  .max-w-2xl,
+  .max-w-xl,
+  .max-w-lg,
+  .max-w-3xl {
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  /* Form modal content: more padding and spacing */
+  form.space-y-4 > * + * {
+    margin-top: 16px !important;
+  }
+
+  /* ── COLLAPSIBLE SECTIONS ──────────────────────────────── */
+  /* Give collapsible section headers bigger touch targets */
+  [data-collapsible-trigger],
+  button[aria-expanded] {
+    min-height: 48px;
+  }
+
+  /* ── SPLIT PANEL ───────────────────────────────────────── */
+  /* On mobile, split panels should stack vertically */
+  .split-panel-horizontal {
+    flex-direction: column !important;
+  }
+  .split-panel-horizontal > .split-panel-divider {
+    display: none !important;
   }
 }
 
