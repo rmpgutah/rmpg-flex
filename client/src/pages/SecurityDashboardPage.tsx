@@ -104,7 +104,7 @@ export default function SecurityDashboardPage() {
           {[
             { label: '2FA', value: status.twoFactorEnabled ? 'ON' : 'OFF', color: status.twoFactorEnabled ? '#22c55e' : '#ef4444', icon: Lock },
             { label: 'Password Age', value: `${status.passwordAge}d`, color: status.passwordAge > 90 ? '#ef4444' : status.passwordAge > 60 ? '#f59e0b' : '#22c55e', icon: Key },
-            { label: 'Trusted Devices', value: String(status.trustedDevices), color: '#3b82f6', icon: Monitor },
+            { label: 'Trusted Devices', value: String(status.trustedDevices), color: '#888888', icon: Monitor },
             { label: 'Active Sessions', value: String(status.activeSessions), color: '#d4a017', icon: Users },
             { label: 'Last Login IP', value: (status.lastLoginIp || '—').slice(0, 15), color: '#888888', icon: Globe },
             { label: 'Account', value: status.accountStatus || 'Active', color: '#22c55e', icon: CheckCircle },
@@ -273,7 +273,7 @@ export default function SecurityDashboardPage() {
               <div key={i} className="flex items-start gap-3 py-1.5 border-b border-rmpg-800 text-[10px]">
                 <span className="text-rmpg-500 font-mono w-32 flex-shrink-0">{formatDateTime(e.timestamp || e.created_at)}</span>
                 <div className="w-2 h-2 mt-1 flex-shrink-0" style={{
-                  background: e.severity === 'critical' ? '#ef4444' : e.severity === 'high' ? '#f59e0b' : e.severity === 'medium' ? '#3b82f6' : '#888',
+                  background: e.severity === 'critical' ? '#ef4444' : e.severity === 'high' ? '#f59e0b' : e.severity === 'medium' ? '#888888' : '#666',
                   borderRadius: '1px',
                 }} />
                 <span className="text-white flex-1">{e.description || e.action || e.type}</span>

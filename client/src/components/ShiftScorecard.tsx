@@ -38,7 +38,7 @@ const GRADE_COLORS: Record<string, string> = {
 };
 
 const METRIC_CONFIG: { key: keyof ScorecardData['metrics']; label: string; icon: React.ElementType; color: string }[] = [
-  { key: 'response_time', label: 'Response Time', icon: Activity, color: '#3b82f6' },
+  { key: 'response_time', label: 'Response Time', icon: Activity, color: '#888888' },
   { key: 'call_volume', label: 'Call Volume', icon: BarChart3, color: '#8b5cf6' },
   { key: 'patrol_coverage', label: 'Patrol Coverage', icon: Target, color: '#06b6d4' },
   { key: 'report_completion', label: 'Reports', icon: Award, color: '#d4a017' },
@@ -73,20 +73,20 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
   // Circular progress indicator (CSS conic-gradient)
   const pct = data ? Math.round(data.total_score) : 0;
   const conicGradient = data
-    ? `conic-gradient(${GRADE_COLORS[data.grade] || '#1a5a9e'} ${pct * 3.6}deg, #0d1520 0deg)`
-    : 'conic-gradient(#0d1520 360deg)';
+    ? `conic-gradient(${GRADE_COLORS[data.grade] || '#888888'} ${pct * 3.6}deg, #050505 0deg)`
+    : 'conic-gradient(#050505 360deg)';
 
   const trend = data ? TREND_ICONS[data.trend.direction] : null;
 
   return (
-    <div className="panel-beveled" style={{ background: '#141e2b' }}>
+    <div className="panel-beveled" style={{ background: '#0a0a0a' }}>
       <PanelTitleBar title="Shift Scorecard" icon={Award}>
         <input
           type="date"
           value={shiftDate}
           onChange={(e) => setShiftDate(e.target.value)}
           className="toolbar-btn text-xs"
-          style={{ fontFamily: 'monospace', background: '#0d1520', color: '#94a3b8', border: '1px solid #1a5a9e', borderRadius: 2, padding: '1px 6px' }}
+          style={{ fontFamily: 'monospace', background: '#050505', color: '#94a3b8', border: '1px solid #888888', borderRadius: 2, padding: '1px 6px' }}
         />
       </PanelTitleBar>
 
@@ -136,7 +136,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
                 className="flex items-center justify-center"
                 style={{
                   position: 'relative', width: 56, height: 56, borderRadius: '50%',
-                  background: '#141e2b', fontFamily: 'monospace', fontSize: 18,
+                  background: '#0a0a0a', fontFamily: 'monospace', fontSize: 18,
                   fontWeight: 700, color: '#e2e8f0',
                 }}
               >
@@ -159,12 +159,12 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
                 Rank {data.peer_rank.rank}/{data.peer_rank.total}
               </div>
               {/* Peer rank bar */}
-              <div style={{ height: 4, background: '#0d1520', borderRadius: 2, position: 'relative' }}>
+              <div style={{ height: 4, background: '#050505', borderRadius: 2, position: 'relative' }}>
                 <div
                   style={{
                     position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 2,
                     width: `${Math.max(4, ((data.peer_rank.total - data.peer_rank.rank + 1) / data.peer_rank.total) * 100)}%`,
-                    background: '#1a5a9e',
+                    background: '#888888',
                   }}
                 />
               </div>
@@ -182,7 +182,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
                   <span className="text-rmpg-300 text-xs w-20 truncate" style={{ fontFamily: 'monospace' }}>
                     {label}
                   </span>
-                  <div className="flex-1" style={{ height: 8, background: '#0d1520', borderRadius: 2, position: 'relative' }}>
+                  <div className="flex-1" style={{ height: 8, background: '#050505', borderRadius: 2, position: 'relative' }}>
                     <div
                       style={{
                         position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 2,

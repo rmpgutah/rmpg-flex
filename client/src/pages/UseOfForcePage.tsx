@@ -26,7 +26,7 @@ interface Stats { total: number; pending_review: number; reviewed: number; this_
 
 const FORCE_TYPES = ['verbal_command', 'physical_control', 'takedown', 'restraint', 'oc_spray', 'taser', 'baton', 'k9', 'less_lethal', 'firearm', 'vehicle', 'other'];
 const FORCE_LEVELS = ['Level 1 - Cooperative', 'Level 2 - Resistive', 'Level 3 - Assaultive', 'Level 4 - Life Threatening'];
-const STATUS_COLORS: Record<string, string> = { draft: '#888888', submitted: '#3b82f6', reviewed: '#22c55e', returned: '#f59e0b' };
+const STATUS_COLORS: Record<string, string> = { draft: '#888888', submitted: '#888888', reviewed: '#22c55e', returned: '#f59e0b' };
 
 export default function UseOfForcePage() {
   const { user } = useAuth();
@@ -112,7 +112,7 @@ export default function UseOfForcePage() {
             { label: 'Total', value: stats.total, color: '#888888' },
             { label: 'Pending', value: stats.pending_review, color: '#f59e0b' },
             { label: 'Reviewed', value: stats.reviewed, color: '#22c55e' },
-            { label: 'This Month', value: stats.this_month, color: '#3b82f6' },
+            { label: 'This Month', value: stats.this_month, color: '#888888' },
           ].map(s => (
             <div key={s.label} className="text-center">
               <div className="text-lg font-bold font-mono" style={{ color: s.color }}>{s.value}</div>

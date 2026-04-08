@@ -29,7 +29,7 @@ interface CommandCenterData {
 const UNIT_STATUS_COLORS: Record<string, string> = {
   available: '#22c55e',
   dispatched: '#f59e0b',
-  enroute: '#3b82f6',
+  enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
   off_duty: '#6b7280',
@@ -106,7 +106,7 @@ export default function CommandCenterPage() {
           <div className="grid grid-cols-5 gap-1 flex-shrink-0">
             {[
               { label: 'ACTIVE CALLS', value: data.kpis.active_calls, icon: Phone, color: data.kpis.active_calls > 5 ? '#ef4444' : '#22c55e' },
-              { label: 'CALLS TODAY', value: data.kpis.calls_today, icon: Activity, color: '#3b82f6' },
+              { label: 'CALLS TODAY', value: data.kpis.calls_today, icon: Activity, color: '#888888' },
               { label: 'AVG RESPONSE', value: `${data.kpis.avg_response_min}m`, icon: Clock, color: data.kpis.avg_response_min > 8 ? '#f97316' : '#22c55e' },
               { label: 'UNITS AVAIL', value: `${data.kpis.units_available}/${data.kpis.units_total}`, icon: Users, color: data.kpis.units_available < 2 ? '#ef4444' : '#22c55e' },
               { label: 'BOLOS', value: data.kpis.active_bolos, icon: ShieldAlert, color: data.kpis.active_bolos > 0 ? '#f59e0b' : '#6b7280' },
@@ -131,7 +131,7 @@ export default function CommandCenterPage() {
                   <YAxis tick={{ fontSize: 9, fill: '#6b7280' }} width={25} />
                   <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {data.calls_by_hour.map((entry, index) => (
-                      <Cell key={index} fill={entry.count > 5 ? '#ef4444' : entry.count > 3 ? '#f59e0b' : '#1a5a9e'} />
+                      <Cell key={index} fill={entry.count > 5 ? '#ef4444' : entry.count > 3 ? '#f59e0b' : '#888888'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -168,9 +168,9 @@ export default function CommandCenterPage() {
                   className="flex items-center gap-2 px-2 py-1.5 panel-beveled"
                   style={{
                     borderLeft: `3px solid ${
-                      call.priority === 'P1' ? '#ef4444' : call.priority === 'P2' ? '#f59e0b' : call.priority === 'P3' ? '#3b82f6' : '#6b7280'
+                      call.priority === 'P1' ? '#ef4444' : call.priority === 'P2' ? '#f59e0b' : call.priority === 'P3' ? '#888888' : '#6b7280'
                     }`,
-                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : '#141e2b',
+                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : '#0a0a0a',
                   }}
                 >
                   <div className="flex-1 min-w-0">
@@ -216,7 +216,7 @@ export default function CommandCenterPage() {
                     <div
                       key={unit.id}
                       className="flex items-center gap-1.5 px-2 py-1 panel-beveled"
-                      style={{ background: '#141e2b' }}
+                      style={{ background: '#0a0a0a' }}
                     >
                       <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: color, boxShadow: `0 0 4px ${color}` }} />
                       <div className="min-w-0">

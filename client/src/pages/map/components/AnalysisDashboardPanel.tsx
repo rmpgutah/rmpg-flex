@@ -73,7 +73,7 @@ function shiftColor(shift: string): string {
 function shiftBg(shift: string): string {
   const s = shift.toLowerCase();
   if (s.includes('day')) return 'rgba(212,160,23,0.15)';
-  if (s.includes('swing')) return 'rgba(59,130,246,0.15)';
+  if (s.includes('swing')) return 'rgba(136,136,136,0.15)';
   if (s.includes('night') || s.includes('grave')) return 'rgba(168,85,247,0.15)';
   return 'rgba(107,114,128,0.15)';
 }

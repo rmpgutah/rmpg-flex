@@ -5,7 +5,7 @@
 /* ============================================================
    RMPG Flex - Custom Styles
    Spillman Flex / Motorola Solutions — Steel-Blue Dark Theme
-   Motorola blue + gold accents on steel-blue-tinted dark console
+   Motorola pure black + gold accents on dark console
    ============================================================ */
 
 /* --- Theme Custom Properties ─────────────────────────────── */
@@ -4025,7 +4025,7 @@ html, body {
   }
   .badge-p1 { color: #fca5a5; background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.4); }
   .badge-p2 { color: #fcd34d; background: rgba(217,119,6,0.2); border-color: rgba(217,119,6,0.4); }
-  .badge-p3 { color: #93c5fd; background: rgba(37,99,235,0.15); border-color: rgba(37,99,235,0.3); }
+  .badge-p3 { color: #a0a0a0; background: rgba(136,136,136,0.15); border-color: rgba(136,136,136,0.3); }
   .badge-p4 { color: #999999; background: rgba(102,102,102,0.15); border-color: rgba(102,102,102,0.3); }
   .badge-active { color: #86efac; background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.3); }
   .badge-pending { color: #fbbf24; background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); }
@@ -4168,8 +4168,8 @@ html, body {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
 }
 
-/* --- 3. NAVY NOT BLACK ---
-   Force pure black backgrounds to navy steel-blue. */
+/* --- 3. PURE BLACK BACKGROUNDS ---
+   Ensure all black variants use pure black theme. */
 .bg-black { background-color: #050505 !important; }
 .bg-\[\#000\] { background-color: #050505 !important; }
 .bg-\[\#000000\] { background-color: #050505 !important; }
@@ -4245,7 +4245,7 @@ a:focus-visible {
 .backdrop-blur-md { backdrop-filter: blur(6px) !important; -webkit-backdrop-filter: blur(6px) !important; }
 .backdrop-blur-lg { backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important; }
 
-/* --- 11. TEXT SELECTION — Brand blue highlight --- */
+/* --- 11. TEXT SELECTION — Brand gray highlight --- */
 ::selection {
   background: rgba(136, 136, 136, 0.35);
   color: #ffffff;

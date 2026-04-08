@@ -336,7 +336,7 @@ export default function WeatherPanel({
                 <div
                   className="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[10px] font-semibold text-gray-300"
                   style={{
-                    background: 'rgba(59,130,246,0.08)',
+                    background: 'rgba(136,136,136,0.08)',
                     borderLeft: '3px solid #888888',
                   }}
                 >

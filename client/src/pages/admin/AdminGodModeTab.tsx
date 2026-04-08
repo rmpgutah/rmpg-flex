@@ -305,7 +305,7 @@ export default function AdminGodModeTab() {
           <Shield size={20} className="text-red-400" />
           <h2 className="text-sm font-bold text-red-400 uppercase tracking-wider">God Mode — Admin Control Panel</h2>
         </div>
-        <button onClick={loadData} disabled={loading} className="flex items-center gap-1 px-2 py-1 bg-[#141414] hover:bg-[#243447] border border-[#2a3a4a] rounded-sm text-[11px] text-gray-300">
+        <button onClick={loadData} disabled={loading} className="flex items-center gap-1 px-2 py-1 bg-[#141414] hover:bg-[#1a1a1a] border border-[#2e2e2e] rounded-sm text-[11px] text-gray-300">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh
         </button>
       </div>
@@ -398,7 +398,7 @@ export default function AdminGodModeTab() {
           <select
             value={impersonateUserId}
             onChange={e => setImpersonateUserId(e.target.value)}
-            className="flex-1 bg-[#050505] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white"
+            className="flex-1 bg-[#050505] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white"
           >
             <option value="">Select user...</option>
             {users.filter((u: any) => u.role !== 'admin').map((u: any) => (
@@ -420,14 +420,14 @@ export default function AdminGodModeTab() {
             value={broadcastTitle}
             onChange={e => setBroadcastTitle(e.target.value)}
             placeholder="Notification title..."
-            className="w-full bg-[#050505] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+            className="w-full bg-[#050505] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
           />
           <textarea
             value={broadcastMessage}
             onChange={e => setBroadcastMessage(e.target.value)}
             placeholder="Message body..."
             rows={3}
-            className="w-full bg-[#050505] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 resize-none"
+            className="w-full bg-[#050505] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 resize-none"
           />
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-gray-500">Target:</span>
@@ -458,7 +458,7 @@ export default function AdminGodModeTab() {
             <div className="text-[10px] text-gray-400 mb-1">Activity Logs</div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-gray-500">Keep</span>
-              <input type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#0a0a0a] border border-[#2a3a4a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
+              <input type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
               <span className="text-[10px] text-gray-500">days</span>
               <button onClick={handlePurgeLogs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
@@ -467,7 +467,7 @@ export default function AdminGodModeTab() {
             <div className="text-[10px] text-gray-400 mb-1">Read Notifications</div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-gray-500">Keep</span>
-              <input type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#0a0a0a] border border-[#2a3a4a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
+              <input type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
               <span className="text-[10px] text-gray-500">days</span>
               <button onClick={handlePurgeNotifs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
@@ -560,12 +560,12 @@ export default function AdminGodModeTab() {
               onChange={e => setReassignCallIds(e.target.value)}
               placeholder="Call IDs (comma-separated): 101, 102, 103"
               rows={2}
-              className="w-full bg-[#0a0a0a] border border-[#2a3a4a] rounded-sm px-2 py-1 text-[11px] text-white placeholder-gray-600 resize-none font-mono"
+              className="w-full bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm px-2 py-1 text-[11px] text-white placeholder-gray-600 resize-none font-mono"
             />
             <select
               value={reassignTargetId}
               onChange={e => setReassignTargetId(e.target.value)}
-              className="w-full bg-[#0a0a0a] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white"
+              className="w-full bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white"
             >
               <option value="">Target officer...</option>
               {users.filter((u: any) => ['officer', 'supervisor'].includes(u.role)).map((u: any) => (
@@ -584,7 +584,7 @@ export default function AdminGodModeTab() {
               value={closeDisposition}
               onChange={e => setCloseDisposition(e.target.value)}
               placeholder="Disposition..."
-              className="w-full bg-[#0a0a0a] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+              className="w-full bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
             />
             <button onClick={handleForceCloseAll} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-sm text-[11px] font-bold text-white">
               Force Close ALL Open Calls
@@ -602,13 +602,13 @@ export default function AdminGodModeTab() {
           onChange={e => setSqlQuery(e.target.value)}
           placeholder="SELECT * FROM users LIMIT 10;"
           rows={4}
-          className="w-full bg-[#050505] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 resize-y font-mono"
+          className="w-full bg-[#050505] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 resize-y font-mono"
         />
         <div className="flex items-center gap-2 mt-2">
           <button onClick={handleSqlQuery} disabled={sqlRunning || !sqlQuery.trim()} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
             {sqlRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Run Query
           </button>
-          <button onClick={() => { setSqlQuery(''); setSqlResult(null); }} className="px-3 py-1.5 bg-[#141414] hover:bg-[#243447] border border-[#2a3a4a] rounded-sm text-[11px] text-gray-300">
+          <button onClick={() => { setSqlQuery(''); setSqlResult(null); }} className="px-3 py-1.5 bg-[#141414] hover:bg-[#1a1a1a] border border-[#2e2e2e] rounded-sm text-[11px] text-gray-300">
             Clear
           </button>
         </div>
@@ -665,7 +665,7 @@ export default function AdminGodModeTab() {
               value={lockdownMessage}
               onChange={e => setLockdownMessage(e.target.value)}
               placeholder="Lockdown message..."
-              className="w-full bg-[#050505] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+              className="w-full bg-[#050505] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
             />
             <label className="flex items-center gap-2 text-[10px] text-gray-400">
               <input
@@ -695,7 +695,7 @@ export default function AdminGodModeTab() {
               value={mergeKeepId}
               onChange={e => setMergeKeepId(e.target.value)}
               placeholder="ID to keep"
-              className="w-full bg-[#050505] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
+              className="w-full bg-[#050505] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
             />
           </div>
           <div className="flex-1">
@@ -705,7 +705,7 @@ export default function AdminGodModeTab() {
               value={mergeMergeId}
               onChange={e => setMergeMergeId(e.target.value)}
               placeholder="ID to merge"
-              className="w-full bg-[#050505] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
+              className="w-full bg-[#050505] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
             />
           </div>
           <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">

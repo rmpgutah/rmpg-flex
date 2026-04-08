@@ -1120,7 +1120,7 @@ export default function DashboardPage() {
                 <div key={type} className="flex items-center gap-2">
                   <span className="text-[9px] text-rmpg-400 uppercase w-14 truncate">{type}</span>
                   <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? '#ef4444' : type === 'bench' ? '#f59e0b' : type === 'search' ? '#3b82f6' : '#888888' }} />
+                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? '#ef4444' : type === 'bench' ? '#f59e0b' : type === 'search' ? '#888888' : '#888888' }} />
                   </div>
                   <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{count as number}</span>
                 </div>
@@ -1137,7 +1137,7 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-1">
               {(unifiedStats.incidents?.by_status || []).map((s: any) => {
-                const colorMap: Record<string, string> = { draft: '#888888', submitted: '#3b82f6', under_review: '#f59e0b', approved: '#22c55e', closed: '#6b7280', open: '#ef4444' };
+                const colorMap: Record<string, string> = { draft: '#888888', submitted: '#888888', under_review: '#f59e0b', approved: '#22c55e', closed: '#6b7280', open: '#ef4444' };
                 return (
                   <div key={s.status} className="flex items-center gap-2">
                     <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
