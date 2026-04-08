@@ -1416,7 +1416,7 @@ export function addImageGrid(
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(x, y, w, h);
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
@@ -1429,7 +1429,7 @@ export function addImageGrid(
   }
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   return y;
 }
 
@@ -2560,7 +2560,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
 
   // Warning Text
   { const sec = openAutoSection(doc, 'Notice', y); y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     const warningText = 'You are hereby notified that you are PROHIBITED from entering, remaining upon, or returning to the above-described property. Any violation of this warning may result in your arrest for Criminal Trespass pursuant to applicable state law. This warning is effective for the period indicated above.';
     y = addWrappedText(doc, warningText, lx, y, ffw, 9);
@@ -2971,7 +2971,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     y += 7;
 
     const tableTopY = y;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
     for (let i = 0; i < 6; i++) {
       if (i % 2 === 0) {
@@ -3098,7 +3098,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Miranda Advisement', y); y = sec.contentY;
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.text('You have the right to remain silent. Anything you say can and will be used against you in a court of law.', lx, y);
     y += 4;
     doc.text('You have the right to an attorney. If you cannot afford an attorney, one will be appointed for you.', lx, y);
