@@ -61,7 +61,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       return;
     }
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) {
       setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
       setMapLoaded(false);
@@ -100,17 +100,20 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
-      const map = new google.maps.Map(mapRef.current, {
+      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+      const mapOptions: google.maps.MapOptions = {
         center: { lat: 40.7608, lng: -111.8910 },
         zoom: 12,
         disableDefaultUI: true,
         zoomControl: false,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         backgroundColor: '#171717',
         renderingType: 'RASTER' as any,
         isFractionalZoomEnabled: false,
         gestureHandling: 'greedy',
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapRef.current, mapOptions);
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
@@ -151,8 +154,16 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
-      useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
+      // When mapId is configured, enable AdvancedMarkerElement for modern marker support.
+      // Without mapId, fall back to OverlayView-based markers which work on all map types.
+      if (mapId && google.maps.marker?.AdvancedMarkerElement) {
+        useAdvancedMarkersRef.current = true;
+        devLog('[MapPage] Using AdvancedMarkerElement (mapId configured)');
+      } else {
+        useAdvancedMarkersRef.current = false;
+        devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      }
 
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
       tileMonitorCleanupRef.current = monitorTileLoading(map, {

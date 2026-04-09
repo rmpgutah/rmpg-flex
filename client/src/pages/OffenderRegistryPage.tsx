@@ -515,7 +515,7 @@ export default function OffenderRegistryPage() {
                   </div>
                   <div className="h-40 bg-[#050505] relative">
                     <img
-                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${(import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || ''}&style=feature:all|element:geometry|color:0x242f3e&style=feature:all|element:labels.text.fill|color:0x746855`}
+                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&style=feature:all|element:geometry|color:0x242f3e&style=feature:all|element:labels.text.fill|color:0x746855`}
                       alt="Ban zone map"
                       className="w-full h-full object-cover"
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

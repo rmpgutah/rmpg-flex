@@ -485,16 +485,19 @@ export default function ServePage() {
       }
 
       const center = { lat: 40.7608, lng: -111.891 }; // SLC default
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+      const mapOptions: google.maps.MapOptions = {
         center,
         zoom: 11,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapContainerRef.current, mapOptions);
 
       mapRef.current = map;
       infoWindowRef.current = new google.maps.InfoWindow();
