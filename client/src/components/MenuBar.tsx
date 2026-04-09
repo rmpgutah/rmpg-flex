@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { printWithLightMaps } from '../utils/googleMapsLoader';
+import { APP_VERSION } from '../utils/version';
 import {
   Radio,
   FileText,
@@ -790,9 +791,9 @@ export default function MenuBar({
       },
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
-      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/') },
+      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/help') },
       // Version string with monospace for alignment
-      { type: 'action', label: 'Version 5.3.9', icon: Shield, disabled: true, action: () => {} },
+      { type: 'action', label: `Version ${APP_VERSION}`, icon: Shield, disabled: true, action: () => {} },
     ],
   };
 
