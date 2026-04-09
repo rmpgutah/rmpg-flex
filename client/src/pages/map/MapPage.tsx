@@ -403,7 +403,7 @@ export default function MapPage() {
       return;
     }
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) {
       setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
       setMapLoaded(false);
@@ -600,7 +600,7 @@ export default function MapPage() {
       delete (window as any).gm_authFailure;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapRetry, mapStyle]);
+  }, [mapRetry]);
 
   // ============================================================
   // Switch Map Style

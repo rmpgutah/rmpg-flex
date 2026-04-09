@@ -232,7 +232,7 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
   try {
     const db = getDb();
     const unit = db.prepare(`
-      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude, u.gps_source, u.gps_updated_at
       FROM units u WHERE u.officer_id = ?
     `).get(req.user!.userId) as any;
 

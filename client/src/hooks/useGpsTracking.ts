@@ -316,10 +316,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         // If we didn't have a unit before, the server may have auto-created one.
         // Re-fetch unit info so the status bar shows the call sign.
         if (needsUnitFetch) {
-          apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
+          apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
             .then((unit) => {
               if (unit && mountedRef.current) {
                 unitIdRef.current = unit.id;
+                gpsSourceRef.current = unit.gps_source || 'browser';
                 setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
               }
             })

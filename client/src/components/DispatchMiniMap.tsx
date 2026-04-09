@@ -82,7 +82,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
   // Load Google Maps script with retry + online auto-recovery
   useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) {
       setError('Map key not configured');
       return;
