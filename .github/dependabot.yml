@@ -24,6 +24,22 @@ updates:
     labels:
       - "dependencies"
       - "client"
+    groups:
+      # react and react-dom must always be the same major version
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+      # @types/react and @types/react-dom must match
+      react-types:
+        patterns:
+          - "@types/react"
+          - "@types/react-dom"
+      # vite and @vitejs/plugin-react must be compatible versions
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/plugin-react"
     ignore:
       # Tailwind 4.x is a full rewrite — requires planned migration
       - dependency-name: "tailwindcss"
