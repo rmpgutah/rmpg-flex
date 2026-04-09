@@ -15,8 +15,13 @@ import {
   RotateCcw,
   Globe,
   Users,
+  Key,
+  FileText,
+  Wrench,
+  Camera,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import PropertyFormModal from '../../components/PropertyFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -45,9 +50,37 @@ export function mapDbProperty(row: Record<string, unknown>): Property {
     post_orders: row.post_orders ? String(row.post_orders) : undefined,
     hazard_notes: row.hazard_notes ? String(row.hazard_notes) : undefined,
     access_instructions: row.access_instructions ? String(row.access_instructions) : undefined,
+    notes: row.notes ? String(row.notes) : undefined,
     is_active: row.is_active !== 0 && row.is_active !== false,
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
+    // Building details
+    business_type: row.business_type ? String(row.business_type) : undefined,
+    structure_type: row.structure_type ? String(row.structure_type) : undefined,
+    occupancy_status: row.occupancy_status ? String(row.occupancy_status) : undefined,
+    year_built: row.year_built ? String(row.year_built) : undefined,
+    square_footage: row.square_footage ? String(row.square_footage) : undefined,
+    number_of_stories: row.number_of_stories ? String(row.number_of_stories) : undefined,
+    // Security
+    security_features: row.security_features ? String(row.security_features) : undefined,
+    alarm_company: row.alarm_company ? String(row.alarm_company) : undefined,
+    alarm_account: row.alarm_account ? String(row.alarm_account) : undefined,
+    camera_system: row.camera_system ? String(row.camera_system) : undefined,
+    roof_access: row.roof_access ? String(row.roof_access) : undefined,
+    // Key holder
+    key_holder_name: row.key_holder_name ? String(row.key_holder_name) : undefined,
+    key_holder_phone: row.key_holder_phone ? String(row.key_holder_phone) : undefined,
+    key_holder_relationship: row.key_holder_relationship ? String(row.key_holder_relationship) : undefined,
+    // Owner
+    owner_name: row.owner_name ? String(row.owner_name) : undefined,
+    owner_phone: row.owner_phone ? String(row.owner_phone) : undefined,
+    // Inspection
+    last_inspection_date: row.last_inspection_date ? String(row.last_inspection_date) : undefined,
+    inspection_status: row.inspection_status ? String(row.inspection_status) : undefined,
+    // Site details
+    parking_info: row.parking_info ? String(row.parking_info) : undefined,
+    utility_shutoffs: row.utility_shutoffs ? String(row.utility_shutoffs) : undefined,
+    known_hazards: row.known_hazards ? String(row.known_hazards) : undefined,
   };
 }
 
@@ -57,10 +90,10 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
   if (!value) return null;
   const Icon = icon;
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-xs group">
       {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
-      <span className="text-rmpg-200">{value}</span>
+      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
+      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
 }
@@ -237,40 +270,52 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
           <span className="text-rmpg-300">Hazards:</span>
           <span className="text-red-400 font-bold">{properties.filter(p => p.hazard_notes).length}</span>
         </div>
-        <div className="ml-auto relative w-64">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400" />
+        <div className="ml-auto relative w-64" role="search">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400 pointer-events-none" />
           <input
             type="text"
-            className="input-dark pl-8 w-full text-[11px] py-1"
-            placeholder="Search properties..."
+            className="input-dark pl-8 w-full text-[11px] py-1 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
+            placeholder="Search properties..." aria-label="Search properties..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Property List */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Property records">
         {filteredProperties.length === 0 && (
-          <div className="text-center py-12">
-            <Building2 className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
+          <div className="text-center py-16">
+            <Building2 className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery ? 'Try broadening your search.' : 'Click "New Property" to add a record.'}
+            </p>
           </div>
         )}
-        {filteredProperties.map((prop) => (
+        {filteredProperties.map((prop, idx) => (
           <div
             key={prop.id}
+            role="listitem"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedProperty(selectedProperty?.id === prop.id ? null : prop); } }}
             onClick={() => setSelectedProperty(selectedProperty?.id === prop.id ? null : prop)}
             className={`
-              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedProperty?.id === prop.id
                 ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : `hover:bg-rmpg-700/30 border-l-2 ${prop.hazard_notes ? 'border-l-red-600' : 'border-l-transparent'}`
+                : `hover:bg-rmpg-700/30 border-l-2 ${prop.hazard_notes ? 'border-l-red-600' : 'border-l-transparent'} ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
               }
             `}
+            aria-selected={selectedProperty?.id === prop.id}
           >
             <div className="flex items-start gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded flex items-center justify-center border ${
+              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
                 prop.is_active ? 'bg-brand-900/30 text-brand-400 border-brand-700/50' : 'bg-rmpg-800 text-rmpg-500 border-rmpg-600'
               }`}>
                 <Building2 className="w-4 h-4" />
@@ -327,6 +372,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
 // ════════════════════════════════════════════════════
 
 export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
+  const { user } = useAuth();
   const {
     selectedProperty, showArchived,
     openEditProperty, setDeleteTarget, handleArchive, handleUnarchive,
@@ -359,21 +405,21 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           {selectedProperty.hazard_notes && <AlertTriangle className="w-3.5 h-3.5 text-red-400" />}
           {/* Inline action buttons for properties (edit/delete/archive in detail header) */}
           <div className="ml-auto flex items-center gap-1">
-            {!showArchived && (
+            {(!showArchived || user?.role === 'admin') && (
               <>
-                <button onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
+                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />
                 </button>
-                <button onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
+                <button type="button" onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
                   <Trash2 className="w-3 h-3" />
                 </button>
-                <button onClick={() => handleArchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-amber-400 transition-colors" title="Archive">
+                <button type="button" onClick={() => handleArchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-amber-400 transition-colors" title="Archive">
                   <Archive className="w-3 h-3" />
                 </button>
               </>
             )}
             {showArchived && (
-              <button onClick={() => handleUnarchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-green-400 transition-colors" title="Unarchive">
+              <button type="button" onClick={() => handleUnarchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-green-400 transition-colors" title="Unarchive">
                 <RotateCcw className="w-3 h-3" />
               </button>
             )}
@@ -394,15 +440,55 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Property Details ────────────────── */}
         <CollapsibleSection title="Property Details" icon={Building2} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Gate Code', selectedProperty.gate_code, Shield)}
-            {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
-            {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
             {renderInfoRow('Property Type', selectedProperty.property_type)}
-            {selectedProperty.latitude && selectedProperty.longitude && (
+            {renderInfoRow('Business Type', selectedProperty.business_type)}
+            {renderInfoRow('Structure Type', selectedProperty.structure_type)}
+            {renderInfoRow('Occupancy', selectedProperty.occupancy_status)}
+            {renderInfoRow('Year Built', selectedProperty.year_built)}
+            {renderInfoRow('Sq. Footage', selectedProperty.square_footage)}
+            {renderInfoRow('Stories', selectedProperty.number_of_stories)}
+            {selectedProperty.latitude != null && selectedProperty.longitude != null && (
               renderInfoRow('Coordinates', `${selectedProperty.latitude.toFixed(5)}, ${selectedProperty.longitude.toFixed(5)}`, Globe)
             )}
           </div>
         </CollapsibleSection>
+
+        {/* ── Security & Access ────────────────── */}
+        <CollapsibleSection title="Security & Access" icon={Shield} defaultOpen>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {renderInfoRow('Gate Code', selectedProperty.gate_code, Shield)}
+            {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
+            {renderInfoRow('Alarm Company', selectedProperty.alarm_company)}
+            {renderInfoRow('Alarm Account', selectedProperty.alarm_account)}
+            {renderInfoRow('Camera System', selectedProperty.camera_system, Camera)}
+            {renderInfoRow('Security Features', selectedProperty.security_features)}
+            {renderInfoRow('Roof Access', selectedProperty.roof_access)}
+            {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Key Holder & Owner (conditional) ──── */}
+        {(selectedProperty.key_holder_name || selectedProperty.owner_name) && (
+          <CollapsibleSection title="Key Holder & Owner" icon={Key}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {renderInfoRow('Key Holder', selectedProperty.key_holder_name)}
+              {renderInfoRow('KH Phone', selectedProperty.key_holder_phone, Phone)}
+              {renderInfoRow('KH Relationship', selectedProperty.key_holder_relationship)}
+              {renderInfoRow('Owner Name', selectedProperty.owner_name)}
+              {renderInfoRow('Owner Phone', selectedProperty.owner_phone, Phone)}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Inspection (conditional) ──────────── */}
+        {(selectedProperty.last_inspection_date || selectedProperty.inspection_status) && (
+          <CollapsibleSection title="Inspection" icon={Wrench}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {renderInfoRow('Last Inspection', selectedProperty.last_inspection_date, Calendar)}
+              {renderInfoRow('Status', selectedProperty.inspection_status)}
+            </div>
+          </CollapsibleSection>
+        )}
 
         {/* ── Post Orders (conditional) ────────── */}
         {selectedProperty.post_orders && (
@@ -412,16 +498,40 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         )}
 
         {/* ── Hazard Notes (conditional) ─────── */}
-        {selectedProperty.hazard_notes && (
+        {(selectedProperty.hazard_notes || selectedProperty.known_hazards) && (
           <CollapsibleSection title="Hazard Notes" icon={FileWarning}>
-            <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>
+            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>}
+            {selectedProperty.known_hazards && (
+              <div className="mt-1.5"><span className="text-[10px] text-red-400 uppercase font-semibold">Known Hazards:</span> <span className="text-xs text-red-300/80 ml-1">{selectedProperty.known_hazards}</span></div>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* ── Site Details (conditional) ─────── */}
+        {(selectedProperty.parking_info || selectedProperty.utility_shutoffs) && (
+          <CollapsibleSection title="Site Details" icon={FileText}>
+            <div className="grid grid-cols-1 gap-2">
+              {selectedProperty.parking_info && (
+                <div><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Parking:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedProperty.parking_info}</span></div>
+              )}
+              {selectedProperty.utility_shutoffs && (
+                <div><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Utility Shutoffs:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedProperty.utility_shutoffs}</span></div>
+              )}
+            </div>
           </CollapsibleSection>
         )}
 
         {/* ── Access Instructions (conditional) ── */}
         {selectedProperty.access_instructions && (
           <CollapsibleSection title="Access Instructions" icon={MapPin}>
-            <p className="text-xs text-blue-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+            <p className="text-xs text-gray-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Notes (conditional) ──────────────── */}
+        {selectedProperty.notes && (
+          <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
           </CollapsibleSection>
         )}
 
@@ -454,9 +564,28 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 // Legacy default export
 // ════════════════════════════════════════════════════
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function PropertiesTab(props: PropertiesTabProps) {
   const state = usePropertiesTab(props);
+
+  // Set document title
+  useEffect(() => { document.title = 'Records - Properties \u2014 RMPG Flex'; }, []);
+
   if (props.loadingProperties) return null;
+
   return (
     <>
       <div className={`${state.selectedProperty ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

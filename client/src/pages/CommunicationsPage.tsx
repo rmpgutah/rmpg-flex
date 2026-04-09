@@ -14,11 +14,9 @@ import {
   Trash2,
   Search,
   Reply,
-  Mail,
-  MailOpen,
-  ChevronDown,
   Inbox,
   ArrowLeft,
+  CheckCircle,
 } from 'lucide-react';
 import type {
   Message,
@@ -42,6 +40,9 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { formatShortTime, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
+import ExportButton from '../components/ExportButton';
 
 // ============================================================
 // Backend -> Frontend Mappers
@@ -233,8 +234,24 @@ function groupMessagesIntoThreads(messages: Message[]): MessageThread[] {
 
 type Panel = 'messages' | 'bolos' | 'activity';
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CommunicationsPage() {
+  const isMobile = useIsMobile();
   const { user } = useAuth();
+  const { addToast } = useToast();
 
   // --- Panel state ---
   const [activePanel, setActivePanel] = usePersistedTab('rmpg_comms_tab', 'messages' as Panel, ['messages', 'bolos', 'activity'] as const);
@@ -292,6 +309,21 @@ export default function CommunicationsPage() {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activitiesTotal, setActivitiesTotal] = useState(0);
   const [activitiesLoadingMore, setActivitiesLoadingMore] = useState(false);
+
+  // --- Upgrade: BOLO Stats state ---
+  const [boloStats, setBoloStats] = useState<{
+    byCategory: { category: string; count: number; active_count: number }[];
+    byPriority: { priority: string; count: number }[];
+    totalActive: number;
+    expiringSoon: number;
+    avgLifespanHours: number | null;
+  } | null>(null);
+
+  // --- Upgrade: Message priority stats ---
+  const [msgPriorityStats, setMsgPriorityStats] = useState<{
+    byPriority: { priority: string; total: number; read_count: number; avg_read_time_minutes: number | null }[];
+    byChannel: { channel: string; count: number }[];
+  } | null>(null);
 
   // ============================================================
   // Threading
@@ -371,12 +403,20 @@ export default function CommunicationsPage() {
     else if (activePanel === 'activity') fetchActivity();
   }, [activePanel, fetchMessages, fetchBolos, fetchActivity]);
 
-  // Initial load for messages (default panel) + officers list
+  // Initial load for messages (default panel) + officers list + stats
   useEffect(() => {
     fetchMessages();
     apiFetch<any[]>('/personnel')
       .then((data) => setOfficers((Array.isArray(data) ? data : []).map((u: any) => ({ id: u.id, full_name: u.full_name }))))
       .catch((err) => { console.warn('[CommunicationsPage] fetch personnel failed:', err); });
+    // Fetch BOLO stats
+    apiFetch<any>('/comms/bolos/stats')
+      .then((data) => { if (data) setBoloStats(data); })
+      .catch(() => { /* stats optional */ });
+    // Fetch message priority stats
+    apiFetch<any>('/comms/messages/priority-stats')
+      .then((data) => { if (data) setMsgPriorityStats(data); })
+      .catch(() => { /* stats optional */ });
   }, [fetchMessages]);
 
   // Scroll to bottom of thread when selected or new messages arrive
@@ -452,8 +492,9 @@ export default function CommunicationsPage() {
       setComposeSubject('');
       setComposeContent('');
       fetchMessages({ silent: true });
+      addToast('Message sent', 'success');
     } catch {
-      setError('Failed to send message. Please try again.');
+      addToast('Failed to send message', 'error');
     } finally {
       setComposeSending(false);
     }
@@ -479,8 +520,9 @@ export default function CommunicationsPage() {
       });
       setReplyText('');
       fetchMessages({ silent: true });
+      addToast('Reply sent', 'success');
     } catch {
-      setError('Failed to send reply. Please try again.');
+      addToast('Failed to send reply', 'error');
     } finally {
       setReplySending(false);
     }
@@ -488,11 +530,13 @@ export default function CommunicationsPage() {
 
   // --- Delete Message ---
   const handleDeleteMessage = async (msgId: string) => {
+    if (!window.confirm('Delete this message? This cannot be undone.')) return;
     try {
       await apiFetch(`/comms/messages/${msgId}`, { method: 'DELETE' });
       setMessages((prev) => prev.filter((m) => m.id !== msgId));
+      addToast('Message deleted', 'success');
     } catch {
-      setError('Failed to delete message. Please try again.');
+      addToast('Failed to delete message', 'error');
     }
   };
 
@@ -529,8 +573,9 @@ export default function CommunicationsPage() {
       setBoloPhotoFile(null);
       setBoloPhotoPreview(null);
       fetchBolos({ silent: true });
+      addToast('BOLO created', 'success');
     } catch {
-      setError('Failed to create BOLO. Please try again.');
+      addToast('Failed to create BOLO', 'error');
     } finally {
       setBoloSubmitting(false);
     }
@@ -551,8 +596,9 @@ export default function CommunicationsPage() {
     try {
       await apiFetch(`/comms/bolos/${boloId}`, { method: 'PUT', body: JSON.stringify({ status: 'resolved' }) });
       fetchBolos({ silent: true });
+      addToast('BOLO resolved', 'success');
     } catch {
-      setError('Failed to resolve BOLO. Please try again.');
+      addToast('Failed to resolve BOLO', 'error');
     } finally {
       setResolvingId(null);
     }
@@ -565,8 +611,9 @@ export default function CommunicationsPage() {
       await apiFetch(`/comms/bolos/${cancelTarget.id}`, { method: 'DELETE' });
       setCancelTarget(null);
       fetchBolos({ silent: true });
+      addToast('BOLO cancelled', 'success');
     } catch {
-      setError('Failed to cancel BOLO. Please try again.');
+      addToast('Failed to cancel BOLO', 'error');
     } finally {
       setCancelLoading(false);
     }
@@ -576,8 +623,9 @@ export default function CommunicationsPage() {
     try {
       await apiFetch(`/comms/bolos/${boloId}/archive`, { method: 'POST' });
       fetchBolos({ silent: true });
+      addToast('BOLO archived', 'success');
     } catch {
-      setError('Failed to archive BOLO. Please try again.');
+      addToast('Failed to archive BOLO', 'error');
     }
   };
 
@@ -585,8 +633,9 @@ export default function CommunicationsPage() {
     try {
       await apiFetch(`/comms/bolos/${boloId}/unarchive`, { method: 'POST' });
       fetchBolos({ silent: true });
+      addToast('BOLO unarchived', 'success');
     } catch {
-      setError('Failed to unarchive BOLO. Please try again.');
+      addToast('Failed to unarchive BOLO', 'error');
     }
   };
 
@@ -619,9 +668,9 @@ export default function CommunicationsPage() {
   // ============================================================
 
   const Spinner = ({ label }: { label?: string }) => (
-    <div className="flex-1 flex flex-col items-center justify-center text-rmpg-400 py-20">
-      <Loader2 className="w-6 h-6 animate-spin mb-2" />
-      {label && <p className="text-xs">{label}</p>}
+    <div className="flex-1 flex flex-col items-center justify-center py-20 gap-2">
+      <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
+      {label && <p className="text-[10px] text-rmpg-500">{label}</p>}
     </div>
   );
 
@@ -632,24 +681,28 @@ export default function CommunicationsPage() {
   const currentUserId = String(user?.id || '');
 
   const getInitials = (name: string) => {
-    const parts = name.split(' ');
-    return parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase() : name.slice(0, 2).toUpperCase();
+    if (!name) return '??';
+    const parts = name.split(' ').filter(Boolean);
+    return parts.length > 1 ? `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase() : name.slice(0, 2).toUpperCase();
   };
 
   // ============================================================
   // Render
   // ============================================================
 
+  // Set document title
+  useEffect(() => { document.title = 'Communications \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Communications Center</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -658,56 +711,76 @@ export default function CommunicationsPage() {
       <PanelTitleBar title="COMMUNICATIONS" icon={MessageSquare}>
         {activePanel === 'messages' && (
           <>
-            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#0d1520' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#050505' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
-                placeholder="Search conversations..."
+                placeholder="Search conversations..." aria-label="Search conversations"
+                autoComplete="off"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500"
                 style={{ minWidth: '120px', maxWidth: '180px' }}
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-white">
+                <button type="button" onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-white">
                   <X className="w-3 h-3" />
                 </button>
               )}
             </div>
-            <button onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3.5 h-3.5" /> Compose
+            </button>
+            {/* Feature 30: Emergency broadcast button */}
+            <button type="button"
+              onClick={async () => {
+                const msg = prompt('Emergency broadcast message to ALL units:');
+                if (!msg) return;
+                try {
+                  await apiFetch('/comms/emergency-broadcast', {
+                    method: 'POST',
+                    body: JSON.stringify({ content: msg, subject: 'EMERGENCY BROADCAST' }),
+                  });
+                  addToast('Emergency broadcast sent to all units', 'success');
+                } catch (err: any) { addToast(err?.message || 'Failed to send emergency broadcast', 'error'); }
+              }}
+              className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30"
+              title="Emergency Broadcast to ALL units"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" /> Emergency
             </button>
           </>
         )}
         {activePanel === 'bolos' && (
-          <button onClick={() => setShowNewBOLO(!showNewBOLO)} className="toolbar-btn toolbar-btn-danger">
+          <button type="button" onClick={() => setShowNewBOLO(!showNewBOLO)} className="toolbar-btn toolbar-btn-danger">
             <Plus className="w-3.5 h-3.5" /> New BOLO
           </button>
         )}
+        <ExportButton exportUrl="/api/comms/export/csv" exportFilename="communications.csv" />
         <PrintButton />
       </PanelTitleBar>
 
       {/* Panel Tabs */}
-      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#0d1520' }}>
+      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#050505' }}>
         <div className="flex gap-1">
           {panels.map((panel) => {
             const Icon = panel.icon;
             return (
-              <button
+              <button type="button"
                 key={panel.id}
                 onClick={() => { setActivePanel(panel.id); setSelectedThreadId(null); }}
                 className={`
-                  flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors
+                  flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-all
                   ${activePanel === panel.id
-                    ? 'bg-rmpg-700 text-white border border-rmpg-600'
-                    : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
+                    ? 'bg-rmpg-700 text-white border border-rmpg-600 shadow-sm'
+                    : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 border border-transparent'
                   }
                 `}
               >
                 <Icon className="w-3.5 h-3.5" />
                 {panel.label}
                 {panel.badge ? (
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-white">
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded-sm min-w-[20px] text-center">
                     {panel.badge}
                   </span>
                 ) : null}
@@ -724,6 +797,16 @@ export default function CommunicationsPage() {
               {unreadCount > 0 && (
                 <span className="flex items-center gap-1 text-red-400 font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> {unreadCount} unread
+                </span>
+              )}
+              {/* Upgrade: Message priority breakdown */}
+              {msgPriorityStats && msgPriorityStats.byPriority.length > 0 && (
+                <span className="text-rmpg-500 text-[9px]">
+                  {msgPriorityStats.byPriority.map(p => (
+                    <span key={p.priority} className={`mr-2 ${p.priority === 'emergency' ? 'text-red-400' : p.priority === 'urgent' ? 'text-amber-400' : 'text-rmpg-400'}`}>
+                      {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}: {p.total}
+                    </span>
+                  ))}
                 </span>
               )}
             </>
@@ -747,9 +830,12 @@ export default function CommunicationsPage() {
 
       {/* Error Banner */}
       {error && (
-        <div className="mx-4 mt-2 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+        <div className="mx-4 mt-2 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between rounded-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-2">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -767,12 +853,12 @@ export default function CommunicationsPage() {
             ) : (
               <>
                 {/* Thread List (left pane) */}
-                <div className={`${selectedThread ? 'w-[340px] flex-shrink-0' : 'w-full'} border-r border-rmpg-600 overflow-y-auto`}>
+                <div className={`${selectedThread ? (isMobile ? 'hidden' : 'w-[340px] flex-shrink-0') : 'w-full'} border-r border-rmpg-600 overflow-y-auto`}>
                   {filteredThreads.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
                       <Inbox className="w-8 h-8 mb-2" />
                       <p className="text-sm">{searchQuery ? 'No matching conversations' : 'No messages'}</p>
-                      <button onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary mt-3">
+                      <button type="button" onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary mt-3">
                         <Plus className="w-3.5 h-3.5" /> Compose Message
                       </button>
                     </div>
@@ -795,20 +881,20 @@ export default function CommunicationsPage() {
                           {/* Row 1: Participants + timestamp */}
                           <div className="flex items-center justify-between mb-0.5">
                             <div className="flex items-center gap-2 min-w-0 flex-1">
-                              {thread.hasUnread && <div className="w-2 h-2 rounded-full bg-brand-400 flex-shrink-0" />}
+                              {thread.hasUnread && <div className="w-2 h-2 rounded-full bg-brand-400 flex-shrink-0 shadow-sm shadow-brand-400/50" />}
                               <span className={`text-xs truncate ${thread.hasUnread ? 'font-bold text-white' : 'font-medium text-rmpg-200'}`}>
                                 {thread.participants.filter((p) => p !== user?.full_name).join(', ') || thread.participants[0]}
                               </span>
                               {thread.isBroadcast && (
-                                <span className="text-[9px] px-1 py-0.5 bg-brand-900/30 text-brand-400 border border-brand-700/30 flex-shrink-0">ALL</span>
+                                <span className="text-[9px] px-1 py-0.5 bg-brand-900/30 text-brand-400 border border-brand-700/30 flex-shrink-0 rounded-sm font-bold">ALL</span>
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                               {thread.highestPriority === 'emergency' && (
-                                <span className="px-1 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">!</span>
+                                <span className="px-1 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse rounded-sm">!</span>
                               )}
                               {thread.highestPriority === 'urgent' && (
-                                <span className="px-1 py-0.5 text-[9px] font-bold bg-red-900/30 text-red-400 border border-red-700/30">!</span>
+                                <span className="px-1 py-0.5 text-[9px] font-bold bg-amber-900/30 text-amber-400 border border-amber-700/30 rounded-sm">!</span>
                               )}
                               <span className="text-[10px] text-rmpg-500 font-mono">
                                 {formatShortTime(lastMsg.created_at)}
@@ -822,7 +908,7 @@ export default function CommunicationsPage() {
                               {thread.subject}
                             </p>
                             {msgCount > 1 && (
-                              <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700/50 text-rmpg-300 flex-shrink-0">{msgCount}</span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700/50 text-rmpg-300 flex-shrink-0 rounded-sm">{msgCount}</span>
                             )}
                           </div>
 
@@ -838,10 +924,10 @@ export default function CommunicationsPage() {
 
                 {/* Thread Detail (right pane) — email conversation view */}
                 {selectedThread && (
-                  <div className="flex-1 flex flex-col overflow-hidden animate-slide-in-right">
+                  <div className={`${isMobile ? 'w-full' : 'flex-1'} flex flex-col overflow-hidden animate-slide-in-right`}>
                     {/* Thread header */}
-                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
-                      <button
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
+                      <button type="button"
                         onClick={() => setSelectedThreadId(null)}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-400 transition-colors"
                         title="Back to inbox"
@@ -855,21 +941,21 @@ export default function CommunicationsPage() {
                         </p>
                       </div>
                       {selectedThread.highestPriority !== 'normal' && (
-                        <span className={`px-1.5 py-0.5 text-[10px] font-bold border ${
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold border rounded-sm ${
                           selectedThread.highestPriority === 'emergency'
                             ? 'bg-red-900/50 text-red-400 border-red-700/50 animate-pulse'
-                            : 'bg-red-900/30 text-red-400 border-red-700/30'
+                            : 'bg-amber-900/30 text-amber-400 border-amber-700/30'
                         }`}>
                           {selectedThread.highestPriority.toUpperCase()}
                         </span>
                       )}
-                      <button onClick={() => setSelectedThreadId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400">
+                      <button type="button" onClick={() => setSelectedThreadId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
 
                     {/* Messages in thread */}
-                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent px-4 py-3 space-y-3">
                       {selectedThread.messages.map((msg, idx) => {
                         const isOwnMessage = msg.from_user_id === currentUserId;
 
@@ -884,9 +970,9 @@ export default function CommunicationsPage() {
                                   <div
                                     className="w-6 h-6 flex items-center justify-center text-[9px] font-bold flex-shrink-0"
                                     style={{
-                                      background: isOwnMessage ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : 'linear-gradient(135deg, #124070, #1a5a9e)',
+                                      background: isOwnMessage ? 'linear-gradient(135deg, #d4a017, #888888)' : 'linear-gradient(135deg, #333333, #888888)',
                                       color: '#fff',
-                                      border: isOwnMessage ? '1px solid #60a5fa' : '1px solid #3b8ad4',
+                                      border: isOwnMessage ? '1px solid #999999' : '1px solid #aaaaaa',
                                       borderRadius: 2,
                                     }}
                                   >
@@ -904,7 +990,7 @@ export default function CommunicationsPage() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-[10px] text-rmpg-500 font-mono">{formatDateTime(msg.created_at)}</span>
                                   {msg.from_user_id === currentUserId && (
-                                    <button
+                                    <button type="button"
                                       onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
                                       className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-500 hover:text-red-400 transition-all"
                                       title="Delete message"
@@ -919,6 +1005,30 @@ export default function CommunicationsPage() {
                               <div className="text-sm text-rmpg-200 leading-relaxed whitespace-pre-wrap pl-8">
                                 {msg.body}
                               </div>
+                              {/* Feature 16: Acknowledge button for broadcast messages */}
+                              {msg.is_broadcast && msg.from_user_id !== currentUserId && (
+                                <div className="pl-8 mt-2 flex items-center gap-2">
+                                  <button type="button"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        await apiFetch(`/comms/messages/${msg.id}/acknowledge`, { method: 'PUT' });
+                                        addToast('Message acknowledged', 'success');
+                                      } catch { addToast('Failed to acknowledge', 'error'); }
+                                    }}
+                                    className="text-[9px] px-2 py-0.5 border border-green-700/50 bg-green-900/20 text-green-400 hover:bg-green-900/40 transition-colors font-bold tracking-wider rounded-sm"
+                                    title="Acknowledge this message"
+                                  >
+                                    ACK
+                                  </button>
+                                </div>
+                              )}
+                              {/* Feature 11: Read receipt indicator for own messages */}
+                              {msg.from_user_id === currentUserId && msg.is_read && (
+                                <div className="pl-8 mt-1">
+                                  <span className="text-[9px] text-green-500 flex items-center gap-1"><CheckCircle className="w-2.5 h-2.5" /> Read</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -927,7 +1037,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Reply compose area */}
-                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
+                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
                       <div className="flex items-center gap-2 mb-2">
                         <Reply className="w-3.5 h-3.5 text-rmpg-400" />
                         <span className="text-[10px] text-rmpg-400 font-medium">
@@ -950,17 +1060,17 @@ export default function CommunicationsPage() {
                           disabled={replySending}
                         />
                         <div className="flex flex-col gap-1">
-                          <button
+                          <button type="button"
                             className="toolbar-btn toolbar-btn-primary h-full"
                             onClick={handleReply}
                             disabled={replySending || !replyText.trim()}
                             title="Send reply (Ctrl+Enter)"
                           >
-                            {replySending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            {replySending ? <Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-4 h-4" />}
                           </button>
                         </div>
                       </div>
-                      <span className="text-[9px] text-rmpg-600 mt-1 block">Ctrl+Enter to send</span>
+                      <span className="text-[9px] text-rmpg-600 mt-1 block font-mono">Ctrl+Enter to send</span>
                     </div>
                   </div>
                 )}
@@ -976,7 +1086,7 @@ export default function CommunicationsPage() {
 
         {/* BOLOs Panel */}
         {activePanel === 'bolos' && (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
             {/* New BOLO Form */}
             {showNewBOLO && (
               <form onSubmit={handleCreateBOLO} className="bg-surface-base border border-red-700/40 p-4 animate-fade-in">
@@ -990,8 +1100,8 @@ export default function CommunicationsPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Title:</label>
-                    <input type="text" className="input-dark" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
+                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block tracking-wider">Title:</label>
+                    <input type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Type:</label>
@@ -1011,11 +1121,11 @@ export default function CommunicationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject Description:</label>
-                    <input type="text" className="input-dark" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
+                    <input type="text" className="input-dark min-h-[36px]" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Vehicle Description:</label>
-                    <input type="text" className="input-dark" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
+                    <input type="text" className="input-dark min-h-[36px]" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Description:</label>
@@ -1039,10 +1149,68 @@ export default function CommunicationsPage() {
                 <div className="flex justify-end gap-2 mt-4">
                   <button type="button" onClick={() => setShowNewBOLO(false)} className="toolbar-btn">Cancel</button>
                   <button type="submit" className="toolbar-btn toolbar-btn-danger" disabled={boloSubmitting}>
-                    {boloSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertTriangle className="w-3.5 h-3.5" />} Issue BOLO
+                    {boloSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <AlertTriangle className="w-3.5 h-3.5" />} Issue BOLO
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* Upgrade: BOLO Statistics Panel */}
+            {boloStats && !showNewBOLO && (
+              <div className="panel-beveled p-3 bg-surface-raised mb-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Activity className="w-3.5 h-3.5 text-brand-blue" />
+                  <span className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">BOLO Dashboard</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="bg-surface-sunken p-2 text-center">
+                    <div className="text-lg font-bold text-red-400">{boloStats.totalActive}</div>
+                    <div className="text-[9px] text-rmpg-400 uppercase">Active</div>
+                  </div>
+                  <div className="bg-surface-sunken p-2 text-center">
+                    <div className="text-lg font-bold text-amber-400">{boloStats.expiringSoon}</div>
+                    <div className="text-[9px] text-rmpg-400 uppercase">Expiring 24h</div>
+                  </div>
+                  {boloStats.byCategory.slice(0, 2).map((cat) => (
+                    <div key={cat.category} className="bg-surface-sunken p-2 text-center">
+                      <div className="text-lg font-bold text-rmpg-200">{cat.active_count}</div>
+                      <div className="text-[9px] text-rmpg-400 uppercase">{(cat.category || '').replace(/_/g, ' ')}</div>
+                    </div>
+                  ))}
+                </div>
+                {boloStats.avgLifespanHours != null && (
+                  <div className="text-[9px] text-rmpg-500 mt-1">Avg lifespan: {boloStats.avgLifespanHours}h</div>
+                )}
+                <div className="flex gap-1 mt-2">
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[10px]"
+                    onClick={async () => {
+                      try {
+                        const r = await apiFetch<any>('/comms/bolos/expire-check', { method: 'POST' });
+                        addToast(`Expired ${r?.expired || 0} BOLOs`, 'success');
+                        fetchBolos();
+                        apiFetch<any>('/comms/bolos/stats').then(d => d && setBoloStats(d)).catch(() => {});
+                      } catch { addToast('Expire check failed', 'error'); }
+                    }}
+                  >
+                    <Clock className="w-3 h-3" /> Check Expirations
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[10px]"
+                    onClick={async () => {
+                      try {
+                        const r = await apiFetch<any>('/comms/bolos/auto-archive', { method: 'POST', body: JSON.stringify({ days_expired: 7 }) });
+                        addToast(`Archived ${r?.archived || 0} expired BOLOs`, 'success');
+                        fetchBolos();
+                      } catch { addToast('Auto-archive failed', 'error'); }
+                    }}
+                  >
+                    <Archive className="w-3 h-3" /> Auto-Archive Expired
+                  </button>
+                </div>
+              </div>
             )}
 
             {bolosLoading ? (
@@ -1057,6 +1225,7 @@ export default function CommunicationsPage() {
                 <div
                   key={bolo.id}
                   className={`panel-beveled p-4 bg-surface-base ${bolo.priority === 'P1' ? 'border-red-700/50 animate-emergency-pulse' : bolo.priority === 'P2' ? 'border-amber-700/40' : ''}`}
+                  style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : bolo.priority === 'P3' ? '#eab308' : '#22c55e' }}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -1068,15 +1237,24 @@ export default function CommunicationsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={bolo.priority} type="priority" size="sm" />
-                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase ${bolo.status === 'active' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : 'bg-rmpg-700 text-rmpg-300'}`}>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm ${bolo.status === 'active' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600'}`}>
                         {toDisplayLabel(bolo.status)}
                       </span>
                     </div>
                   </div>
+                  {/* Feature 13: BOLO expiration tracking */}
+                  {bolo.expires_at && bolo.status === 'active' && (
+                    <div className="mb-2 flex items-center gap-2">
+                      <Clock className="w-3 h-3 text-amber-400" />
+                      <span className={`text-[10px] font-mono ${new Date(bolo.expires_at) <= new Date() ? 'text-red-400 font-bold' : 'text-amber-400'}`}>
+                        {new Date(bolo.expires_at) <= new Date() ? 'EXPIRED' : `Expires: ${formatDateTime(bolo.expires_at)}`}
+                      </span>
+                    </div>
+                  )}
                   <p className="text-sm text-rmpg-200 mb-3 leading-relaxed">{bolo.description}</p>
                   {bolo.photo_url && (
                     <div className="mb-3">
-                      <img src={`/api/uploads/${bolo.photo_url}`} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(`/api/uploads/${bolo.photo_url}`, '_blank')} />
+                      <img src={`/api/uploads/${bolo.photo_url}`} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(`/api/uploads/${bolo.photo_url}`, '_blank', 'noopener,noreferrer')} />
                     </div>
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -1095,18 +1273,18 @@ export default function CommunicationsPage() {
                   </div>
                   {bolo.status === 'active' && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-600">
-                      <button className="toolbar-btn" onClick={() => handleResolveBOLO(bolo.id)} disabled={resolvingId === bolo.id}>
-                        {resolvingId === bolo.id && <Loader2 className="w-3 h-3 animate-spin" />} Mark Resolved
+                      <button type="button" className="toolbar-btn" onClick={() => handleResolveBOLO(bolo.id)} disabled={resolvingId === bolo.id}>
+                        {resolvingId === bolo.id && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />} Mark Resolved
                       </button>
-                      <button className="toolbar-btn text-amber-400" onClick={() => handleArchiveBOLO(bolo.id)}>
+                      <button type="button" className="toolbar-btn text-amber-400" onClick={() => handleArchiveBOLO(bolo.id)}>
                         <Archive className="w-3 h-3" /> Archive
                       </button>
-                      <button className="toolbar-btn text-red-400" onClick={() => setCancelTarget(bolo)}>Cancel BOLO</button>
+                      <button type="button" className="toolbar-btn text-red-400" onClick={() => setCancelTarget(bolo)}>Cancel BOLO</button>
                     </div>
                   )}
                   {bolo.status !== 'active' && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-600">
-                      <button className="toolbar-btn text-green-400" onClick={() => handleUnarchiveBOLO(bolo.id)}>
+                      <button type="button" className="toolbar-btn text-green-400" onClick={() => handleUnarchiveBOLO(bolo.id)}>
                         <RotateCcw className="w-3 h-3" /> Unarchive
                       </button>
                     </div>
@@ -1123,12 +1301,12 @@ export default function CommunicationsPage() {
             <div className="panel-beveled h-full flex flex-col bg-surface-base">
               <div className="px-4 py-3 border-b border-rmpg-600 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-brand-400" />
-                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Real-Time Activity Feed</span>
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Real-Time Activity Feed</span>
                 {!activitiesLoading && (
                   <span className="text-xs text-rmpg-400">({activities.length} of {activitiesTotal} entries)</span>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                 {activitiesLoading ? (
                   <Spinner label="Loading activity..." />
                 ) : (
@@ -1136,9 +1314,9 @@ export default function CommunicationsPage() {
                     <ActivityFeed entries={activities} maxHeight="100%" showDate />
                     {activities.length < activitiesTotal && (
                       <div className="flex justify-center py-3 border-t border-rmpg-700/50">
-                        <button onClick={loadMoreActivity} disabled={activitiesLoadingMore} className="toolbar-btn">
+                        <button type="button" onClick={loadMoreActivity} disabled={activitiesLoadingMore} className="toolbar-btn">
                           {activitiesLoadingMore ? (
-                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</>
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> Loading...</>
                           ) : (
                             <>Load More ({activitiesTotal - activities.length} remaining)</>
                           )}
@@ -1176,20 +1354,51 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
-          <select className="select-dark" value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
+          <select className={`select-dark ${composePriority === 'emergency' ? 'border-red-500 text-red-400' : composePriority === 'urgent' ? 'border-amber-500 text-amber-400' : ''}`} value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
             <option value="routine">Normal</option>
             <option value="urgent">Urgent</option>
             <option value="emergency">Emergency</option>
           </select>
+          {/* Feature 12: Priority visual indicator */}
+          {composePriority === 'emergency' && (
+            <p className="text-[9px] text-red-400 mt-0.5 font-bold animate-pulse">EMERGENCY: This will trigger an alert to all officers</p>
+          )}
+          {composePriority === 'urgent' && (
+            <p className="text-[9px] text-amber-400 mt-0.5">Urgent priority message</p>
+          )}
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>
-          <input type="text" className="input-dark" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
+          <input type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>
           <textarea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
         </div>
+        {/* Feature 26: Save as Draft button */}
+        <button
+          type="button"
+          onClick={async () => {
+            if (!composeContent.trim()) { addToast('Cannot save empty draft', 'error'); return; }
+            try {
+              await apiFetch('/comms/drafts', {
+                method: 'POST',
+                body: JSON.stringify({
+                  to_user_id: composeTo === 'broadcast' ? null : composeTo || null,
+                  channel: composeTo === 'broadcast' ? 'broadcast' : 'direct',
+                  content: composeContent,
+                  subject: composeSubject,
+                  priority: composePriority,
+                }),
+              });
+              addToast('Draft saved', 'success');
+              setShowCompose(false);
+            } catch (err: any) { addToast(err?.message || 'Failed to save draft', 'error'); }
+          }}
+          className="toolbar-btn text-rmpg-400 hover:text-white"
+        >
+          Save as Draft
+        </button>
       </FormModal>
 
       {/* Cancel BOLO Confirm Dialog */}

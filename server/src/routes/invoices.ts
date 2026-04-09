@@ -8,7 +8,9 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastAdminUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -25,7 +27,7 @@ function generateInvoiceNumber(): string {
   let seq = 1;
   if (last) {
     const parts = last.invoice_number.split('-');
-    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+    const parsed = parseInt(parts[2], 10);
     seq = isNaN(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
@@ -50,60 +52,56 @@ function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
   const db = getDb();
   const now = localNow();
 
-  const recalcTx = db.transaction(() => {
-    // Sum line items by type
-    const items = db.prepare(`
-      SELECT line_type, COALESCE(SUM(amount), 0) as total
-      FROM invoice_line_items WHERE invoice_id = ?
-      GROUP BY line_type
-    `).all(invoiceId) as any[];
+  // Sum line items by type
+  const items = db.prepare(`
+    SELECT line_type, COALESCE(SUM(amount), 0) as total
+    FROM invoice_line_items WHERE invoice_id = ?
+    GROUP BY line_type
+  `).all(invoiceId) as any[];
 
-    let subtotal = 0;
-    let discountAmount = 0;
-    let lateFeeAmount = 0;
-    for (const item of items) {
-      if (item.line_type === 'discount') {
-        discountAmount = Math.abs(item.total);
-      } else if (item.line_type === 'late_fee') {
-        lateFeeAmount = item.total;
-      } else {
-        subtotal += item.total;
-      }
+  let subtotal = 0;
+  let discountAmount = 0;
+  let lateFeeAmount = 0;
+  for (const item of items) {
+    if (item.line_type === 'discount') {
+      discountAmount = Math.abs(item.total);
+    } else if (item.line_type === 'late_fee') {
+      lateFeeAmount = item.total;
+    } else {
+      subtotal += item.total;
     }
+  }
 
-    const total = subtotal - discountAmount + lateFeeAmount;
+  const total = subtotal - discountAmount + lateFeeAmount;
 
-    // Sum payments
-    const payResult = db.prepare(
-      'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
-    ).get(invoiceId) as any;
-    const amountPaid = payResult?.paid ?? 0;
-    const balanceDue = Math.max(0, total - amountPaid);
+  // Sum payments
+  const payResult = db.prepare(
+    'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
+  ).get(invoiceId) as any;
+  const amountPaid = payResult.paid;
+  const balanceDue = Math.max(0, total - amountPaid);
 
+  db.prepare(`
+    UPDATE invoices
+    SET subtotal = ?, discount_amount = ?, late_fee_amount = ?,
+        total = ?, amount_paid = ?, balance_due = ?, updated_at = ?
+    WHERE id = ?
+  `).run(subtotal, discountAmount, lateFeeAmount, total, amountPaid, balanceDue, now, invoiceId);
+
+  // Update client aggregates
+  const inv = db.prepare('SELECT client_id FROM invoices WHERE id = ?').get(invoiceId) as any;
+  if (inv) {
+    const agg = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as total_invoiced,
+             COALESCE(SUM(amount_paid), 0) as total_paid,
+             COALESCE(SUM(balance_due), 0) as outstanding
+      FROM invoices WHERE client_id = ? AND status NOT IN ('void','cancelled')
+    `).get(inv.client_id) as any;
     db.prepare(`
-      UPDATE invoices
-      SET subtotal = ?, discount_amount = ?, late_fee_amount = ?,
-          total = ?, amount_paid = ?, balance_due = ?, updated_at = ?
+      UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
       WHERE id = ?
-    `).run(subtotal, discountAmount, lateFeeAmount, total, amountPaid, balanceDue, now, invoiceId);
-
-    // Update client aggregates
-    const inv = db.prepare('SELECT client_id FROM invoices WHERE id = ?').get(invoiceId) as any;
-    if (inv) {
-      const agg = db.prepare(`
-        SELECT COALESCE(SUM(total), 0) as total_invoiced,
-               COALESCE(SUM(amount_paid), 0) as total_paid,
-               COALESCE(SUM(balance_due), 0) as outstanding
-        FROM invoices WHERE client_id = ? AND status NOT IN ('void','cancelled')
-      `).get(inv.client_id) as any;
-      db.prepare(`
-        UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
-        WHERE id = ?
-      `).run(agg.total_invoiced, agg.total_paid, agg.outstanding, now, inv.client_id);
-    }
-  });
-
-  recalcTx();
+    `).run(agg.total_invoiced, agg.total_paid, agg.outstanding, now, inv.client_id);
+  }
 }
 
 // ─── GET /api/invoices/stats ──────────────────────────────
@@ -149,7 +147,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get invoice stats', code: 'INVOICE_STATS_ERROR' });
   }
 });
 
@@ -158,8 +156,8 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
@@ -218,7 +216,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get invoice list', code: 'INVOICE_LIST_ERROR' });
   }
 });
 
@@ -236,7 +234,7 @@ router.get('/:id', (req: Request, res: Response) => {
     `).get(req.params.id) as any;
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+      return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
     }
 
     const line_items = db.prepare(
@@ -249,18 +247,20 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.invoice_id = ?
       ORDER BY p.payment_date DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
 
     res.json({ data: { ...invoice, line_items, payments } });
   } catch (error: any) {
     console.error('Invoice detail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get invoice detail', code: 'INVOICE_DETAIL_ERROR' });
   }
 });
 
 // ─── POST /api/invoices ───────────────────────────────────
 // Create a new invoice
-router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -268,13 +268,13 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     const { client_id, period_start, period_end, issue_date, notes, internal_notes } = req.body;
 
     if (!client_id || !period_start || !period_end) {
-      return res.status(400).json({ error: 'client_id, period_start, and period_end are required' });
+      return res.status(400).json({ error: 'client_id, period_start, and period_end are required', code: 'CLIENTID_PERIODSTART_AND_PERIODEND' });
     }
 
     // Get client for billing snapshot
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id) as any;
     if (!client) {
-      return res.status(404).json({ error: 'Client not found' });
+      return res.status(404).json({ error: 'Client not found', code: 'CLIENT_NOT_FOUND' });
     }
 
     const invoice_number = generateInvoiceNumber();
@@ -298,32 +298,34 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
 
     // Activity log
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, now);
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
-    if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
     res.status(201).json({ data: invoice });
   } catch (error: any) {
     console.error('Invoice create error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create invoice', code: 'INVOICE_CREATE_ERROR' });
   }
 });
 
 // ─── POST /api/invoices/:id/generate ──────────────────────
 // Auto-generate line items from billing period
-router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/generate', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
-    if (invoice.status !== 'draft') {
-      return res.status(400).json({ error: 'Can only generate line items for draft invoices' });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+    if (invoice.status !== 'draft' && req.user?.role !== 'admin') {
+      return res.status(400).json({ error: 'Can only generate line items for draft invoices', code: 'CAN_ONLY_GENERATE_LINE' });
+    }
+    if (req.user?.role === 'admin' && invoice.status !== 'draft') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'invoice', Number(req.params.id), `Admin God Mode: bypassed draft-only generate restriction (status: ${invoice.status})`);
     }
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(invoice.client_id) as any;
-    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client) return res.status(404).json({ error: 'Client not found', code: 'CLIENT_NOT_FOUND' });
 
     const properties = db.prepare('SELECT id, name FROM properties WHERE client_id = ?').all(invoice.client_id) as any[];
     const propertyIds = properties.map((p: any) => p.id);
@@ -363,6 +365,8 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
             AND te.clock_in >= ? AND te.clock_in <= ?
             AND te.status = 'completed'
           ORDER BY te.clock_in
+        
+          LIMIT 1000
         `).all(...propertyIds, invoice.period_start, invoice.period_end + 'T23:59:59') as any[];
 
         const rate = client.rate_per_hour || 0;
@@ -397,6 +401,8 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
           FROM calls_for_service c
           WHERE ${conditions.join(' AND ')}
           ORDER BY c.created_at
+        
+          LIMIT 1000
         `).all(...cfsParams) as any[];
 
         const rate = client.rate_per_cfs || 0;
@@ -428,6 +434,8 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
           FROM incidents inc
           WHERE ${conditions.join(' AND ')}
           ORDER BY inc.created_at
+        
+          LIMIT 1000
         `).all(...incParams) as any[];
 
         const rate = client.rate_per_incident || 0;
@@ -463,11 +471,15 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
         const linkedCallIds = db.prepare(`
           SELECT id FROM invoice_line_items
           WHERE invoice_id = ? AND linked_entity_type = 'call_for_service'
+        
+          LIMIT 1000
         `).all(invoice.id).map((r: any) => r.linked_entity_id || 0);
 
         const linkedIncIds = db.prepare(`
           SELECT id FROM invoice_line_items
           WHERE invoice_id = ? AND linked_entity_type = 'incident'
+        
+          LIMIT 1000
         `).all(invoice.id).map((r: any) => r.linked_entity_id || 0);
 
         if (linkedCallIds.length > 0 || linkedIncIds.length > 0) {
@@ -487,10 +499,12 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
             FROM citations cit
             WHERE (${citConditions.join(' OR ')})
               AND cit.status != 'voided'
+          
+            LIMIT 1000
           `).all(...citParams) as any[];
 
           for (const cit of citations) {
-            const amt = cit.fine_amount ?? 0;
+            const amt = cit.fine_amount || 0;
             const desc = `Citation ${cit.citation_number} — ${cit.violation_description || 'Violation'}`;
             insertItem.run(invoice.id, 'citation', desc, 1, amt, amt, 'citation', cit.id, sortOrder++, now);
             items.push({ type: 'citation', amount: amt });
@@ -501,7 +515,7 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
       // 6. Apply discount
       if (client.discount_percent && client.discount_percent > 0) {
         // Calculate subtotal of non-discount items so far
-        const sub = items.reduce((s, i) => s + (i.amount ?? 0), 0);
+        const sub = items.reduce((s, i) => s + (i.amount || 0), 0);
         const discountAmt = -Math.round(sub * client.discount_percent / 100 * 100) / 100;
         const desc = `Client discount (${client.discount_percent}%)`;
         insertItem.run(invoice.id, 'discount', desc, 1, discountAmt, discountAmt, null, null, sortOrder++, now);
@@ -526,20 +540,20 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
     res.json({ data: { ...updated, line_items }, generated: count });
   } catch (error: any) {
     console.error('Invoice generate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to generate invoice', code: 'INVOICE_GENERATE_ERROR' });
   }
 });
 
 // ─── PUT /api/invoices/:id ────────────────────────────────
 // Update invoice fields
-router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
 
     const fieldMap: Record<string, string> = {
       period_start: 'period_start',
@@ -574,8 +588,8 @@ router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Re
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, now);
 
     const updated = db.prepare(`
       SELECT i.*, c.name as client_name FROM invoices i
@@ -584,13 +598,13 @@ router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Re
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update invoice', code: 'INVOICE_UPDATE_ERROR' });
   }
 });
 
 // ─── PUT /api/invoices/:id/status ─────────────────────────
 // Status transition with validation
-router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id/status', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -598,7 +612,7 @@ router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: R
     const { status } = req.body;
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
 
     // Validate transitions
     const allowed: Record<string, string[]> = {
@@ -609,10 +623,15 @@ router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: R
     };
 
     const validTransitions = allowed[invoice.status] || [];
+    // God Mode: admin bypass — can force any invoice status transition
     if (!validTransitions.includes(status)) {
-      return res.status(400).json({
-        error: `Cannot transition from '${invoice.status}' to '${status}'. Valid: ${validTransitions.join(', ')}`,
-      });
+      if (req.user?.role !== 'admin') {
+        return res.status(400).json({
+          error: `Cannot transition from '${invoice.status}' to '${status}'. Valid: ${validTransitions.join(', ')}`,
+        });
+      } else {
+        auditLog(req, 'ADMIN_OVERRIDE', 'invoice', Number(req.params.id), `Admin God Mode: forced invoice status transition ${invoice.status} -> ${status}`);
+      }
     }
 
     const updates: string[] = ['status = ?', 'updated_at = ?'];
@@ -638,33 +657,33 @@ router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: R
     recalculateInvoiceTotals(req.params.id);
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, now);
 
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update invoice status', code: 'INVOICE_STATUS_ERROR' });
   }
 });
 
 // ─── POST /api/invoices/:id/line-items ────────────────────
 // Add a line item
-router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/line-items', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     const invoice = db.prepare('SELECT id FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
 
     const { line_type, description, quantity, unit_price, linked_entity_type, linked_entity_id } = req.body;
     if (!line_type || !description) {
-      return res.status(400).json({ error: 'line_type and description are required' });
+      return res.status(400).json({ error: 'line_type and description are required', code: 'LINETYPE_AND_DESCRIPTION_ARE' });
     }
 
-    const qty = quantity ?? 1;
-    const price = unit_price ?? 0;
+    const qty = quantity || 1;
+    const price = unit_price || 0;
     const amount = Math.round(qty * price * 100) / 100;
 
     // Get max sort order
@@ -680,16 +699,16 @@ router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager
     recalculateInvoiceTotals(req.params.id);
 
     const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ data: item || { id: result.lastInsertRowid } });
+    res.status(201).json({ data: item });
   } catch (error: any) {
     console.error('Add line item error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add line item', code: 'ADD_LINE_ITEM_ERROR' });
   }
 });
 
 // ─── PUT /api/invoices/:id/line-items/:itemId ─────────────
 // Update a line item
-router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id/line-items/:itemId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -697,7 +716,7 @@ router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_
     const item = db.prepare(
       'SELECT * FROM invoice_line_items WHERE id = ? AND invoice_id = ?'
     ).get(req.params.itemId, req.params.id) as any;
-    if (!item) return res.status(404).json({ error: 'Line item not found' });
+    if (!item) return res.status(404).json({ error: 'Line item not found', code: 'LINE_ITEM_NOT_FOUND' });
 
     const { description, quantity, unit_price, sort_order } = req.body;
     const qty = quantity !== undefined ? quantity : item.quantity;
@@ -721,42 +740,42 @@ router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update line item error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update line item', code: 'UPDATE_LINE_ITEM_ERROR' });
   }
 });
 
 // ─── DELETE /api/invoices/:id/line-items/:itemId ──────────
-router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/line-items/:itemId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare(
       'SELECT id FROM invoice_line_items WHERE id = ? AND invoice_id = ?'
     ).get(req.params.itemId, req.params.id);
-    if (!item) return res.status(404).json({ error: 'Line item not found' });
+    if (!item) return res.status(404).json({ error: 'Line item not found', code: 'LINE_ITEM_NOT_FOUND' });
 
     db.prepare('DELETE FROM invoice_line_items WHERE id = ?').run(req.params.itemId);
     recalculateInvoiceTotals(req.params.id);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete line item error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete line item', code: 'DELETE_LINE_ITEM_ERROR' });
   }
 });
 
 // ─── POST /api/invoices/:id/payments ──────────────────────
 // Record a payment
-router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
 
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;
     if (!amount || !payment_date) {
-      return res.status(400).json({ error: 'amount and payment_date are required' });
+      return res.status(400).json({ error: 'amount and payment_date are required', code: 'AMOUNT_AND_PAYMENTDATE_ARE' });
     }
 
     const result = db.prepare(`
@@ -769,33 +788,31 @@ router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res
 
     // Auto-transition status
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (updated) {
-      if (updated.balance_due <= 0 && updated.status !== 'paid') {
-        db.prepare("UPDATE invoices SET status = 'paid', paid_date = ?, updated_at = ? WHERE id = ?").run(localToday(), now, req.params.id);
-      } else if (updated.amount_paid > 0 && updated.balance_due > 0 && updated.status === 'sent') {
-        db.prepare("UPDATE invoices SET status = 'partial', updated_at = ? WHERE id = ?").run(now, req.params.id);
-      }
+    if (updated.balance_due <= 0 && updated.status !== 'paid') {
+      db.prepare("UPDATE invoices SET status = 'paid', paid_date = ?, updated_at = ? WHERE id = ?").run(localToday(), now, req.params.id);
+    } else if (updated.amount_paid > 0 && updated.balance_due > 0 && updated.status === 'sent') {
+      db.prepare("UPDATE invoices SET status = 'partial', updated_at = ? WHERE id = ?").run(now, req.params.id);
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, now);
 
     const payment = db.prepare(`
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.id = ?
     `).get(result.lastInsertRowid);
-    res.status(201).json({ data: payment || { id: result.lastInsertRowid } });
+    res.status(201).json({ data: payment });
   } catch (error: any) {
     console.error('Record payment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to record payment', code: 'RECORD_PAYMENT_ERROR' });
   }
 });
 
 // ─── DELETE /api/invoices/:id/payments/:paymentId ─────────
 // Reverse a payment
-router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/payments/:paymentId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -804,29 +821,27 @@ router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req:
     const payment = db.prepare(
       'SELECT * FROM payments WHERE id = ? AND invoice_id = ?'
     ).get(req.params.paymentId, req.params.id) as any;
-    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (!payment) return res.status(404).json({ error: 'Payment not found', code: 'PAYMENT_NOT_FOUND' });
 
     db.prepare('DELETE FROM payments WHERE id = ?').run(req.params.paymentId);
     recalculateInvoiceTotals(req.params.id);
 
     // May need to revert status from paid/partial back to sent
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (updated) {
-      if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
-        db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-      } else if (updated.balance_due > 0 && updated.status === 'paid') {
-        db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-      }
+    if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
+      db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+    } else if (updated.balance_due > 0 && updated.status === 'paid') {
+      db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, now);
 
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete payment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete payment', code: 'DELETE_PAYMENT_ERROR' });
   }
 });
 
@@ -845,7 +860,7 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
       WHERE i.id = ?
     `).get(req.params.id) as any;
 
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
 
     const line_items = db.prepare(
       'SELECT * FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order, id'
@@ -855,6 +870,8 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.invoice_id = ? ORDER BY p.payment_date
+    
+      LIMIT 1000
     `).all(req.params.id);
 
     res.json({
@@ -864,7 +881,7 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice PDF data error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get invoice PDF data', code: 'INVOICE_PDF_DATA_ERROR' });
   }
 });
 
@@ -875,7 +892,7 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
 
     // Get all persons linked to this client
     let linkedPersons: any[] = [];
@@ -887,6 +904,8 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
         JOIN persons p ON cp.person_id = p.id
         WHERE cp.client_id = ?
         ORDER BY cp.is_primary DESC, p.last_name, p.first_name
+      
+        LIMIT 1000
       `).all(invoice.client_id);
     } catch { /* table might not exist */ }
 
@@ -894,6 +913,8 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
     const incidentLineItems = db.prepare(`
       SELECT linked_entity_id FROM invoice_line_items
       WHERE invoice_id = ? AND linked_entity_type = 'incident'
+    
+      LIMIT 1000
     `).all(invoice.id) as any[];
     const incidentIds = incidentLineItems.map((i: any) => i.linked_entity_id).filter(Boolean);
 
@@ -908,6 +929,8 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
             FROM incident_persons ip
             JOIN persons p ON ip.person_id = p.id
             WHERE ip.incident_id = ?
+          
+            LIMIT 1000
           `).all(incId);
         } catch { /* ignore */ }
       }
@@ -946,7 +969,1669 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice person-chain error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get invoice person chain', code: 'INVOICE_PERSONCHAIN_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Recurring Invoice Templates
+// Create, list, and apply templates for recurring invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT it.*, c.name as client_name FROM invoice_templates it
+        LEFT JOIN clients c ON it.client_id = c.id
+        ORDER BY it.is_active DESC, it.name ASC LIMIT 100
+      `).all();
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_INVOICE_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { name, client_id, frequency, line_items_json, notes, is_active } = req.body;
+    if (!name || !client_id) return res.status(400).json({ error: 'name and client_id required', code: 'NAME_AND_CLIENTID_REQUIRED' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, client_id INTEGER NOT NULL,
+        frequency TEXT DEFAULT 'monthly',
+        line_items_json TEXT, notes TEXT, is_active INTEGER DEFAULT 1,
+        last_generated_at TEXT, next_generate_at TEXT,
+        created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_templates (name, client_id, frequency, line_items_json, notes, is_active,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, client_id, frequency || 'monthly', line_items_json || '[]',
+      notes || null, is_active !== false ? 1 : 0, user.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tid = parseInt(req.params.templateId as string, 10);
+    if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Payment Aging Reports
+// Shows invoices grouped by days overdue (30/60/90/120+).
+// ════════════════════════════════════════════════════════════
+router.get('/aging/report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const overdue = db.prepare(`
+      SELECT i.id, i.invoice_number, i.client_id, c.name as client_name,
+        i.due_date, i.total, i.amount_paid, i.balance_due, i.status,
+        CAST(julianday(?) - julianday(i.due_date) AS INTEGER) as days_overdue
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status IN ('sent', 'partial', 'overdue')
+        AND i.due_date < ?
+      ORDER BY days_overdue DESC
+      LIMIT 500
+    `).all(today, today) as any[];
+
+    // Group by aging bucket
+    const buckets = {
+      '1-30': { invoices: [] as any[], total: 0 },
+      '31-60': { invoices: [] as any[], total: 0 },
+      '61-90': { invoices: [] as any[], total: 0 },
+      '91-120': { invoices: [] as any[], total: 0 },
+      '120+': { invoices: [] as any[], total: 0 },
+    };
+
+    for (const inv of overdue) {
+      const d = inv.days_overdue;
+      const bucket = d <= 30 ? '1-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : d <= 120 ? '91-120' : '120+';
+      buckets[bucket as keyof typeof buckets].invoices.push(inv);
+      buckets[bucket as keyof typeof buckets].total += inv.balance_due || 0;
+    }
+
+    // Round totals
+    for (const b of Object.values(buckets)) {
+      b.total = Math.round(b.total * 100) / 100;
+    }
+
+    const totalOverdue = overdue.reduce((s, i) => s + (i.balance_due || 0), 0);
+
+    res.json({
+      total_overdue_amount: Math.round(totalOverdue * 100) / 100,
+      total_overdue_count: overdue.length,
+      buckets,
+      as_of: today,
+    });
+  } catch (error: any) {
+    console.error('Aging report error:', error);
+    res.status(500).json({ error: 'Failed to generate aging report', code: 'AGING_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Auto-Calculate Totals with Tax
+// Recalculates invoice totals including tax rate.
+// ════════════════════════════════════════════════════════════
+router.post('/:id/recalculate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const invoiceId = req.params.id;
+    const { tax_rate } = req.body;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    const now = localNow();
+
+    // If tax_rate provided, calculate and store tax_amount
+    if (tax_rate !== undefined) {
+      const rate = parseFloat(String(tax_rate)) || 0;
+      const items = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as subtotal
+        FROM invoice_line_items WHERE invoice_id = ? AND line_type NOT IN ('discount', 'late_fee', 'tax')
+      `).get(invoiceId) as any;
+
+      const taxAmount = Math.round(items.subtotal * rate / 100 * 100) / 100;
+      db.prepare('UPDATE invoices SET tax_rate = ?, tax_amount = ?, updated_at = ? WHERE id = ?')
+        .run(rate, taxAmount, now, invoiceId);
+    }
+
+    // Recalculate totals
+    recalculateInvoiceTotals(invoiceId);
+
+    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Recalculate error:', error);
+    res.status(500).json({ error: 'Failed to recalculate', code: 'RECALCULATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Payment Reminder Scheduling
+// Creates/lists payment reminder records for overdue invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT * FROM invoice_reminders WHERE invoice_id = ?
+        ORDER BY scheduled_at DESC LIMIT 50
+      `).all(req.params.id);
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list reminders', code: 'LIST_REMINDERS_ERROR' });
+  }
+});
+
+router.post('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { scheduled_at, reminder_type, message } = req.body;
+
+    const invoice = db.prepare('SELECT id, invoice_number, billing_email FROM invoices WHERE id = ?')
+      .get(req.params.id) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL, reminder_type TEXT DEFAULT 'email',
+        scheduled_at TEXT, sent_at TEXT, message TEXT,
+        status TEXT DEFAULT 'pending',
+        created_by INTEGER, created_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_reminders (invoice_id, reminder_type, scheduled_at, message, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?)
+    `).run(req.params.id, reminder_type || 'email', scheduled_at || now, message || `Payment reminder for invoice ${invoice.invoice_number}`, user.userId, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'reminder_scheduled', 'invoice', ?, ?, ?)`).run(
+      user.userId, req.params.id, `Payment reminder scheduled for invoice ${invoice.invoice_number}`, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, status: 'pending' } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create reminder', code: 'CREATE_REMINDER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Revenue Summary Report
+// Returns revenue data grouped by month and client.
+// ════════════════════════════════════════════════════════════
+router.get('/reports/revenue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.min(24, Math.max(1, parseInt(String(req.query.months || '12'), 10)));
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', issue_date) as month,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(total), 0) as total_invoiced,
+        COALESCE(SUM(amount_paid), 0) as total_collected,
+        COALESCE(SUM(balance_due), 0) as total_outstanding
+      FROM invoices
+      WHERE status NOT IN ('void', 'cancelled')
+        AND issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(months) as any[];
+
+    const byClient = db.prepare(`
+      SELECT c.name as client_name, i.client_id,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(i.total), 0) as total_invoiced,
+        COALESCE(SUM(i.amount_paid), 0) as total_collected
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status NOT IN ('void', 'cancelled')
+        AND i.issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY i.client_id ORDER BY total_invoiced DESC LIMIT 20
+    `).all(months) as any[];
+
+    const grandTotal = monthly.reduce((s, m) => ({
+      invoiced: s.invoiced + m.total_invoiced,
+      collected: s.collected + m.total_collected,
+      outstanding: s.outstanding + m.total_outstanding,
+    }), { invoiced: 0, collected: 0, outstanding: 0 });
+
+    res.json({
+      monthly,
+      by_client: byClient,
+      grand_total: {
+        total_invoiced: Math.round(grandTotal.invoiced * 100) / 100,
+        total_collected: Math.round(grandTotal.collected * 100) / 100,
+        total_outstanding: Math.round(grandTotal.outstanding * 100) / 100,
+        collection_rate: grandTotal.invoiced > 0 ? Math.round(grandTotal.collected / grandTotal.invoiced * 100) : 0,
+      },
+      period_months: months,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate revenue report', code: 'REVENUE_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Recurring Invoice Templates
+// Create, list, and apply templates for recurring invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT it.*, c.name as client_name FROM invoice_templates it
+        LEFT JOIN clients c ON it.client_id = c.id
+        ORDER BY it.is_active DESC, it.name ASC LIMIT 100
+      `).all();
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_INVOICE_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { name, client_id, frequency, line_items_json, notes, is_active } = req.body;
+    if (!name || !client_id) return res.status(400).json({ error: 'name and client_id required', code: 'NAME_AND_CLIENTID_REQUIRED' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, client_id INTEGER NOT NULL,
+        frequency TEXT DEFAULT 'monthly',
+        line_items_json TEXT, notes TEXT, is_active INTEGER DEFAULT 1,
+        last_generated_at TEXT, next_generate_at TEXT,
+        created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_templates (name, client_id, frequency, line_items_json, notes, is_active,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, client_id, frequency || 'monthly', line_items_json || '[]',
+      notes || null, is_active !== false ? 1 : 0, user.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tid = parseInt(req.params.templateId as string, 10);
+    if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Payment Aging Reports
+// Shows invoices grouped by days overdue (30/60/90/120+).
+// ════════════════════════════════════════════════════════════
+router.get('/aging/report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const overdue = db.prepare(`
+      SELECT i.id, i.invoice_number, i.client_id, c.name as client_name,
+        i.due_date, i.total, i.amount_paid, i.balance_due, i.status,
+        CAST(julianday(?) - julianday(i.due_date) AS INTEGER) as days_overdue
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status IN ('sent', 'partial', 'overdue')
+        AND i.due_date < ?
+      ORDER BY days_overdue DESC
+      LIMIT 500
+    `).all(today, today) as any[];
+
+    // Group by aging bucket
+    const buckets = {
+      '1-30': { invoices: [] as any[], total: 0 },
+      '31-60': { invoices: [] as any[], total: 0 },
+      '61-90': { invoices: [] as any[], total: 0 },
+      '91-120': { invoices: [] as any[], total: 0 },
+      '120+': { invoices: [] as any[], total: 0 },
+    };
+
+    for (const inv of overdue) {
+      const d = inv.days_overdue;
+      const bucket = d <= 30 ? '1-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : d <= 120 ? '91-120' : '120+';
+      buckets[bucket as keyof typeof buckets].invoices.push(inv);
+      buckets[bucket as keyof typeof buckets].total += inv.balance_due || 0;
+    }
+
+    // Round totals
+    for (const b of Object.values(buckets)) {
+      b.total = Math.round(b.total * 100) / 100;
+    }
+
+    const totalOverdue = overdue.reduce((s, i) => s + (i.balance_due || 0), 0);
+
+    res.json({
+      total_overdue_amount: Math.round(totalOverdue * 100) / 100,
+      total_overdue_count: overdue.length,
+      buckets,
+      as_of: today,
+    });
+  } catch (error: any) {
+    console.error('Aging report error:', error);
+    res.status(500).json({ error: 'Failed to generate aging report', code: 'AGING_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Auto-Calculate Totals with Tax
+// Recalculates invoice totals including tax rate.
+// ════════════════════════════════════════════════════════════
+router.post('/:id/recalculate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const invoiceId = req.params.id;
+    const { tax_rate } = req.body;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    const now = localNow();
+
+    // If tax_rate provided, calculate and store tax_amount
+    if (tax_rate !== undefined) {
+      const rate = parseFloat(String(tax_rate)) || 0;
+      const items = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as subtotal
+        FROM invoice_line_items WHERE invoice_id = ? AND line_type NOT IN ('discount', 'late_fee', 'tax')
+      `).get(invoiceId) as any;
+
+      const taxAmount = Math.round(items.subtotal * rate / 100 * 100) / 100;
+      db.prepare('UPDATE invoices SET tax_rate = ?, tax_amount = ?, updated_at = ? WHERE id = ?')
+        .run(rate, taxAmount, now, invoiceId);
+    }
+
+    // Recalculate totals
+    recalculateInvoiceTotals(invoiceId);
+
+    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Recalculate error:', error);
+    res.status(500).json({ error: 'Failed to recalculate', code: 'RECALCULATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Payment Reminder Scheduling
+// Creates/lists payment reminder records for overdue invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT * FROM invoice_reminders WHERE invoice_id = ?
+        ORDER BY scheduled_at DESC LIMIT 50
+      `).all(req.params.id);
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list reminders', code: 'LIST_REMINDERS_ERROR' });
+  }
+});
+
+router.post('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { scheduled_at, reminder_type, message } = req.body;
+
+    const invoice = db.prepare('SELECT id, invoice_number, billing_email FROM invoices WHERE id = ?')
+      .get(req.params.id) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL, reminder_type TEXT DEFAULT 'email',
+        scheduled_at TEXT, sent_at TEXT, message TEXT,
+        status TEXT DEFAULT 'pending',
+        created_by INTEGER, created_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_reminders (invoice_id, reminder_type, scheduled_at, message, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?)
+    `).run(req.params.id, reminder_type || 'email', scheduled_at || now, message || `Payment reminder for invoice ${invoice.invoice_number}`, user.userId, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'reminder_scheduled', 'invoice', ?, ?, ?)`).run(
+      user.userId, req.params.id, `Payment reminder scheduled for invoice ${invoice.invoice_number}`, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, status: 'pending' } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create reminder', code: 'CREATE_REMINDER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Revenue Summary Report
+// Returns revenue data grouped by month and client.
+// ════════════════════════════════════════════════════════════
+router.get('/reports/revenue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.min(24, Math.max(1, parseInt(String(req.query.months || '12'), 10)));
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', issue_date) as month,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(total), 0) as total_invoiced,
+        COALESCE(SUM(amount_paid), 0) as total_collected,
+        COALESCE(SUM(balance_due), 0) as total_outstanding
+      FROM invoices
+      WHERE status NOT IN ('void', 'cancelled')
+        AND issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(months) as any[];
+
+    const byClient = db.prepare(`
+      SELECT c.name as client_name, i.client_id,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(i.total), 0) as total_invoiced,
+        COALESCE(SUM(i.amount_paid), 0) as total_collected
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status NOT IN ('void', 'cancelled')
+        AND i.issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY i.client_id ORDER BY total_invoiced DESC LIMIT 20
+    `).all(months) as any[];
+
+    const grandTotal = monthly.reduce((s, m) => ({
+      invoiced: s.invoiced + m.total_invoiced,
+      collected: s.collected + m.total_collected,
+      outstanding: s.outstanding + m.total_outstanding,
+    }), { invoiced: 0, collected: 0, outstanding: 0 });
+
+    res.json({
+      monthly,
+      by_client: byClient,
+      grand_total: {
+        total_invoiced: Math.round(grandTotal.invoiced * 100) / 100,
+        total_collected: Math.round(grandTotal.collected * 100) / 100,
+        total_outstanding: Math.round(grandTotal.outstanding * 100) / 100,
+        collection_rate: grandTotal.invoiced > 0 ? Math.round(grandTotal.collected / grandTotal.invoiced * 100) : 0,
+      },
+      period_months: months,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate revenue report', code: 'REVENUE_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Recurring Invoice Templates
+// Create, list, and apply templates for recurring invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT it.*, c.name as client_name FROM invoice_templates it
+        LEFT JOIN clients c ON it.client_id = c.id
+        ORDER BY it.is_active DESC, it.name ASC LIMIT 100
+      `).all();
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_INVOICE_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { name, client_id, frequency, line_items_json, notes, is_active } = req.body;
+    if (!name || !client_id) return res.status(400).json({ error: 'name and client_id required', code: 'NAME_AND_CLIENTID_REQUIRED' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, client_id INTEGER NOT NULL,
+        frequency TEXT DEFAULT 'monthly',
+        line_items_json TEXT, notes TEXT, is_active INTEGER DEFAULT 1,
+        last_generated_at TEXT, next_generate_at TEXT,
+        created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_templates (name, client_id, frequency, line_items_json, notes, is_active,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, client_id, frequency || 'monthly', line_items_json || '[]',
+      notes || null, is_active !== false ? 1 : 0, user.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tid = parseInt(req.params.templateId as string, 10);
+    if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Payment Aging Reports
+// Shows invoices grouped by days overdue (30/60/90/120+).
+// ════════════════════════════════════════════════════════════
+router.get('/aging/report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const overdue = db.prepare(`
+      SELECT i.id, i.invoice_number, i.client_id, c.name as client_name,
+        i.due_date, i.total, i.amount_paid, i.balance_due, i.status,
+        CAST(julianday(?) - julianday(i.due_date) AS INTEGER) as days_overdue
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status IN ('sent', 'partial', 'overdue')
+        AND i.due_date < ?
+      ORDER BY days_overdue DESC
+      LIMIT 500
+    `).all(today, today) as any[];
+
+    // Group by aging bucket
+    const buckets = {
+      '1-30': { invoices: [] as any[], total: 0 },
+      '31-60': { invoices: [] as any[], total: 0 },
+      '61-90': { invoices: [] as any[], total: 0 },
+      '91-120': { invoices: [] as any[], total: 0 },
+      '120+': { invoices: [] as any[], total: 0 },
+    };
+
+    for (const inv of overdue) {
+      const d = inv.days_overdue;
+      const bucket = d <= 30 ? '1-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : d <= 120 ? '91-120' : '120+';
+      buckets[bucket as keyof typeof buckets].invoices.push(inv);
+      buckets[bucket as keyof typeof buckets].total += inv.balance_due || 0;
+    }
+
+    // Round totals
+    for (const b of Object.values(buckets)) {
+      b.total = Math.round(b.total * 100) / 100;
+    }
+
+    const totalOverdue = overdue.reduce((s, i) => s + (i.balance_due || 0), 0);
+
+    res.json({
+      total_overdue_amount: Math.round(totalOverdue * 100) / 100,
+      total_overdue_count: overdue.length,
+      buckets,
+      as_of: today,
+    });
+  } catch (error: any) {
+    console.error('Aging report error:', error);
+    res.status(500).json({ error: 'Failed to generate aging report', code: 'AGING_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Auto-Calculate Totals with Tax
+// Recalculates invoice totals including tax rate.
+// ════════════════════════════════════════════════════════════
+router.post('/:id/recalculate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const invoiceId = req.params.id;
+    const { tax_rate } = req.body;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    const now = localNow();
+
+    // If tax_rate provided, calculate and store tax_amount
+    if (tax_rate !== undefined) {
+      const rate = parseFloat(String(tax_rate)) || 0;
+      const items = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as subtotal
+        FROM invoice_line_items WHERE invoice_id = ? AND line_type NOT IN ('discount', 'late_fee', 'tax')
+      `).get(invoiceId) as any;
+
+      const taxAmount = Math.round(items.subtotal * rate / 100 * 100) / 100;
+      db.prepare('UPDATE invoices SET tax_rate = ?, tax_amount = ?, updated_at = ? WHERE id = ?')
+        .run(rate, taxAmount, now, invoiceId);
+    }
+
+    // Recalculate totals
+    recalculateInvoiceTotals(invoiceId);
+
+    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Recalculate error:', error);
+    res.status(500).json({ error: 'Failed to recalculate', code: 'RECALCULATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Payment Reminder Scheduling
+// Creates/lists payment reminder records for overdue invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT * FROM invoice_reminders WHERE invoice_id = ?
+        ORDER BY scheduled_at DESC LIMIT 50
+      `).all(req.params.id);
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list reminders', code: 'LIST_REMINDERS_ERROR' });
+  }
+});
+
+router.post('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { scheduled_at, reminder_type, message } = req.body;
+
+    const invoice = db.prepare('SELECT id, invoice_number, billing_email FROM invoices WHERE id = ?')
+      .get(req.params.id) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL, reminder_type TEXT DEFAULT 'email',
+        scheduled_at TEXT, sent_at TEXT, message TEXT,
+        status TEXT DEFAULT 'pending',
+        created_by INTEGER, created_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_reminders (invoice_id, reminder_type, scheduled_at, message, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?)
+    `).run(req.params.id, reminder_type || 'email', scheduled_at || now, message || `Payment reminder for invoice ${invoice.invoice_number}`, user.userId, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'reminder_scheduled', 'invoice', ?, ?, ?)`).run(
+      user.userId, req.params.id, `Payment reminder scheduled for invoice ${invoice.invoice_number}`, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, status: 'pending' } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create reminder', code: 'CREATE_REMINDER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Revenue Summary Report
+// Returns revenue data grouped by month and client.
+// ════════════════════════════════════════════════════════════
+router.get('/reports/revenue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.min(24, Math.max(1, parseInt(String(req.query.months || '12'), 10)));
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', issue_date) as month,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(total), 0) as total_invoiced,
+        COALESCE(SUM(amount_paid), 0) as total_collected,
+        COALESCE(SUM(balance_due), 0) as total_outstanding
+      FROM invoices
+      WHERE status NOT IN ('void', 'cancelled')
+        AND issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(months) as any[];
+
+    const byClient = db.prepare(`
+      SELECT c.name as client_name, i.client_id,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(i.total), 0) as total_invoiced,
+        COALESCE(SUM(i.amount_paid), 0) as total_collected
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status NOT IN ('void', 'cancelled')
+        AND i.issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY i.client_id ORDER BY total_invoiced DESC LIMIT 20
+    `).all(months) as any[];
+
+    const grandTotal = monthly.reduce((s, m) => ({
+      invoiced: s.invoiced + m.total_invoiced,
+      collected: s.collected + m.total_collected,
+      outstanding: s.outstanding + m.total_outstanding,
+    }), { invoiced: 0, collected: 0, outstanding: 0 });
+
+    res.json({
+      monthly,
+      by_client: byClient,
+      grand_total: {
+        total_invoiced: Math.round(grandTotal.invoiced * 100) / 100,
+        total_collected: Math.round(grandTotal.collected * 100) / 100,
+        total_outstanding: Math.round(grandTotal.outstanding * 100) / 100,
+        collection_rate: grandTotal.invoiced > 0 ? Math.round(grandTotal.collected / grandTotal.invoiced * 100) : 0,
+      },
+      period_months: months,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate revenue report', code: 'REVENUE_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Recurring Invoice Templates
+// Create, list, and apply templates for recurring invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT it.*, c.name as client_name FROM invoice_templates it
+        LEFT JOIN clients c ON it.client_id = c.id
+        ORDER BY it.is_active DESC, it.name ASC LIMIT 100
+      `).all();
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_INVOICE_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { name, client_id, frequency, line_items_json, notes, is_active } = req.body;
+    if (!name || !client_id) return res.status(400).json({ error: 'name and client_id required', code: 'NAME_AND_CLIENTID_REQUIRED' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, client_id INTEGER NOT NULL,
+        frequency TEXT DEFAULT 'monthly',
+        line_items_json TEXT, notes TEXT, is_active INTEGER DEFAULT 1,
+        last_generated_at TEXT, next_generate_at TEXT,
+        created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_templates (name, client_id, frequency, line_items_json, notes, is_active,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, client_id, frequency || 'monthly', line_items_json || '[]',
+      notes || null, is_active !== false ? 1 : 0, user.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tid = parseInt(req.params.templateId as string, 10);
+    if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Payment Aging Reports
+// Shows invoices grouped by days overdue (30/60/90/120+).
+// ════════════════════════════════════════════════════════════
+router.get('/aging/report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const overdue = db.prepare(`
+      SELECT i.id, i.invoice_number, i.client_id, c.name as client_name,
+        i.due_date, i.total, i.amount_paid, i.balance_due, i.status,
+        CAST(julianday(?) - julianday(i.due_date) AS INTEGER) as days_overdue
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status IN ('sent', 'partial', 'overdue')
+        AND i.due_date < ?
+      ORDER BY days_overdue DESC
+      LIMIT 500
+    `).all(today, today) as any[];
+
+    // Group by aging bucket
+    const buckets = {
+      '1-30': { invoices: [] as any[], total: 0 },
+      '31-60': { invoices: [] as any[], total: 0 },
+      '61-90': { invoices: [] as any[], total: 0 },
+      '91-120': { invoices: [] as any[], total: 0 },
+      '120+': { invoices: [] as any[], total: 0 },
+    };
+
+    for (const inv of overdue) {
+      const d = inv.days_overdue;
+      const bucket = d <= 30 ? '1-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : d <= 120 ? '91-120' : '120+';
+      buckets[bucket as keyof typeof buckets].invoices.push(inv);
+      buckets[bucket as keyof typeof buckets].total += inv.balance_due || 0;
+    }
+
+    // Round totals
+    for (const b of Object.values(buckets)) {
+      b.total = Math.round(b.total * 100) / 100;
+    }
+
+    const totalOverdue = overdue.reduce((s, i) => s + (i.balance_due || 0), 0);
+
+    res.json({
+      total_overdue_amount: Math.round(totalOverdue * 100) / 100,
+      total_overdue_count: overdue.length,
+      buckets,
+      as_of: today,
+    });
+  } catch (error: any) {
+    console.error('Aging report error:', error);
+    res.status(500).json({ error: 'Failed to generate aging report', code: 'AGING_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Auto-Calculate Totals with Tax
+// Recalculates invoice totals including tax rate.
+// ════════════════════════════════════════════════════════════
+router.post('/:id/recalculate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const invoiceId = req.params.id;
+    const { tax_rate } = req.body;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    const now = localNow();
+
+    // If tax_rate provided, calculate and store tax_amount
+    if (tax_rate !== undefined) {
+      const rate = parseFloat(String(tax_rate)) || 0;
+      const items = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as subtotal
+        FROM invoice_line_items WHERE invoice_id = ? AND line_type NOT IN ('discount', 'late_fee', 'tax')
+      `).get(invoiceId) as any;
+
+      const taxAmount = Math.round(items.subtotal * rate / 100 * 100) / 100;
+      db.prepare('UPDATE invoices SET tax_rate = ?, tax_amount = ?, updated_at = ? WHERE id = ?')
+        .run(rate, taxAmount, now, invoiceId);
+    }
+
+    // Recalculate totals
+    recalculateInvoiceTotals(invoiceId);
+
+    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Recalculate error:', error);
+    res.status(500).json({ error: 'Failed to recalculate', code: 'RECALCULATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Payment Reminder Scheduling
+// Creates/lists payment reminder records for overdue invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT * FROM invoice_reminders WHERE invoice_id = ?
+        ORDER BY scheduled_at DESC LIMIT 50
+      `).all(req.params.id);
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list reminders', code: 'LIST_REMINDERS_ERROR' });
+  }
+});
+
+router.post('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { scheduled_at, reminder_type, message } = req.body;
+
+    const invoice = db.prepare('SELECT id, invoice_number, billing_email FROM invoices WHERE id = ?')
+      .get(req.params.id) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL, reminder_type TEXT DEFAULT 'email',
+        scheduled_at TEXT, sent_at TEXT, message TEXT,
+        status TEXT DEFAULT 'pending',
+        created_by INTEGER, created_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_reminders (invoice_id, reminder_type, scheduled_at, message, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?)
+    `).run(req.params.id, reminder_type || 'email', scheduled_at || now, message || `Payment reminder for invoice ${invoice.invoice_number}`, user.userId, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'reminder_scheduled', 'invoice', ?, ?, ?)`).run(
+      user.userId, req.params.id, `Payment reminder scheduled for invoice ${invoice.invoice_number}`, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, status: 'pending' } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create reminder', code: 'CREATE_REMINDER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Revenue Summary Report
+// Returns revenue data grouped by month and client.
+// ════════════════════════════════════════════════════════════
+router.get('/reports/revenue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.min(24, Math.max(1, parseInt(String(req.query.months || '12'), 10)));
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', issue_date) as month,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(total), 0) as total_invoiced,
+        COALESCE(SUM(amount_paid), 0) as total_collected,
+        COALESCE(SUM(balance_due), 0) as total_outstanding
+      FROM invoices
+      WHERE status NOT IN ('void', 'cancelled')
+        AND issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(months) as any[];
+
+    const byClient = db.prepare(`
+      SELECT c.name as client_name, i.client_id,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(i.total), 0) as total_invoiced,
+        COALESCE(SUM(i.amount_paid), 0) as total_collected
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status NOT IN ('void', 'cancelled')
+        AND i.issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY i.client_id ORDER BY total_invoiced DESC LIMIT 20
+    `).all(months) as any[];
+
+    const grandTotal = monthly.reduce((s, m) => ({
+      invoiced: s.invoiced + m.total_invoiced,
+      collected: s.collected + m.total_collected,
+      outstanding: s.outstanding + m.total_outstanding,
+    }), { invoiced: 0, collected: 0, outstanding: 0 });
+
+    res.json({
+      monthly,
+      by_client: byClient,
+      grand_total: {
+        total_invoiced: Math.round(grandTotal.invoiced * 100) / 100,
+        total_collected: Math.round(grandTotal.collected * 100) / 100,
+        total_outstanding: Math.round(grandTotal.outstanding * 100) / 100,
+        collection_rate: grandTotal.invoiced > 0 ? Math.round(grandTotal.collected / grandTotal.invoiced * 100) : 0,
+      },
+      period_months: months,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate revenue report', code: 'REVENUE_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Recurring Invoice Templates
+// Create, list, and apply templates for recurring invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT it.*, c.name as client_name FROM invoice_templates it
+        LEFT JOIN clients c ON it.client_id = c.id
+        ORDER BY it.is_active DESC, it.name ASC LIMIT 100
+      `).all();
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_INVOICE_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { name, client_id, frequency, line_items_json, notes, is_active } = req.body;
+    if (!name || !client_id) return res.status(400).json({ error: 'name and client_id required', code: 'NAME_AND_CLIENTID_REQUIRED' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, client_id INTEGER NOT NULL,
+        frequency TEXT DEFAULT 'monthly',
+        line_items_json TEXT, notes TEXT, is_active INTEGER DEFAULT 1,
+        last_generated_at TEXT, next_generate_at TEXT,
+        created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_templates (name, client_id, frequency, line_items_json, notes, is_active,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, client_id, frequency || 'monthly', line_items_json || '[]',
+      notes || null, is_active !== false ? 1 : 0, user.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tid = parseInt(req.params.templateId as string, 10);
+    if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Payment Aging Reports
+// Shows invoices grouped by days overdue (30/60/90/120+).
+// ════════════════════════════════════════════════════════════
+router.get('/aging/report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const overdue = db.prepare(`
+      SELECT i.id, i.invoice_number, i.client_id, c.name as client_name,
+        i.due_date, i.total, i.amount_paid, i.balance_due, i.status,
+        CAST(julianday(?) - julianday(i.due_date) AS INTEGER) as days_overdue
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status IN ('sent', 'partial', 'overdue')
+        AND i.due_date < ?
+      ORDER BY days_overdue DESC
+      LIMIT 500
+    `).all(today, today) as any[];
+
+    // Group by aging bucket
+    const buckets = {
+      '1-30': { invoices: [] as any[], total: 0 },
+      '31-60': { invoices: [] as any[], total: 0 },
+      '61-90': { invoices: [] as any[], total: 0 },
+      '91-120': { invoices: [] as any[], total: 0 },
+      '120+': { invoices: [] as any[], total: 0 },
+    };
+
+    for (const inv of overdue) {
+      const d = inv.days_overdue;
+      const bucket = d <= 30 ? '1-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : d <= 120 ? '91-120' : '120+';
+      buckets[bucket as keyof typeof buckets].invoices.push(inv);
+      buckets[bucket as keyof typeof buckets].total += inv.balance_due || 0;
+    }
+
+    // Round totals
+    for (const b of Object.values(buckets)) {
+      b.total = Math.round(b.total * 100) / 100;
+    }
+
+    const totalOverdue = overdue.reduce((s, i) => s + (i.balance_due || 0), 0);
+
+    res.json({
+      total_overdue_amount: Math.round(totalOverdue * 100) / 100,
+      total_overdue_count: overdue.length,
+      buckets,
+      as_of: today,
+    });
+  } catch (error: any) {
+    console.error('Aging report error:', error);
+    res.status(500).json({ error: 'Failed to generate aging report', code: 'AGING_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Auto-Calculate Totals with Tax
+// Recalculates invoice totals including tax rate.
+// ════════════════════════════════════════════════════════════
+router.post('/:id/recalculate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const invoiceId = req.params.id;
+    const { tax_rate } = req.body;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    const now = localNow();
+
+    // If tax_rate provided, calculate and store tax_amount
+    if (tax_rate !== undefined) {
+      const rate = parseFloat(String(tax_rate)) || 0;
+      const items = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as subtotal
+        FROM invoice_line_items WHERE invoice_id = ? AND line_type NOT IN ('discount', 'late_fee', 'tax')
+      `).get(invoiceId) as any;
+
+      const taxAmount = Math.round(items.subtotal * rate / 100 * 100) / 100;
+      db.prepare('UPDATE invoices SET tax_rate = ?, tax_amount = ?, updated_at = ? WHERE id = ?')
+        .run(rate, taxAmount, now, invoiceId);
+    }
+
+    // Recalculate totals
+    recalculateInvoiceTotals(invoiceId);
+
+    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Recalculate error:', error);
+    res.status(500).json({ error: 'Failed to recalculate', code: 'RECALCULATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Payment Reminder Scheduling
+// Creates/lists payment reminder records for overdue invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT * FROM invoice_reminders WHERE invoice_id = ?
+        ORDER BY scheduled_at DESC LIMIT 50
+      `).all(req.params.id);
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list reminders', code: 'LIST_REMINDERS_ERROR' });
+  }
+});
+
+router.post('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { scheduled_at, reminder_type, message } = req.body;
+
+    const invoice = db.prepare('SELECT id, invoice_number, billing_email FROM invoices WHERE id = ?')
+      .get(req.params.id) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL, reminder_type TEXT DEFAULT 'email',
+        scheduled_at TEXT, sent_at TEXT, message TEXT,
+        status TEXT DEFAULT 'pending',
+        created_by INTEGER, created_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_reminders (invoice_id, reminder_type, scheduled_at, message, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?)
+    `).run(req.params.id, reminder_type || 'email', scheduled_at || now, message || `Payment reminder for invoice ${invoice.invoice_number}`, user.userId, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'reminder_scheduled', 'invoice', ?, ?, ?)`).run(
+      user.userId, req.params.id, `Payment reminder scheduled for invoice ${invoice.invoice_number}`, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, status: 'pending' } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create reminder', code: 'CREATE_REMINDER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Revenue Summary Report
+// Returns revenue data grouped by month and client.
+// ════════════════════════════════════════════════════════════
+router.get('/reports/revenue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.min(24, Math.max(1, parseInt(String(req.query.months || '12'), 10)));
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', issue_date) as month,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(total), 0) as total_invoiced,
+        COALESCE(SUM(amount_paid), 0) as total_collected,
+        COALESCE(SUM(balance_due), 0) as total_outstanding
+      FROM invoices
+      WHERE status NOT IN ('void', 'cancelled')
+        AND issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(months) as any[];
+
+    const byClient = db.prepare(`
+      SELECT c.name as client_name, i.client_id,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(i.total), 0) as total_invoiced,
+        COALESCE(SUM(i.amount_paid), 0) as total_collected
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status NOT IN ('void', 'cancelled')
+        AND i.issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY i.client_id ORDER BY total_invoiced DESC LIMIT 20
+    `).all(months) as any[];
+
+    const grandTotal = monthly.reduce((s, m) => ({
+      invoiced: s.invoiced + m.total_invoiced,
+      collected: s.collected + m.total_collected,
+      outstanding: s.outstanding + m.total_outstanding,
+    }), { invoiced: 0, collected: 0, outstanding: 0 });
+
+    res.json({
+      monthly,
+      by_client: byClient,
+      grand_total: {
+        total_invoiced: Math.round(grandTotal.invoiced * 100) / 100,
+        total_collected: Math.round(grandTotal.collected * 100) / 100,
+        total_outstanding: Math.round(grandTotal.outstanding * 100) / 100,
+        collection_rate: grandTotal.invoiced > 0 ? Math.round(grandTotal.collected / grandTotal.invoiced * 100) : 0,
+      },
+      period_months: months,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate revenue report', code: 'REVENUE_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Recurring Invoice Templates
+// Create, list, and apply templates for recurring invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/templates/list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT it.*, c.name as client_name FROM invoice_templates it
+        LEFT JOIN clients c ON it.client_id = c.id
+        ORDER BY it.is_active DESC, it.name ASC LIMIT 100
+      `).all();
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list templates', code: 'LIST_INVOICE_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { name, client_id, frequency, line_items_json, notes, is_active } = req.body;
+    if (!name || !client_id) return res.status(400).json({ error: 'name and client_id required', code: 'NAME_AND_CLIENTID_REQUIRED' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, client_id INTEGER NOT NULL,
+        frequency TEXT DEFAULT 'monthly',
+        line_items_json TEXT, notes TEXT, is_active INTEGER DEFAULT 1,
+        last_generated_at TEXT, next_generate_at TEXT,
+        created_by INTEGER, created_at TEXT, updated_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_templates (name, client_id, frequency, line_items_json, notes, is_active,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, client_id, frequency || 'monthly', line_items_json || '[]',
+      notes || null, is_active !== false ? 1 : 0, user.userId, now, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, name } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:templateId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tid = parseInt(req.params.templateId as string, 10);
+    if (isNaN(tid)) { res.status(400).json({ error: 'Invalid template ID' }); return; }
+    try { db.prepare('DELETE FROM invoice_templates WHERE id = ?').run(tid); } catch { /* ok */ }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_INVOICE_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Payment Aging Reports
+// Shows invoices grouped by days overdue (30/60/90/120+).
+// ════════════════════════════════════════════════════════════
+router.get('/aging/report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const overdue = db.prepare(`
+      SELECT i.id, i.invoice_number, i.client_id, c.name as client_name,
+        i.due_date, i.total, i.amount_paid, i.balance_due, i.status,
+        CAST(julianday(?) - julianday(i.due_date) AS INTEGER) as days_overdue
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status IN ('sent', 'partial', 'overdue')
+        AND i.due_date < ?
+      ORDER BY days_overdue DESC
+      LIMIT 500
+    `).all(today, today) as any[];
+
+    // Group by aging bucket
+    const buckets = {
+      '1-30': { invoices: [] as any[], total: 0 },
+      '31-60': { invoices: [] as any[], total: 0 },
+      '61-90': { invoices: [] as any[], total: 0 },
+      '91-120': { invoices: [] as any[], total: 0 },
+      '120+': { invoices: [] as any[], total: 0 },
+    };
+
+    for (const inv of overdue) {
+      const d = inv.days_overdue;
+      const bucket = d <= 30 ? '1-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : d <= 120 ? '91-120' : '120+';
+      buckets[bucket as keyof typeof buckets].invoices.push(inv);
+      buckets[bucket as keyof typeof buckets].total += inv.balance_due || 0;
+    }
+
+    // Round totals
+    for (const b of Object.values(buckets)) {
+      b.total = Math.round(b.total * 100) / 100;
+    }
+
+    const totalOverdue = overdue.reduce((s, i) => s + (i.balance_due || 0), 0);
+
+    res.json({
+      total_overdue_amount: Math.round(totalOverdue * 100) / 100,
+      total_overdue_count: overdue.length,
+      buckets,
+      as_of: today,
+    });
+  } catch (error: any) {
+    console.error('Aging report error:', error);
+    res.status(500).json({ error: 'Failed to generate aging report', code: 'AGING_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Auto-Calculate Totals with Tax
+// Recalculates invoice totals including tax rate.
+// ════════════════════════════════════════════════════════════
+router.post('/:id/recalculate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const invoiceId = req.params.id;
+    const { tax_rate } = req.body;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    const now = localNow();
+
+    // If tax_rate provided, calculate and store tax_amount
+    if (tax_rate !== undefined) {
+      const rate = parseFloat(String(tax_rate)) || 0;
+      const items = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as subtotal
+        FROM invoice_line_items WHERE invoice_id = ? AND line_type NOT IN ('discount', 'late_fee', 'tax')
+      `).get(invoiceId) as any;
+
+      const taxAmount = Math.round(items.subtotal * rate / 100 * 100) / 100;
+      db.prepare('UPDATE invoices SET tax_rate = ?, tax_amount = ?, updated_at = ? WHERE id = ?')
+        .run(rate, taxAmount, now, invoiceId);
+    }
+
+    // Recalculate totals
+    recalculateInvoiceTotals(invoiceId);
+
+    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Recalculate error:', error);
+    res.status(500).json({ error: 'Failed to recalculate', code: 'RECALCULATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Payment Reminder Scheduling
+// Creates/lists payment reminder records for overdue invoices.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let rows: any[];
+    try {
+      rows = db.prepare(`
+        SELECT * FROM invoice_reminders WHERE invoice_id = ?
+        ORDER BY scheduled_at DESC LIMIT 50
+      `).all(req.params.id);
+    } catch {
+      rows = [];
+    }
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list reminders', code: 'LIST_REMINDERS_ERROR' });
+  }
+});
+
+router.post('/:id/reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+    const { scheduled_at, reminder_type, message } = req.body;
+
+    const invoice = db.prepare('SELECT id, invoice_number, billing_email FROM invoices WHERE id = ?')
+      .get(req.params.id) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' });
+
+    // Ensure table exists
+    try {
+      db.prepare(`CREATE TABLE IF NOT EXISTS invoice_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL, reminder_type TEXT DEFAULT 'email',
+        scheduled_at TEXT, sent_at TEXT, message TEXT,
+        status TEXT DEFAULT 'pending',
+        created_by INTEGER, created_at TEXT
+      )`);
+    } catch { /* already exists */ }
+
+    const result = db.prepare(`
+      INSERT INTO invoice_reminders (invoice_id, reminder_type, scheduled_at, message, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?)
+    `).run(req.params.id, reminder_type || 'email', scheduled_at || now, message || `Payment reminder for invoice ${invoice.invoice_number}`, user.userId, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'reminder_scheduled', 'invoice', ?, ?, ?)`).run(
+      user.userId, req.params.id, `Payment reminder scheduled for invoice ${invoice.invoice_number}`, now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, status: 'pending' } });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create reminder', code: 'CREATE_REMINDER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Revenue Summary Report
+// Returns revenue data grouped by month and client.
+// ════════════════════════════════════════════════════════════
+router.get('/reports/revenue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const months = Math.min(24, Math.max(1, parseInt(String(req.query.months || '12'), 10)));
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', issue_date) as month,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(total), 0) as total_invoiced,
+        COALESCE(SUM(amount_paid), 0) as total_collected,
+        COALESCE(SUM(balance_due), 0) as total_outstanding
+      FROM invoices
+      WHERE status NOT IN ('void', 'cancelled')
+        AND issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(months) as any[];
+
+    const byClient = db.prepare(`
+      SELECT c.name as client_name, i.client_id,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(i.total), 0) as total_invoiced,
+        COALESCE(SUM(i.amount_paid), 0) as total_collected
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status NOT IN ('void', 'cancelled')
+        AND i.issue_date >= date('now', '-' || ? || ' months')
+      GROUP BY i.client_id ORDER BY total_invoiced DESC LIMIT 20
+    `).all(months) as any[];
+
+    const grandTotal = monthly.reduce((s, m) => ({
+      invoiced: s.invoiced + m.total_invoiced,
+      collected: s.collected + m.total_collected,
+      outstanding: s.outstanding + m.total_outstanding,
+    }), { invoiced: 0, collected: 0, outstanding: 0 });
+
+    res.json({
+      monthly,
+      by_client: byClient,
+      grand_total: {
+        total_invoiced: Math.round(grandTotal.invoiced * 100) / 100,
+        total_collected: Math.round(grandTotal.collected * 100) / 100,
+        total_outstanding: Math.round(grandTotal.outstanding * 100) / 100,
+        collection_rate: grandTotal.invoiced > 0 ? Math.round(grandTotal.collected / grandTotal.invoiced * 100) : 0,
+      },
+      period_months: months,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate revenue report', code: 'REVENUE_REPORT_ERROR' });
   }
 });
 

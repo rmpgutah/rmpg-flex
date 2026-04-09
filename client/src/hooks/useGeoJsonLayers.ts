@@ -52,12 +52,13 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'county',
     label: 'Counties',
     file: 'county.geojson',
-    visible: false,
+    visible: true,
     selectable: true,
-    style: { fillColor: '#3b82f6', fillOpacity: 0.06, strokeColor: '#3b82f6', strokeOpacity: 0.4, strokeWeight: 1.5 },
+    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],
+    minZoom: 8,
   },
   {
     id: 'municipality',
@@ -75,7 +76,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'beat',
     label: 'Beats',
     file: 'beat.geojson',
-    visible: false,
+    visible: true,
     selectable: true,
     style: { fillColor: '#22c55e', fillOpacity: 0.08, strokeColor: '#22c55e', strokeOpacity: 0.45, strokeWeight: 1 },
     labelProp: 'beat_code',
@@ -100,7 +101,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'place.geojson',
     visible: false,
     selectable: false,
-    style: { fillColor: '#06b6d4', fillOpacity: 0.7, strokeColor: '#06b6d4', strokeOpacity: 0.9, strokeWeight: 1, iconScale: 4 },
+    style: { fillColor: '#22c55e', fillOpacity: 0.7, strokeColor: '#22c55e', strokeOpacity: 0.9, strokeWeight: 1, iconScale: 4 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['COUNTY', 'POPULATION', 'TYPE'],
@@ -129,12 +130,12 @@ const ASSIGNED_STYLE = {
 // ── Section color palette (12 distinct hues for beat sections) ──
 
 export const SECTION_COLORS: Record<string, string> = {
-  SL1: '#22c55e', SL2: '#3b82f6', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#06b6d4',
+  SL1: '#22c55e', SL2: '#888888', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#22c55e',
   DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
   WB1: '#8b5cf6', WB2: '#10b981',
   UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
 };
-const SECTION_COLOR_FALLBACKS = ['#64748b', '#78716c', '#a3a3a3', '#71717a', '#737373', '#6b7280'];
+const SECTION_COLOR_FALLBACKS = ['#666666', '#78716c', '#a3a3a3', '#71717a', '#737373', '#666666'];
 
 export function getSectionColor(sectionId: string): string {
   if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];
@@ -247,6 +248,8 @@ export function useGeoJsonLayers({
   const geojsonCacheRef = useRef<Record<string, object>>({});
   // Track listeners for cleanup
   const listenersRef = useRef<google.maps.MapsEventListener[]>([]);
+  // Label markers for beat/zone text overlays
+  const labelMarkersRef = useRef<Record<string, google.maps.Marker[]>>({});
 
   // Refs for latest callback/selection state (avoids re-creating data layers)
   const selectionModeRef = useRef(selectionMode);
@@ -460,6 +463,80 @@ export function useGeoJsonLayers({
       [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: count },
     }));
 
+    // ── Beat label overlays — show dispatch codes at polygon centroids ──
+    if (cfg.id === 'beat' && beatDistrictMapRef.current) {
+      dataLayer.forEach((feature) => {
+        const cityCode = feature.getProperty('city_code') as string;
+        const distLetter = feature.getProperty('district_letter') as string;
+        const entry = lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter);
+        if (!entry) return;
+
+        // Calculate polygon centroid
+        const geom = feature.getGeometry();
+        if (!geom) return;
+        let latSum = 0, lngSum = 0, pointCount = 0;
+        geom.forEachLatLng((latLng) => {
+          latSum += latLng.lat();
+          lngSum += latLng.lng();
+          pointCount++;
+        });
+        if (pointCount === 0) return;
+        const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
+
+        const sColor = getSectionColor(entry.sectionId);
+        const marker = new google.maps.Marker({
+          position: centroid,
+          map,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 0, // invisible icon — we only want the label
+          },
+          label: {
+            text: entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`,
+            color: sColor,
+            fontSize: '9px',
+            fontWeight: 'bold',
+            fontFamily: 'JetBrains Mono, Courier New, monospace',
+          },
+          clickable: false,
+          zIndex: 1,
+        });
+        // Store label markers for cleanup
+        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
+        labelMarkersRef.current[cfg.id].push(marker);
+      });
+    }
+
+    // ── County label overlays — show county names at polygon centroids ──
+    if (cfg.id === 'county') {
+      dataLayer.forEach((feature) => {
+        const name = feature.getProperty('NAME') as string;
+        if (!name) return;
+        const geom = feature.getGeometry();
+        if (!geom) return;
+        let latSum = 0, lngSum = 0, pointCount = 0;
+        geom.forEachLatLng((latLng) => { latSum += latLng.lat(); lngSum += latLng.lng(); pointCount++; });
+        if (pointCount === 0) return;
+        const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
+        const marker = new google.maps.Marker({
+          position: centroid,
+          map,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+          label: {
+            text: name.toUpperCase() + ' CO.',
+            color: '#88888880',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            fontFamily: 'JetBrains Mono, Courier New, monospace',
+          },
+          clickable: false,
+          zIndex: 0,
+        });
+        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
+        labelMarkersRef.current[cfg.id].push(marker);
+      });
+    }
+
     // Apply current styles after load
     restyleLayers();
   }, [map, infoWindow, getFeatureKey, restyleLayers]);
@@ -493,6 +570,12 @@ export function useGeoJsonLayers({
         dl.setMap(nowVisible ? map : null);
       }
 
+      // Show/hide label markers for this layer
+      const labels = labelMarkersRef.current[layerId];
+      if (labels) {
+        for (const m of labels) m.setMap(nowVisible ? map : null);
+      }
+
       return { ...prev, [layerId]: { ...curr, visible: nowVisible } };
     });
   }, [map]);
@@ -522,10 +605,15 @@ export function useGeoJsonLayers({
         const dl = dataLayersRef.current[cfg.id];
         if (!dl || !state?.visible) continue;
 
-        if (cfg.minZoom && zoom < cfg.minZoom) {
-          dl.setMap(null);
-        } else {
-          dl.setMap(map);
+        const visible = !cfg.minZoom || zoom >= cfg.minZoom;
+        dl.setMap(visible ? map : null);
+
+        // Also toggle label markers visibility with zoom
+        const labels = labelMarkersRef.current[cfg.id];
+        if (labels) {
+          // Only show labels at zoom 12+ (readable size)
+          const showLabels = visible && zoom >= 12;
+          for (const m of labels) m.setMap(showLabels ? map : null);
         }
       }
     });
@@ -545,8 +633,13 @@ export function useGeoJsonLayers({
       for (const dl of Object.values(dataLayersRef.current)) {
         dl.setMap(null);
       }
+      // Clean up label markers
+      for (const markers of Object.values(labelMarkersRef.current)) {
+        for (const m of markers) m.setMap(null);
+      }
       dataLayersRef.current = {};
       listenersRef.current = [];
+      labelMarkersRef.current = {};
     };
   }, []);
 

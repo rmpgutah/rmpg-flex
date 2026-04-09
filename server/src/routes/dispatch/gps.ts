@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { broadcastUnitUpdate } from '../../utils/websocket';
+import { broadcastUnitUpdate, broadcastAlert } from '../../utils/websocket';
 import { reverseGeocodeDetailed } from '../../utils/geocode';
 import { localNow } from '../../utils/timeUtils';
+import { auditLog } from '../../utils/auditLogger';
 
 // GPS source priority — higher number wins
 const GPS_SOURCE_PRIORITY: Record<string, number> = {
@@ -14,7 +15,40 @@ const GPS_SOURCE_PRIORITY: Record<string, number> = {
 };
 const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
 
+/** Ray-casting point-in-polygon test */
+function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat, yi = polygon[i].lng;
+    const xj = polygon[j].lat, yj = polygon[j].lng;
+    if ((yi > lng) !== (yj > lng) && lat < (xj - xi) * (lng - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 const router = Router();
+
+// Fix 19: Ensure index on gps_breadcrumbs(call_sign, recorded_at) for trail queries
+try {
+  const db = getDb();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_breadcrumbs_unit_recorded
+    ON gps_breadcrumbs(unit_id, recorded_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_breadcrumbs_call_sign_recorded
+    ON gps_breadcrumbs(call_sign, recorded_at)`).run();
+} catch (err) { console.error('[GPS] Index creation skipped (table may not exist yet):', err instanceof Error ? err.message : err); }
+
+// Fix 16: Validate call_sign parameter format
+function isValidCallSign(callSign: string): boolean {
+  return typeof callSign === 'string' && callSign.length >= 1 && callSign.length <= 50 && /^[A-Za-z0-9\-_]+$/.test(callSign);
+}
+
+// Fix 22: Validate coordinate ranges
+function isValidCoordinate(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) &&
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
 
 // POST /api/dispatch/gps - Batch GPS position update from officer
 // Accepts either a single point or an array of points collected at ~1-second intervals.
@@ -44,19 +78,40 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     if (Array.isArray(req.body?.points) && req.body.points.length > 0) {
       // Batch format: { points: [...] }
       pointsReceived = req.body.points.length;
-      points = req.body.points.slice(0, 60); // Cap at 60 points per request
+      // Validate each point has the expected shape before processing
+      const rawPoints = req.body.points.slice(0, 60); // Cap at 60 points per request
+      for (const pt of rawPoints) {
+        if (pt === null || typeof pt !== 'object' || Array.isArray(pt)) {
+          res.status(400).json({ error: 'Each point must be an object with lat/lng', code: 'EACH_POINT_MUST_BE' });
+          return;
+        }
+      }
+      points = rawPoints.filter((pt: any) => pt.lat != null && pt.lng != null).map((pt: any) => ({
+        lat: Number(pt.lat),
+        lng: Number(pt.lng),
+        accuracy: pt.accuracy != null ? Number(pt.accuracy) : null,
+        heading: pt.heading != null ? Number(pt.heading) : null,
+        speed: pt.speed != null ? Number(pt.speed) : null,
+        timestamp: typeof pt.timestamp === 'string' && pt.timestamp.length <= 50 ? pt.timestamp : null,
+      }));
     } else if (req.body.latitude != null && req.body.longitude != null) {
       // Legacy single-point format
+      const lat = Number(req.body.latitude);
+      const lng = Number(req.body.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        res.status(400).json({ error: 'latitude and longitude must be valid numbers', code: 'LATITUDE_AND_LONGITUDE_MUST' });
+        return;
+      }
       points = [{
-        lat: req.body.latitude,
-        lng: req.body.longitude,
-        accuracy: req.body.accuracy ?? null,
-        heading: req.body.heading ?? null,
-        speed: req.body.speed ?? null,
+        lat,
+        lng,
+        accuracy: req.body.accuracy != null ? Number(req.body.accuracy) : null,
+        heading: req.body.heading != null ? Number(req.body.heading) : null,
+        speed: req.body.speed != null ? Number(req.body.speed) : null,
         timestamp: null,
       }];
     } else {
-      res.status(400).json({ error: 'latitude/longitude or points[] required' });
+      res.status(400).json({ error: 'latitude/longitude or points[] required', code: 'LATITUDELONGITUDE_OR_POINTS_REQUIRED' });
       return;
     }
 
@@ -68,7 +123,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     );
 
     if (validPoints.length === 0) {
-      res.status(400).json({ error: 'No valid GPS points provided' });
+      res.status(400).json({ error: 'No valid GPS points provided', code: 'NO_VALID_GPS_POINTS' });
       return;
     }
 
@@ -77,31 +132,32 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     // needs a unit entry to store their position and broadcast updates.
     let unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
     if (!unit) {
-      // Look up user info for a sensible call_sign
-      const userInfo = db.prepare('SELECT badge_number, username, full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-      const callSign = userInfo?.badge_number || userInfo?.username || `P-${req.user!.userId}`;
+      // Wrap check-then-insert in a transaction to prevent TOCTOU race
+      const ensureUnit = db.transaction((userId: number) => {
+        // Re-check inside transaction
+        const existing = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(userId) as any;
+        if (existing) return existing;
 
-      // Use INSERT OR IGNORE to prevent race conditions when multiple GPS
-      // requests arrive simultaneously for a new user — only the first succeeds
-      const existing = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
-      const finalCallSign = existing ? `${callSign}-${req.user!.userId}` : callSign;
+        const userInfo = db.prepare('SELECT badge_number, username, full_name FROM users WHERE id = ?').get(userId) as any;
+        const callSign = userInfo?.badge_number || userInfo?.username || `P-${userId}`;
 
-      try {
-        db.prepare(`
-          INSERT INTO units (call_sign, officer_id, status)
-          VALUES (?, ?, 'available')
-        `).run(finalCallSign, req.user!.userId);
-      } catch (insertErr: any) {
-        // If a concurrent request already created the unit, just fetch it
-        if (!insertErr.message?.includes('UNIQUE constraint')) throw insertErr;
-      }
+        const csConflict = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
+        const finalCallSign = csConflict ? `${callSign}-${userId}` : callSign;
 
-      unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+        try {
+          db.prepare(`INSERT INTO units (call_sign, officer_id, status) VALUES (?, ?, 'available')`).run(finalCallSign, userId);
+        } catch (insertErr: any) {
+          if (!insertErr.message?.includes('UNIQUE constraint')) throw insertErr;
+        }
+        return db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(userId) as any;
+      });
+
+      unit = ensureUnit(req.user!.userId);
       if (!unit) {
-        res.status(500).json({ error: 'Failed to create or find unit' });
+        res.status(500).json({ error: 'Failed to create or find unit', code: 'FAILED_TO_CREATE_OR' });
         return;
       }
-      console.log(`[GPS] Auto-created unit "${finalCallSign}" for user ${req.user!.userId} (${userInfo?.full_name || 'unknown'})`);
+      console.log(`[GPS] Auto-created unit "${unit.call_sign}" for user ${req.user!.userId}`);
 
       // Audit log: auto-created unit
       db.prepare(`
@@ -110,7 +166,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       `).run(
         req.user!.userId,
         unit.id,
-        `Auto-created unit "${finalCallSign}" via GPS tracking for ${userInfo?.full_name || 'unknown'}`,
+        `Auto-created unit "${unit.call_sign}" via GPS tracking`,
         req.ip || 'unknown',
       );
     }
@@ -123,7 +179,9 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
     // ── GPS Source Priority Check ──
     // Determine incoming source: phone GPS > desktop WiFi
-    const deviceType = req.body.device_type || 'desktop';
+    const allowedDeviceTypes = ['mobile', 'desktop'];
+    const rawDeviceType = typeof req.body.device_type === 'string' ? req.body.device_type : 'desktop';
+    const deviceType = allowedDeviceTypes.includes(rawDeviceType) ? rawDeviceType : 'desktop';
     const gpsSource = deviceType === 'mobile' ? 'browser_mobile' : 'browser_desktop';
     const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 1;
 
@@ -187,6 +245,34 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
     }
 
+    // ── Check geofences for the latest point ──
+    try {
+      const geofences = db.prepare('SELECT * FROM geofences WHERE is_active = 1').all() as any[];
+      for (const fence of geofences) {
+        let coords: any;
+        try {
+          coords = JSON.parse(fence.polygon_coords);
+        } catch (parseErr) {
+          console.error(`[GPS] Skipping geofence ${fence.id} — invalid polygon_coords JSON:`, parseErr instanceof Error ? parseErr.message : parseErr);
+          continue;
+        }
+        if (!Array.isArray(coords) || coords.length < 3) continue;
+        if (pointInPolygon(latest.lat, latest.lng, coords)) {
+          // Broadcast geofence entry alert — frontend deduplicates
+          if (fence.alert_on_enter) {
+            broadcastAlert({
+              type: 'geofence:alert',
+              unit: unit.call_sign,
+              geofence_id: fence.id,
+              geofence_name: fence.name,
+              zone_type: fence.zone_type,
+              action: 'enter',
+            });
+          }
+        }
+      }
+    } catch (geoErr) { console.error('[GPS] Geofence check error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
+
     const pointsCapped = pointsReceived > 60 ? pointsReceived - 60 : 0;
     const pointsInvalid = points.length - validPoints.length;
     res.json({
@@ -201,6 +287,8 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
     // ── Async geocode: reverse-geocode the latest point, then backfill the batch ──
     // Runs after the response is sent so it doesn't slow down the GPS endpoint.
+    // NOTE: Rate limiting — each GPS batch triggers at most ONE reverse geocode call.
+    // With ~10s batch intervals per unit, this stays well within Google Maps quota.
     (async () => {
       try {
         const geo = await reverseGeocodeDetailed(latest.lat, latest.lng);
@@ -222,8 +310,8 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       }
     })();
   } catch (error: any) {
-    console.error('GPS update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[GPS] update error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to update', code: 'GPS_UPDATE_ERROR' });
   }
 });
 
@@ -232,14 +320,14 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
   try {
     const db = getDb();
     const unit = db.prepare(`
-      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude, u.gps_source, u.gps_updated_at
       FROM units u WHERE u.officer_id = ?
     `).get(req.user!.userId) as any;
 
     res.json(unit || null);
   } catch (error: any) {
-    console.error('Get my unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[GPS] get my unit error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get my unit', code: 'GPS_GET_MY_UNIT' });
   }
 });
 
@@ -249,9 +337,10 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
   try {
     const db = getDb();
     const unitId = parseInt(req.params.unitId as string, 10);
-    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
+    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }); return; }
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
+    // Fix 15: LIMIT on trail queries to prevent huge responses
     const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number,
@@ -260,6 +349,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
+      LIMIT 10000
     `).all(unitId, hours) as any[];
 
     // ── Filter: accuracy gate + jump detection + stationary collapse ──
@@ -301,10 +391,17 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
       filtered.push(row);
     }
 
+    // Fix 17: Cache headers for frequently-accessed positions
+    res.set('Cache-Control', 'private, max-age=5');
+    // Fix 20: Return proper error codes
     res.json(filtered);
   } catch (error: any) {
-    console.error('GPS trail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[GPS] trail error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'GPS_TRAIL_ERROR' });
   }
 });
 
@@ -330,7 +427,9 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
 
     // Use SQLite's datetime() for the cutoff so the format matches
     // recorded_at's DEFAULT (datetime('now','localtime') → "YYYY-MM-DD HH:MM:SS").
+    // Fix 15: LIMIT on trail queries to prevent huge responses
     const rows = db.prepare(`
+      /* Uses idx: gps_breadcrumbs(unit_id, recorded_at) */
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
         b.current_call_number, b.current_call_type, b.recorded_at,
@@ -339,6 +438,7 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY b.unit_id, b.recorded_at ASC
+      LIMIT 50000
     `).all(hours) as any[];
 
     // ── Group by unit, then filter each trail to remove starburst artifacts ──
@@ -404,10 +504,138 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       trailPts.push(pt);
     }
 
-    res.json(Object.values(trails));
+    // Fix 17: Cache headers
+    res.set('Cache-Control', 'private, max-age=5');
+    const result = Object.values(trails);
+    res.json(result);
   } catch (error: any) {
-    console.error('GPS trails error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[GPS] trails error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'GPS_TRAILS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/dwell-times - Calculate how long each active unit has been stationary
+// Walks back through recent breadcrumbs to find when position last changed by >50m.
+router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Get all active units with a known position
+    const units = db.prepare(`
+      SELECT id, call_sign, latitude, longitude, status
+      FROM units
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND status != 'off_duty'
+    
+      LIMIT 1000
+    `).all() as Array<{ id: number; call_sign: string; latitude: number; longitude: number; status: string }>;
+
+    if (units.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const THRESHOLD_M = 50; // meters — movement threshold
+
+    // Haversine distance in meters
+    const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Fix N+1: fetch breadcrumbs for all active units in a single grouped query.
+    // ROW_NUMBER window partitions by unit_id, limited to 100 per unit.
+    const unitIds = units.map(u => u.id);
+    if (unitIds.length === 0) { res.json([]); return; }
+    const placeholders = unitIds.map(() => '?').join(',');
+    const allBreadcrumbs = db.prepare(`
+      SELECT unit_id, latitude, longitude, recorded_at
+      FROM (
+        SELECT unit_id, latitude, longitude, recorded_at,
+          ROW_NUMBER() OVER (PARTITION BY unit_id ORDER BY id DESC) as rn
+        FROM gps_breadcrumbs
+        WHERE unit_id IN (${placeholders})
+      )
+      WHERE rn <= 100
+      ORDER BY unit_id, rn ASC
+    
+      LIMIT 1000
+    `).all(...unitIds) as Array<{ unit_id: number; latitude: number; longitude: number; recorded_at: string }>;
+
+    // Group breadcrumbs by unit_id
+    const breadcrumbsByUnit = new Map<number, Array<{ latitude: number; longitude: number; recorded_at: string }>>();
+    for (const bc of allBreadcrumbs) {
+      let arr = breadcrumbsByUnit.get(bc.unit_id);
+      if (!arr) { arr = []; breadcrumbsByUnit.set(bc.unit_id, arr); }
+      arr.push(bc);
+    }
+
+    // Use SQLite localtime for consistent Mountain Time "now" comparison
+    const dbNow = db.prepare(`SELECT datetime('now','localtime') as now`).get() as any;
+    const nowLocal = dbNow?.now || localNow();
+
+    const results: Array<{ call_sign: string; latitude: number; longitude: number; dwell_minutes: number; status: string }> = [];
+
+    for (const unit of units) {
+      const breadcrumbs = breadcrumbsByUnit.get(unit.id);
+      if (!breadcrumbs || breadcrumbs.length === 0) continue;
+
+      // Latest position from unit table
+      const latestLat = unit.latitude;
+      const latestLng = unit.longitude;
+
+      // Walk backwards to find first breadcrumb where position changed by >50m
+      let lastMovedAt: string | null = null;
+      for (const bc of breadcrumbs) {
+        const dist = haversine(latestLat, latestLng, bc.latitude, bc.longitude);
+        if (dist > THRESHOLD_M) {
+          lastMovedAt = bc.recorded_at;
+          break;
+        }
+      }
+
+      // If no movement found in last 100 breadcrumbs, use the oldest breadcrumb time
+      if (!lastMovedAt && breadcrumbs.length > 0) {
+        lastMovedAt = breadcrumbs[breadcrumbs.length - 1].recorded_at;
+      }
+
+      if (!lastMovedAt) continue;
+
+      // Compare using Mountain Time consistent timestamps (recorded_at is localtime, nowLocal is localtime)
+      const movedAtMs = new Date(lastMovedAt).getTime();
+      const nowMs = new Date(nowLocal).getTime();
+      const dwellMinutes = Math.round((nowMs - movedAtMs) / 60000);
+
+      // Only include units dwelling > 5 min
+      if (dwellMinutes >= 5) {
+        results.push({
+          call_sign: unit.call_sign,
+          latitude: latestLat,
+          longitude: latestLng,
+          dwell_minutes: dwellMinutes,
+          status: unit.status,
+        });
+      }
+    }
+
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(results);
+  } catch (error: any) {
+    console.error('[GPS] dwell-times error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'GPS_DWELL_ERROR' });
   }
 });
 
@@ -421,10 +649,37 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     const result = db.prepare(
       `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
     ).run(days);
+    auditLog(req, 'DELETE', 'unit', 0, `Purged ${result.changes} GPS breadcrumbs older than ${days} days`);
     res.json({ deleted: result.changes });
   } catch (error: any) {
-    console.error('Breadcrumb cleanup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[GPS] breadcrumb cleanup error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to breadcrumb cleanup', code: 'GPS_BREADCRUMB_CLEANUP_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/units-with-trails — Units with their most recent trail data
+router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    const hoursStr = `-${hours} hours`;
+
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.officer_id, usr.full_name as officer_name,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b WHERE b.unit_id = u.id AND b.recorded_at >= datetime('now','localtime', ?)) as trail_points,
+        (SELECT b.latitude FROM gps_breadcrumbs b WHERE b.unit_id = u.id ORDER BY b.recorded_at DESC LIMIT 1) as last_lat,
+        (SELECT b.longitude FROM gps_breadcrumbs b WHERE b.unit_id = u.id ORDER BY b.recorded_at DESC LIMIT 1) as last_lng,
+        (SELECT b.recorded_at FROM gps_breadcrumbs b WHERE b.unit_id = u.id ORDER BY b.recorded_at DESC LIMIT 1) as last_seen
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status != 'off_duty'
+      ORDER BY u.call_sign
+    `).all(hoursStr);
+
+    res.json(units);
+  } catch (error: any) {
+    console.error('[GPS] units-with-trails error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to units-with-trails', code: 'GPS_UNITSWITHTRAILS_ERROR' });
   }
 });
 

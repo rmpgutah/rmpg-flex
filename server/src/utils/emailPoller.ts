@@ -135,17 +135,17 @@ async function syncInbox(): Promise<void> {
 
     // Sync core folders: Inbox (100), Sent Items (50), Drafts (50)
     const inboxNew = await syncFolder(client, 'inbox', 'inbox', 100);
-    try { await syncFolder(client, 'sentitems', 'sentitems', 50); } catch { /* sent items may fail */ }
-    try { await syncFolder(client, 'drafts', 'drafts', 50); } catch { /* drafts may fail */ }
-    try { await syncFolder(client, 'deleteditems', 'deleteditems', 30); } catch { /* deleted may fail */ }
-    try { await syncFolder(client, 'junkemail', 'junkemail', 20); } catch { /* junk may fail */ }
-    try { await syncFolder(client, 'archive', 'archive', 50); } catch { /* archive may fail */ }
+    try { await syncFolder(client, 'sentitems', 'sentitems', 50); } catch (e: any) { console.warn('[EmailPoller] sentitems sync failed:', e?.message); }
+    try { await syncFolder(client, 'drafts', 'drafts', 50); } catch (e: any) { console.warn('[EmailPoller] drafts sync failed:', e?.message); }
+    try { await syncFolder(client, 'deleteditems', 'deleteditems', 30); } catch (e: any) { console.warn('[EmailPoller] deleteditems sync failed:', e?.message); }
+    try { await syncFolder(client, 'junkemail', 'junkemail', 20); } catch (e: any) { console.warn('[EmailPoller] junkemail sync failed:', e?.message); }
+    try { await syncFolder(client, 'archive', 'archive', 50); } catch (e: any) { console.warn('[EmailPoller] archive sync failed:', e?.message); }
 
     // Sync custom user folders
     try {
       await syncCustomFolders(client);
-    } catch {
-      // Custom folder sync is best-effort
+    } catch (e: any) {
+      console.warn('[EmailPoller] Custom folder sync failed:', e?.message);
     }
 
     // Sync folder counts
@@ -195,8 +195,8 @@ async function syncCustomFolders(client: any): Promise<void> {
 
     try {
       await syncFolder(client, folder.graph_id, folder.graph_id, 30);
-    } catch {
-      // Skip individual folder failures silently
+    } catch (e: any) {
+      console.warn(`[EmailPoller] Folder ${folder.graph_id} sync failed:`, e?.message);
     }
   }
 }
@@ -223,11 +223,19 @@ async function processScheduledEmails(): Promise<void> {
 
   for (const email of due) {
     try {
-      const toParsed = JSON.parse(email.to_addresses);
+      let toParsed: any, ccParsed: any, bccParsed: any;
+      try {
+        toParsed = JSON.parse(email.to_addresses);
+        ccParsed = email.cc_addresses ? JSON.parse(email.cc_addresses) : undefined;
+        bccParsed = email.bcc_addresses ? JSON.parse(email.bcc_addresses) : undefined;
+      } catch (parseErr) {
+        console.error(`[EmailPoller] Email #${email.id} has malformed address JSON — skipping`);
+        db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?")
+          .run('Malformed address JSON', email.id);
+        continue;
+      }
       const toList: string[] = Array.isArray(toParsed) ? toParsed : [String(toParsed)];
-      const ccParsed = email.cc_addresses ? JSON.parse(email.cc_addresses) : undefined;
       const ccList: string[] | undefined = ccParsed ? (Array.isArray(ccParsed) ? ccParsed : [String(ccParsed)]) : undefined;
-      const bccParsed = email.bcc_addresses ? JSON.parse(email.bcc_addresses) : undefined;
       const bccList: string[] | undefined = bccParsed ? (Array.isArray(bccParsed) ? bccParsed : [String(bccParsed)]) : undefined;
 
       // Get user signature

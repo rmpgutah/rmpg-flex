@@ -258,7 +258,8 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
     }
   };
 
-  if (loading) return <LoadingSpinner />;
+  // Set document title — MUST be before any early returns (React hooks rules)
+  useEffect(() => { document.title = 'Admin - MicroBilt \u2014 RMPG Flex'; }, []);
 
   const filteredCatalog = productSearch
     ? PRODUCT_CATALOG.map(cat => ({
@@ -269,6 +270,8 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
         ),
       })).filter(cat => cat.products.length > 0)
     : PRODUCT_CATALOG;
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-4">
@@ -311,14 +314,14 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           <span className="text-[10px] text-rmpg-400">Environment:</span>
           <div className="flex items-center gap-1">
             {(['sandbox', 'production'] as const).map(env => (
-              <button
+              <button type="button"
                 key={env}
                 onClick={() => handleEnvironmentChange(env)}
                 className="text-[10px] px-2.5 py-1 rounded-sm transition-colors"
                 style={{
                   background: environment === env ? (env === 'production' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)') : 'transparent',
                   border: environment === env ? `1px solid ${env === 'production' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)'}` : '1px solid transparent',
-                  color: environment === env ? (env === 'production' ? '#f87171' : '#60a5fa') : '#8a9aaa',
+                  color: environment === env ? (env === 'production' ? '#f87171' : '#aaaaaa') : '#888888',
                 }}
               >
                 {env === 'sandbox' ? 'Sandbox' : 'Production'}
@@ -356,7 +359,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
               placeholder={status?.configured ? 'Enter new secret to replace...' : 'Enter your Microbilt Client Secret...'}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <button
+            <button type="button"
               onClick={() => setShowSecret(!showSecret)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
             >
@@ -379,25 +382,25 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={handleSaveCredentials}
             disabled={saving || !clientId.trim() || !clientSecret.trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
           </button>
           {status?.configured && (
             <>
-              <button
+              <button type="button"
                 onClick={handleTest}
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                 Test Connection
               </button>
-              <button
+              <button type="button"
                 onClick={handleClear}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -461,7 +464,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
               <div key={cat.category}>
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <CatIcon className="w-3 h-3 text-rmpg-400" />
-                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{cat.category}</span>
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{(cat.category || '').replace(/_/g, ' ')}</span>
                 </div>
                 <div className="space-y-0.5">
                   {cat.products.map((product) => {
@@ -471,10 +474,10 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                         key={product.id}
                         className="flex items-center gap-2 px-2 py-1.5 rounded-sm transition-colors hover:bg-rmpg-800/30"
                         style={{
-                          background: enabled ? 'rgba(26, 90, 158, 0.06)' : undefined,
+                          background: enabled ? 'rgba(136, 136, 136, 0.06)' : undefined,
                         }}
                       >
-                        <button
+                        <button type="button"
                           onClick={() => status?.configured && handleToggleProduct(product.id)}
                           disabled={!status?.configured}
                           className="shrink-0 disabled:opacity-30"

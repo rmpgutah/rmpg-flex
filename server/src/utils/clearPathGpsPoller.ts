@@ -258,7 +258,7 @@ async function pollFleetPositions(): Promise<void> {
             device.gtsDeviceId || null,
             deviceId,
           );
-        } catch { /* non-critical enrichment */ }
+        } catch (e: any) { console.warn('[GPS] Enrichment failed:', e?.message); }
       }
 
       // Broadcast position update (same event as browser GPS)

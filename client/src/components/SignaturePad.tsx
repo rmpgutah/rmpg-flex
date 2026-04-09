@@ -66,7 +66,7 @@ export default function SignaturePad({
     ctx.font = '12px Helvetica';
     ctx.fillText('X', 10, canvas.height - 28);
     // Reset for drawing
-    ctx.strokeStyle = '#1a1a4e';
+    ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -81,7 +81,8 @@ export default function SignaturePad({
   }, [showPad, mode, initCanvas]);
 
   const getPoint = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number; time: number } => {
-    const canvas = canvasRef.current!;
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0, time: Date.now() };
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
@@ -142,7 +143,7 @@ export default function SignaturePad({
     ctx.beginPath();
     ctx.moveTo(last.x, last.y);
     ctx.quadraticCurveTo(last.x, last.y, midX, midY);
-    ctx.strokeStyle = '#1a1a4e';
+    ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = smoothWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -186,7 +187,7 @@ export default function SignaturePad({
     ctx.stroke();
 
     // Render typed name
-    ctx.fillStyle = '#1a1a4e';
+    ctx.fillStyle = '#1a1a1a';
     ctx.font = SIGNATURE_FONTS[selectedFont].css;
     ctx.textBaseline = 'bottom';
 
@@ -236,20 +237,22 @@ export default function SignaturePad({
     return (
       <div className="space-y-1">
         <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-        <div className="relative bg-white rounded border border-rmpg-600 p-2 inline-block">
+        <div className="relative bg-white rounded-sm border border-rmpg-600 p-2 inline-block">
           <img src={value} alt="Signature" className="max-h-16 object-contain" />
           <div className="absolute top-1 right-1 flex gap-1">
+            {/* 65: Re-sign button with transition */}
             <button
               type="button"
               onClick={() => setShowPad(true)}
-              className="text-[10px] px-1.5 py-0.5 bg-brand-700 text-white rounded hover:bg-brand-600"
+              className="text-[10px] px-1.5 py-0.5 bg-brand-700 text-white rounded-sm hover:bg-brand-600 active:bg-brand-500 transition-colors"
             >
               Re-sign
             </button>
+            {/* 66: Remove button with active state and transition */}
             <button
               type="button"
               onClick={handleRemove}
-              className="text-[10px] px-1.5 py-0.5 bg-red-700 text-white rounded hover:bg-red-600"
+              className="text-[10px] px-1.5 py-0.5 bg-red-700 text-white rounded-sm hover:bg-red-600 active:bg-red-500 transition-colors"
             >
               Remove
             </button>
@@ -262,14 +265,14 @@ export default function SignaturePad({
   // No value — show "Sign" button or the pad
   if (!showPad) {
     return (
-      <div className="space-y-1">
-        <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
+    <div className="space-y-1">
+        <label className="block text-xs font-semibold text-rmpg-300 uppercase" style={{ letterSpacing: '0.06em' }}>{label}</label>
         <button
           type="button"
           onClick={() => setShowPad(true)}
-          className="px-3 py-1.5 text-xs font-semibold bg-brand-800 text-brand-200 border border-brand-600 rounded hover:bg-brand-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-brand-800 text-brand-200 border border-brand-600 rounded-sm hover:bg-brand-700 active:bg-brand-600 focus-visible:ring-1 focus-visible:ring-brand-400 focus-visible:outline-none transition-colors duration-150"
         >
-          Sign Document
+          <PenTool className="w-3 h-3" /> Sign Document
         </button>
       </div>
     );
@@ -279,16 +282,17 @@ export default function SignaturePad({
   return (
     <div className="space-y-1">
       <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-      <div className="bg-rmpg-800 border border-rmpg-600 rounded p-2 inline-block">
-        {/* Mode toggle tabs */}
+      {/* 48: Signature pad container with top accent */}
+      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #888888' }}>
+        {/* 49: Mode toggle tabs with improved active state contrast */}
         <div className="flex gap-1 mb-2">
           <button
             type="button"
             onClick={() => setMode('draw')}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded transition-colors ${
+            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-sm transition-all duration-150 ${
               mode === 'draw'
-                ? 'bg-brand-700 text-white'
-                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600 hover:text-rmpg-200'
             }`}
           >
             <PenTool className="w-3 h-3" /> Draw
@@ -296,10 +300,10 @@ export default function SignaturePad({
           <button
             type="button"
             onClick={() => setMode('type')}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded transition-colors ${
+            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-sm transition-all duration-150 ${
               mode === 'type'
-                ? 'bg-brand-700 text-white'
-                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600 hover:text-rmpg-200'
             }`}
           >
             <Type className="w-3 h-3" /> Type
@@ -312,7 +316,8 @@ export default function SignaturePad({
             ref={canvasRef}
             width={cW}
             height={cH}
-            className="bg-white rounded cursor-crosshair touch-none"
+            aria-label="Signature drawing area"
+            className="bg-white rounded-sm cursor-crosshair touch-none"
             style={{ width: cW, height: cH }}
             onMouseDown={startDraw}
             onMouseMove={draw}
@@ -325,7 +330,7 @@ export default function SignaturePad({
         ) : (
           /* Typed signature mode */
           <div
-            className="bg-white rounded flex flex-col items-center justify-center"
+            className="bg-white rounded-sm flex flex-col items-center justify-center"
             style={{ width: cW, height: cH }}
           >
             {/* Preview of typed signature */}
@@ -334,7 +339,7 @@ export default function SignaturePad({
                 className="text-center truncate max-w-full"
                 style={{
                   font: SIGNATURE_FONTS[selectedFont].css,
-                  color: '#1a1a4e',
+                  color: '#1a1a1a',
                   fontSize: typedName.length > 20 ? '22px' : undefined,
                 }}
               >
@@ -352,20 +357,20 @@ export default function SignaturePad({
               onChange={(e) => setTypedName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && typedName.trim()) handleSave(); }}
               placeholder="Type your full name"
-              className="w-[90%] mb-2 px-2 py-1 text-sm border border-gray-300 rounded text-gray-800 focus:outline-none focus:border-blue-500"
+              className="w-[90%] mb-2 px-2 py-1 text-sm border border-rmpg-600 rounded-sm text-rmpg-800 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
               autoFocus
             />
             {/* Font selector */}
             <div className="flex gap-1 mb-1">
               {SIGNATURE_FONTS.map((f, i) => (
                 <button
-                  key={i}
+                  key={f.name}
                   type="button"
                   onClick={() => setSelectedFont(i)}
-                  className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+                  className={`px-1.5 py-0.5 text-[9px] rounded-sm transition-colors ${
                     selectedFont === i
-                      ? 'bg-blue-100 border border-blue-400 text-blue-700'
-                      : 'bg-gray-100 border border-gray-300 text-gray-600 hover:bg-gray-200'
+                      ? 'bg-gray-100 border border-gray-400 text-gray-700'
+                      : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700'
                   }`}
                 >
                   {f.name}
@@ -375,12 +380,12 @@ export default function SignaturePad({
           </div>
         )}
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 mt-2">
+        {/* 50: Action buttons with improved spacing and transition effects */}
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
           <button
             type="button"
             onClick={handleClear}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-rmpg-700 text-rmpg-200 rounded hover:bg-rmpg-600"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs bg-rmpg-700 text-rmpg-200 rounded-sm hover:bg-rmpg-600 transition-colors duration-150"
           >
             <Eraser className="w-3 h-3" /> Clear
           </button>
@@ -388,14 +393,14 @@ export default function SignaturePad({
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-800 text-green-200 rounded hover:bg-green-700 disabled:opacity-40"
+            className="flex items-center gap-1 px-3 py-1 text-xs font-semibold bg-green-800 text-green-200 rounded-sm hover:bg-green-700 active:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
           >
-            <Check className="w-3 h-3" /> Apply
+            <Check className="w-3 h-3" /> Apply Signature
           </button>
           <button
             type="button"
             onClick={() => { setShowPad(false); setTypedName(''); }}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-rmpg-600"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs bg-rmpg-700 text-rmpg-300 rounded-sm hover:bg-rmpg-600 transition-colors duration-150 ml-auto"
           >
             <X className="w-3 h-3" /> Cancel
           </button>

@@ -1,7 +1,16 @@
-import React from 'react';
-import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2 } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
+
+// Feature 2: GPS stale indicator thresholds
+function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
+  if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
+  const elapsed = Date.now() - new Date(unit.gps_updated_at).getTime();
+  if (elapsed > 5 * 60 * 1000) return 'lost';  // >5 min = red (lost)
+  if (elapsed > 2 * 60 * 1000) return 'stale'; // >2 min = amber (stale)
+  return 'ok';
+}
 
 interface UnitStatusBoardProps {
   units: Unit[];
@@ -19,10 +28,11 @@ interface UnitStatusBoardProps {
 const STATUS_LED_CLASSES: Record<UnitStatus, string> = {
   available: 'led-dot led-green',
   dispatched: 'led-dot led-amber',
-  enroute: 'led-dot led-blue',
+  enroute: 'led-dot led-gray',
   onscene: 'led-dot led-purple',
   busy: 'led-dot led-red animate-led-blink',
   off_duty: 'led-dot led-off',
+  out_of_service: 'led-dot led-red',
 };
 
 export default React.memo(function UnitStatusBoard({
@@ -77,12 +87,14 @@ export default React.memo(function UnitStatusBoard({
             onDragEnd={handleDragEnd}
             onClick={() => onUnitClick?.(unit)}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            style={{ background: '#141e2b' }}
+            style={{ background: '#0a0a0a' }}
           >
-            <span className={STATUS_LED_CLASSES[unit.status]} />
+            {/* 33: aria-hidden on decorative LED dot */}
+            <span className={STATUS_LED_CLASSES[unit.status]} aria-hidden="true" />
             <div className="min-w-0">
               <div className="text-xs font-bold text-white font-mono truncate">{unit.call_sign}</div>
-              <div className="text-[10px] text-rmpg-300 truncate">{unit.officer_name}</div>
+              {/* 34: Italic unassigned label in compact mode */}
+              <div className={`text-[10px] truncate ${unit.officer_name ? 'text-rmpg-300' : 'text-rmpg-500 italic'}`}>{unit.officer_name || 'Unassigned'}</div>
             </div>
           </div>
         ))}
@@ -93,8 +105,8 @@ export default React.memo(function UnitStatusBoard({
   const colCount = 5 + (canAssign ? 1 : 0) + (hasActions ? 1 : 0);
 
   return (
-    <div className="overflow-auto">
-      <table className="table-dark">
+    <div className="overflow-auto scrollbar-dark">
+      <table className="table-dark" aria-label="Unit status board">
         <thead>
           <tr>
             <th>Unit</th>
@@ -120,32 +132,47 @@ export default React.memo(function UnitStatusBoard({
                 <div className="flex items-center gap-2">
                   <span className={STATUS_LED_CLASSES[unit.status]} />
                   <span className="font-bold text-white font-mono">{unit.call_sign}</span>
+                  {/* Feature 2: GPS stale indicator */}
+                  {(() => {
+                    const gpsStatus = getGpsStaleStatus(unit);
+                    if (gpsStatus === 'lost') return <span title="GPS lost (>5min)"><AlertTriangle className="w-3 h-3 text-red-400 animate-pulse" /></span>;
+                    if (gpsStatus === 'stale') return <span title="GPS stale (>2min)"><AlertTriangle className="w-3 h-3 text-amber-400" /></span>;
+                    return null;
+                  })()}
                 </div>
               </td>
-              <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500">Unassigned</span>}</td>
+              {/* 29: Italic styling on unassigned officer for distinction */}
+              <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
               <td>
                 <StatusBadge status={unit.status} type="unit_status" size="sm" />
               </td>
               <td className="text-rmpg-300 text-xs font-mono">
-                {unit.current_call_number || '-'}
+                {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
               </td>
               <td>
                 {unit.location ? (
                   <div className="flex items-center gap-1 text-xs text-rmpg-300">
                     <MapPin className="w-3 h-3" />
                     <span className="truncate max-w-[150px]">{unit.location}</span>
+                    {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
+                      const mins = Math.floor((Date.now() - new Date(unit.gps_updated_at).getTime()) / 60000);
+                      const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
+                      return <span className="text-[8px] font-mono ml-1" style={{ color }}>{mins}m</span>;
+                    })()}
                   </div>
                 ) : (
-                  <span className="text-rmpg-500">-</span>
+                  <span className="text-rmpg-500 italic text-[10px]">No GPS</span>
                 )}
               </td>
               {canAssign && (
                 <td>
+                  {/* 30: Active press feedback on assign button */}
                   {unit.status === 'available' && !assignedUnitIds.includes(unit.id) ? (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); onAssignUnit!(unit.id); }}
-                      className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 transition-colors"
+                      className="flex items-center gap-1 px-2 py-0.5 sm:py-0.5 min-h-[44px] sm:min-h-0 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 active:bg-green-700/50 transition-colors"
                       title={`Assign ${unit.call_sign} to call`}
+                      aria-label={`Assign ${unit.call_sign} to call`}
                     >
                       <PlusCircle className="w-3 h-3" />
                       Assign
@@ -161,18 +188,18 @@ export default React.memo(function UnitStatusBoard({
                 <td>
                   <div className="flex items-center gap-1">
                     {onEditUnit && (
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); onEditUnit(unit); }}
-                        className="p-0.5 text-rmpg-400 hover:text-brand-400 transition-colors"
+                        className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-brand-400 transition-colors"
                         title={`Edit ${unit.call_sign}`}
                       >
                         <Edit className="w-3 h-3" />
                       </button>
                     )}
                     {onDeleteUnit && !unit.current_call_id && (
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); onDeleteUnit(unit); }}
-                        className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
+                        className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-red-400 transition-colors"
                         title={`Delete ${unit.call_sign}`}
                       >
                         <Trash2 className="w-3 h-3" />
@@ -185,12 +212,13 @@ export default React.memo(function UnitStatusBoard({
           ))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={colCount} className="text-center text-rmpg-400 py-8">
-                <div className="flex flex-col items-center gap-2">
-                  <Radio className="w-6 h-6 text-rmpg-500" />
+              {/* 31: Empty state with larger icon and fade-in; 32: aria-hidden on decorative icon */}
+            <td colSpan={colCount} className="text-center text-rmpg-400 py-8">
+                <div className="flex flex-col items-center gap-2 animate-fade-in">
+                  <Radio className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
                   <p className="text-xs">No units configured</p>
                   {onCreateUnit && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); onCreateUnit(); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-brand-400 bg-brand-900/30 border border-brand-600/50 hover:bg-brand-800/40 transition-colors mt-1"
                     >

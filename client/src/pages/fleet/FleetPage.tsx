@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
-  Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2,
+  Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2, DollarSign, Fuel,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { useToast } from '../../components/ToastProvider';
+import { useAuth } from '../../context/AuthContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -20,6 +22,7 @@ import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } fro
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
 import InspectionFormModal, { type InspectionFormState, EMPTY_INSPECTION_FORM } from './modals/InspectionFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus,
@@ -67,8 +70,25 @@ function parseEquipment(eq: unknown): string[] {
   return [];
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function FleetPage() {
+  const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
@@ -79,7 +99,7 @@ export default function FleetPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
   const [modal, setModal] = useState<ModalMode>('none');
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
   const [maintForm, setMaintForm] = useState<MaintenanceFormState>(EMPTY_MAINT_FORM);
@@ -115,6 +135,40 @@ export default function FleetPage() {
   const [deletingFuel, setDeletingFuel] = useState<FleetFuelLog | null>(null);
   const [deletingMaintenance, setDeletingMaintenance] = useState<FleetMaintenance | null>(null);
   const [deletingInspection, setDeletingInspection] = useState<FleetInspection | null>(null);
+
+  // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
+  const [costPerMile, setCostPerMile] = useState<any>(null);
+  const [pretripHistory, setPretripHistory] = useState<any[]>([]);
+  const [showPretripModal, setShowPretripModal] = useState(false);
+  const [pretripForm, setPretripForm] = useState({
+    lights_ok: true, brakes_ok: true, radio_ok: true, mdt_ok: true, camera_ok: true,
+    tires_ok: true, fluids_ok: true, exterior_ok: true, interior_ok: true, emergency_equipment_ok: true,
+    notes: '',
+  });
+  const [pretripSaving, setPretripSaving] = useState(false);
+
+  const loadCostPerMile = useCallback(async (vehicleId: string | number) => {
+    try {
+      const data = await apiFetch<any>(`/fleet/cost-per-mile/${vehicleId}`);
+      setCostPerMile(data);
+    } catch { setCostPerMile(null); }
+  }, []);
+
+  const selectedVehicle = detail; // alias for clarity
+
+  const submitPretrip = useCallback(async () => {
+    if (!detail) return;
+    setPretripSaving(true);
+    try {
+      const result = await apiFetch<any>('/fleet/pretrip', {
+        method: 'POST',
+        body: JSON.stringify({ vehicle_id: detail.id, ...pretripForm }),
+      });
+      addToast(result.overall_pass ? 'Pre-trip PASSED' : 'Pre-trip FAILED - check items', result.overall_pass ? 'success' : 'error');
+      setShowPretripModal(false);
+    } catch (err: any) { addToast(err?.message || 'Failed to submit pre-trip', 'error'); }
+    finally { setPretripSaving(false); }
+  }, [detail, pretripForm, addToast]);
 
   useUnsavedChanges(modal !== 'none');
 
@@ -222,10 +276,11 @@ export default function FleetPage() {
     finally { setPersonnelLoading(false); }
   };
 
-  const fetchFleetAnalytics = async () => {
+  const fetchFleetAnalytics = async (period?: string) => {
     setFleetAnalyticsLoading(true);
     try {
-      const data = await apiFetch<FleetAnalytics>('/fleet/analytics');
+      const q = period ? `?period=${period}` : '';
+      const data = await apiFetch<FleetAnalytics>(`/fleet/analytics${q}`);
       setFleetAnalytics(data);
     } catch { /* silent - fleet analytics is optional */ }
     finally { setFleetAnalyticsLoading(false); }
@@ -300,6 +355,7 @@ export default function FleetPage() {
         plate_state: vehicleForm.plate_state.trim() || null,
         status: vehicleForm.status,
         current_mileage: vehicleForm.current_mileage ? parseInt(vehicleForm.current_mileage, 10) : null,
+        next_service_mileage: vehicleForm.next_service_mileage ? parseInt(vehicleForm.next_service_mileage, 10) : null,
         insurance_expiry: vehicleForm.insurance_expiry || null,
         registration_expiry: vehicleForm.registration_expiry || null,
         equipment: equipArr,
@@ -524,6 +580,7 @@ export default function FleetPage() {
       year: detail.year ? String(detail.year) : '', color: detail.color || '', vin: detail.vin || '',
       plate_number: detail.plate_number || '', plate_state: detail.plate_state || '',
       status: detail.status, current_mileage: detail.current_mileage ? String(detail.current_mileage) : '',
+      next_service_mileage: (detail as any).next_service_mileage ? String((detail as any).next_service_mileage) : '',
       insurance_expiry: toDatetimeLocal(detail.insurance_expiry),
       registration_expiry: toDatetimeLocal(detail.registration_expiry),
       equipment_str: parseEquipment(detail.equipment).join(', '), notes: detail.notes || '',
@@ -645,11 +702,23 @@ export default function FleetPage() {
   // Render
   // ----------------------------------------------------------
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet Management \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowPretripModal(false); setEditingMaintenanceId(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
 
       {/* ====== FLEET STATS DASHBOARD ====== */}
-      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
+      <div className="flex-shrink-0 border-b border-rmpg-700 bg-surface-sunken">
         <PanelTitleBar title="FLEET MANAGEMENT" icon={Car}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
@@ -659,30 +728,47 @@ export default function FleetPage() {
             <span className="text-rmpg-600">|</span>
             <span>Assigned: <strong className="text-amber-400">{assignedVehicles}</strong></span>
           </div>
-          <button
+          <button type="button"
             className={`toolbar-btn ${showArchived ? 'text-amber-400 border-amber-600/50' : ''}`}
             onClick={() => { setShowArchived(!showArchived); setSelectedId(null); setDetail(null); }}
           >
             <Archive className="w-3 h-3" /> {showArchived ? 'Viewing Archives' : 'Show Archives'}
           </button>
           {!showArchived && (
-            <button className="toolbar-btn toolbar-btn-primary" onClick={openNewVehicle}>
-              <Plus className="w-3 h-3" /> New Vehicle
-            </button>
+            <>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openNewVehicle}>
+                <Plus className="w-3 h-3" /> New Vehicle
+              </button>
+              {/* Feature 16: Pre-trip checklist button */}
+              {selectedVehicle && (
+                <button type="button" className="toolbar-btn" onClick={() => setShowPretripModal(true)}>
+                  <CheckCircle className="w-3 h-3" /> Pre-Trip
+                </button>
+              )}
+              {/* Feature 20: Cost per mile button */}
+              {selectedVehicle && (
+                <button type="button" className="toolbar-btn" onClick={() => loadCostPerMile(selectedVehicle.id)}>
+                  <Gauge className="w-3 h-3" /> Cost/Mi
+                </button>
+              )}
+            </>
           )}
+          <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
         </PanelTitleBar>
 
         {/* Stats Bar — compact inline row */}
-        <div className="px-4 py-2 flex items-center gap-4">
+        <div className="px-4 py-2 flex items-center gap-4" role="group" aria-label="Fleet statistics">
           {/* Status Gauges */}
           <div className="flex items-center gap-2">
             {VEHICLE_STATUSES.map(({ value, label }) => (
-              <button
+              <button type="button"
                 key={value}
-                className={`panel-beveled px-2.5 py-1.5 flex items-center gap-2 cursor-pointer transition-all ${
+                className={`panel-beveled px-2.5 py-1.5 flex items-center gap-2 cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                   filterStatus === value ? 'ring-1 ring-brand-500 bg-brand-900/10' : 'bg-surface-base hover:border-rmpg-400'
                 }`}
+                aria-label={`Filter by ${label}: ${statusCounts[value] || 0} vehicles`}
+                aria-pressed={filterStatus === value}
                 onClick={() => setFilterStatus(filterStatus === value ? 'all' : value)}
               >
                 <GaugeRing
@@ -706,28 +792,41 @@ export default function FleetPage() {
           <div className="h-8 w-px bg-rmpg-600 flex-shrink-0" />
 
           {/* Quick Stats */}
-          <div className="flex items-center gap-3 text-[10px] font-mono">
-            <div className="flex items-center gap-1.5" title="Due for Service">
+          <div className="flex items-center gap-3 text-[10px] font-mono flex-wrap">
+            <div className="flex items-center gap-1.5" title="In Service / Total">
+              <Car className="w-3.5 h-3.5 text-green-400" />
+              <span className="text-rmpg-400">Fleet:</span>
+              <span className="font-bold text-green-400">{statusCounts['in_service'] || 0}</span>
+              <span className="text-rmpg-500">/ {vehicles.length}</span>
+            </div>
+            <div className="flex items-center gap-1.5" title="Average Fleet MPG">
+              <Fuel className="w-3.5 h-3.5 text-green-400" />
+              <span className="text-rmpg-400">MPG:</span>
+              <span className="font-bold text-green-400">{fleetAnalytics?.fleet_summary?.avg_mpg != null ? fleetAnalytics.fleet_summary.avg_mpg.toFixed(1) : '--'}</span>
+            </div>
+            <div className="flex items-center gap-1.5" title="Vehicles Needing Service">
               {needsService > 0 ? <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> : <CheckCircle className="w-3.5 h-3.5 text-green-400" />}
               <span className="text-rmpg-400">Service:</span>
               <span className="font-bold" style={{ color: needsService > 0 ? '#f59e0b' : '#22c55e' }}>{needsService}</span>
             </div>
-            <div className="flex items-center gap-1.5" title="Expiring Registration/Insurance">
-              <Shield className="w-3.5 h-3.5 text-red-400" />
-              <span className="text-rmpg-400">Expiring:</span>
-              <span className="font-bold" style={{ color: (registrationExpiring + insuranceExpiring) > 0 ? '#ef4444' : '#22c55e' }}>
-                {registrationExpiring + insuranceExpiring}
+            <div className="flex items-center gap-1.5" title="Monthly Costs (Maintenance + Fuel)">
+              <DollarSign className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-rmpg-400">Costs:</span>
+              <span className="font-bold text-cyan-400">
+                {fleetAnalytics ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5" title="Inspections Failing">
+              <CheckCircle className="w-3.5 h-3.5" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+              <span className="text-rmpg-400">Insp:</span>
+              <span className="font-bold" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+                {fleetAnalytics?.fleet_summary?.inspections_failing ?? '-'}
               </span>
             </div>
             <div className="flex items-center gap-1.5" title="Average Mileage">
               <Gauge className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-rmpg-400">Avg:</span>
               <span className="font-bold text-brand-400">{avgMileage > 0 ? avgMileage.toLocaleString() : '-'}</span>
-            </div>
-            <div className="flex items-center gap-1.5" title="Total Fleet Mileage">
-              <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-rmpg-400">Total:</span>
-              <span className="font-bold text-cyan-400">{totalMileage > 0 ? `${(totalMileage / 1000).toFixed(0)}k mi` : '-'}</span>
             </div>
           </div>
 
@@ -758,10 +857,10 @@ export default function FleetPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ---- LEFT PANEL: Vehicle List ---- */}
-        <div className="flex flex-col" style={{ width: '36%', minWidth: 300, maxWidth: 440, background: '#1a2636' }}>
-          <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
+        <div className={`flex flex-col bg-surface-raised ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? undefined : { width: '36%', minWidth: 300, maxWidth: 440 }}>
+          <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-base">
             <select
-              className="select-dark text-[10px] py-1 px-2"
+              className="select-dark text-[10px] py-1 px-2 min-h-[36px]"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -771,24 +870,25 @@ export default function FleetPage() {
               ))}
             </select>
             <div className="flex-1 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
               <input
-                className="input-dark w-full text-[10px] py-1 pl-6 pr-2"
-                placeholder="Search vehicles..."
+                className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
+                placeholder="Search vehicles..." aria-label="Search fleet vehicles by number, make, model, or plate"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Fleet vehicles">
             {filtered.length === 0 && (
-              <div className="text-center py-8">
-                <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
-                <p className="text-[11px] text-rmpg-500">No vehicles found</p>
+              <div className="text-center py-12">
+                <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+                <p className="text-[11px] text-rmpg-500 font-medium">No vehicles found</p>
+                <p className="text-[9px] text-rmpg-600 mt-1">Adjust your filters or add a new vehicle</p>
               </div>
             )}
-            {filtered.map((v) => {
+            {filtered.map((v, idx) => {
               const isSelected = selectedId != null && String(v.id) === String(selectedId);
               const statusColor = STATUS_COLOR[v.status];
               const regStatus = getExpiryStatus(v.registration_expiry);
@@ -800,14 +900,18 @@ export default function FleetPage() {
               return (
                 <div
                   key={v.id}
-                  className={`px-3 py-2.5 cursor-pointer border-b border-rmpg-700 transition-colors ${
-                    isSelected ? 'panel-inset' : 'hover:bg-rmpg-800'
+                  role="listitem"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(v.id); } }}
+                  className={`px-3 py-2.5 cursor-pointer border-b border-rmpg-700 transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand-500/50 ${
+                    isSelected ? 'panel-inset' : `hover:bg-rmpg-800 ${idx % 2 === 1 ? 'bg-rmpg-800/15' : ''}`
                   }`}
-                  style={isSelected ? { background: '#141e2b', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
+                  style={isSelected ? { backgroundColor: 'var(--surface-base)', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
                   onClick={() => setSelectedId(v.id)}
+                  aria-selected={isSelected}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className={`relative flex-shrink-0 w-9 h-9 rounded flex items-center justify-center border ${
+                    <div className={`relative flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
                       v.status === 'in_service' ? 'bg-green-900/20 border-green-700/40' :
                       v.status === 'maintenance' ? 'bg-amber-900/20 border-amber-700/40' :
                       v.status === 'out_of_service' ? 'bg-red-900/20 border-red-700/40' :
@@ -835,7 +939,7 @@ export default function FleetPage() {
                           v.status === 'in_service' ? 'bg-green-900/30 text-green-400 border-green-700/40' :
                           v.status === 'maintenance' ? 'bg-amber-900/30 text-amber-400 border-amber-700/40' :
                           v.status === 'out_of_service' ? 'bg-red-900/30 text-red-400 border-red-700/40' :
-                          'bg-rmpg-800 text-rmpg-400 border-rmpg-600'
+                          'bg-rmpg-800 text-rmpg-400 border-rmpg-700'
                         }`}>
                           {STATUS_LABEL[v.status]}
                         </span>
@@ -870,7 +974,13 @@ export default function FleetPage() {
                       {regStatus === 'expiring' && <span className="text-[8px] text-amber-400">REG SOON</span>}
                       {insStatus === 'expired' && <span className="text-[8px] text-red-400 font-bold">INS EXP</span>}
                       {insStatus === 'expiring' && <span className="text-[8px] text-amber-400">INS SOON</span>}
-                      {svcStatus === 'expired' && <span className="text-[8px] text-amber-400 font-bold">SVC DUE</span>}
+                      {/* Maintenance due alert with days count */}
+                      {v.next_service_due && (() => {
+                        const daysUntil = Math.ceil((new Date(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        if (daysUntil < 0) return <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold">OVERDUE {Math.abs(daysUntil)}d</span>;
+                        if (daysUntil <= 14) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
+                        return null;
+                      })()}
                     </div>
                   </div>
                   {/* Utilization bar */}
@@ -880,9 +990,9 @@ export default function FleetPage() {
                         <span>UTILIZATION</span>
                         <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / 150000) * 100))}%</span>
                       </div>
-                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden">
+                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / 150000) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / 150000) * 100))}%`}>
                         <div
-                          className="h-full transition-all duration-300"
+                          className="h-full transition-all duration-500"
                           style={{
                             width: `${Math.min(100, (v.current_mileage / 150000) * 100)}%`,
                             background: v.current_mileage < 75000 ? '#22c55e'
@@ -899,17 +1009,17 @@ export default function FleetPage() {
         </div>
 
         {/* ---- DIVIDER ---- */}
-        <div className="flex-shrink-0 w-px bg-rmpg-600" />
+        {!isMobile && <div className="flex-shrink-0 w-px bg-rmpg-700" />}
 
         {/* ---- RIGHT PANEL ---- */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#1a2636' }}>
+        <div className={`${isMobile ? (selectedId ? 'w-full' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden bg-surface-raised`}>
           {selectedId == null || !detail ? (
             // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
             <div className="flex-1 overflow-y-auto">
               <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
               {fleetAnalytics ? (
                 <div className="px-3 pb-3">
-                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} />
+                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
                 </div>
               ) : (
                 <div className="flex items-center justify-center py-8">
@@ -922,6 +1032,12 @@ export default function FleetPage() {
               )}
             </div>
           ) : (
+            <>
+            {isMobile && (
+              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
+                ◀ Back to Vehicles
+              </button>
+            )}
             <FleetDetailPanel
               detail={detail}
               maintenance={maintenance}
@@ -956,6 +1072,7 @@ export default function FleetPage() {
               isArchived={showArchived}
               onClose={() => { setSelectedId(null); setDetail(null); }}
             />
+            </>
           )}
         </div>
       </div>
@@ -1042,6 +1159,83 @@ export default function FleetPage() {
         confirmVariant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Feature 16: Pre-Trip Checklist Modal */}
+      {showPretripModal && selectedVehicle && (
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
+              <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
+              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
+            </div>
+            <div className="p-3 flex-1 overflow-auto space-y-2">
+              {[
+                { key: 'lights_ok', label: 'Lights & Signals' },
+                { key: 'brakes_ok', label: 'Brakes' },
+                { key: 'radio_ok', label: 'Radio/Comms' },
+                { key: 'mdt_ok', label: 'MDT/Computer' },
+                { key: 'camera_ok', label: 'Dash Camera' },
+                { key: 'tires_ok', label: 'Tires' },
+                { key: 'fluids_ok', label: 'Fluids (Oil/Coolant)' },
+                { key: 'exterior_ok', label: 'Exterior Condition' },
+                { key: 'interior_ok', label: 'Interior Condition' },
+                { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
+              ].map(item => (
+                <label key={item.key} className="flex items-center gap-3 p-2 bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
+                  <input
+                    type="checkbox"
+                    checked={(pretripForm as any)[item.key]}
+                    onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                    className="w-4 h-4 accent-green-500"
+                  />
+                  <span className={`text-sm ${(pretripForm as any)[item.key] ? 'text-green-300' : 'text-red-300'}`}>{item.label}</span>
+                  <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
+                </label>
+              ))}
+              <textarea
+                value={pretripForm.notes}
+                onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
+                className="input-dark w-full h-16 text-sm mt-2 min-h-[36px]"
+                placeholder="Notes (defects, damage, etc.)..."
+              />
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button type="button" onClick={() => setShowPretripModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary print:hidden">
+                {pretripSaving ? 'Saving...' : 'Submit Pre-Trip'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 20: Cost Per Mile Display */}
+      {costPerMile && (
+        <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
+            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <div className="text-rmpg-400">Fuel Cost</div>
+              <div className="text-white font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-rmpg-400">Maint Cost</div>
+              <div className="text-white font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-rmpg-400">Total Cost</div>
+              <div className="text-green-400 font-mono font-bold">${costPerMile.total_cost?.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-rmpg-400">Cost/Mile</div>
+              <div className="text-amber-400 font-mono font-bold">{costPerMile.cost_per_mile != null ? `$${costPerMile.cost_per_mile.toFixed(2)}` : 'N/A'}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

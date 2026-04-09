@@ -42,25 +42,54 @@ export function parseTimestamp(dateStr: string | null | undefined): Date {
   if (!dateStr) return new Date();
 
   // Already has timezone info (T with + or -, or Z suffix) — parse directly
-  if (dateStr.includes('T') && (dateStr.includes('+') || dateStr.includes('Z') || dateStr.lastIndexOf('-') > 10)) {
+  if (dateStr.includes('T') && (dateStr.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateStr))) {
     return new Date(dateStr);
   }
 
-  // Legacy format: "YYYY-MM-DD HH:MM:SS" — assume Mountain Time (UTC-7 MST / UTC-6 MDT)
-  // We use -07:00 (MST) as the safe default; the error is at most 1 hour during DST
+  // Legacy format: "YYYY-MM-DD HH:MM:SS" — assume Mountain Time
+  // Determine the correct UTC offset for the given date (handles MST/MDT transitions)
   if (dateStr.includes(' ') && !dateStr.includes('T')) {
+    const naive = new Date(dateStr.replace(' ', 'T'));
+    // Use Intl to determine the Mountain Time offset for this specific date
+    try {
+      const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'shortOffset' });
+      const parts = fmt.formatToParts(naive);
+      const tzPart = parts.find(p => p.type === 'timeZoneName');
+      // tzPart.value is like "GMT-7", "GMT-6", "UTC-7", or "GMT+05:30"
+      if (tzPart?.value) {
+        const match = tzPart.value.match(/(?:GMT|UTC)([+-]\d{1,2})(?::(\d{2}))?/);
+        if (match) {
+          const offset = parseInt(match[1], 10);
+          const minutes = match[2] ? parseInt(match[2], 10) : 0;
+          const sign = offset <= 0 && minutes === 0 ? '-' : offset < 0 ? '-' : '+';
+          const absH = String(Math.abs(offset)).padStart(2, '0');
+          const absM = String(minutes).padStart(2, '0');
+          return new Date(dateStr.replace(' ', 'T') + `${sign}${absH}:${absM}`);
+        }
+      }
+    } catch { /* fallback below */ }
     return new Date(dateStr.replace(' ', 'T') + '-07:00');
   }
 
-  // Date-only "YYYY-MM-DD" or other formats — let the browser handle it
-  return new Date(dateStr);
+  // Date-only "YYYY-MM-DD" — append T00:00:00 to force LOCAL timezone parsing
+  // Without this, `new Date('2026-03-28')` is parsed as UTC midnight, which
+  // in Mountain Time (UTC-7) becomes 2026-03-27T17:00:00 — the PREVIOUS day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'T00:00:00');
+  }
+
+  // Other formats — let the browser handle it
+  const result = new Date(dateStr);
+  return isNaN(result.getTime()) ? new Date() : result;
 }
 
 /**
  * Format a server timestamp for display as a short time (HH:MM 24h).
  */
 export function formatShortTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
+  if (isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
@@ -88,6 +117,29 @@ export function formatDateLong(dateStr: string | null | undefined): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// ── Safe formatting for inline JSX (returns '—' for null/invalid) ───
+
+/** Safe locale date string — replaces `new Date(x).toLocaleDateString()` */
+export function safeDateStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+}
+
+/** Safe locale date+time string — replaces `new Date(x).toLocaleString()` */
+export function safeDateTimeStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
+/** Safe locale time string — replaces `new Date(x).toLocaleTimeString()` */
+export function safeTimeStr(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = parseTimestamp(value);
+  return isNaN(d.getTime()) ? fallback : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
 /**
  * Format a server timestamp as a relative date (e.g., "2 hours ago").
  */
@@ -95,6 +147,7 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
+  if (diffMs < 0) return 'just now'; // future date safety
   const diffMin = Math.floor(diffMs / 60000);
 
   if (diffMin < 1) return 'just now';
@@ -104,4 +157,73 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
   const diffDays = Math.floor(diffHr / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ============================================================
+// Additional date utilities
+// ============================================================
+
+/**
+ * Format a date range as a readable string: "Jan 15 - Feb 20, 2026"
+ */
+export function formatDateRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start && !end) return '';
+  if (start && !end) return `${formatDateLong(start)} - Present`;
+  if (!start && end) return `Until ${formatDateLong(end)}`;
+  const s = parseTimestamp(start);
+  const e = parseTimestamp(end);
+  if (s.getFullYear() === e.getFullYear()) {
+    return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  }
+  return `${formatDateLong(start)} – ${formatDateLong(end)}`;
+}
+
+/**
+ * Get the number of days between two dates.
+ */
+export function daysBetween(start: string, end: string): number {
+  if (!start || !end) return 0;
+  const s = parseTimestamp(start);
+  const e = parseTimestamp(end);
+  const diff = e.getTime() - s.getTime();
+  return Number.isFinite(diff) ? Math.round(diff / 86400000) : 0;
+}
+
+/**
+ * Check if a date is within N days from now (useful for expiry warnings).
+ */
+export function isWithinDays(dateStr: string, days: number): boolean {
+  if (!dateStr) return false;
+  const d = parseTimestamp(dateStr);
+  const now = new Date();
+  const diffDays = (d.getTime() - now.getTime()) / 86400000;
+  return diffDays >= 0 && diffDays <= days;
+}
+
+/**
+ * Check if a date is in the past.
+ */
+export function isPast(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  return parseTimestamp(dateStr).getTime() < Date.now();
+}
+
+/**
+ * Get the start and end of today in local timezone.
+ */
+export function todayRange(): { start: string; end: string } {
+  const now = new Date();
+  const start = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T00:00:00`;
+  const end = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T23:59:59`;
+  return { start, end };
+}
+
+/**
+ * Format a timestamp for use in a datetime-local input.
+ */
+export function toDatetimeLocalValue(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const d = parseTimestamp(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }

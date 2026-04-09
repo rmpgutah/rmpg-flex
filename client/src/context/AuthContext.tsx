@@ -62,11 +62,14 @@ const electron = typeof window !== 'undefined' ? (window as any).electron : null
 const REFRESH_BUFFER_MS = 60 * 1000;
 
 // Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
-const AUTH_FETCH_TIMEOUT_MS = 8000;
+// 15s is generous for field conditions (vehicle WiFi, cell data in dead zones)
+const AUTH_FETCH_TIMEOUT_MS = 15000;
 
 function parseJwtExpiry(token: string): number | null {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const parts = token.split('.');
+    if (parts.length < 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
     return payload.exp ? payload.exp * 1000 : null;
   } catch {
     return null;
@@ -83,13 +86,25 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
 // Generate a device fingerprint hash for trusted device recognition
 // Cached at module level — never changes during a session
 let _cachedFingerprint: string | null = null;
+let _fingerprintPromise: Promise<string> | null = null;
 async function getDeviceFingerprint(): Promise<string> {
   if (_cachedFingerprint) return _cachedFingerprint;
+  if (_fingerprintPromise) return _fingerprintPromise;
+  _fingerprintPromise = _computeFingerprint();
+  return _fingerprintPromise;
+}
+async function _computeFingerprint(): Promise<string> {
   const raw = [
     navigator.userAgent,
     navigator.language,
+    navigator.languages?.join(',') || '',
     screen.width + 'x' + screen.height,
+    screen.colorDepth?.toString() || '',
     Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.hardwareConcurrency?.toString() || '',
+    (navigator as any).deviceMemory?.toString() || '',
+    navigator.maxTouchPoints?.toString() || '0',
+    new Date().getTimezoneOffset().toString(),
   ].join('|');
 
   try {
@@ -132,6 +147,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
     }
+    // Reset the refresh lock — a new schedule means the previous attempt
+    // either succeeded or was superseded (e.g. useApi refreshed the token).
+    // Without this, a failed backoff leaves isRefreshingRef=true and the
+    // new timer's callback would skip the refresh entirely.
+    isRefreshingRef.current = false;
 
     const expiresAt = parseJwtExpiry(accessToken);
     if (!expiresAt) return;
@@ -155,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const res = await fetchWithTimeout('/api/auth/refresh', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({ refreshToken }),
         });
 
@@ -183,13 +203,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }, backoff);
                 return;
               }
-            } catch { /* fall through to logout */ }
+            } catch (err) { console.warn('[Auth] Token refresh retry failed:', err); /* fall through to logout */ }
           }
           clearTokens();
           setToken(null);
           setUser(null);
         }
-      } catch {
+      } catch (err) {
+        console.warn('[Auth] Token refresh failed, retrying with backoff:', err);
         // Network/timeout error — retry with exponential backoff (1s, 2s, 4s, ... max 30s)
         refreshFailCountRef.current++;
         const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
@@ -259,7 +280,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (refreshToken) {
             const refreshRes = await fetchWithTimeout('/api/auth/refresh', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
               body: JSON.stringify({ refreshToken }),
             });
 
@@ -287,7 +308,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(null);
           setUser(null);
         }
-      } catch {
+      } catch (err) {
+        console.warn('[Auth] Initial auth check failed:', err);
         if (gen !== generationRef.current) return; // stale
 
         // API not available — attempt offline auth via Electron local cache
@@ -299,7 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(cachedUser);
               return; // loaded from local DB — skip mock
             }
-          } catch { /* fall through to mock */ }
+          } catch (err) { console.warn('[Auth] Cached user fetch failed:', err); /* fall through to mock */ }
         }
 
         // Fallback mock user for pure-browser development ONLY
@@ -356,6 +378,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pending2FA, setPending2FA] = useState(false);
   const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp: boolean; webauthn: boolean }>({ totp: false, webauthn: false });
   const [tempToken, setTempToken] = useState<string | null>(null);
+  const tempTokenRef = useRef<string | null>(null);
+  // Keep ref in sync so callbacks always see the latest value
+  useEffect(() => { tempTokenRef.current = tempToken; }, [tempToken]);
 
   const cancel2FA = useCallback(() => {
     setPending2FA(false);
@@ -365,15 +390,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const verify2FA = useCallback(async (code: string, trustDevice?: boolean) => {
-    if (!tempToken) throw new Error('No pending 2FA session');
+    const currentToken = tempTokenRef.current || tempToken;
+    if (!currentToken) throw new Error('No pending 2FA session');
     setLoginBusy(true);
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login/verify-2fa', {
+      const res = await fetchWithTimeout('/api/auth/login/verify-2fa', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tempToken, code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: !!trustDevice }),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({ tempToken: currentToken, code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: !!trustDevice }),
       });
 
       if (res.ok) {
@@ -422,9 +452,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // 1. Get authentication options from server
-      const optionsRes = await fetch('/api/auth/webauthn/authenticate-options', {
+      const optionsRes = await fetchWithTimeout('/api/auth/webauthn/authenticate-options', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ tempToken }),
       });
 
@@ -440,9 +470,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const authResponse = await startAuthentication({ optionsJSON: options });
 
       // 3. Verify with server
-      const verifyRes = await fetch('/api/auth/webauthn/authenticate-verify', {
+      const verifyRes = await fetchWithTimeout('/api/auth/webauthn/authenticate-verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ challengeId, tempToken, response: authResponse, trustDevice: !!trustDeviceFlag, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
@@ -499,9 +529,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const deviceFingerprint = deviceFingerprintRef.current;
-      const res = await fetch('/api/auth/login', {
+      const res = await fetchWithTimeout('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ username, password, deviceFingerprint }),
       });
 
@@ -539,6 +569,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         if (data.sessionId) {
           safeSetItem(SESSION_ID_KEY, data.sessionId);
+        }
+
+        // Store last login info for display on login page
+        if (data.lastLoginAt) {
+          try {
+            sessionStorage.setItem('rmpg_last_login_info', JSON.stringify({
+              time: data.lastLoginAt,
+              ip: data.lastLoginIp || '',
+            }));
+          } catch (err) { console.warn('[Auth] Session storage write failed:', err); }
         }
 
         // Store username for offline auth lookup
@@ -605,16 +645,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Verify Backup Code ──────────────────────────
   const verifyBackupCode = useCallback(async (code: string) => {
-    if (!tempToken) throw new Error('No pending 2FA session');
+    const currentToken = tempTokenRef.current || tempToken;
+    if (!currentToken) throw new Error('No pending 2FA session');
     setLoginBusy(true);
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login/verify-backup-code', {
+      const res = await fetchWithTimeout('/api/auth/login/verify-backup-code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${tempToken}`,
+          'X-Requested-With': 'XMLHttpRequest',
+          Authorization: `Bearer ${currentToken}`,
         },
         body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
       });
@@ -659,12 +701,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/2fa/setup', {
+      const currentToken = tempTokenRef.current || tempToken;
+      const res = await fetchWithTimeout('/api/auth/2fa/setup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${tempToken}`,
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
         },
+        body: JSON.stringify({ tempToken: currentToken }),
       });
 
       if (!res.ok) {
@@ -687,7 +732,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoginBusy(false);
     }
-  }, [tempToken, loginBusy]);
+  }, [loginBusy]);
 
   // ─── Confirm 2FA Setup (verify first code) ───────
   const confirmSetup2FA = useCallback(async (code: string) => {
@@ -695,13 +740,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/2fa/setup/verify', {
+      const currentToken = tempTokenRef.current || tempToken;
+      const res = await fetchWithTimeout('/api/auth/2fa/setup/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${tempToken}`,
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
         },
-        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+        body: JSON.stringify({ code, tempToken: currentToken, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (!res.ok) {
@@ -738,7 +785,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoginBusy(false);
     }
-  }, [tempToken, scheduleRefresh]);
+  }, [scheduleRefresh]);
 
   // ─── Change Password During Login ────────────────
   const changePasswordDuringLogin = useCallback(async (newPassword: string) => {
@@ -746,10 +793,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login/change-password', {
+      const res = await fetchWithTimeout('/api/auth/login/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
           Authorization: `Bearer ${tempToken}`,
         },
         body: JSON.stringify({ newPassword, deviceFingerprint: deviceFingerprintRef.current }),
@@ -823,14 +871,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         setUser(data.user || data);
       }
-    } catch { /* silent — stale data is acceptable */ }
+    } catch (err) { console.warn('[Auth] User refresh failed:', err); }
   }, []);
 
   // ─── Session idle timeout (CJIS compliance) ────────
   // Tracks user activity (mouse, keyboard, touch) and auto-logs out
   // after the configured inactivity period.
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const idleTimeoutMsRef = useRef(480 * 60 * 1000); // default 8 hours, updated from server
+  const idleTimeoutMsRef = useRef(60 * 60 * 1000); // 1 hour of inactivity before auto-logout
+  const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxSessionMsRef = useRef(12 * 60 * 60 * 1000); // 12 hours of continuous use before auto-logout
 
   // Fetch session timeout config from server once authenticated
   useEffect(() => {
@@ -843,6 +893,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data?.timeoutMinutes) {
           idleTimeoutMsRef.current = data.timeoutMinutes * 60 * 1000;
           resetIdleTimer(); // restart with updated timeout
+        }
+        if (data?.maxSessionHours) {
+          maxSessionMsRef.current = data.maxSessionHours * 60 * 60 * 1000;
         }
       })
       .catch(() => { /* use default */ });
@@ -890,15 +943,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, resetIdleTimer]);
 
-  // Cleanup on unmount
+  // ─── Absolute session duration timer ─────────────────
+  // Forces logout after maxSessionHours regardless of activity.
+  // Server also enforces this on refresh, but this gives a clean client UX.
+  useEffect(() => {
+    if (!user) {
+      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+      return;
+    }
+
+    sessionTimerRef.current = setTimeout(() => {
+      console.warn('[Auth] Max session duration reached — auto-logout');
+      sessionStorage.setItem('rmpg_session_expired', '1');
+      logout();
+    }, maxSessionMsRef.current);
+
+    return () => {
+      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+    };
+  }, [user, logout]);
+
+  // Cleanup on unmount — clear timers and sensitive state from memory
   useEffect(() => {
     return () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
       }
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
       }
+      if (sessionTimerRef.current) {
+        clearTimeout(sessionTimerRef.current);
+        sessionTimerRef.current = null;
+      }
+      // Clear sensitive auth state from memory on unmount
+      tempTokenRef.current = null;
+      isRefreshingRef.current = false;
     };
   }, []);
 

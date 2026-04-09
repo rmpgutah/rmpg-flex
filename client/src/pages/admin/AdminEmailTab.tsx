@@ -114,6 +114,12 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   const handleAuthorize = async () => {
     try {
       const data = await apiFetch<{ url: string }>('/email/admin/oauth/authorize');
+      // Validate redirect URL is a legitimate OAuth provider
+      const url = new URL(data.url);
+      const allowedHosts = new Set(['login.microsoftonline.com', 'accounts.google.com', 'login.live.com']);
+      if (!allowedHosts.has(url.hostname)) {
+        throw new Error('Unexpected OAuth redirect domain');
+      }
       window.location.href = data.url;
     } catch (err: any) {
       setError(err.message);
@@ -188,15 +194,18 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Email \u2014 RMPG Flex'; }, []);
+
   if (loading) return <div className="p-8 text-center"><LoadingSpinner /></div>;
 
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 px-3 py-2 text-xs rounded bg-red-500/10 border border-red-500/30 text-red-400">
+        <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           {error}
-          <button onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400">&times;</button>
+          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400">&times;</button>
         </div>
       )}
 
@@ -260,7 +269,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             target="_blank" rel="noopener" className="text-brand-400 hover:underline">
             Azure Portal <ExternalLink className="w-2.5 h-2.5 inline" />
           </a>
-          {' '}with redirect URI: <code className="text-rmpg-300 bg-surface-sunken px-1 rounded">https://rmpgutah.us/api/email/oauth/callback</code>
+          {' '}with redirect URI: <code className="text-rmpg-300 bg-surface-sunken px-1 rounded-sm">https://rmpgutah.us/api/email/oauth/callback</code>
         </p>
 
         <div className="grid grid-cols-1 gap-2">
@@ -271,7 +280,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               value={clientId}
               onChange={e => setClientId(e.target.value)}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono"
+              className="input-dark w-full text-xs font-mono min-h-[36px]"
             />
           </div>
           <div>
@@ -282,9 +291,9 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
                 value={clientSecret}
                 onChange={e => setClientSecret(e.target.value)}
                 placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret'}
-                className="input-dark w-full text-xs font-mono pr-8"
+                className="input-dark w-full text-xs font-mono pr-8 min-h-[36px]"
               />
-              <button onClick={() => setShowSecret(!showSecret)}
+              <button type="button" onClick={() => setShowSecret(!showSecret)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
                 {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
@@ -297,26 +306,26 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               value={tenantId}
               onChange={e => setTenantId(e.target.value)}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono"
+              className="input-dark w-full text-xs font-mono min-h-[36px]"
             />
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={handleSaveCredentials} disabled={saving}
+          <button type="button" onClick={handleSaveCredentials} disabled={saving}
             className="btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
           </button>
           {status?.configured && (
             <>
-              <button onClick={handleClearCredentials}
+              <button type="button" onClick={handleClearCredentials}
                 className="btn-danger text-[10px] px-3 py-1 flex items-center gap-1">
                 <Trash2 className="w-3 h-3" /> Clear
               </button>
-              <button onClick={handleTestConnection} disabled={testing}
+              <button type="button" onClick={handleTestConnection} disabled={testing}
                 className="btn-secondary text-[10px] px-3 py-1 flex items-center gap-1">
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Wifi className="w-3 h-3" />}
                 Test Connection
               </button>
             </>
@@ -349,7 +358,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             Click below to sign in with Microsoft and grant RMPG Flex access to the mailbox.
             You will be redirected to Microsoft's login page.
           </p>
-          <button onClick={handleAuthorize}
+          <button type="button" onClick={handleAuthorize}
             className="btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5">
             <ExternalLink className="w-3 h-3" />
             Authorize with Microsoft
@@ -365,7 +374,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               <Clock className="w-3.5 h-3.5 text-brand-400" />
               Inbox Sync
             </h3>
-            <button onClick={handleToggleEnabled}
+            <button type="button" onClick={handleToggleEnabled}
               className="flex items-center gap-1.5 text-[10px]">
               {status.enabled ? (
                 <><ToggleRight className="w-5 h-5 text-green-400" /> <span className="text-green-400">Enabled</span></>
@@ -387,9 +396,9 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               <option value={300}>5 minutes</option>
               <option value={600}>10 minutes</option>
             </select>
-            <button onClick={handleSyncNow} disabled={syncing}
+            <button type="button" onClick={handleSyncNow} disabled={syncing}
               className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1">
-              {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
               Sync Now
             </button>
           </div>
@@ -403,7 +412,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             <Send className="w-3.5 h-3.5 text-brand-400" />
             SMTP Fallback (Send-Only)
           </h3>
-          <button onClick={() => handleSmtpSettings(!status?.smtpFallback)}
+          <button type="button" onClick={() => handleSmtpSettings(!status?.smtpFallback)}
             className="flex items-center gap-1.5 text-[10px]">
             {status?.smtpFallback ? (
               <><ToggleRight className="w-5 h-5 text-green-400" /> <span className="text-green-400">Enabled</span></>
@@ -423,14 +432,14 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               value={smtpPassword}
               onChange={e => setSmtpPassword(e.target.value)}
               placeholder={status?.smtpFallback ? '••••••••••••' : 'Enter app password'}
-              className="input-dark w-full text-xs font-mono pr-8"
+              className="input-dark w-full text-xs font-mono pr-8 min-h-[36px]"
             />
-            <button onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+            <button type="button" onClick={() => setShowSmtpPassword(!showSmtpPassword)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
               {showSmtpPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
-          <button onClick={() => handleSmtpSettings(true)}
+          <button type="button" onClick={() => handleSmtpSettings(true)}
             disabled={!smtpPassword}
             className="btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3" /> Save

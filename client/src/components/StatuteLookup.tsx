@@ -64,7 +64,7 @@ const OFFENSE_COLORS: Record<string, string> = {
   class_a_misdemeanor: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
   class_b_misdemeanor: 'bg-amber-900/30 text-amber-400 border-amber-700/30',
   class_c_misdemeanor: 'bg-yellow-900/30 text-yellow-400 border-yellow-700/30',
-  infraction: 'bg-blue-900/30 text-blue-400 border-blue-700/30',
+  infraction: 'bg-gray-900/30 text-gray-400 border-gray-700/30',
   enhancement: 'bg-purple-900/30 text-purple-400 border-purple-700/30',
 };
 
@@ -160,7 +160,7 @@ export default function StatuteLookup({
             onClick={onClear}
             className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
             title="Remove statute"
-          >
+            aria-label="Remove statute selection">
             <X className="w-3.5 h-3.5" />
           </button>
         )}
@@ -176,6 +176,7 @@ export default function StatuteLookup({
         <input
           type="text"
           className="input-dark text-xs w-full pl-8 pr-3"
+          aria-label="Search statutes"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
@@ -271,7 +272,7 @@ export default function StatuteLookup({
                         )}
                         <span className="text-xs font-mono text-brand-400 font-bold">{s.citation}</span>
                         {s.category === 'vehicle' ? (
-                          <Car className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                          <Car className="w-3 h-3 text-gray-400 flex-shrink-0" />
                         ) : (
                           <Scale className="w-3 h-3 text-red-400 flex-shrink-0" />
                         )}

@@ -19,7 +19,7 @@ const requirements: Requirement[] = [
 ];
 
 function getStrength(password: string): { score: number; label: string; color: string } {
-  if (!password) return { score: 0, label: '', color: '#2a3e58' };
+  if (!password) return { score: 0, label: '', color: '#2e2e2e' };
 
   let score = 0;
   if (password.length >= 8) score++;
@@ -30,9 +30,9 @@ function getStrength(password: string): { score: number; label: string; color: s
 
   if (score <= 1) return { score, label: 'WEAK', color: '#dc2626' };
   if (score === 2) return { score, label: 'FAIR', color: '#d4a017' };
-  if (score === 3) return { score, label: 'GOOD', color: '#4a90c4' };
+  if (score === 3) return { score, label: 'GOOD', color: '#888888' };
   if (score >= 4) return { score, label: 'STRONG', color: '#22c55e' };
-  return { score: 0, label: '', color: '#2a3e58' };
+  return { score: 0, label: '', color: '#2e2e2e' };
 }
 
 export default function PasswordStrengthMeter({ password, showRequirements = true }: Props) {
@@ -42,7 +42,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
   if (!password) return null;
 
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mt-2 space-y-2" role="status" aria-label={`Password strength: ${strength.label || 'none'}`}>
       {/* Strength bar */}
       <div className="flex items-center gap-2">
         <div className="flex-1 h-1 flex gap-0.5">
@@ -51,7 +51,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
               key={i}
               className="flex-1 transition-colors duration-300"
               style={{
-                background: i <= strength.score ? strength.color : '#1e3048',
+                background: i <= strength.score ? strength.color : '#222222',
               }}
             />
           ))}
@@ -75,7 +75,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
               <div
                 key={req.label}
                 className="flex items-center gap-1 text-[9px]"
-                style={{ color: met ? '#22c55e' : '#6b7280' }}
+                style={{ color: met ? '#22c55e' : '#666666' }}
               >
                 {met ? (
                   <Check className="w-2.5 h-2.5" />
