@@ -5,6 +5,7 @@ import {
   Clock, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -44,12 +45,26 @@ interface SearchHistoryRow {
 
 // Search type display labels
 const SEARCH_TYPE_LABELS: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  byname: { label: 'Name', icon: User, color: '#60a5fa' },
+  byname: { label: 'Name', icon: User, color: '#aaaaaa' },
   byaddress: { label: 'Address', icon: MapPin, color: '#34d399' },
   bynameandaddress: { label: 'Name + Address', icon: Search, color: '#a78bfa' },
   byphone: { label: 'Phone', icon: Phone, color: '#f59e0b' },
   byemail: { label: 'Email', icon: Mail, color: '#f472b6' },
-  personDetailsByID: { label: 'Person ID', icon: Hash, color: '#818cf8' },
+  personDetailsByID: { label: 'Person ID', icon: Hash, color: '#aaaaaa' },
+};
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 };
 
 export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: Props) {
@@ -77,7 +92,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       const data = await apiFetch<SkipTracerStatus>('/skiptracer/status');
       setStatus(data);
     } catch (err) {
-      console.error('Failed to fetch Skip Tracer status:', err);
+      console.error('Failed to fetch Skip Tracker status:', err);
     } finally {
       setLoading(false);
     }
@@ -89,7 +104,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       const data = await apiFetch<SearchStats>('/skiptracer/stats');
       setStats(data);
     } catch (err) {
-      console.error('Failed to fetch Skip Tracer stats:', err);
+      console.error('Failed to fetch Skip Tracker stats:', err);
     }
   }, []);
 
@@ -163,12 +178,12 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       <div className="panel-beveled bg-surface-base p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-              <Search className="w-5 h-5 text-blue-400" />
+            <div className="w-9 h-9 flex items-center justify-center bg-gray-900/25 border border-gray-700/40" aria-hidden="true">
+              <Search className="w-4 h-4 text-gray-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
-                Skip Tracer
+                Skip Tracker
               </h2>
               <p className="text-[10px] text-rmpg-500 mt-0.5">
                 Locate individuals by name, address, phone, or email via RapidAPI
@@ -177,11 +192,11 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
           </div>
           <div className="flex items-center gap-2">
             {status?.configured ? (
-              <span className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-green-900/30 text-green-400 border border-green-700/50">
-                <CheckCircle2 className="w-3 h-3" /> Connected
+              <span className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-green-900/25 text-green-400 border border-green-700/40" role="status">
+                <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Connected
               </span>
             ) : (
-              <span className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-yellow-900/30 text-yellow-400 border border-yellow-700/50">
+              <span className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-yellow-900/25 text-yellow-400 border border-yellow-700/40" role="status">
                 Not Configured
               </span>
             )}
@@ -189,7 +204,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
               href="https://rapidapi.com/oneapiproject/api/skip-tracing-working-api"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 px-2 py-0.5 text-[9px] text-rmpg-400 hover:text-blue-400 border border-rmpg-700 hover:border-blue-700"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] text-rmpg-400 hover:text-gray-400 border border-rmpg-700 hover:border-gray-700"
             >
               <ExternalLink className="w-3 h-3" /> RapidAPI
             </a>
@@ -212,16 +227,16 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
             </div>
 
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 onClick={handleTest}
                 disabled={testing}
-                className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-700/20 text-blue-400 border border-blue-700/50 hover:bg-blue-700/40 disabled:opacity-50"
+                className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-gray-700/20 text-gray-400 border border-gray-700/50 hover:bg-gray-700/40 disabled:opacity-50"
               >
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3 h-3" />}
                 Test Connection
               </button>
 
-              <button
+              <button type="button"
                 onClick={handleClear}
                 className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-red-900/20 text-red-400 border border-red-700/50 hover:bg-red-900/40"
               >
@@ -249,7 +264,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                 href="https://rapidapi.com/oneapiproject/api/skip-tracing-working-api"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
+                className="text-gray-400 hover:underline"
               >
                 RapidAPI
               </a>{' '}
@@ -267,22 +282,22 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     placeholder="Enter your x-rapidapi-key"
-                    className="w-full bg-surface-sunken border border-rmpg-600 text-white text-xs px-3 py-1.5 pr-8 font-mono focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-600 text-white text-xs px-3 py-1.5 pr-8 font-mono focus:border-gray-500 focus:outline-none"
                   />
-                  <button
+                  <button type="button"
                     onClick={() => setShowKey(!showKey)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
-                    type="button"
+                    aria-label={showKey ? 'Hide API key' : 'Show API key'}
                   >
                     {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-                <button
+                <button type="button"
                   onClick={handleSaveKey}
                   disabled={!apiKey.trim() || saving}
                   className="flex items-center gap-1 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
                 >
-                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />}
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Key className="w-3 h-3" />}
                   Save Key
                 </button>
               </div>
@@ -298,7 +313,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
           Available Search Methods
         </div>
         <p className="text-[10px] text-rmpg-500">
-          These search methods are available through the Skip Tracer panel in Records. All searches are logged and auditable.
+          These search methods are available through the Skip Tracker panel in Records. All searches are logged and auditable.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {Object.entries(SEARCH_TYPE_LABELS).map(([key, { label, icon: Icon, color }]) => (
@@ -362,9 +377,9 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
             <Clock className="w-3.5 h-3.5" />
             Recent Search History
           </div>
-          <button
+          <button type="button"
             onClick={handleLoadHistory}
-            className="text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-wider font-bold"
+            className="text-[10px] text-gray-400 hover:text-gray-300 uppercase tracking-wider font-bold"
           >
             {showHistory ? 'Refresh' : 'Load History'}
           </button>
@@ -394,7 +409,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                   <span className="text-rmpg-500 text-[9px]">{row.result_count} results</span>
                   <span className="text-rmpg-600 text-[9px]">{row.searched_by_name || '—'}</span>
                   <span className="text-rmpg-600 text-[9px] tabular-nums">
-                    {new Date(row.created_at).toLocaleString()}
+                    {safeDateTimeStr(row.created_at)}
                   </span>
                 </div>
               );
@@ -409,7 +424,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
 
       {/* ─── Info ───────────────────────────────────────────── */}
       <div className="text-[9px] text-rmpg-600 px-1">
-        Skip Tracer uses the Skip Tracing Working API on RapidAPI.
+        Skip Tracker uses the Skip Tracing Working API on RapidAPI.
         All searches are logged with the operator's identity for audit compliance.
         Results are cached locally for review. API subscription billed separately through RapidAPI.
       </div>

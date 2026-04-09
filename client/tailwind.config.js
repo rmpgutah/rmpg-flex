@@ -1,6 +1,15 @@
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
+  content: [
+    resolve(__dirname, 'index.html'),
+    resolve(__dirname, 'src/**/*.{js,ts,jsx,tsx}'),
+  ],
   theme: {
     borderRadius: {
       none: '0',
@@ -12,6 +21,15 @@ export default {
       '2xl': '2px',
       '3xl': '2px',
       full: '2px',
+    },
+    screens: {
+      'xs': '475px',
+      'sm': '640px',
+      'md': '768px',
+      'lg': '1024px',
+      'xl': '1280px',
+      '2xl': '1536px',
+      '3xl': '1920px',
     },
     extend: {
       fontFamily: {
@@ -46,16 +64,16 @@ export default {
         //   Logo light grey (text):              #d0d0d0
 
         brand: {
-          50:  '#f0f5fa',    // Lightest tint
-          100: '#d6e4f0',
-          200: '#a8c8e8',
-          300: '#6ba3d4',
-          400: '#3b8ad4',    // Lighter accent
-          500: '#1a5a9e',    // Primary — Motorola blue
-          600: '#164d87',    // Slightly deeper
-          700: '#124070',    // Deep blue
-          800: '#0e3359',    // Very deep
-          900: '#0a2642',    // Darkest blue
+          50:  '#f5f5f5',
+          100: '#e0e0e0',
+          200: '#c0c0c0',
+          300: '#aaaaaa',
+          400: '#999999',    // Lighter accent
+          500: '#888888',    // Primary — neutral gray
+          600: '#666666',
+          700: '#444444',
+          800: '#333333',
+          900: '#222222',
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -69,24 +87,24 @@ export default {
 
         // Neutral steel-blue greys — Spillman Flex dark theme
         rmpg: {
-          50:  '#e8edf2',    // Light background
-          100: '#d0d8e0',    // Light grey
-          200: '#b0bcc8',    // Medium light
-          300: '#8a9aaa',    // Medium grey
-          400: '#5a6e80',    // Grey
-          500: '#3a4e60',    // Mid-dark
-          600: '#2a3a4e',    // Dark steel-blue
-          700: '#1e3048',    // Deep steel-blue
-          800: '#162236',    // Deeper
-          900: '#0d1520',    // Near black
-          950: '#060c14',    // App background
+          50:  '#e0e0e0',
+          100: '#cccccc',
+          200: '#aaaaaa',
+          300: '#888888',
+          400: '#666666',
+          500: '#444444',
+          600: '#333333',
+          700: '#222222',
+          800: '#181818',
+          900: '#0e0e0e',
+          950: '#050505',
         },
 
         dispatch: {
-          emergency: '#dc2626',    // Safety red (not brand)
-          urgent:    '#d4a017',    // Brand gold
-          routine:   '#4a90c4',    // Muted steel blue
-          scheduled: '#6b7280',
+          emergency: '#dc2626',
+          urgent:    '#d4a017',
+          routine:   '#888888',
+          scheduled: '#666666',
         },
         success: {
           400: '#34d399',
@@ -98,11 +116,25 @@ export default {
         },
         status: {
           available:  '#22c55e',
-          dispatched: '#d4a017',   // Brand gold
-          enroute:    '#4a90c4',   // Steel blue
+          dispatched: '#d4a017',
+          enroute:    '#888888',
           onscene:    '#a855f7',
-          busy:       '#dc2626',   // Safety red
-          offduty:    '#6b7280',
+          busy:       '#dc2626',
+          offduty:    '#666666',
+        },
+        // Override Tailwind default blue to gray (kills ALL text-blue-*, bg-blue-*, border-blue-*)
+        blue: {
+          50:  '#f5f5f5',
+          100: '#e0e0e0',
+          200: '#c0c0c0',
+          300: '#aaaaaa',
+          400: '#999999',
+          500: '#888888',
+          600: '#666666',
+          700: '#444444',
+          800: '#333333',
+          900: '#222222',
+          950: '#111111',
         },
       },
     },

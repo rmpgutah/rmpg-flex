@@ -61,17 +61,17 @@ function channelLabel(ch?: string): string {
   return ch === 'outside' ? 'FRONT' : 'REAR';
 }
 function channelColor(ch?: string): string {
-  return ch === 'outside' ? 'text-blue-400' : 'text-purple-400';
+  return ch === 'outside' ? 'text-gray-400' : 'text-purple-400';
 }
 function channelBg(ch?: string): string {
   return ch === 'outside'
-    ? 'bg-blue-900/80 text-blue-300 border border-blue-600/50'
+    ? 'bg-gray-900/80 text-gray-300 border border-gray-600/50'
     : 'bg-purple-900/80 text-purple-300 border border-purple-600/50';
 }
 
 function formatDate(d?: string): string {
   if (!d) return '-';
-  return new Date(d).toLocaleDateString('en-US', {
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -93,6 +93,20 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 // ── Component ───────────────────────────────────────────────
 
 export default function DashCamerasPage() {
@@ -100,6 +114,7 @@ export default function DashCamerasPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── State ────────────────────────────────
   const [videos, setVideos] = useState<DashCamVideo[]>([]);
@@ -229,20 +244,20 @@ export default function DashCamerasPage() {
 
   // ── Gallery View (Left Panel) ────────────
   const galleryView = (
-    <div className="h-full overflow-y-auto p-2">
+    <div className="h-full overflow-y-auto scrollbar-dark p-2">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading videos" />
           <span className="text-[10px] text-rmpg-400">Loading videos...</span>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
+        <div className="text-center py-16" role="status">
           <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-            <Film className="w-7 h-7 text-rmpg-600" />
+            <Film className="w-7 h-7 text-rmpg-600" aria-hidden="true" />
           </div>
           <p className="text-xs text-rmpg-400">No dash camera videos found</p>
           {canManage && (
-            <button onClick={() => setShowUpload(true)}
+            <button type="button" onClick={() => setShowUpload(true)}
               className="mt-3 toolbar-btn-primary text-[10px] px-4 py-1.5 inline-flex items-center gap-1.5">
               <Plus className="w-3 h-3" /> Upload Video
             </button>
@@ -254,9 +269,14 @@ export default function DashCamerasPage() {
             <div
               key={v.id}
               onClick={() => setSelectedVideo(v)}
-              className={`panel-beveled cursor-pointer transition-all duration-150 hover:border-brand-400 ${
+              className={`panel-beveled cursor-pointer transition-all duration-200 hover:border-brand-400 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                 selectedVideo?.id === v.id ? 'border-brand-400 ring-1 ring-brand-500/30' : ''
               }`}
+              tabIndex={0}
+              role="button"
+              aria-selected={selectedVideo?.id === v.id}
+              aria-label={`Video: ${v.title}`}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedVideo(v); } }}
             >
               {/* Thumbnail area */}
               <div className="relative aspect-video bg-surface-sunken overflow-hidden group">
@@ -265,7 +285,7 @@ export default function DashCamerasPage() {
                     className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex items-center justify-center h-full"
-                    style={{ background: 'linear-gradient(135deg, #0d1520 0%, #141e2b 100%)' }}>
+                    style={{ background: 'linear-gradient(135deg, #050505 0%, #0a0a0a 100%)' }}>
                     <Film className="w-8 h-8 text-rmpg-600" />
                   </div>
                 )}
@@ -330,10 +350,10 @@ export default function DashCamerasPage() {
 
   // ── List View (Left Panel) ───────────────
   const listView = (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto scrollbar-dark">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
           <span className="text-[10px] text-rmpg-400">Loading videos...</span>
         </div>
       ) : (
@@ -359,7 +379,7 @@ export default function DashCamerasPage() {
             ) : filtered.map(v => (
               <tr key={v.id}
                 onClick={() => setSelectedVideo(v)}
-                className={`hover:bg-surface-hover cursor-pointer ${
+                className={`hover:bg-surface-hover cursor-pointer transition-colors ${
                   selectedVideo?.id === v.id ? 'bg-brand-500/10 border-l-2 border-l-brand-400' : ''
                 }`}
               >
@@ -409,16 +429,16 @@ export default function DashCamerasPage() {
 
   // ── Detail Panel (Right Panel) ───────────
   const detailPanel = selectedVideo ? (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ background: '#050505' }}>
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
-        style={{ background: 'linear-gradient(180deg, #1e3048, #1a2636)', borderBottom: '1px solid #141e2b' }}>
+        style={{ background: 'linear-gradient(180deg, #222222, #141414)', borderBottom: '1px solid #0a0a0a' }}>
         <Video className="w-3 h-3 text-cyan-400 flex-shrink-0" />
         <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
-        <button onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
+        <button type="button" onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
           <Maximize2 className="w-3 h-3" />
         </button>
-        <button onClick={() => setSelectedVideo(null)} className="toolbar-btn p-1" title="Close panel">
+        <button type="button" onClick={() => setSelectedVideo(null)} className="toolbar-btn p-1" title="Close panel">
           <X className="w-3 h-3" />
         </button>
       </div>
@@ -435,8 +455,8 @@ export default function DashCamerasPage() {
         {selectedVideo.cpg_channel && (
           <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-[9px] font-mono font-bold uppercase tracking-wider"
             style={{
-              color: selectedVideo.cpg_channel === 'outside' ? '#60a5fa' : '#c084fc',
-              border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#2563eb40' : '#7c3aed40'}`,
+              color: selectedVideo.cpg_channel === 'outside' ? '#aaaaaa' : '#c084fc',
+              border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#88888840' : '#7c3aed40'}`,
             }}>
             {selectedVideo.cpg_channel === 'outside' ? 'FRONT CAM' : 'REAR CAM'}
           </div>
@@ -586,7 +606,7 @@ export default function DashCamerasPage() {
             </h4>
             <div className="flex flex-wrap gap-1.5">
               {(['routine', 'evidence', 'flagged', 'restricted'] as const).map(cls => (
-                <button key={cls}
+                <button type="button" key={cls}
                   onClick={() => handleQuickClassify(selectedVideo.id, cls)}
                   className={`text-[9px] px-2.5 py-1 capitalize ${
                     selectedVideo.classification === cls ? 'toolbar-btn-primary' : 'toolbar-btn'
@@ -596,16 +616,16 @@ export default function DashCamerasPage() {
               ))}
             </div>
             <div className="flex gap-1.5 mt-2">
-              <button onClick={() => setEditingVideo(selectedVideo)}
+              <button type="button" onClick={() => setEditingVideo(selectedVideo)}
                 className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1">
                 <Edit2 className="w-3 h-3" /> Edit
               </button>
-              <button onClick={() => setLinkingVideo(selectedVideo)}
+              <button type="button" onClick={() => setLinkingVideo(selectedVideo)}
                 className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1">
                 <Link2 className="w-3 h-3" /> Link Case
               </button>
               {isAdmin && (
-                <button onClick={() => handleDelete(selectedVideo.id)}
+                <button type="button" onClick={() => handleDelete(selectedVideo.id)}
                   className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1 text-red-400 hover:text-red-300">
                   <Trash2 className="w-3 h-3" /> Delete
                 </button>
@@ -618,6 +638,18 @@ export default function DashCamerasPage() {
   ) : null;
 
   // ── Render ───────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cameras \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       {/* ── Title Bar ────────────────────── */}
@@ -636,21 +668,21 @@ export default function DashCamerasPage() {
 
         {/* View toggle */}
         <div className="flex items-center">
-          <button onClick={() => setViewMode('gallery')} title="Gallery view"
-            className={`p-1 ${viewMode === 'gallery' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+          <button type="button" onClick={() => setViewMode('gallery')} title="Gallery view" aria-label="Gallery view" aria-pressed={viewMode === 'gallery'}
+            className={`p-1 transition-colors duration-150 ${viewMode === 'gallery' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             <Grid className="w-3 h-3" />
           </button>
-          <button onClick={() => setViewMode('list')} title="List view"
-            className={`p-1 ${viewMode === 'list' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+          <button type="button" onClick={() => setViewMode('list')} title="List view" aria-label="List view" aria-pressed={viewMode === 'list'}
+            className={`p-1 transition-colors duration-150 ${viewMode === 'list' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             <List className="w-3 h-3" />
           </button>
         </div>
         <div className="h-4 w-px bg-rmpg-700" />
         <RmpgLogo height={20} iconOnly />
         <PrintButton />
-        <ExportButton exportUrl="/fleet/dashcam-videos?limit=5000&format=csv" exportFilename="dashcam-videos.csv" />
+        <ExportButton exportUrl="/fleet/dashcam-videos/export/csv" exportFilename="dashcam-videos.csv" />
         {canManage && (
-          <button onClick={() => setShowUpload(true)}
+          <button type="button" onClick={() => setShowUpload(true)}
             className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
             <Upload className="w-3 h-3" /> Upload
           </button>
@@ -658,8 +690,8 @@ export default function DashCamerasPage() {
       </PanelTitleBar>
 
       {/* ── Stats Strip ──────────────────── */}
-      <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0"
-        style={{ borderBottom: '1px solid #141e2b' }}>
+      <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0" role="group" aria-label="Video statistics"
+        style={{ borderBottom: '1px solid #0a0a0a' }}>
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
           <Film className="w-3 h-3 text-cyan-400" />
           <span className="text-[10px] font-mono font-bold text-cyan-400">{stats.total}</span>
@@ -668,8 +700,8 @@ export default function DashCamerasPage() {
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
 
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
-          <span className="led-dot" style={{ width: 5, height: 5, background: '#60a5fa', boxShadow: '0 0 4px #60a5fa80' }} />
-          <span className="text-[10px] font-mono font-bold text-blue-400">{stats.frontCam}</span>
+          <span className="led-dot" style={{ width: 5, height: 5, background: '#aaaaaa', boxShadow: '0 0 4px #99999980' }} />
+          <span className="text-[10px] font-mono font-bold text-gray-400">{stats.frontCam}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Front</span>
         </div>
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
@@ -709,14 +741,14 @@ export default function DashCamerasPage() {
 
       {/* ── Filter Bar ───────────────────── */}
       <div className="panel-inset p-1.5 flex items-center gap-2 flex-wrap flex-shrink-0"
-        style={{ borderBottom: '1px solid #141e2b' }}>
+        style={{ borderBottom: '1px solid #0a0a0a' }}>
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
           <input type="text" value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
-            placeholder="Search title, case #, unit..."
-            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full" />
+            placeholder="Search title, case #, unit..." aria-label="Search dash camera videos by title, case number, or unit"
+            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px] focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
         </div>
 
         <div className="h-4 w-px bg-rmpg-700" />
@@ -728,7 +760,7 @@ export default function DashCamerasPage() {
           { key: 'outside', label: 'FRONT' },
           { key: 'inside', label: 'REAR' },
         ] as const).map(ch => (
-          <button key={ch.key}
+          <button type="button" key={ch.key}
             onClick={() => { setChannelFilter(ch.key); setPage(0); }}
             className={`text-[10px] px-2 py-1 ${channelFilter === ch.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             {ch.label}
@@ -756,7 +788,7 @@ export default function DashCamerasPage() {
         {/* Classification */}
         <Filter className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
         {['all', 'routine', 'evidence', 'flagged', 'restricted'].map(f => (
-          <button key={f}
+          <button type="button" key={f}
             onClick={() => { setClassFilter(f); setPage(0); }}
             className={`text-[10px] px-2 py-1 capitalize ${classFilter === f ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f}
@@ -771,7 +803,7 @@ export default function DashCamerasPage() {
           { key: 'upload', label: 'Manual' },
           { key: 'clearpathgps', label: 'CPG' },
         ].map(f => (
-          <button key={f.key}
+          <button type="button" key={f.key}
             onClick={() => { setSourceFilter(f.key); setPage(0); }}
             className={`text-[10px] px-2 py-1 ${sourceFilter === f.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f.label}
@@ -796,17 +828,17 @@ export default function DashCamerasPage() {
       {/* ── Pagination ───────────────────── */}
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between px-3 py-1 flex-shrink-0"
-          style={{ borderTop: '1px solid #141e2b', background: '#0d1520' }}>
+          style={{ borderTop: '1px solid #0a0a0a', background: '#050505' }}>
           <span className="text-[10px] text-rmpg-500">
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>
           <div className="flex items-center gap-1">
-            <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
+            <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <span className="text-[10px] text-rmpg-400 font-mono px-2">{page + 1} / {totalPages}</span>
-            <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+            <button type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronRight className="w-3.5 h-3.5" />
             </button>

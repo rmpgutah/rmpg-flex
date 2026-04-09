@@ -9,6 +9,7 @@ import { AlertTriangle, Clock, Shield, ShieldBan, MapPin, X } from 'lucide-react
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { safeDateStr } from '../utils/dateUtils';
 
 interface PremiseCall {
   id: number;
@@ -105,7 +106,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           }
         }
       } catch (err: any) {
-        setError(err.message || 'Failed to load premise history');
+        setError(err?.message || 'Failed to load premise history');
       } finally {
         setLoading(false);
       }
@@ -144,7 +145,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#6b7280';
+      default: return '#666666';
     }
   };
 
@@ -164,7 +165,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </span>
         </div>
         {onClose && (
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white">
             <X style={{ width: 12, height: 12 }} />
           </button>
         )}
@@ -184,7 +185,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           <span>ACTIVE TRESPASS ORDER{trespassOrders.length > 1 ? 'S' : ''}:</span>
           {trespassOrders.map(to => (
             <span key={to.id} className="px-1.5 py-0.5" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #ef4444' }}>
-              {to.subject_last_name?.toUpperCase()}, {to.subject_first_name} — {to.order_type?.replace(/_/g, ' ').toUpperCase()}
+              {(to.subject_last_name || '').toUpperCase()}, {to.subject_first_name || ''} — {(to.order_type || '').replace(/_/g, ' ').toUpperCase()}
             </span>
           ))}
         </div>
@@ -233,8 +234,8 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
             </div>
             <div className="flex items-center gap-2 text-[9px] text-rmpg-500">
               <Clock style={{ width: 9, height: 9 }} />
-              <span>{new Date(call.created_at).toLocaleDateString()}</span>
-              {call.disposition && <span>• {call.disposition}</span>}
+              <span>{safeDateStr(call.created_at)}</span>
+              {call.disposition && <span>• {call.disposition.replace(/_/g, ' ')}</span>}
               {call.weapons_involved && <span className="text-red-500 font-bold">WEAPONS</span>}
               {call.domestic_violence && <span className="text-orange-500 font-bold">DV</span>}
             </div>

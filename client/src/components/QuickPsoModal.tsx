@@ -116,7 +116,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-purple-700/50 shadow-2xl animate-fade-in">
+      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-purple-700/50 shadow-md animate-fade-in">
         {/* Header — purple PSO theme */}
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-purple-700/50"
@@ -128,10 +128,10 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               Quick PSO Client Request
             </h2>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors"
-          >
+            aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -212,7 +212,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
           {/* Location */}
           <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address</label>
+            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address *</label>
             <AddressAutocomplete
               className="input-dark"
               placeholder="123 Main St, Salt Lake City, UT"

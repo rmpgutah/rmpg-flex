@@ -147,35 +147,41 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
     setSaving(false);
   };
 
-  if (loading) return <LoadingSpinner />;
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Security \u2014 RMPG Flex'; }, []);
 
   const ToggleButton = ({ toggleKey, label, description }: { toggleKey: keyof SecurityConfig; label: string; description?: string }) => (
-    <button
+    <button type="button"
       onClick={() => toggleBool(toggleKey)}
-      className={`flex items-center gap-3 w-full p-3 border transition-colors text-left ${
+      role="switch"
+      aria-checked={config[toggleKey] === '1'}
+      aria-label={label}
+      className={`flex items-center gap-3 w-full p-3 border transition-all duration-150 text-left hover:brightness-110 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
         config[toggleKey] === '1'
-          ? 'bg-green-900/20 border-green-700/50'
-          : 'bg-rmpg-900 border-rmpg-600'
+          ? 'bg-green-900/15 border-green-700/40'
+          : 'bg-[#050505] border-[#141414]'
       }`}
     >
       {config[toggleKey] === '1' ? (
-        <ToggleRight className="w-5 h-5 text-green-400 flex-shrink-0" />
+        <ToggleRight className="w-5 h-5 text-green-400 flex-shrink-0" aria-hidden="true" />
       ) : (
-        <ToggleLeft className="w-5 h-5 text-rmpg-500 flex-shrink-0" />
+        <ToggleLeft className="w-5 h-5 text-rmpg-600 flex-shrink-0" aria-hidden="true" />
       )}
-      <div>
-        <span className={`text-xs font-medium ${config[toggleKey] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{label}</span>
-        {description && <p className="text-[9px] text-rmpg-500 mt-0.5">{description}</p>}
+      <div className="min-w-0">
+        <span className={`text-[11px] font-medium block ${config[toggleKey] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{label}</span>
+        {description && <p className="text-[9px] text-rmpg-500 mt-0.5 leading-relaxed">{description}</p>}
       </div>
     </button>
   );
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center bg-red-900/30 border border-red-700/50">
+          <div className="w-10 h-10 flex items-center justify-center bg-red-900/30 border border-red-700/50" aria-hidden="true">
             <ShieldAlert className="w-5 h-5 text-red-400" />
           </div>
           <div>
@@ -183,12 +189,13 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
             <p className="text-[10px] text-rmpg-400">Password requirements, two-factor authentication, IP binding, lockout, sessions & audit</p>
           </div>
         </div>
-        <button
+        <button type="button"
           onClick={saveConfig}
           disabled={!dirty || saving}
-          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5`}
+          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5 disabled:opacity-50 transition-opacity`}
+          aria-label={saving ? 'Saving security settings' : 'Save security settings'}
         >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </button>
       </div>
@@ -203,22 +210,22 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.min_password_length} onChange={(e) => update('min_password_length', e.target.value)} min="6" max="32" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.min_password_length} onChange={(e) => update('min_password_length', e.target.value)} min="6" max="32" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Minimum characters required (6-32)</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days)</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.password_expiry_days} onChange={(e) => update('password_expiry_days', e.target.value)} min="0" max="365" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_expiry_days} onChange={(e) => update('password_expiry_days', e.target.value)} min="0" max="365" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">0 = passwords never expire</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password History</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.password_history_count} onChange={(e) => update('password_history_count', e.target.value)} min="0" max="24" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_history_count} onChange={(e) => update('password_history_count', e.target.value)} min="0" max="24" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Prevent reuse of last N passwords</p>
           </div>
         </div>
 
-        <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mt-4">Complexity Requirements</div>
+        <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-[#181818] pb-1.5 mt-4 tracking-wider">Complexity Requirements</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <ToggleButton toggleKey="require_uppercase" label="Require Uppercase" description="At least one uppercase letter" />
           <ToggleButton toggleKey="require_numbers" label="Require Numbers" description="At least one numeric digit" />
@@ -244,7 +251,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Require 2FA for Roles</label>
           <input
             type="text"
-            className="input-dark text-xs w-full font-mono"
+            className="input-dark text-xs w-full font-mono min-h-[36px]"
             value={config.totp_required_roles}
             onChange={(e) => update('totp_required_roles', e.target.value)}
             placeholder="admin,dispatcher,supervisor (comma-separated, leave empty for optional)"
@@ -276,7 +283,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Action on IP Change</label>
           <select
-            className="input-dark text-xs w-full"
+            className="input-dark text-xs w-full min-h-[36px]"
             value={config.ip_change_action}
             onChange={(e) => update('ip_change_action', e.target.value)}
           >
@@ -298,12 +305,12 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Failed Login Attempts</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.max_login_attempts} onChange={(e) => update('max_login_attempts', e.target.value)} min="1" max="20" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_login_attempts} onChange={(e) => update('max_login_attempts', e.target.value)} min="1" max="20" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Account locks after this many failed attempts</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.lockout_duration_minutes} onChange={(e) => update('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.lockout_duration_minutes} onChange={(e) => update('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">How long the account stays locked</p>
           </div>
         </div>
@@ -319,19 +326,19 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       {/* Session Management */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <Clock className="w-4 h-4 text-blue-400" />
+          <Clock className="w-4 h-4 text-gray-400" />
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Session Management</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.session_timeout_minutes} onChange={(e) => update('session_timeout_minutes', e.target.value)} min="5" max="1440" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.session_timeout_minutes} onChange={(e) => update('session_timeout_minutes', e.target.value)} min="5" max="1440" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Auto-logout after inactivity. Current: {Math.round(Number(config.session_timeout_minutes) / 60)}h {Number(config.session_timeout_minutes) % 60}m</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Concurrent Sessions</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.max_active_sessions} onChange={(e) => update('max_active_sessions', e.target.value)} min="1" max="10" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_active_sessions} onChange={(e) => update('max_active_sessions', e.target.value)} min="1" max="10" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum simultaneous logins per user</p>
           </div>
         </div>
@@ -368,7 +375,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">IP Allowlist</label>
             <textarea
-              className="input-dark text-xs w-full h-20 font-mono"
+              className="input-dark text-xs w-full h-20 font-mono min-h-[36px]"
               value={config.ip_allowlist}
               onChange={(e) => update('ip_allowlist', e.target.value)}
               placeholder="One IP per line (leave empty to allow all)&#10;192.168.1.0/24&#10;10.0.0.1"
@@ -378,7 +385,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">IP Blocklist</label>
             <textarea
-              className="input-dark text-xs w-full h-20 font-mono"
+              className="input-dark text-xs w-full h-20 font-mono min-h-[36px]"
               value={config.ip_blocklist}
               onChange={(e) => update('ip_blocklist', e.target.value)}
               placeholder="One IP per line&#10;203.0.113.50"
@@ -397,10 +404,13 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
       {/* Save footer */}
       {dirty && (
-        <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4">
-          <span className="text-[10px] text-amber-400">You have unsaved changes</span>
-          <button onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+        <div className="sticky bottom-0 bg-[#050505]/95 backdrop-blur-sm border-t border-amber-700/30 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status" aria-live="polite" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <span className="text-[10px] text-amber-400 flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+            You have unsaved changes
+          </span>
+          <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Save all security changes">
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : <Save className="w-3 h-3" aria-hidden="true" />}
             {saving ? 'Saving...' : 'Save All Changes'}
           </button>
         </div>

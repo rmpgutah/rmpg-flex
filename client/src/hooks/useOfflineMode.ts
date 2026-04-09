@@ -115,8 +115,8 @@ export function useOfflineMode() {
               await setConfig('refresh_token', refreshToken);
             }
           }
-        } catch {
-          // Network may be down — use cached values
+        } catch (err) {
+          console.warn('[useOfflineMode] Auth/me fetch failed, using cached values:', err);
         }
 
         if (cancelled) return;

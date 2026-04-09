@@ -6,6 +6,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { sanitizePdfText, wordWrapText } from './pdfGenerator';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getGridStartX, getGridContentWidth,
@@ -86,25 +87,33 @@ export function drawFormCell(
 ): void {
   const pad = SPACING.FORM_CELL_PAD;
 
-  // Cell border
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, w, h);
+  // Sanitize cell value to convert Unicode chars to ASCII-safe equivalents
+  if (cell.value) cell = { ...cell, value: sanitizePdfText(cell.value) };
 
-  // Label (tiny, Helvetica, gray — inside cell top-left)
+  // Cell borders drawn by drawFormRow (shared edges prevent double-lines)
+
+  // Label (Helvetica Bold, dark gray — above value)
+  const labelBaseY = y + pad + 1.2;
   if (cell.label) {
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text(cell.label.toUpperCase(), x + pad, y + pad + 1.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    // Strip numbered prefix patterns like "1. ", "12. " from labels
+    const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
+    doc.text(cleanLabel, x + pad, labelBaseY);
   }
 
-  // Value (Courier, black — below label)
+  // Value area starts below label strip — 2mm gap between label and value
+  const labelStripH = SPACING.FORM_CELL_LABEL_H + 0.3; // Tight gap
+  const valueAreaTop = y + labelStripH + pad;
+  const valueAreaH = h - labelStripH - pad;
+
+  // Value (Courier, black — centered in value area)
   if (cell.checkbox) {
-    // Render checkbox square
+    // Render checkbox square centered vertically in value area
     const cbSize = 2.8;
     const cbX = x + pad;
-    const cbY = y + SPACING.FORM_CELL_LABEL_H + pad + 0.5;
+    const cbY = valueAreaTop + (valueAreaH - cbSize) / 2;
     doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
     doc.setLineWidth(BORDER.CHECKBOX);
     doc.rect(cbX, cbY, cbSize, cbSize);
@@ -125,17 +134,19 @@ export function drawFormCell(
     doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-    // Center value vertically between label bottom and cell bottom
-    const labelBottom = SPACING.FORM_CELL_LABEL_H + pad + 1;
-    const valueY = y + labelBottom + (h - labelBottom) / 2 + 0.8;
+    // Center value text baseline in the value area
+    const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
+    const textH = fontSize * 0.35;  // Approximate cap height in mm
+    const valueY = valueAreaTop + (valueAreaH + textH) / 2;
     const maxW = w - 2 * pad;
 
+    const displayVal = cell.value.toUpperCase();
     if (cell.align === 'center') {
-      doc.text(cell.value, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
+      doc.text(displayVal, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
     } else if (cell.align === 'right') {
-      doc.text(cell.value, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
+      doc.text(displayVal, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
     } else {
-      doc.text(cell.value, x + pad, valueY, { maxWidth: maxW });
+      doc.text(displayVal, x + pad, valueY, { maxWidth: maxW });
     }
   }
 }
@@ -155,12 +166,24 @@ export function drawFormRow(
   if (!cells || cells.length === 0) return y + (rowH || SPACING.FORM_CELL_H);
   const h = rowH || SPACING.FORM_CELL_H;
   const totalRatio = cells.reduce((sum, c) => sum + (c.ratio || 1), 0) || 1;
-  let cellX = x;
 
-  for (const cell of cells) {
-    const ratio = cell.ratio || 1;
+  // Draw outer row border (single shared edge — no doubles)
+  doc.setDrawColor(...COLOR.BORDER_FIELD);
+  doc.setLineWidth(BORDER.FORM_CELL);
+  doc.rect(x, y, totalW, h);
+
+  // Draw cell content + vertical dividers between cells
+  let cellX = x;
+  for (let i = 0; i < cells.length; i++) {
+    const ratio = cells[i].ratio || 1;
     const cellW = (ratio / totalRatio) * totalW;
-    drawFormCell(doc, cell, cellX, y, cellW, h);
+    drawFormCell(doc, cells[i], cellX, y, cellW, h);
+    // Vertical divider (skip last cell — right edge is the row border)
+    if (i < cells.length - 1) {
+      doc.setDrawColor(...COLOR.BORDER_FIELD);
+      doc.setLineWidth(BORDER.FORM_CELL);
+      doc.line(cellX + cellW, y, cellX + cellW, y + h);
+    }
     cellX += cellW;
   }
 
@@ -185,13 +208,6 @@ export function drawFormGrid(
   for (const row of rows) {
     const h = row.height || SPACING.FORM_CELL_H;
     curY = drawFormRow(doc, row.cells, x, curY, totalW, h);
-  }
-
-  // Bold outer border around entire grid
-  if (opts?.outerBorder !== false) {
-    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-    doc.setLineWidth(BORDER.FORM_GRID_OUTER);
-    doc.rect(x, startY, totalW, curY - startY);
   }
 
   return curY;
@@ -222,11 +238,11 @@ export function drawSideTab(
   // jsPDF's align:'center' acts on the pre-rotation axis, so with
   // angle:90 it would center across the tab WIDTH (wrong axis).
   // Instead we measure text width and offset the anchor Y ourselves.
-  const upperLabel = label.toUpperCase();
+  const upperLabel = sanitizePdfText(label.toUpperCase());
   const maxTextLen = height - 4;
   let fontSize: number = FONT.SIZE_SIDEBAR_TAB;
 
-  doc.setFont('courier', 'bold');
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(fontSize);
   let textW = doc.getTextWidth(upperLabel);
 
@@ -264,7 +280,7 @@ export function drawCheckboxGrid(
 ): number {
   const cellW = totalW / cols;
   const rowH = opts?.rowHeight || 4.5;
-  const cbSize = 2.2;
+  const cbSize = 2.2; // Intentional: 2.2mm is the optimal checkbox size for form readability
   let curY = y;
 
   for (let i = 0; i < items.length; i++) {
@@ -286,12 +302,13 @@ export function drawCheckboxGrid(
       doc.line(cbX + 0.85, cbY + 1.8, cbX + 1.9, cbY + 0.4);
     }
 
-    // Label text
-    const labelText = items[i].code
+    // Label text — sanitize to prevent Unicode crashes
+    const rawLabel = items[i].code
       ? `${items[i].code} = ${items[i].label}`
       : items[i].label;
+    const labelText = sanitizePdfText(rawLabel);
 
-    doc.setFont('courier', 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(labelText, cbX + cbSize + 0.8, cbY + cbSize - 0.2, {
@@ -301,11 +318,6 @@ export function drawCheckboxGrid(
 
   // Account for last row
   curY += rowH;
-
-  // Outer border around checkbox grid
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, totalW, curY - y);
 
   return curY;
 }
@@ -331,7 +343,7 @@ export function drawCodeReferenceTable(
   // Title bar
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, y, totalW, 4, 'F');
-  doc.setFont('courier', 'bold');
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text(title.toUpperCase(), x + 1.5, y + 2.8);
@@ -353,22 +365,17 @@ export function drawCodeReferenceTable(
     doc.setFont('courier', 'bold');
     doc.setFontSize(4.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(codes[i].code || '', cellX + 1, curY + 2.3);
+    doc.text(sanitizePdfText(codes[i].code || ''), cellX + 1, curY + 2.3);
 
     doc.setFont('courier', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(`= ${codes[i].description || ''}`, cellX + 5.5, curY + 2.3, {
+    doc.text(sanitizePdfText(`= ${codes[i].description || ''}`), cellX + 5.5, curY + 2.3, {
       maxWidth: colW - 7,
     });
   }
 
   curY += rowH;
-
-  // Outer border
-  doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-  doc.setLineWidth(BORDER.FORM_CELL);
-  doc.rect(x, y, totalW, curY - y);
 
   return curY;
 }
@@ -387,15 +394,27 @@ export function drawFormSection(
     y: number;
     /** Additional content to draw after grid rows (callback receives y, returns new y) */
     afterGrid?: (y: number) => number;
+    /** If true, render tab label as a horizontal banner above the grid instead of a vertical sidebar */
+    topBanner?: boolean;
+    /** Optional page break handler — called when section doesn't fit; should add page + draw continuation header, return new Y */
+    onPageBreak?: (doc: jsPDF, neededH: number) => number;
   },
 ): number {
   const pageH = doc.internal.pageSize.getHeight();
   const bottomMargin = LAYOUT.PAGE_MARGIN + LAYOUT.FOOTER_HEIGHT + 2;
-  const gridX = getGridStartX();
-  const gridW = getGridContentWidth(doc);
+  const pageW = doc.internal.pageSize.getWidth();
 
-  // Calculate total section height
-  let totalH = 0;
+  // topBanner mode uses full page width (no sidebar indent)
+  const useBanner = !!config.topBanner;
+  const gridX = useBanner ? LAYOUT.PAGE_MARGIN : getGridStartX();
+  const gridW = useBanner
+    ? pageW - 2 * LAYOUT.PAGE_MARGIN
+    : getGridContentWidth(doc);
+
+  // Calculate total section height (include banner if applicable)
+  // Banner: 5mm dark header bar matching CFS openAutoSection style
+  const bannerH = useBanner ? 4 : 0;
+  let totalH = bannerH;
   for (const row of config.rows) {
     totalH += row.height || SPACING.FORM_CELL_H;
   }
@@ -403,11 +422,35 @@ export function drawFormSection(
   // Check if section fits on current page
   let curY = config.y;
   if (curY + totalH > pageH - bottomMargin) {
-    doc.addPage();
-    curY = LAYOUT.PAGE_MARGIN + LAYOUT.HEADER_HEIGHT + LAYOUT.ACCENT_STRIP_H + 2;
+    if (config.onPageBreak) {
+      curY = config.onPageBreak(doc, totalH);
+    } else {
+      doc.addPage();
+      curY = LAYOUT.PAGE_MARGIN; // Safe fallback — callers should provide onPageBreak
+    }
   }
 
   const sectionStartY = curY;
+
+  if (useBanner) {
+    // ── Draw horizontal banner (matches openAutoSection header style) ──
+    // Dark fill (#2e2e2e equivalent) matching CFS section headers
+    const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
+    doc.setFillColor(...bgColor);
+    doc.rect(gridX, curY, gridW, bannerH, 'F');
+    // Clean border around header
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(gridX, curY, gridW, bannerH);
+    // White text, vertically centered
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+    const textY = curY + (bannerH + bannerCapH) / 2;
+    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
+    curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
+  }
 
   // Draw grid rows
   curY = drawFormGrid(doc, config.rows, gridX, curY, gridW);
@@ -417,15 +460,19 @@ export function drawFormSection(
     curY = config.afterGrid(curY);
   }
 
-  // Draw sidebar tab spanning the full section height
-  const sectionH = curY - sectionStartY;
-  drawSideTab(
-    doc,
-    config.sideTab.label,
-    sectionStartY,
-    sectionH,
-    config.sideTab.color,
-  );
+  if (useBanner) {
+    // No extra enclosing border — rows already have shared-edge borders
+  } else {
+    // Draw sidebar tab spanning the full section height (legacy mode)
+    const sectionH = curY - sectionStartY;
+    drawSideTab(
+      doc,
+      config.sideTab.label,
+      sectionStartY,
+      sectionH,
+      config.sideTab.color,
+    );
+  }
 
   return curY + SPACING.SECTION_GAP;
 }
@@ -443,6 +490,7 @@ export function drawNibrsHeader(
     formTitle: string;            // e.g. "UNIFORM INCIDENT REPORT"
     formNumber?: string;          // e.g. "FORM PS-101"
     caseNumber?: string;          // e.g. "INC-2026-001234"
+    caseNumberLabel?: string;     // e.g. "CALL FOR SERVICE" — defaults to "CASE NUMBER"
     reportDate?: string;          // e.g. "03/02/2026"
     sealBase64?: string | null;   // Agency seal image
     logoBase64?: string | null;   // Agency logo image
@@ -465,48 +513,54 @@ export function drawNibrsHeader(
     } catch { /* skip if image fails */ }
   }
 
-  // Agency name (centered in header bar)
-  doc.setFont('courier', 'bold');
-  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text((config.agencyName || '').toUpperCase(), pageW / 2, y + 8, { align: 'center' });
+  // Left-aligned text block (after seal)
+  const textX = margin + (config.sealBase64 ? sealSize + 6 : 4);
+  const headerH = LAYOUT.HEADER_HEIGHT;
+  const midY = y + headerH / 2; // vertical center of header bar
 
-  // State identifier (small, above agency name if present)
+  // State identifier (small, above center)
   if (config.stateIdentifier) {
-    doc.setFont('courier', 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_SUBHEADER);
-    doc.text(config.stateIdentifier.toUpperCase(), pageW / 2, y + 4, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
   }
 
-  // Form title (below agency name)
-  doc.setFont('courier', 'bold');
-  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-  doc.text((config.formTitle || '').toUpperCase(), pageW / 2, y + 13, { align: 'center' });
+  // Agency name (main title, centered vertically)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
 
-  // Case number box (right side)
+  // Form title (below center)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
+
+  // Case number (right side — thin white border frame, white text)
   if (config.caseNumber) {
     const caseBoxW = LAYOUT.CASE_BOX_W;
-    const caseBoxH = 12;
+    const caseBoxH = headerH - 6;
     const caseBoxX = margin + contentW - caseBoxW - 2;
-    const caseBoxY = y + 4;
+    const caseBoxY = y + 3;
 
-    // White box with border
-    doc.setFillColor(255, 255, 255);
+    // Subtle white border frame (no fill)
     doc.setDrawColor(...COLOR.TEXT_INVERTED);
-    doc.setLineWidth(BORDER.CASE_BOX);
-    doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH, 'FD');
+    doc.setLineWidth(0.5);
+    doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
 
-    // "CASE NUMBER" label
-    doc.setFont('courier', 'normal');
+    // Case number label — configurable per report type
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
 
     // Case number value
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_CASE_NUMBER);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(config.caseNumber, caseBoxX + caseBoxW / 2, caseBoxY + 9, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(sanitizePdfText(config.caseNumber), caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;
@@ -519,14 +573,14 @@ export function drawNibrsHeader(
   // Sub-header row: Form number (left) + Report date (right)
   y += 1;
   if (config.formNumber || config.reportDate) {
-    doc.setFont('courier', 'normal');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
-    doc.setTextColor(...COLOR.TEXT_MUTED);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
     if (config.formNumber) {
       doc.text(config.formNumber, margin + 2, y + 3);
     }
     if (config.reportDate) {
-      doc.text(`REPORT DATE: ${config.reportDate}`, margin + contentW - 2, y + 3, { align: 'right' });
+      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 3, { align: 'right' });
     }
     y += 5;
   }

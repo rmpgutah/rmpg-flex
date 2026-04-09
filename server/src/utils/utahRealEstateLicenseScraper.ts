@@ -60,7 +60,8 @@ export async function scrapeUtahRealEstateLicenses(): Promise<ScrapeResult> {
   let lastError: string | undefined;
 
   const config = getSourceConfig(SOURCE_KEY);
-  const extraConfig = config?.extra_config ? JSON.parse(config.extra_config) : {};
+  let extraConfig: any = {};
+  try { if (config?.extra_config) extraConfig = JSON.parse(config.extra_config); } catch { console.warn('[RealEstateLicense] Invalid extra_config JSON, using defaults'); }
 
   // Only pull active licenses; filter by company license types
   // The SODA API supports SoSQL for filtering

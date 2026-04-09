@@ -42,7 +42,7 @@ interface BrandingConfig {
 const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#1a5a9e',
+  primary_color: '#888888',
   accent_color: '#d4a017',
   header_bg_color: '#000000',
   report_footer_text: 'This document is the property of RMPG Security Services. Unauthorized distribution is prohibited.',
@@ -112,6 +112,9 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
     setSaving(false);
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Branding \u2014 RMPG Flex'; }, []);
+
   if (loading) return <LoadingSpinner />;
 
   return (
@@ -119,7 +122,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center bg-purple-900/30 border border-purple-700/50">
+          <div className="w-10 h-10 flex items-center justify-center bg-purple-900/30 border border-purple-700/50" aria-hidden="true">
             <Palette className="w-5 h-5 text-purple-400" />
           </div>
           <div>
@@ -127,12 +130,13 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
             <p className="text-[10px] text-rmpg-400">Agency identity, report appearance, and PDF output configuration</p>
           </div>
         </div>
-        <button
+        <button type="button"
           onClick={saveConfig}
           disabled={!dirty || saving}
-          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5`}
+          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5 disabled:opacity-50 transition-opacity`}
+          aria-label={saving ? 'Saving branding settings' : 'Save branding settings'}
         >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </button>
       </div>
@@ -188,14 +192,16 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Show Classification Bar</label>
-            <button
+            <button type="button"
               onClick={() => update('show_classification_bar', config.show_classification_bar === '1' ? '0' : '1')}
-              className={`flex items-center gap-2 w-full p-2 border transition-colors text-left ${
-                config.show_classification_bar === '1' ? 'bg-green-900/20 border-green-700/50' : 'bg-rmpg-900 border-rmpg-600'
+              role="switch"
+              aria-checked={config.show_classification_bar === '1'}
+              className={`flex items-center gap-2 w-full p-2.5 border transition-all duration-150 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
+                config.show_classification_bar === '1' ? 'bg-green-900/15 border-green-700/40' : 'bg-[#050505] border-[#141414]'
               }`}
             >
-              {config.show_classification_bar === '1' ? <Eye className="w-4 h-4 text-green-400" /> : <Eye className="w-4 h-4 text-rmpg-500" />}
-              <span className={`text-xs ${config.show_classification_bar === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>
+              {config.show_classification_bar === '1' ? <Eye className="w-4 h-4 text-green-400" aria-hidden="true" /> : <Eye className="w-4 h-4 text-rmpg-600" aria-hidden="true" />}
+              <span className={`text-[11px] font-medium ${config.show_classification_bar === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>
                 {config.show_classification_bar === '1' ? 'Enabled' : 'Disabled'}
               </span>
             </button>
@@ -203,7 +209,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Classification</label>
             <select
-              className="input-dark text-xs w-full"
+              className="input-dark text-xs w-full min-h-[36px]"
               value={config.default_classification}
               onChange={(e) => update('default_classification', e.target.value)}
             >
@@ -216,18 +222,20 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
 
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Confidential Watermark</label>
-          <button
+          <button type="button"
             onClick={() => update('show_confidential_watermark', config.show_confidential_watermark === '1' ? '0' : '1')}
-            className={`flex items-center gap-2 w-full p-2 border transition-colors text-left ${
-              config.show_confidential_watermark === '1' ? 'bg-amber-900/20 border-amber-700/50' : 'bg-rmpg-900 border-rmpg-600'
+            role="switch"
+            aria-checked={config.show_confidential_watermark === '1'}
+            className={`flex items-center gap-2 w-full p-2.5 border transition-all duration-150 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
+              config.show_confidential_watermark === '1' ? 'bg-amber-900/15 border-amber-700/40' : 'bg-[#050505] border-[#141414]'
             }`}
           >
-            {config.show_confidential_watermark === '1' ? <Eye className="w-4 h-4 text-amber-400" /> : <Eye className="w-4 h-4 text-rmpg-500" />}
-            <div>
-              <span className={`text-xs ${config.show_confidential_watermark === '1' ? 'text-amber-300' : 'text-rmpg-400'}`}>
+            {config.show_confidential_watermark === '1' ? <Eye className="w-4 h-4 text-amber-400" aria-hidden="true" /> : <Eye className="w-4 h-4 text-rmpg-600" aria-hidden="true" />}
+            <div className="min-w-0">
+              <span className={`text-[11px] font-medium block ${config.show_confidential_watermark === '1' ? 'text-amber-300' : 'text-rmpg-400'}`}>
                 {config.show_confidential_watermark === '1' ? 'CONFIDENTIAL watermark enabled' : 'No watermark on reports'}
               </span>
-              <p className="text-[9px] text-rmpg-500 mt-0.5">Adds a diagonal "CONFIDENTIAL" watermark to all generated PDFs</p>
+              <p className="text-[9px] text-rmpg-500 mt-0.5 leading-relaxed">Adds a diagonal "CONFIDENTIAL" watermark to all generated PDFs</p>
             </div>
           </button>
         </div>
@@ -236,7 +244,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
       {/* Live Preview */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <Printer className="w-4 h-4 text-blue-400" />
+          <Printer className="w-4 h-4 text-gray-400" />
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Report Header Preview</h3>
         </div>
 
@@ -290,8 +298,8 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
       {dirty && (
         <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4">
           <span className="text-[10px] text-amber-400">You have unsaved changes</span>
-          <button onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+          <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
             {saving ? 'Saving...' : 'Save All Changes'}
           </button>
         </div>

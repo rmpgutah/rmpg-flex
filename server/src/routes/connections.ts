@@ -9,6 +9,9 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { escapeLike } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -70,7 +73,8 @@ function getRecordLabel(db: any, type: string, id: number): string {
       default:
         return `${type} #${id}`;
     }
-  } catch {
+  } catch (err: any) {
+    console.error('[Connections] getRecordLabel error:', err?.message);
     return `${type} #${id}`;
   }
 }
@@ -105,7 +109,8 @@ function getNodeMetadata(db: any, type: string, id: number): Record<string, any>
       default:
         return {};
     }
-  } catch {
+  } catch (err: any) {
+    console.error('[Connections] getNodeMetadata error:', err?.message);
     return {};
   }
 }
@@ -122,6 +127,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
       FROM record_links
       WHERE (source_type = ? AND source_id = ?)
          OR (target_type = ? AND target_id = ?)
+    
+      LIMIT 1000
     `).all(type, id, type, id) as any[];
 
     for (const link of links) {
@@ -133,7 +140,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         sourceTable: 'record_links',
       });
     }
-  } catch { /* table may not exist */ }
+  } catch (err: any) { /* record_links table may not exist */ console.error('[Connections] record_links query error:', err?.message); }
 
   // 2. Type-specific junction tables
   try {
@@ -151,6 +158,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM call_persons cp
           LEFT JOIN incidents i ON i.call_id = cp.call_id
           WHERE cp.person_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cp of callPersons) {
           if (cp.incident_id) {
@@ -165,7 +174,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_persons (JSON array) → cases
-        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ?").all(`%${id}%`) as any[];
+        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithPerson) {
           try {
             const linkedIds = JSON.parse(c.linked_persons || '[]');
@@ -181,6 +190,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM client_persons cp
           JOIN properties p ON p.client_id = cp.client_id
           WHERE cp.person_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cp of clientPersons) {
           results.push({ type: 'property', id: cp.property_id, relationship: cp.relationship, sourceTable: 'client_persons' });
@@ -201,6 +212,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM call_vehicles cv
           LEFT JOIN incidents i ON i.call_id = cv.call_id
           WHERE cv.vehicle_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cv of callVehicles) {
           if (cv.incident_id) {
@@ -242,7 +255,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_incidents (JSON array) → cases
-        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ?").all(`%${id}%`) as any[];
+        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithInc) {
           try {
             const linkedIds = JSON.parse(c.linked_incidents || '[]');
@@ -310,7 +323,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_evidence (JSON array) → cases
-        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ?").all(`%${id}%`) as any[];
+        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithEv) {
           try {
             const linkedIds = JSON.parse(c.linked_evidence || '[]');
@@ -322,7 +335,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         break;
       }
     }
-  } catch { /* junction table queries are best-effort */ }
+  } catch (err: any) { console.error('[Connections] junction table query error:', err?.message); }
 
   return results;
 }
@@ -401,19 +414,25 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const { type, id, depth } = req.query;
 
     if (!type || !id) {
-      return res.status(400).json({ error: 'type and id query parameters are required' });
+      return res.status(400).json({ error: 'type and id query parameters are required', code: 'TYPE_AND_ID_QUERY' });
     }
     if (!VALID_TYPES.includes(String(type))) {
       return res.status(400).json({ error: `Invalid type. Must be one of: ${VALID_TYPES.join(', ')}` });
     }
 
+    if (isNaN(Number(id)) || Number(id) < 1) {
+      return res.status(400).json({ error: 'id must be a positive integer', code: 'ID_MUST_BE_A' });
+    }
+
     const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
     const graph = buildGraph(db, String(type), Number(id), maxDepth);
 
+    auditLog(req, 'SEARCH', 'record_link', Number(id), `Connection graph: ${type} #${id} (depth ${maxDepth}, ${graph.nodes.length} nodes)`);
+
     res.json(graph);
   } catch (error: any) {
-    console.error('Connection graph error:', error);
-    res.status(500).json({ error: 'Failed to build connection graph' });
+    console.error('Connection graph error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to build connection graph', code: 'FAILED_TO_BUILD_CONNECTION' });
   }
 });
 
@@ -427,73 +446,99 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return res.json([]);
     }
 
-    const term = `%${String(q).trim()}%`;
+    const term = `%${escapeLike(String(q).trim())}%`;
     const results: Array<{ id: number; type: string; label: string }> = [];
 
     // Persons
     try {
       const persons = db.prepare(`
         SELECT id, first_name, last_name FROM persons
-        WHERE first_name LIKE ? OR last_name LIKE ? OR (first_name || ' ' || last_name) LIKE ?
+        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term, term) as any[];
       results.push(...persons.map((p: any) => ({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` })));
-    } catch { /* table may not exist */ }
+    } catch (err: any) { console.error('[Connections] persons search error:', err?.message); }
 
     // Vehicles
     try {
       const vehicles = db.prepare(`
         SELECT id, make, model, plate_number, color FROM vehicles_records
-        WHERE make LIKE ? OR model LIKE ? OR plate_number LIKE ? OR vin LIKE ?
+        WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR plate_number LIKE ? ESCAPE '\\' OR vin LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term, term, term) as any[];
       results.push(...vehicles.map((v: any) => ({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] vehicles search error:', err?.message); }
 
     // Properties
     try {
       const properties = db.prepare(`
         SELECT id, name, address FROM properties
-        WHERE name LIKE ? OR address LIKE ?
+        WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...properties.map((p: any) => ({ id: p.id, type: 'property', label: p.name })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] properties search error:', err?.message); }
 
     // Cases
     try {
       const cases = db.prepare(`
         SELECT id, case_number, title FROM cases
-        WHERE case_number LIKE ? OR title LIKE ?
+        WHERE case_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...cases.map((c: any) => ({ id: c.id, type: 'case', label: `${c.case_number} - ${c.title}` })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
 
     // Incidents
     try {
       const incidents = db.prepare(`
         SELECT id, incident_number, incident_type FROM incidents
-        WHERE incident_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ?
+        WHERE incident_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term, term) as any[];
       results.push(...incidents.map((i: any) => ({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
 
     // Evidence
     try {
       const evidence = db.prepare(`
         SELECT id, evidence_number, description FROM evidence
-        WHERE evidence_number LIKE ? OR description LIKE ?
+        WHERE evidence_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...evidence.map((e: any) => ({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] evidence search error:', err?.message); }
 
     res.json(results);
   } catch (error: any) {
-    console.error('Connection search error:', error);
-    res.status(500).json({ error: 'Search failed' });
+    console.error('Connection search error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Search failed', code: 'SEARCH_FAILED' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /connections/export/csv — Export record_links
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, source_type, source_id, target_type, target_id, relationship, created_at
+      FROM record_links
+      ORDER BY created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'connections_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'source_type', header: 'Source Type' },
+      { key: 'source_id', header: 'Source ID' },
+      { key: 'target_type', header: 'Target Type' },
+      { key: 'target_id', header: 'Target ID' },
+      { key: 'relationship', header: 'Relationship' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[Connections] CSV export error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

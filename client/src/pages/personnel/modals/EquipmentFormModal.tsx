@@ -148,21 +148,21 @@ export default function EquipmentFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Make</label>
-            <input type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Motorola" className="input-dark" />
+            <input type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Motorola" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Model</label>
-            <input type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. APX 8000" className="input-dark" />
+            <input type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. APX 8000" className="input-dark min-h-[36px]" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Serial Number</label>
-            <input type="text" value={form.serial_number} onChange={e => set('serial_number', e.target.value)} placeholder="Serial #" className="input-dark" />
+            <input type="text" value={form.serial_number} onChange={e => set('serial_number', e.target.value)} placeholder="Serial #" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Asset Tag</label>
-            <input type="text" value={form.asset_tag} onChange={e => set('asset_tag', e.target.value)} placeholder="Asset tag #" className="input-dark" />
+            <input type="text" value={form.asset_tag} onChange={e => set('asset_tag', e.target.value)} placeholder="Asset tag #" className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>
@@ -182,7 +182,7 @@ export default function EquipmentFormModal({
           </div>
           <div>
             <label className="field-label">Issued Date</label>
-            <input type="date" value={form.issued_date} onChange={e => set('issued_date', e.target.value)} className="input-dark" />
+            <input type="date" value={form.issued_date} onChange={e => set('issued_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Returned Date</label>
@@ -190,7 +190,7 @@ export default function EquipmentFormModal({
               type="date"
               value={form.returned_date}
               onChange={e => set('returned_date', e.target.value)}
-              className="input-dark"
+              className="input-dark min-h-[36px]"
               disabled={form.status !== 'returned'}
             />
             {form.status !== 'returned' && (
@@ -206,7 +206,8 @@ export default function EquipmentFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." className="textarea-dark" />
+        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." className="textarea-dark" maxLength={3000} />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
       </div>
     </FormModal>
   );

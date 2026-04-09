@@ -32,21 +32,22 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
     <nav
       style={{
         height: 56,
-        background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-        borderTop: '1px solid #1e3048',
+        background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
+        borderTop: '1px solid #222222',
         display: 'flex',
         alignItems: 'stretch',
         zIndex: 50,
         flexShrink: 0,
         // Safe area inset for phones with gesture nav bars
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        WebkitTransform: 'translateZ(0)',
       }}
     >
       {NAV_ITEMS.map(item => {
         const active = isActive(item.path);
         const Icon = item.icon;
         return (
-          <button
+          <button type="button"
             key={item.id}
             onClick={() => navigate(item.path)}
             style={{
@@ -56,9 +57,9 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
               alignItems: 'center',
               justifyContent: 'center',
               gap: 2,
-              background: active ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
+              background: active ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
               border: 'none',
-              borderTop: active ? '2px solid #1a5a9e' : '2px solid transparent',
+              borderTop: active ? '2px solid #888888' : '2px solid transparent',
               cursor: 'pointer',
               position: 'relative',
               padding: 0,
@@ -70,7 +71,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             <Icon
               size={22}
               style={{
-                color: active ? '#4a9ede' : '#5a6e80',
+                color: active ? '#999999' : '#666666',
                 transition: 'color 0.15s',
               }}
             />
@@ -80,7 +81,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
                 fontFamily: 'var(--font-mono, monospace)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
-                color: active ? '#4a9ede' : '#5a6e80',
+                color: active ? '#999999' : '#666666',
                 transition: 'color 0.15s',
               }}
             >
@@ -115,7 +116,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
       })}
 
       {/* More button */}
-      <button
+      <button type="button"
         onClick={onMoreTap}
         style={{
           flex: 1,
@@ -124,9 +125,9 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
           alignItems: 'center',
           justifyContent: 'center',
           gap: 2,
-          background: !isPrimaryPage ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
+          background: !isPrimaryPage ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
           border: 'none',
-          borderTop: !isPrimaryPage ? '2px solid #1a5a9e' : '2px solid transparent',
+          borderTop: !isPrimaryPage ? '2px solid #888888' : '2px solid transparent',
           cursor: 'pointer',
           padding: 0,
           minWidth: 0,
@@ -136,7 +137,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
         <Menu
           size={22}
           style={{
-            color: !isPrimaryPage ? '#4a9ede' : '#5a6e80',
+            color: !isPrimaryPage ? '#999999' : '#666666',
             transition: 'color 0.15s',
           }}
         />
@@ -146,7 +147,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             fontFamily: 'var(--font-mono, monospace)',
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
-            color: !isPrimaryPage ? '#4a9ede' : '#5a6e80',
+            color: !isPrimaryPage ? '#999999' : '#666666',
             transition: 'color 0.15s',
           }}
         >

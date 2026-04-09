@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading, addOfflineTileLayer } from '../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { useMapRouting } from '../hooks/useMapRouting';
 import OfflineMapFallback from './OfflineMapFallback';
 import type { CallForService, Unit } from '../types';
@@ -35,9 +35,10 @@ function buildCallMarker(label: string): HTMLElement {
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
 
   const tag = document.createElement('div');
+  /* #54: Call marker with subtle shadow for depth */
   tag.style.cssText =
-    'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
-    "padding:2px 5px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;";
+    'background:#ef4444;color:#fff;font-size:7px;font-weight:900;' +
+    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
   tag.textContent = label;
 
   const caret = document.createElement('div');
@@ -52,9 +53,10 @@ function buildCallMarker(label: string): HTMLElement {
 /** Build a unit marker DOM element (blue chip) */
 function buildUnitMarker(callSign: string): HTMLElement {
   const el = document.createElement('div');
+  /* #55: Unit marker with shadow */
   el.style.cssText =
-    'background:#3b82f6;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #1e3a5f;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;";
+    'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
+    "padding:1px 4px;border:1px solid #222222;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
   el.textContent = callSign;
   return el;
 }
@@ -70,7 +72,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [retryingGmaps, setRetryingGmaps] = useState(false);
   const [gmapsRetry, setGmapsRetry] = useState(0);
   const tileMonitorRef = useRef<(() => void) | null>(null);
-  const offlineTileCleanupRef = useRef<(() => void) | null>(null);
 
   // Classify error: auth/config vs connectivity
   const isAuthError = error != null && (error.includes('key') || error.includes('configured'));
@@ -118,27 +119,25 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const center = call?.latitude && call?.longitude
+    const center = call?.latitude != null && call?.longitude != null
       ? { lat: call.latitude, lng: call.longitude }
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+      const mapOptions: google.maps.MapOptions = {
         center,
         zoom: MINI_ZOOM,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         gestureHandling: 'cooperative',
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapContainerRef.current, mapOptions);
       mapRef.current = map;
       registerMapInstance(map);
-
-      // Attach offline tile layer — pre-downloaded dark tiles show through
-      // when Google tiles fail on vehicle WiFi
-      if (offlineTileCleanupRef.current) offlineTileCleanupRef.current();
-      offlineTileCleanupRef.current = addOfflineTileLayer(map);
 
       // Monitor tile loading for vehicle WiFi resilience
       if (tileMonitorRef.current) tileMonitorRef.current();
@@ -186,14 +185,15 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     };
 
     // Call marker (red pin)
-    if (call?.latitude && call?.longitude && mapRef.current) {
+    if (call?.latitude != null && call?.longitude != null && mapRef.current) {
       const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
       markersRef.current.push(m);
     }
 
     // Assigned unit markers (blue dots)
+    // assigned_units contains numeric unit IDs as strings (from mapDbCall parsing assigned_unit_ids)
     const assignedUnits = units.filter(u =>
-      call?.assigned_units?.includes(u.call_sign) && u.latitude && u.longitude
+      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
     for (const unit of assignedUnits) {
@@ -210,13 +210,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
   // Auto-route: show driving route when exactly 1 assigned unit has GPS
   useEffect(() => {
-    if (!loaded || !mapRef.current || !call?.latitude || !call?.longitude) {
+    if (!loaded || !mapRef.current || call?.latitude == null || call?.longitude == null) {
       if (hasActiveRouteRef.current) clearRoute();
       return;
     }
 
     const assignedWithGps = units.filter(u =>
-      call.assigned_units?.includes(u.call_sign) && u.latitude && u.longitude
+      call.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
     if (assignedWithGps.length === 1) {
@@ -256,7 +256,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     return () => {
       if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
-      if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
       if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);
@@ -265,7 +264,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   if (showLeafletFallback) {
     // Build assigned unit positions for the fallback
     const assignedUnits = units
-      .filter(u => call?.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null)
+      .filter(u => call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null)
       .map(u => ({
         call_sign: u.call_sign,
         lat: u.latitude!,
@@ -287,7 +286,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       : [];
 
     return (
-      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
+      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
         {/* Toolbar (same as online mode) */}
         <div style={{
           position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
@@ -300,7 +299,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             Mini-Map
           </span>
           <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
-            <button
+            <button type="button"
               onClick={() => navigate('/map')}
               className="text-rmpg-400 hover:text-white"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
@@ -309,7 +308,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               <Maximize2 style={{ width: 10, height: 10 }} />
             </button>
             {onClose && (
-              <button
+              <button type="button"
                 onClick={onClose}
                 className="text-rmpg-400 hover:text-white"
                 style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
@@ -342,14 +341,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // ── Auth error (config problem, not connectivity) ──
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060c14' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -362,7 +361,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           Mini-Map
         </span>
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
-          <button
+          <button type="button"
             onClick={() => navigate('/map')}
             className="text-rmpg-400 hover:text-white"
             style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
@@ -371,7 +370,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             <Maximize2 style={{ width: 10, height: 10 }} />
           </button>
           {onClose && (
-            <button
+            <button type="button"
               onClick={onClose}
               className="text-rmpg-400 hover:text-white"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
@@ -387,27 +386,27 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.9)', border: '1px solid #3b82f650',
+          background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
           padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
         }}>
-          <span style={{ fontSize: 8, color: '#60a5fa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#6b7280' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
         </div>
       )}
 
       {/* Map container */}
-      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
 
       {/* Loading overlay */}
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#060c14',
+          background: '#050505',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#3a5070' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>
       )}
 

@@ -8,15 +8,17 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Database, Search, X, Loader2, ChevronDown, ChevronRight,
   Users, UserPlus, UserMinus, UserX, MapPin, Clock, Shield,
   BarChart3, TrendingUp, TrendingDown, Minus, Eye, Plus,
   Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2,
   ArrowUpDown, ArrowUp, ArrowDown, FileText, ShieldAlert,
-  Calendar, Building, Scale,
+  Calendar, Building, Scale, ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
 import SplitPanel from '../components/SplitPanel';
@@ -24,8 +26,11 @@ import CollapsibleSection from '../components/CollapsibleSection';
 import CriminalHistorySection from '../components/CriminalHistorySection';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
+import { localToday } from '../utils/dateUtils';
 import { useWebSocket } from '../context/WebSocketContext';
-
+import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import ExportButton from '../components/ExportButton';
 // ── Types ─────────────────────────────────────────────────
 
 interface CountyStat {
@@ -97,7 +102,7 @@ interface PersonResult {
 // ── County colors ─────────────────────────────────────────
 
 const COUNTY_COLORS: Record<string, string> = {
-  weber:     'from-blue-600/20 to-blue-800/10 border-blue-500/30',
+  weber:     'from-gray-600/20 to-gray-800/10 border-gray-500/30',
   davis:     'from-emerald-600/20 to-emerald-800/10 border-emerald-500/30',
   iron:      'from-red-600/20 to-red-800/10 border-red-500/30',
   salt_lake: 'from-purple-600/20 to-purple-800/10 border-purple-500/30',
@@ -106,12 +111,12 @@ const COUNTY_COLORS: Record<string, string> = {
 };
 
 const COUNTY_ACCENTS: Record<string, string> = {
-  weber: 'text-blue-400', davis: 'text-emerald-400', iron: 'text-red-400',
+  weber: 'text-gray-400', davis: 'text-emerald-400', iron: 'text-red-400',
   salt_lake: 'text-purple-400', summit: 'text-cyan-400', uinta: 'text-amber-400',
 };
 
 const COUNTY_BAR_COLORS: Record<string, string> = {
-  weber: 'bg-blue-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
+  weber: 'bg-gray-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
   salt_lake: 'bg-purple-500', summit: 'bg-cyan-500', uinta: 'bg-amber-500',
 };
 
@@ -155,7 +160,7 @@ function statusBadge(status: string) {
   if (status === 'active') return { bg: 'bg-red-900/40 text-red-400', label: 'IN CUSTODY' };
   if (status === 'released') return { bg: 'bg-green-900/40 text-green-400', label: 'RELEASED' };
   if (status === 'transferred') return { bg: 'bg-amber-900/40 text-amber-400', label: 'TRANSFERRED' };
-  if (status === 'bonded') return { bg: 'bg-blue-900/40 text-blue-400', label: 'BONDED' };
+  if (status === 'bonded') return { bg: 'bg-gray-900/40 text-gray-400', label: 'BONDED' };
   return { bg: 'bg-rmpg-700 text-rmpg-400', label: status?.toUpperCase() || '—' };
 }
 
@@ -184,23 +189,41 @@ function exportCsv(records: ArrestRecord[]) {
   ]);
 
   const csv = [headers, ...rows]
-    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}"`).join(','))
     .join('\n');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `arrest-records-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `arrest-records-${localToday()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 // ── Component ─────────────────────────────────────────────
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function ArrestRecordsPage() {
   // ── State ───────────────────────────────────────────────
   const { subscribe } = useWebSocket();
+  const { addToast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Statistics
   const [stats, setStats] = useState<{
@@ -215,6 +238,9 @@ export default function ArrestRecordsPage() {
   const [recordsPage, setRecordsPage] = useState(1);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ArrestRecord | null>(null);
+
+  // Warrant linkage
+  const [warrantCounts, setWarrantCounts] = useState<Record<number, number>>({});
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -298,6 +324,27 @@ export default function ArrestRecordsPage() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchRecords(recordsPage); }, [fetchRecords, recordsPage]);
+  useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
+
+  // ── Warrant check for linked persons ───────────────────
+  useEffect(() => {
+    const personIds = records.filter(r => r.person_id).map(r => r.person_id as number);
+    if (personIds.length === 0) { setWarrantCounts({}); return; }
+    const uniqueIds = [...new Set(personIds)];
+    const counts: Record<number, number> = {};
+    let cancelled = false;
+    (async () => {
+      for (const pid of uniqueIds) {
+        if (cancelled) break;
+        try {
+          const res = await apiFetch<{ count: number }>(`/warrants/check/${pid}`);
+          if (res.count > 0) counts[pid] = res.count;
+        } catch { /* ignore — warrant endpoint may not exist */ }
+      }
+      if (!cancelled) setWarrantCounts(counts);
+    })();
+    return () => { cancelled = true; };
+  }, [records]);
 
   // ── WebSocket live sync ─────────────────────────────────
 
@@ -356,9 +403,10 @@ export default function ArrestRecordsPage() {
           setSelectedRecord(fresh);
         } catch { /* keep existing */ }
       }
+      addToast('Person linked to arrest record', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to link person';
-      setError(msg);
+      addToast(msg, 'error');
     } finally {
       setLinkingPerson(false);
     }
@@ -371,9 +419,10 @@ export default function ArrestRecordsPage() {
       if (selectedRecord?.id === arrestId) {
         setSelectedRecord(prev => prev ? { ...prev, linked_person: null, person_id: null } : null);
       }
+      addToast('Person unlinked', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to unlink person';
-      setError(msg);
+      addToast(msg, 'error');
     }
   };
 
@@ -403,9 +452,11 @@ export default function ArrestRecordsPage() {
           setSelectedRecord(fresh);
         } catch { /* keep existing */ }
       }
+      addToast(editingRecord ? 'Booking updated' : 'Booking created', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save booking';
       setFormError(msg);
+      addToast(msg, 'error');
     } finally {
       setFormSubmitting(false);
     }
@@ -417,9 +468,10 @@ export default function ArrestRecordsPage() {
       setDeleteConfirm(null);
       if (selectedRecord?.id === id) setSelectedRecord(null);
       fetchRecords(recordsPage);
+      addToast('Record deleted', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to delete record';
-      setError(msg);
+      addToast(msg, 'error');
     }
   };
 
@@ -451,7 +503,7 @@ export default function ArrestRecordsPage() {
   // ── Derived ─────────────────────────────────────────────
 
   const totalPages = Math.ceil(recordsTotal / 30);
-  const maxPopulation = stats?.per_county ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
+  const maxPopulation = stats?.per_county?.length ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
   const isManualRecord = (rec: ArrestRecord) => rec.entry_source === 'manual';
 
   // ── Render: Left Panel (List) ───────────────────────────
@@ -463,7 +515,7 @@ export default function ArrestRecordsPage() {
         <div className="px-3 py-2 bg-red-900/30 border-b border-red-700 text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3 shrink-0" />
           <span className="flex-1">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -478,7 +530,7 @@ export default function ArrestRecordsPage() {
             { label: 'Released', value: stats.population_summary.total_released, color: 'text-green-400' },
           ].map(s => (
             <div key={s.label} className="text-center py-1">
-              <div className={`text-sm font-bold ${s.color}`}>{s.value.toLocaleString()}</div>
+              <div className={`text-sm font-bold tabular-nums ${s.color}`}>{s.value.toLocaleString()}</div>
               <div className="text-[7px] text-rmpg-500 uppercase">{s.label}</div>
             </div>
           ))}
@@ -520,17 +572,17 @@ export default function ArrestRecordsPage() {
       {/* Toolbar: search, filters, actions */}
       <div className="p-2 space-y-1.5 border-b border-rmpg-700/30">
         {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+        <div className="relative" role="search">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
           <input
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
-            placeholder="Search by name..."
-            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+            placeholder="Search by name..." aria-label="Search arrest records by name"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 focus:outline-none transition-shadow"
           />
           {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+            <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -575,30 +627,32 @@ export default function ArrestRecordsPage() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-1">
-          <button onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
+          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
             <Plus className="w-3 h-3" /> New Booking
           </button>
-          <button onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
+          <ExportButton exportUrl="/api/arrests/export/csv" exportFilename="arrests.csv" />
+          <button type="button" onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
             <Download className="w-3 h-3" /> CSV
           </button>
-          <button onClick={cycleSort} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1" title={`Sort: ${sortConfig.label}`}>
+          <button type="button" onClick={cycleSort} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1" title={`Sort: ${sortConfig.label}`}>
             <ArrowUpDown className="w-3 h-3" /> {sortConfig.label}
           </button>
-          <button
+          <button type="button"
             onClick={() => { fetchStats(); fetchRecords(recordsPage); }}
             className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 ml-auto"
           >
             <RefreshCw className="w-3 h-3" />
           </button>
-          <span className="text-[8px] text-rmpg-500">{recordsTotal.toLocaleString()}</span>
+          <span className="text-[8px] text-rmpg-500 tabular-nums font-mono">{recordsTotal.toLocaleString()}</span>
         </div>
       </div>
 
       {/* Records list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Arrest records">
         {recordsLoading ? (
-          <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-8 justify-center">
-            <Loader2 className="w-3 h-3 animate-spin" /> Loading records...
+          <div className="flex flex-col items-center gap-3 text-[10px] text-rmpg-500 py-12 justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading arrest records" />
+            <span className="font-mono uppercase tracking-wider animate-pulse">Loading records...</span>
           </div>
         ) : sortedRecords.length === 0 ? (
           <EmptyState icon={UserX} title="No records found" description="Adjust filters or create a new booking." />
@@ -612,12 +666,16 @@ export default function ArrestRecordsPage() {
               return (
                 <div
                   key={rec.id}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors ${
+                  role="listitem"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedRecord(rec); } }}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-all duration-150 ${
                     isSelected
                       ? 'bg-brand-900/30 border-l-2 border-brand-400'
-                      : 'bg-surface-sunken hover:bg-rmpg-800/30 border-l-2 border-transparent'
+                      : 'bg-surface-sunken hover:bg-rmpg-800/40 border-l-2 border-transparent'
                   }`}
                   onClick={() => setSelectedRecord(rec)}
+                  aria-selected={isSelected}
                 >
                   {/* County color indicator */}
                   <div className={`shrink-0 w-1 h-8 rounded-full ${COUNTY_BAR_COLORS[rec.source_id] || 'bg-rmpg-600'}`} />
@@ -629,6 +687,11 @@ export default function ArrestRecordsPage() {
                       {rec.entry_source === 'manual' && (
                         <span className="text-[7px] px-1 py-px bg-brand-900/40 text-brand-400 font-bold uppercase rounded-sm">M</span>
                       )}
+                      {rec.person_id && warrantCounts[rec.person_id] > 0 && (
+                        <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold ml-0.5 shrink-0" title={`${warrantCounts[rec.person_id]} active warrant(s)`}>
+                          {warrantCounts[rec.person_id]} WARRANT{warrantCounts[rec.person_id] > 1 ? 'S' : ''}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
                       <span className={COUNTY_ACCENTS[rec.source_id] || ''}>{rec.county || rec.source_id || '—'}</span>
@@ -638,7 +701,7 @@ export default function ArrestRecordsPage() {
                   </div>
 
                   {/* Status badge */}
-                  <span className={`text-[7px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${stBadge.bg}`}>
+                  <span className={`text-[7px] font-bold uppercase px-1.5 py-0.5 rounded-sm shrink-0 ${stBadge.bg}`}>
                     {stBadge.label}
                   </span>
                 </div>
@@ -651,17 +714,17 @@ export default function ArrestRecordsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700/30 text-[9px]">
-          <button
+          <button type="button"
             disabled={recordsPage <= 1}
             onClick={() => setRecordsPage(p => p - 1)}
             className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
           >
             ← Prev
           </button>
-          <span className="text-rmpg-500">
+          <span className="text-rmpg-500 font-mono tabular-nums">
             {recordsPage} / {totalPages}
           </span>
-          <button
+          <button type="button"
             disabled={recordsPage >= totalPages}
             onClick={() => setRecordsPage(p => p + 1)}
             className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
@@ -684,28 +747,35 @@ export default function ArrestRecordsPage() {
     const isLinking = linkingId === rec.id;
 
     return (
-      <div className="h-full overflow-y-auto bg-surface-base">
+      <div className="h-full overflow-y-auto scrollbar-dark bg-surface-base">
         {/* Header */}
-        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
+        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}>
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
+                {rec.person_id && warrantCounts[rec.person_id] > 0 && (
+                  <span className="text-[9px] bg-red-900/50 text-red-400 border border-red-700/50 px-2 py-0.5 rounded-sm font-bold animate-pulse" title={`${warrantCounts[rec.person_id]} active warrant(s)`}>
+                    {warrantCounts[rec.person_id]} ACTIVE WARRANT{warrantCounts[rec.person_id] > 1 ? 'S' : ''}
+                  </span>
+                )}
+              </div>
               {rec.booking_number && (
                 <span className="text-[9px] font-mono text-rmpg-400">Booking #{rec.booking_number}</span>
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded ${stBadge.bg}`}>{stBadge.label}</span>
-              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded ${srcBadge.bg}`}>{srcBadge.label}</span>
+              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded-sm ${stBadge.bg}`}>{stBadge.label}</span>
+              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded-sm ${srcBadge.bg}`}>{srcBadge.label}</span>
             </div>
           </div>
 
-          {isManual && (
+          {(isManual || isAdmin) && (
             <div className="flex items-center gap-1.5 mt-2">
-              <button onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
+              <button type="button" onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
                 <Pencil className="w-3 h-3" /> Edit
               </button>
-              <button
+              <button type="button"
                 onClick={() => setDeleteConfirm(rec.id)}
                 className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300"
               >
@@ -788,9 +858,16 @@ export default function ArrestRecordsPage() {
             {rec.linked_person ? (
               <div className="flex items-center gap-2 text-[9px]">
                 <Link2 className="w-3 h-3 text-brand-400" />
-                <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
-                <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
                 <button
+                  type="button"
+                  onClick={() => navigate(`/records?tab=persons&personId=${rec.linked_person!.id}`)}
+                  className="text-brand-300 font-bold hover:text-brand-200 hover:underline transition-colors flex items-center gap-1"
+                >
+                  {rec.linked_person.name}
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                </button>
+                <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
+                <button type="button"
                   onClick={() => handleUnlinkPerson(rec.id)}
                   className="text-[8px] text-red-400 hover:text-red-300 flex items-center gap-0.5 ml-2"
                 >
@@ -805,20 +882,20 @@ export default function ArrestRecordsPage() {
                     type="text"
                     value={personSearch}
                     onChange={e => setPersonSearch(e.target.value)}
-                    placeholder="Search persons by name..."
+                    placeholder="Search persons by name..." aria-label="Search persons by name..."
                     className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-6 pr-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                     autoFocus
                   />
                 </div>
                 {searchingPerson && (
                   <div className="flex items-center gap-1 text-[9px] text-rmpg-500">
-                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> Searching...
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" /> Searching...
                   </div>
                 )}
                 {personResults.length > 0 && (
                   <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
                     {personResults.map(p => (
-                      <button
+                      <button type="button"
                         key={p.id}
                         onClick={() => handleLinkPerson(rec.id, p.id)}
                         disabled={linkingPerson}
@@ -831,7 +908,7 @@ export default function ArrestRecordsPage() {
                     ))}
                   </div>
                 )}
-                <button
+                <button type="button"
                   onClick={() => { setLinkingId(null); setPersonSearch(''); setPersonResults([]); }}
                   className="text-[8px] text-rmpg-500 hover:text-rmpg-300"
                 >
@@ -839,7 +916,7 @@ export default function ArrestRecordsPage() {
                 </button>
               </div>
             ) : (
-              <button
+              <button type="button"
                 onClick={() => setLinkingId(rec.id)}
                 className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-1"
               >
@@ -898,6 +975,18 @@ export default function ArrestRecordsPage() {
 
   // ── Main Render ─────────────────────────────────────────
 
+  // Set document title
+  useEffect(() => { document.title = 'Arrest Records \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setFormOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base">
       <PanelTitleBar title="Arrest Records" icon={Shield}>
@@ -930,12 +1019,12 @@ export default function ArrestRecordsPage() {
 
       {/* Delete Confirmation */}
       {deleteConfirm !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
             <div
               className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
             >
               <AlertTriangle className="w-4 h-4 text-red-400" />
               <h2 className="text-xs font-bold text-white uppercase tracking-wider">Delete Booking</h2>
@@ -945,10 +1034,10 @@ export default function ArrestRecordsPage() {
                 Are you sure you want to permanently delete this booking record? This action cannot be undone.
               </p>
               <div className="flex items-center justify-end gap-3 mt-5">
-                <button onClick={() => setDeleteConfirm(null)} className="toolbar-btn">
+                <button type="button" onClick={() => setDeleteConfirm(null)} className="toolbar-btn">
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   onClick={() => handleDelete(deleteConfirm)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"
                 >

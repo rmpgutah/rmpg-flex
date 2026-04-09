@@ -36,23 +36,35 @@ export function hashDeviceFingerprint(fingerprint: string): string {
 // ─── Check if a device is trusted for a user ────────────
 
 export function isDeviceTrusted(userId: number, deviceFingerprint: string): boolean {
-  const db = getDb();
-  const now = localNow();
-  const fpHash = hashDeviceFingerprint(deviceFingerprint);
+  // [FIX 80] Validate inputs before DB query
+  if (!userId || !deviceFingerprint || typeof deviceFingerprint !== 'string') return false;
 
-  const device = db.prepare(`
-    SELECT id FROM trusted_devices
-    WHERE user_id = ? AND device_fingerprint = ? AND trusted_until > ?
-  `).get(userId, fpHash, now) as { id: number } | undefined;
+  try {
+    const db = getDb();
+    const now = localNow();
+    const fpHash = hashDeviceFingerprint(deviceFingerprint);
 
-  if (device) {
-    // Update last_used_at
-    db.prepare('UPDATE trusted_devices SET last_used_at = ? WHERE id = ?')
-      .run(now, device.id);
-    return true;
+    const device = db.prepare(`
+      SELECT id FROM trusted_devices
+      WHERE user_id = ? AND device_fingerprint = ? AND trusted_until > ?
+    `).get(userId, fpHash, now) as { id: number } | undefined;
+
+    if (device) {
+      // [FIX 81] Wrap update in try/catch so read-check still succeeds even if update fails
+      try {
+        db.prepare('UPDATE trusted_devices SET last_used_at = ? WHERE id = ?')
+          .run(now, device.id);
+      } catch {
+        // Non-critical update — don't fail the trust check
+      }
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    console.error('[DEVICE] Failed to check trusted device:', err);
+    return false;
   }
-
-  return false;
 }
 
 // ─── Trust a device for the configured duration ─────────
@@ -108,16 +120,28 @@ export function createSecurityNotification(
   ip?: string,
   deviceInfo?: string
 ): void {
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO security_notifications (user_id, event_type, title, details, ip_address, device_info)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(userId, eventType, title, details || null, ip || null, deviceInfo || null);
+  // [FIX 82] Wrap in try/catch so notification failure doesn't crash caller
+  try {
+    const db = getDb();
+    // [FIX 83] Truncate details to prevent oversized DB rows
+    const safeDetails = details && details.length > 2000 ? details.substring(0, 2000) : (details || null);
+    db.prepare(`
+      INSERT INTO security_notifications (user_id, event_type, title, details, ip_address, device_info)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(userId, eventType, title, safeDetails, ip || null, deviceInfo || null);
+  } catch (err) {
+    console.error('[SECURITY] Failed to create notification:', err);
+  }
 }
 
 // ─── Clean up expired trusted devices ───────────────────
 
 export function cleanExpiredDevices(): void {
-  const db = getDb();
-  db.prepare('DELETE FROM trusted_devices WHERE trusted_until < ?').run(localNow());
+  // [FIX 84] Wrap cleanup in try/catch to handle DB errors gracefully
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM trusted_devices WHERE trusted_until < ?').run(localNow());
+  } catch (err) {
+    console.error('[DEVICE] Failed to clean expired devices:', err);
+  }
 }

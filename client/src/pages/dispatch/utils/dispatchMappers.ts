@@ -25,7 +25,8 @@ export function mapDbCall(row: any): CallForService {
   let assignedUnits: string[] = [];
   if (row.assigned_unit_ids) {
     try {
-      assignedUnits = JSON.parse(row.assigned_unit_ids).map(String);
+      const parsed = JSON.parse(row.assigned_unit_ids);
+      assignedUnits = Array.isArray(parsed) ? parsed.map(String) : [];
     } catch { /* ignore */ }
   }
 
@@ -76,6 +77,9 @@ export function mapDbCall(row: any): CallForService {
     pso_billing_code: row.pso_billing_code || undefined,
     pso_authorization: row.pso_authorization || undefined,
     pso_attempt_number: row.pso_attempt_number || undefined,
+    pso_service_windows: row.pso_service_windows
+      ? (() => { try { return JSON.parse(row.pso_service_windows); } catch { return undefined; } })()
+      : undefined,
     // Subject/threat info
     weapons_involved: row.weapons_involved || undefined,
     injuries_reported: !!row.injuries_reported,
@@ -96,6 +100,8 @@ export function mapDbCall(row: any): CallForService {
     le_notified: !!row.le_notified,
     le_agency: row.le_agency || undefined,
     le_case_number: row.le_case_number || undefined,
+    case_number: row.case_number || undefined,
+    incident_number: row.incident_number || undefined,
     // Additional operational flags
     mental_health_crisis: !!row.mental_health_crisis,
     juvenile_involved: !!row.juvenile_involved,
@@ -116,11 +122,11 @@ export function mapDbCall(row: any): CallForService {
     process_service_type: row.process_service_type || undefined,
     process_served_to: row.process_served_to || undefined,
     process_served_address: row.process_served_address || undefined,
-    process_attempts: row.process_attempts || undefined,
+    process_attempts: row.process_attempts ?? undefined,
     process_served_at: row.process_served_at || undefined,
     process_service_result: row.process_service_result || undefined,
     // Damage
-    damage_estimate: row.damage_estimate || undefined,
+    damage_estimate: row.damage_estimate ?? undefined,
     damage_description: row.damage_description || undefined,
     // Resolution
     action_taken: row.action_taken || undefined,

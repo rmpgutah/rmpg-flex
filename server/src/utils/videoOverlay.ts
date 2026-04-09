@@ -162,6 +162,23 @@ export async function processVideoOverlay(
   outputPath: string,
   config: OverlayConfig,
 ): Promise<void> {
+  // Validate input file extension — only process known video formats
+  const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.ts', '.m4v'];
+  const inputExt = path.extname(inputPath).toLowerCase();
+  if (!ALLOWED_VIDEO_EXTENSIONS.includes(inputExt)) {
+    throw new Error(`Unsupported video format: ${inputExt}`);
+  }
+
+  // Verify input file exists and is not suspiciously large (prevent DoS via huge files)
+  const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
+  if (!fs.existsSync(inputPath)) {
+    throw new Error(`Input file not found: ${path.basename(inputPath)}`);
+  }
+  const inputStat = fs.statSync(inputPath);
+  if (inputStat.size > MAX_VIDEO_SIZE_BYTES) {
+    throw new Error(`Input file too large: ${(inputStat.size / (1024 * 1024 * 1024)).toFixed(1)} GB exceeds 10 GB limit`);
+  }
+
   const filterGraph = config.type === 'bodycam'
     ? buildBodyCamFilterGraph(config)
     : buildDashCamFilterGraph(config);

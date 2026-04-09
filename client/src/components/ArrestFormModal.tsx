@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
+import { localToday } from '../utils/dateUtils';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ interface ArrestFormModalProps {
 const EMPTY_FORM: ArrestFormData = {
   full_name: '',
   date_of_birth: '',
-  booking_date: new Date().toISOString().split('T')[0],
+  booking_date: localToday(),
   release_date: '',
   county: '',
   status: 'active',
@@ -140,7 +141,7 @@ export default function ArrestFormModal({
         setForm(initial);
         snapshot(initial);
       } else {
-        const fresh = { ...EMPTY_FORM, booking_date: new Date().toISOString().split('T')[0] };
+        const fresh = { ...EMPTY_FORM, booking_date: localToday() };
         setForm(fresh);
         snapshot(fresh);
       }
@@ -352,7 +353,9 @@ export default function ArrestFormModal({
               placeholder="e.g.&#10;Assault — Class A Misdemeanor&#10;Theft — 3rd Degree Felony"
               value={form.charges}
               onChange={handleChange}
+              maxLength={2000}
             />
+            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.charges.length}/2000</div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -362,6 +365,8 @@ export default function ArrestFormModal({
                 type="text"
                 className="input-dark mt-1"
                 placeholder="e.g. 5000"
+                pattern="[0-9]*\.?[0-9]*"
+                inputMode="decimal"
                 value={form.bail_amount}
                 onChange={handleChange}
               />
@@ -392,7 +397,9 @@ export default function ArrestFormModal({
             placeholder="Additional booking notes, officer observations, etc."
             value={form.notes}
             onChange={handleChange}
+            maxLength={5000}
           />
+          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
         </div>
       )}
     </FormModal>
