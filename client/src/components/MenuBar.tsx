@@ -790,9 +790,9 @@ export default function MenuBar({
       },
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
-      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/') },
+      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/help') },
       // Version string with monospace for alignment
-      { type: 'action', label: 'Version 5.3.9', icon: Shield, disabled: true, action: () => {} },
+      { type: 'action', label: 'Version 5.7.0', icon: Shield, disabled: true, action: () => {} },
     ],
   };
 

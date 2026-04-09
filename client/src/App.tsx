@@ -82,6 +82,7 @@ const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const GeoDataViewerPage = lazyRetry(() => import('./pages/GeoDataViewerPage'));
 const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
+const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
@@ -261,6 +262,7 @@ function AppRoutes() {
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
+            <Route path="/help" element={<RouteErrorBoundary><HelpPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
