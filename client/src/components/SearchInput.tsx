@@ -19,7 +19,7 @@ export default function SearchInput({
   autoFocus = false,
 }: SearchInputProps) {
   const [localValue, setLocalValue] = useState(value);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Sync external value changes
