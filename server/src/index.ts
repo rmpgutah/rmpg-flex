@@ -462,7 +462,7 @@ h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head>
 
 // Express 5 requires named wildcards; this variant still matches `/`.
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('/{*splat}', (req, res) => {
+app.get('{*path}', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {

@@ -39,6 +39,9 @@ const skipSearchRateLimit = rateLimit({
       ? `skiptracer:user:${req.user.userId}`
       : `skiptracer:ip:${ipKeyGenerator(req.ip || req.socket.remoteAddress || '')}`,
   message: { error: 'Skip tracer search rate limit exceeded. Please wait before searching again.' },
+  // Disable IPv6 key-gen validation: this route is behind authenticateToken, so
+  // req.user.userId is always present and req.ip is never actually used as the key.
+  validate: { keyGeneratorIpFallback: false },
 });
 
 // ============================================================

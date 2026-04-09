@@ -97,7 +97,7 @@ function SeedSelector({ onSelect, loading }: {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -258,7 +258,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
   onToggleTypeFilter: (type: string) => void;
   loading: boolean;
 }) {
-  const graphRef = useRef<any>();
+  const graphRef = useRef<any>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
 

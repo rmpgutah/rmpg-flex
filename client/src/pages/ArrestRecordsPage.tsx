@@ -269,7 +269,7 @@ export default function ArrestRecordsPage() {
   const [linkingPerson, setLinkingPerson] = useState(false);
 
   // Refs
-  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // ── Fetch statistics ────────────────────────────────────
 
