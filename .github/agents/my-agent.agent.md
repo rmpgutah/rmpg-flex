@@ -8,7 +8,6 @@ name: Development Assist
 description: Develop, improve, and structure my software.
 ---
 
-# My Agent
-
+# Development Assist
 Describe what your agent does here.
 Develop, improve, and structure my software.
