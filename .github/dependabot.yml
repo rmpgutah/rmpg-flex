@@ -10,7 +10,7 @@ updates:
     labels:
       - "dependencies"
     ignore:
-      # multer 2.x has incompatible API — 8 route files use 1.x patterns
+      # multer 3.x — only ignore future major bumps; 2.x is backward-compatible
       - dependency-name: "multer"
         update-types: ["version-update:semver-major"]
 
@@ -24,7 +24,27 @@ updates:
     labels:
       - "dependencies"
       - "client"
+    groups:
+      # react and react-dom MUST stay on the same major — group them
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
     ignore:
+      # React 19 is a major migration — needs planned upgrade with all deps in sync
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      # Vite 8+ requires @vitejs/plugin-react 6+ — needs coordinated upgrade
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
       # Tailwind 4.x is a full rewrite — requires planned migration
       - dependency-name: "tailwindcss"
         update-types: ["version-update:semver-major"]
