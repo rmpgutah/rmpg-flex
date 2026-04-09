@@ -333,7 +333,7 @@ export default function CitationsPage() {
 
   // Duplicate detection
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
-  const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>();
+  const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Data completeness
   const [completeness, setCompleteness] = useState<{ score: number; grade: string; missing_required: string[]; missing_recommended: string[] } | null>(null);
@@ -353,7 +353,7 @@ export default function CitationsPage() {
   const [personSearching, setPersonSearching] = useState(false);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const personDropdownRef = useRef<HTMLDivElement>(null);
-  const personSearchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const personSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // ── Data fetching ────────────────────────────────────────
 

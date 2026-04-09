@@ -34,7 +34,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
   const [showNote, setShowNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [feedback, setFeedback] = useState('');
-  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const longPressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const showFeedback = (msg: string) => {

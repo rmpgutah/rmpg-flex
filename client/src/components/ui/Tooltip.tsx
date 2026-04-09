@@ -19,8 +19,8 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
   const [visible, setVisible] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
-  const touchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const touchTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const computeCoords = useCallback(() => {
     if (!triggerRef.current) return;

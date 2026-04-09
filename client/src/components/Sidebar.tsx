@@ -7,7 +7,7 @@ import {
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Handshake, Globe, GraduationCap, FlaskConical, ShieldAlert, Fingerprint,
-  Send, Truck, UserCog, Layers,
+  Send, Truck, UserCog, Layers, HelpCircle,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -117,6 +117,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     id: 'system',
     label: 'System',
     items: [
+      { path: '/help', icon: HelpCircle, label: 'Help' },
       { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
       { path: '/security-dashboard', icon: ShieldAlert, label: 'Security', adminOnly: true },
