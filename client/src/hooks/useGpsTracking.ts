@@ -287,7 +287,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
   const isSendingRef = useRef(false);
-  const mountedRef = useRef(true);
   const sendBatch = useCallback(async () => {
     // Guard against concurrent sends (interval can fire while await is pending)
     if (isSendingRef.current) return;
