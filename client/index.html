@@ -15,6 +15,28 @@
         });
       }
     </script>
+    <script>
+      // If the entry bundle never takes over, recover by clearing the SW cache.
+      // This helps when a stale cached HTML shell references bundles that no longer exist.
+      window.__RMPG_BOOTSTRAPPED__ = false;
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          var splash = document.getElementById('pre-splash');
+          if (!window.__RMPG_BOOTSTRAPPED__ && splash) {
+            try {
+              var key = 'rmpg_bootstrap_recovery_at';
+              var last = Number(sessionStorage.getItem(key) || '0');
+              if (!last || Date.now() - last > 30000) {
+                sessionStorage.setItem(key, String(Date.now()));
+                window.location.replace('/force-refresh');
+              }
+            } catch (_) {
+              window.location.replace('/force-refresh');
+            }
+          }
+        }, 8000);
+      });
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RMPG Flex" />

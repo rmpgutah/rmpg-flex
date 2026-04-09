@@ -116,6 +116,10 @@ import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
 
+// Production commonly runs behind nginx on a single hop, so trust that proxy
+// unless explicitly overridden via TRUST_PROXY.
+app.set('trust proxy', config.trustProxy);
+
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
 if (config.isProduction || config.ssl.enabled) {
@@ -441,7 +445,7 @@ app.use(express.static(clientDistPath, {
 }));
 
 // Force-refresh page — clears SW cache and reloads the app
-app.get('/force-refresh', (_req, res) => {
+const renderForceRefreshPage = (_req: express.Request, res: express.Response) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.send(`<!DOCTYPE html><html><head><title>RMPG Flex — Refreshing...</title>
 <style>body{background:#0a0a0a;color:#d4a017;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column}
@@ -458,7 +462,9 @@ h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head>
   setTimeout(()=>{ window.location.href='/'; },1500);
 })();
 </script></body></html>`);
-});
+};
+app.get('/force-refresh', renderForceRefreshPage);
+app.get('/clear-cache', renderForceRefreshPage);
 
 // Express 5 requires named wildcards; this variant still matches `/`.
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)

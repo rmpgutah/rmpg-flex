@@ -22,6 +22,15 @@ function envInt(key: string, defaultVal: number): number {
   return isNaN(parsed) ? defaultVal : parsed;
 }
 
+function envTrustProxy(defaultVal: boolean | number | string): boolean | number | string {
+  const val = process.env.TRUST_PROXY;
+  if (val === undefined) return defaultVal;
+  if (val === 'true' || val === '1') return true;
+  if (val === 'false' || val === '0') return false;
+  const parsed = parseInt(val, 10);
+  return Number.isNaN(parsed) ? val : parsed;
+}
+
 // ─── JWT Secret Handling ───────────────────────────────
 const isProduction = process.env.NODE_ENV === 'production';
 const defaultSecret = 'rmpg-flex-secret-change-me-in-production-2024';
@@ -77,6 +86,7 @@ export const config = {
   httpsPort: envInt('HTTPS_PORT', 443),
   nodeEnv: process.env.NODE_ENV || 'development',
   isProduction,
+  trustProxy: envTrustProxy(isProduction ? 1 : false),
 
   // SSL/TLS
   ssl: {
