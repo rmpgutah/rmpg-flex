@@ -14,9 +14,13 @@ import {
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
+import { APP_VERSION } from '../utils/version';
 
-// ── Version ─────────────────────────────────────────────────
-const APP_VERSION = '5.7.0';
+// ── Health data type ────────────────────────────────────────
+interface HealthData {
+  version?: string;
+  status?: string;
+}
 
 // ── Section IDs ─────────────────────────────────────────────
 type SectionId = 'overview' | 'shortcuts' | 'modules' | 'dispatch' | 'faq' | 'system';
@@ -331,12 +335,12 @@ function Kbd({ children }: { children: React.ReactNode }) {
 // ── Main Page ───────────────────────────────────────────────
 export default function HelpPage() {
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
-  const [healthData, setHealthData] = useState<any>(null);
+  const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   // Fetch server health info for System section
   useEffect(() => {
-    apiFetch<any>('/api/health')
+    apiFetch<HealthData>('/api/health')
       .then(setHealthData)
       .catch(() => setHealthData(null));
   }, []);
