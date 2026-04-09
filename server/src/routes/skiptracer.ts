@@ -36,6 +36,7 @@ const skipSearchRateLimit = rateLimit({
   limit: 20,
   keyGenerator: (req) => `skiptracer:${req.user?.userId || req.ip}`,
   message: { error: 'Skip tracer search rate limit exceeded. Please wait before searching again.' },
+  validate: { keyGeneratorIpFallback: false },
 });
 
 // ============================================================
