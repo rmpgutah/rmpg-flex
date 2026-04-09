@@ -88,7 +88,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
   React.useEffect(() => {
     if (!mapRef.current) return;
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string || '';
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) return;
 
     let cancelled = false;
@@ -96,15 +96,18 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     function initPatrolMap() {
       if (cancelled || !mapRef.current || mapInstanceRef.current) return;
 
-      const map = new google.maps.Map(mapRef.current, {
+      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+      const mapOptions: google.maps.MapOptions = {
         center: { lat: 40.76, lng: -111.89 },
         zoom: 12,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         backgroundColor: '#171717',
         gestureHandling: 'greedy',
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapRef.current, mapOptions);
       mapInstanceRef.current = map;
       registerMapInstance(map);
       setMapReady(true);

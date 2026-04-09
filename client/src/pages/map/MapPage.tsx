@@ -757,7 +757,7 @@ export default function MapPage() {
       return;
     }
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) {
       setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
       setMapLoaded(false);
@@ -811,17 +811,20 @@ export default function MapPage() {
         if (sz) savedZoom = parseInt(sz, 10) || 12;
       } catch { /* use defaults */ }
 
-      const map = new google.maps.Map(mapRef.current, {
+      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+      const mapOptions: google.maps.MapOptions = {
         center: savedCenter,
         zoom: savedZoom,
         disableDefaultUI: true,
         zoomControl: false,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         backgroundColor: '#171717',
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapRef.current, mapOptions);
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
@@ -876,11 +879,15 @@ export default function MapPage() {
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
-      // Without mapId, markers are created but silently never render.
-      // Since we use a raster styled map (no mapId), always use the
-      // OverlayView-based fallback which works reliably on all map types.
-      useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      // When mapId is configured, enable AdvancedMarkerElement for modern marker support.
+      // Without mapId, fall back to OverlayView-based markers which work on all map types.
+      if (mapId && google.maps.marker?.AdvancedMarkerElement) {
+        useAdvancedMarkersRef.current = true;
+        devLog('[MapPage] Using AdvancedMarkerElement (mapId configured)');
+      } else {
+        useAdvancedMarkersRef.current = false;
+        devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      }
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
