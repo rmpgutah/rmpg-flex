@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RMPG Spatial Command — Web Map</title>
+<script type="module" src="https://js.arcgis.com/4.34/embeddable-components/"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; color: #d4d4d4; font-family: 'Courier New', monospace; overflow: hidden; }
+
+  .map-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  arcgis-embedded-map {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── Header Bar ── */
+  .header-bar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+    background: rgba(10,10,10,0.92); border-bottom: 1px solid #222;
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+    height: 42px;
+  }
+  .header-bar::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, #0f3460, #1a5a9e 30%, #1a5a9e 70%, #0f3460);
+  }
+  .brand { color: #1a5a9e; font-weight: bold; font-size: 12px; letter-spacing: 2px; }
+  .header-title { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 3px; }
+  .header-stats { margin-left: auto; display: flex; gap: 14px; font-size: 9px; }
+  .stat { display: flex; align-items: center; gap: 4px; }
+  .stat-val { font-weight: bold; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div class="map-container">
+  <!-- Header -->
+  <div class="header-bar">
+    <span class="brand">RMPG</span>
+    <span class="header-title">Spatial Command</span>
+    <div class="header-stats">
+      <div class="stat"><span class="stat-val" style="color:#3b82f6;">29</span> <span style="color:#555">Counties</span></div>
+      <div class="stat"><span class="stat-val" style="color:#a855f7;">261</span> <span style="color:#555">Cities</span></div>
+      <div class="stat"><span class="stat-val" style="color:#22c55e;">690</span> <span style="color:#555">Beats</span></div>
+      <div class="stat"><span class="stat-val" style="color:#06b6d4;">462</span> <span style="color:#555">Places</span></div>
+      <div class="stat"><span class="stat-val" style="color:#fff;">1,446</span> <span style="color:#555">Total Features</span></div>
+    </div>
+  </div>
+
+  <!-- ArcGIS Embedded Map -->
+  <arcgis-embedded-map
+    style="height:100%;width:100%;padding-top:42px;"
+    item-id="815ead7b87bb4d09872707495205445c"
+    theme="dark"
+    center="-111.61878873128656,39.5806913103332"
+    scale="4622324.434309"
+    portal-url="https://indi7c80ff900c28.maps.arcgis.com"
+  ></arcgis-embedded-map>
+</div>
+
+</body>
+</html>
