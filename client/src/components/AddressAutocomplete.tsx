@@ -149,7 +149,7 @@ export default function AddressAutocomplete({
 
   // Load Places library on mount
   useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) {
       setLoadError(true);
       return;

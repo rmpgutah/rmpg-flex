@@ -401,15 +401,18 @@ export default function DashCamDetailPage() {
         ? { lat: video.latitude, lng: video.longitude }
         : { lat: 40.76, lng: -111.89 };
 
-    const map = new google.maps.Map(mapContainerRef.current, {
+    const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+    const mapOptions: google.maps.MapOptions = {
       center,
       zoom: 15,
       renderingType: 'RASTER' as any,
       disableDefaultUI: true,
       zoomControl: true,
-      styles: DARK_MAP_STYLE,
+      styles: mapId ? undefined : DARK_MAP_STYLE,
       backgroundColor: '#171717',
-    });
+    };
+    if (mapId) (mapOptions as any).mapId = mapId;
+    const map = new google.maps.Map(mapContainerRef.current, mapOptions);
     mapRef.current = map;
 
     // Marker
