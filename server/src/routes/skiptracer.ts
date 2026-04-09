@@ -24,7 +24,7 @@ import { validateParamId, validateParamIdMiddleware } from '../middleware/saniti
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate } from '../utils/websocket';
-import { rateLimit } from '../middleware/rateLimiter';
+import { ipKeyGenerator, rateLimit } from '../middleware/rateLimiter';
 import config from '../config';
 
 const router = Router();
@@ -34,7 +34,10 @@ router.use(authenticateToken);
 const skipSearchRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
   limit: 20,
-  keyGenerator: (req) => `skiptracer:${req.user?.userId || req.ip}`,
+  keyGenerator: (req) =>
+    req.user?.userId
+      ? `skiptracer:user:${req.user.userId}`
+      : `skiptracer:ip:${ipKeyGenerator(req.ip || req.socket.remoteAddress || '')}`,
   message: { error: 'Skip tracer search rate limit exceeded. Please wait before searching again.' },
 });
 

@@ -1,8 +1,8 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import config from '../config';
 
 // Re-export for route-level usage (e.g. skiptracer.ts)
-export { rateLimit };
+export { ipKeyGenerator, rateLimit };
 
 // Skip rate limiting in development
 const skip = () => !config.isProduction;
