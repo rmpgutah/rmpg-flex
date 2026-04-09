@@ -460,6 +460,7 @@ h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head>
 </script></body></html>`);
 });
 
+// Express 5 requires named wildcards; this variant still matches `/`.
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
 app.get('{*path}', (req, res) => {
   if (req.path.startsWith('/api')) {
