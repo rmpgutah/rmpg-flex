@@ -18,7 +18,7 @@ export function useMapScreenshot(
     const zoom = map.getZoom();
     if (!center || zoom == null) return null;
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) return null;
 
     const mapType = map.getMapTypeId() || 'roadmap';
