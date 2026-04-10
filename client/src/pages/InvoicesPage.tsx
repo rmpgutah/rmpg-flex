@@ -260,7 +260,7 @@ export default function InvoicesPage() {
   const [actionLoading, setActionLoading] = useState('');
 
   // Search timer ref
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // ── Data fetching ────────────────────────────────────────
 

@@ -202,6 +202,18 @@ export function getQuarterWidth(doc: jsPDF): number {
   return (getContentWidth(doc) - 2 * SPACING.CONTENT_INSET - 3 * SPACING.MD) / 4;
 }
 
+/** Approximate line height for a given font size (mm). PDF points: 1 pt = 0.3528 mm.
+ *  Standard line height is 1.2× font size. */
+export function getLineHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 1.2;
+}
+
+/** Approximate cap height (height of capital letters) for a given font size (mm).
+ *  Cap height is typically ~70% of font size in points, converted to mm. */
+export function getCapHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 0.7;
+}
+
 /** Generate proportional column X positions from ratio array */
 export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
   if (!ratios || ratios.length === 0) return [getLeftX()];

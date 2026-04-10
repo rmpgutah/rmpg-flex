@@ -540,6 +540,48 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 }
 
 /**
+ * Alias for addFieldPair — used by recordPdfGenerator for narrative-style
+ * long-text fields. Same signature: (doc, label, value, x, y, width).
+ */
+export function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
+  return addFieldPair(doc, label, value, x, y, width, maxLinesOverride);
+}
+
+/**
+ * Convert an image data URL to grayscale using a canvas. Returns a new
+ * data URL. Falls back to the original URL if canvas unavailable (SSR/tests).
+ */
+export async function convertToGrayscale(dataUrl: string): Promise<string> {
+  if (typeof document === 'undefined') return dataUrl;
+  return new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const px = imgData.data;
+        for (let i = 0; i < px.length; i += 4) {
+          // Luminance formula (Rec. 709)
+          const gray = Math.round(px[i] * 0.2126 + px[i + 1] * 0.7152 + px[i + 2] * 0.0722);
+          px[i] = px[i + 1] = px[i + 2] = gray;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.92));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+/**
  * Drawn checkbox (consistent cross-platform rendering).
  * Returns X position for next element.
  */
