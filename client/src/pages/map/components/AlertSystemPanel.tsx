@@ -93,7 +93,7 @@ export default function AlertSystemPanel({
         maxWidth: 300,
         width: 300,
         backgroundColor: '#0a0a0a',
-        borderColor: 'var(--rmpg-700, #2a3a4e)',
+        borderColor: 'var(--rmpg-700, #373737)',
       }}
       role="complementary"
       aria-label="Alert system panel"

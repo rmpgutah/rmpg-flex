@@ -176,7 +176,7 @@ export default function BodyCameraTab({
     { label: 'Available', value: stats.available, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Maintenance', value: stats.maintenance, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Lost / Retired', value: stats.lostRetired, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgClass: 'bg-[#140a1a]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgClass: 'bg-[#0f0f0f]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
   ];
 
   // ── Selection helpers ──────────────────────────────────

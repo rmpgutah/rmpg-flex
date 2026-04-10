@@ -305,7 +305,7 @@ export default function AdminGodModeTab() {
           <Shield size={20} className="text-red-400" />
           <h2 className="text-sm font-bold text-red-400 uppercase tracking-wider">God Mode — Admin Control Panel</h2>
         </div>
-        <button onClick={loadData} disabled={loading} className="flex items-center gap-1 px-2 py-1 bg-[#181818] hover:bg-[#243447] border border-[#2a2a2a] rounded-sm text-[11px] text-gray-300">
+        <button onClick={loadData} disabled={loading} className="flex items-center gap-1 px-2 py-1 bg-[#181818] hover:bg-[#313131] border border-[#2a2a2a] rounded-sm text-[11px] text-gray-300">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh
         </button>
       </div>
@@ -608,7 +608,7 @@ export default function AdminGodModeTab() {
           <button onClick={handleSqlQuery} disabled={sqlRunning || !sqlQuery.trim()} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
             {sqlRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Run Query
           </button>
-          <button onClick={() => { setSqlQuery(''); setSqlResult(null); }} className="px-3 py-1.5 bg-[#181818] hover:bg-[#243447] border border-[#2a2a2a] rounded-sm text-[11px] text-gray-300">
+          <button onClick={() => { setSqlQuery(''); setSqlResult(null); }} className="px-3 py-1.5 bg-[#181818] hover:bg-[#313131] border border-[#2a2a2a] rounded-sm text-[11px] text-gray-300">
             Clear
           </button>
         </div>

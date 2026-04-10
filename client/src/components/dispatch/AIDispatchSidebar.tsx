@@ -30,7 +30,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
   return (
     <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: '#1a1a1a' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: '#1a1a1a', background: '#0d0d15' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: '#1a1a1a', background: '#0e0e0e' }}>
         <div className="flex items-center gap-1.5">
           <Brain className="w-3.5 h-3.5 text-purple-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">AI Analysis</span>
@@ -46,7 +46,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           <div className="text-center">
             <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: '#666666' }} />
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6b7280] mb-1">AI Unavailable</p>
-            <p className="text-[9px] text-[#4b5563] leading-relaxed max-w-[180px] mx-auto">
+            <p className="text-[9px] text-[#545454] leading-relaxed max-w-[180px] mx-auto">
               No AI analysis available for this call. Analysis runs automatically when calls are created or updated.
             </p>
           </div>
@@ -112,7 +112,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
                 <span>Confidence</span>
                 <span className="font-mono tabular-nums">{Math.round(analysis.confidence)}%</span>
               </label>
-              <div className="w-full h-1.5 rounded-full" style={{ background: '#1a1a2e' }}>
+              <div className="w-full h-1.5 rounded-full" style={{ background: '#1c1c1c' }}>
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{

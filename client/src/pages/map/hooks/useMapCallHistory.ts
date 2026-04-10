@@ -152,7 +152,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
                 <div><span style="color:#9ca3af;font-weight:bold;">Response:</span> ${escapeHtml(formatResponseTime(call.response_time_min))}</div>
               </div>
               ${call.assigned_units ? `<div style="font-size:9px;color:#a0a0a0;margin-top:4px;font-weight:bold;">${escapeHtml(call.assigned_units)}</div>` : ''}
-              <div style="font-size:8px;color:#4b5563;margin-top:4px;">
+              <div style="font-size:8px;color:#545454;margin-top:4px;">
                 ${escapeHtml(formatTimestamp(call.created_at))} &rarr; ${escapeHtml(formatTimestamp(call.cleared_at))}
               </div>
             </div>

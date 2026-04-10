@@ -513,7 +513,7 @@ export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'road.local', elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
   { featureType: 'road.local', elementType: 'labels.text.fill', stylers: [{ color: '#666666' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#061020' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f0f0f' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a1a1a' }] },
 ];
 

@@ -331,7 +331,7 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141414 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #0b0b0b 0%, #141414 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
       {/* Animated grid background */}
       <div className="login-grid-bg" />
 
@@ -411,8 +411,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #242424' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070', borderBottom: '1px solid #242424' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
@@ -1038,7 +1038,7 @@ export default function LoginPage() {
           <div
             className="text-center py-1.5 px-3"
             style={{
-              background: '#060c14',
+              background: '#0b0b0b',
               border: '1px solid #2b2b2b',
               borderTop: '2px solid #333333',
             }}

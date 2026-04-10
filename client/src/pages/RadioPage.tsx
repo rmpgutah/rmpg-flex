@@ -809,7 +809,7 @@ export default function RadioPage() {
                   onMouseEnter={(e) => {
                     if (isConnected) {
                       e.currentTarget.style.borderColor = '#888888';
-                      e.currentTarget.style.background = 'linear-gradient(180deg, #1e3050 0%, #1a2840 100%)';
+                      e.currentTarget.style.background = 'linear-gradient(180deg, #2e2e2e 0%, #272727 100%)';
                     }
                   }}
                   onMouseLeave={(e) => {
