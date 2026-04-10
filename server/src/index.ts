@@ -660,7 +660,8 @@ try {
     // Nightly warrant scraper maintenance
     try {
       // First run 6h after boot (lets scheduler settle)
-      setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+      const nightlyInitial = setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+      if (nightlyInitial.unref) nightlyInitial.unref();
 
       // Then every 24h
       const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
