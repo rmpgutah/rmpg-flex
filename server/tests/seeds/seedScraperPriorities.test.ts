@@ -56,4 +56,19 @@ describe('seedScraperPriorities', () => {
     const result = seedScraperPriorities(db);
     expect(result.updated).toBe(4);
   });
+
+  it('is idempotent — second run updates 0 rows', () => {
+    const first = seedScraperPriorities(db);
+    const second = seedScraperPriorities(db);
+    expect(first.updated).toBe(4);
+    expect(second.updated).toBe(0);
+  });
+
+  it('handles rows with NULL state without error', () => {
+    // Insert a row with NULL state — should stay at tier 3
+    db.prepare(`INSERT INTO warrant_scraper_config (source_key, state) VALUES ('weird_source', NULL)`).run();
+    const result = seedScraperPriorities(db);
+    const row = db.prepare(`SELECT priority FROM warrant_scraper_config WHERE source_key = 'weird_source'`).get() as { priority: number };
+    expect(row.priority).toBe(3); // unchanged
+  });
 });
