@@ -37,6 +37,7 @@ import {
   displayStatus,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
+import { convertToGrayscale } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
@@ -338,6 +339,30 @@ export interface PersonPdfData {
   citizenship?: string;
   marital_status?: string;
   place_of_birth?: string;
+  // LE Identifiers
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
+  // Military / Education
+  military_branch?: string;
+  military_status?: string;
+  education_level?: string;
+  tribal_affiliation?: string;
+  // Medical / Behavioral
+  disability_flags?: string;
+  mental_health_flags?: string;
+  substance_abuse?: string;
+  medication_notes?: string;
+  // Detailed Marks
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  distinguishing_features?: string;
+  identifying_marks_location?: string;
   // Flags
   is_sex_offender?: boolean;
   is_veteran?: boolean;
@@ -406,6 +431,18 @@ export interface VehiclePdfData {
   tow_company?: string;
   tow_date?: string;
   lien_holder?: string;
+  // Condition
+  title_status?: string;
+  exterior_condition?: string;
+  interior_condition?: string;
+  estimated_value?: string;
+  // Features
+  window_tint?: string;
+  modifications?: string;
+  equipment_notes?: string;
+  // Additional Registration
+  registered_owner?: string;
+  registration_state?: string;
   // Description
   distinguishing_features?: string;
   damage_description?: string;
@@ -434,6 +471,8 @@ export interface WarrantPdfData {
   subject_hair_color?: string;
   subject_eye_color?: string;
   subject_address?: string;
+  subject_photo_url?: string;
+  service_attempts?: { attempted_at: string; location: string; method: string; result: string; notes: string }[];
   // Court
   issuing_court?: string;
   issuing_judge?: string;
@@ -681,13 +720,38 @@ export interface PropertyPdfData {
   longitude?: number;
   property_type?: string;
   is_active?: boolean;
+  // Building Details
+  business_type?: string;
+  structure_type?: string;
+  occupancy_status?: string;
+  year_built?: string;
+  square_footage?: string;
+  number_of_stories?: string;
+  // Owner & Key Holder
+  owner_name?: string;
+  owner_phone?: string;
+  key_holder_name?: string;
+  key_holder_phone?: string;
+  key_holder_relationship?: string;
+  // Security
   gate_code?: string;
   alarm_code?: string;
+  alarm_company?: string;
+  alarm_account?: string;
+  camera_system?: string;
+  security_features?: string;
   emergency_contact?: string;
+  // Facility
+  parking_info?: string;
+  roof_access?: string;
+  utility_shutoffs?: string;
+  known_hazards?: string;
+  last_inspection_date?: string;
+  inspection_status?: string;
+  // Instructions
   access_instructions?: string;
   post_orders?: string;
   hazard_notes?: string;
-  notes?: string;
   created_at?: string;
   updated_at?: string;
   attachment_images?: PdfImage[];
@@ -745,52 +809,36 @@ function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string
   return { mm, dd, yyyy, hh, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0') };
 }
 
-function parsePdfDate(value?: string | null): Date | null {
-  if (!value) return null;
-  const normalized = String(value).trim();
-  if (!normalized || ['0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified', 'invalid date'].includes(normalized.toLowerCase())) {
-    return null;
-  }
-
-  try {
-    if (normalized.includes('T') && (normalized.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(normalized))) {
-      const parsed = new Date(normalized);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    if (normalized.includes(' ') && !normalized.includes('T')) {
-      const parsed = new Date(normalized.replace(' ', 'T'));
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    const parsed = new Date(normalized.includes('T') ? normalized : `${normalized}T00:00:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  } catch {
-    return null;
-  }
-}
-
 function fmtTimestamp(ts?: string): string {
-  const d = parsePdfDate(ts);
-  if (!d) return '';
-  const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
-  return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
+  if (!ts) return '';
+  try {
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    if (isNaN(d.getTime())) return ts;
+    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
+    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
+  } catch { return ts; }
 }
 
 /** Format: MM/DD/YYYY */
 function fmtDate(ts?: string | null): string {
-  const d = parsePdfDate(ts);
-  if (!d) return '';
-  const { mm, dd, yyyy } = toMountain(d);
-  return `${mm}/${dd}/${yyyy}`;
+  if (!ts) return '';
+  try {
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    if (isNaN(d.getTime())) return ts;
+    const { mm, dd, yyyy } = toMountain(d);
+    return `${mm}/${dd}/${yyyy}`;
+  } catch { return ts; }
 }
 
 /** Format: MM/DD/YYYY @ HH:MM:SS (military time) */
 function fmtDateTime(ts?: string | null): string {
-  const d = parsePdfDate(ts);
-  if (!d) return '';
-  const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
-  return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
+  if (!ts) return '';
+  try {
+    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    if (isNaN(d.getTime())) return ts;
+    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
+    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
+  } catch { return ts; }
 }
 
 function fmtCurrency(val?: number | null): string {
@@ -804,207 +852,14 @@ function titleCase(str: string): string {
   return str.replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
-function formatDispatchValue(value?: string | null): string {
-  return (value || '').replace(/_/g, ' ').toUpperCase();
-}
-
-function getMeaningfulPdfValue(value?: string | null): string {
-  if (value == null) return '';
-  const normalized = String(value).trim();
-  if (!normalized) return '';
-  if (['0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified', 'invalid date'].includes(normalized.toLowerCase())) return '';
-  return normalized;
-}
-
-function compactCallList(items: Array<string | undefined | null>, maxItems = 4): string {
-  const cleaned = items
-    .map((item) => (item || '').trim())
-    .filter(Boolean)
-    .map((item) => item.toUpperCase());
-
-  if (cleaned.length === 0) return '';
-  if (cleaned.length <= maxItems) return cleaned.join(', ');
-  return `${cleaned.slice(0, maxItems).join(', ')} +${cleaned.length - maxItems} MORE`;
-}
-
-function summarizeAssignedUnits(data: CallPdfData): string {
-  const detailedUnits = compactCallList((data.assigned_units_detail || []).map((unit) => unit.call_sign));
-  if (detailedUnits) return detailedUnits;
-
-  const assignedUnits = compactCallList(data.assigned_units || []);
-  if (assignedUnits) return assignedUnits;
-
-  return 'UNASSIGNED';
-}
-
-function fmtDurationSpan(start?: string | null, end?: string | null): string {
-  if (!start || !end) return '';
-
-  try {
-    const startDate = new Date(start.includes('T') ? start : `${start}T00:00:00`);
-    const endDate = new Date(end.includes('T') ? end : `${end}T00:00:00`);
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate.getTime() < startDate.getTime()) {
-      return '';
-    }
-
-    const totalMinutes = Math.floor((endDate.getTime() - startDate.getTime()) / 60000);
-    const days = Math.floor(totalMinutes / (24 * 60));
-    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-    const minutes = totalMinutes % 60;
-
-    if (days > 0) return `${days}D ${hours}H ${minutes}M`;
-    if (hours > 0) return `${hours}H ${minutes}M`;
-    if (minutes > 0) return `${minutes} MIN`;
-    return '<1 MIN';
-  } catch {
-    return '';
-  }
-}
-
-function buildCallAlertFlags(data: CallPdfData): string[] {
-  const weaponsValue = (data.weapons_involved || '').trim().toLowerCase();
-  const hasWeaponFlag = weaponsValue !== '' && !['0', 'none', 'no', 'n/a'].includes(weaponsValue);
-
-  const flags = [
-    data.priority === 'P1' ? 'PRIORITY 1' : '',
-    data.officer_safety_caution ? 'OFFICER SAFETY' : '',
-    data.felony_in_progress ? 'FELONY IN PROGRESS' : '',
-    data.domestic_violence ? 'DOMESTIC VIOLENCE' : '',
-    data.mental_health_crisis ? 'MENTAL HEALTH' : '',
-    data.juvenile_involved ? 'JUVENILE' : '',
-    data.injuries_reported ? 'INJURIES' : '',
-    hasWeaponFlag ? 'WEAPONS' : '',
-    data.vehicle_pursuit ? 'VEHICLE PURSUIT' : '',
-    data.foot_pursuit ? 'FOOT PURSUIT' : '',
-    data.hazmat ? 'HAZMAT' : '',
-    data.k9_requested ? 'K9 REQUESTED' : '',
-    data.ems_requested ? 'EMS REQUESTED' : '',
-    data.fire_requested ? 'FIRE REQUESTED' : '',
-    data.le_notified ? 'LE NOTIFIED' : '',
-  ].filter(Boolean);
-
-  return [...new Set(flags)];
-}
-
-function buildCallCautionText(data: CallPdfData, assignedUnitsSummary: string): string {
-  const parts: string[] = [];
-  const sceneSafety = (data.scene_safety || '').trim();
-  const weapons = (data.weapons_involved || '').trim();
-
-  if (data.officer_safety_caution) {
-    parts.push('Officer safety caution flagged for responding personnel.');
-  }
-  if (sceneSafety && !['standard', 'normal', 'clear', 'safe'].includes(sceneSafety.toLowerCase())) {
-    parts.push(`Scene safety notes: ${sceneSafety}.`);
-  }
-  if (weapons && !['0', 'none', 'no', 'n/a'].includes(weapons.toLowerCase())) {
-    parts.push(`Weapons indicated: ${weapons}.`);
-  }
-  if (data.le_agency) {
-    const caseSuffix = data.le_case_number ? ` (${data.le_case_number})` : '';
-    parts.push(`Law enforcement notified: ${data.le_agency}${caseSuffix}.`);
-  }
-  if (assignedUnitsSummary && assignedUnitsSummary !== 'UNASSIGNED') {
-    parts.push(`Assigned units: ${assignedUnitsSummary}.`);
-  }
-
-  return parts.join(' ');
-}
-
-type RecordOverviewField = {
-  label: string;
-  value?: string | number | null;
-};
-
-function addRecordOverviewSection(
-  doc: jsPDF,
-  title: string,
-  fields: RecordOverviewField[],
-  y: number,
-  priority?: string,
-): number {
-  const presentFields = fields.filter((field) => String(field.value ?? '').trim());
-  if (presentFields.length === 0) return y;
-
-  const lx = getLeftX();
-  const ffw = getFullFieldWidth(doc);
-  const estimatedRows = Math.ceil(presentFields.length / 4);
-  y = checkPageBreak(doc, y, 10 + estimatedRows * SPACING.FIELD_ROW_ADVANCE, priority);
-
-  const sec = openAutoSection(doc, title, y);
-  y = sec.contentY + 0.5;
-
-  for (let i = 0; i < presentFields.length; i += 4) {
-    const row = presentFields.slice(i, i + 4);
-    const colW = ffw / row.length;
-    let maxY = y + SPACING.FIELD_ROW_ADVANCE;
-    row.forEach((field, idx) => {
-      const fy = addFieldPair(doc, field.label, String(field.value ?? ''), lx + idx * colW, y, colW);
-      if (fy > maxY) maxY = fy;
-    });
-    y = maxY;
-  }
-
-  return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-}
-
-function addRecordAlertBadges(
-  doc: jsPDF,
-  label: string,
-  flags: Array<string | undefined | null>,
-  y: number,
-  priority?: string,
-): number {
-  const lx = getLeftX();
-  const ffw = getFullFieldWidth(doc);
-  const cleanFlags = [...new Set(
-    flags
-      .map((flag) => (flag || '').trim().toUpperCase())
-      .filter(Boolean),
-  )];
-
-  if (cleanFlags.length === 0) return y;
-
-  const cols = 3;
-  const rows = Math.ceil(cleanFlags.length / cols);
-  y = checkPageBreak(doc, y, 8 + rows * (SPACING.LG + 0.5), priority);
-
-  const sec = openAutoSection(doc, label, y);
-  y = sec.contentY + 1;
-
-  const colW = ffw / cols;
-  for (let idx = 0; idx < cleanFlags.length; idx += cols) {
-    const row = cleanFlags.slice(idx, idx + cols);
-    row.forEach((flag, colIdx) => {
-      addCheckboxField(doc, flag, true, lx + colIdx * colW, y);
-    });
-    y += SPACING.LG + 0.5;
-  }
-
-  return closeAutoSection(doc, sec.sectionY, y - 1.2, undefined, sec.sectionPage);
-}
-
-function daysUntilDate(ts?: string | null): number | null {
-  const target = parsePdfDate(ts);
-  if (!target) return null;
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
-  return Math.floor((startOfTarget.getTime() - startOfToday.getTime()) / 86400000);
-}
-
 // ── Call for Service Report ──────────────────────────────────
 
-function generateCallReport(doc: jsPDF, data: CallPdfData) {
+async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
-  const assignedUnitsSummary = summarizeAssignedUnits(data);
-  const callAlertFlags = buildCallAlertFlags(data);
-  const cautionText = buildCallCautionText(data, assignedUnitsSummary);
-  const leadSummary = data.description || data.narrative || data.action_taken || '';
 
   setActiveCaseNumber(data.call_number);
   let y = drawNibrsHeader(doc, {
@@ -1026,20 +881,15 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
     const numCols = hasContract ? 6 : 5;
     const barH = 8;
-    const districtAccent: [number, number, number] = [212, 160, 23];
-    const districtDivider: [number, number, number] = [82, 88, 96];
     // Black background with white text
     doc.setFillColor(...COLOR.TEXT_PRIMARY);
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
-    doc.setDrawColor(districtDivider[0], districtDivider[1], districtDivider[2]);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH);
 
     const distFields = [
       { label: 'SECTION', value: data.section_name || 'N/A' },
       { label: 'ZONE', value: data.zone_name || 'N/A' },
-      { label: 'BEAT', value: data.beat_name || data.beat_id || 'N/A' },
-      { label: 'AREA', value: data.zone_beat || data.beat_descriptor || 'N/A' },
+      { label: 'BEAT', value: data.beat_id || 'N/A' },
+      { label: 'AREA', value: data.beat_descriptor || 'N/A' },
       { label: 'CODE', value: data.dispatch_code || 'N/A' },
       ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
     ];
@@ -1069,70 +919,37 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const fx = colX + 1.5;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(districtAccent[0], districtAccent[1], districtAccent[2]);
+      doc.setTextColor(255, 255, 255);
       doc.text(f.label, fx, barY + 2.8);
       doc.setFont('courier', 'bold');
       doc.setFontSize(dValSize);
       doc.setTextColor(255, 255, 255);
       doc.text(sanitizePdfText(f.value), fx, barY + 6.5);
-      if (i < distFields.length - 1) {
-        const dividerX = colX + fw;
-        doc.line(dividerX, barY + 1, dividerX, barY + barH - 1);
-      }
       colX += fw;
     });
 
     y = barY + barH + 1.5;
   }
 
-  // Dispatch overview
-  y = checkPageBreak(doc, y, 20, prio);
-  { const sec = openAutoSection(doc, 'Dispatch Overview', y); y = sec.contentY;
-    const quarterW = ffw / 4;
-    const overviewFields = [
-      { label: 'Priority', value: data.priority || '' },
-      { label: 'Status', value: displayStatus(data.status || '') },
-      { label: 'Source', value: formatDispatchValue(data.source) },
-      { label: 'Dispatcher', value: data.dispatcher_name || data.created_by || '' },
-    ];
-    let maxOverviewY = y + SPACING.FIELD_ROW_ADVANCE;
-    for (let i = 0; i < overviewFields.length; i++) {
-      const fy = addFieldPair(doc, overviewFields[i].label, overviewFields[i].value, lx + i * quarterW, y, quarterW);
-      if (fy > maxOverviewY) maxOverviewY = fy;
-    }
-    y = maxOverviewY;
-
-    { const yL = addFieldPair(doc, 'Incident Type', formatDispatchValue(data.incident_type), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Assigned Units', assignedUnitsSummary, rx, y, hfw);
-      y = Math.max(yL, yR); }
-
-    y = addFieldPair(doc, 'Initial Summary', leadSummary, lx, y, ffw, 6);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  y = addRecordAlertBadges(doc, 'Tactical Alerts', callAlertFlags, y, prio);
-
-  if (cautionText) {
-    y = checkPageBreak(doc, y, 14, prio);
-    y = addCautionBlock(doc, cautionText, lx, y, ffw);
-  }
-
-  // Case linkage
-  { const sec = openAutoSection(doc, 'Case Linkage', y); y = sec.contentY;
+  // Classification
+  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
+      { label: 'Incident Type', value: (data.incident_type || '').replace(/_/g, ' ').toUpperCase() },
+      { label: 'Priority', value: data.priority },
+      { label: 'Status', value: displayStatus(data.status || '') },
+      { label: 'Source', value: (data.source || '').replace(/_/g, ' ').toUpperCase() },
       { label: 'Dispatch Code', value: data.dispatch_code || '' },
       { label: 'Disposition', value: data.disposition || '' },
       { label: 'Case Number', value: data.case_number || '' },
       { label: 'Incident Number', value: data.incident_number || '' },
-      { label: data.contract_id ? 'Contract ID' : 'Secondary Type', value: data.contract_id || formatDispatchValue(data.secondary_type) },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Response timeline — 3-column grid (timestamps + duration metrics)
+  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
   y = checkPageBreak(doc, y, 15, prio);
-  { const sec = openAutoSection(doc, 'Response Timeline', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: fmtTimestamp(data.created_at || '') },
       { label: 'Dispatched', value: fmtTimestamp(data.dispatched_at || '') },
@@ -1141,23 +958,17 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Cleared', value: fmtTimestamp(data.cleared_at || '') },
       { label: 'Closed', value: fmtTimestamp(data.closed_at || '') },
     ], y);
-    y = addThreeColumnFields(doc, [
-      { label: 'Dispatch Lag', value: fmtDurationSpan(data.created_at || '', data.dispatched_at || '') },
-      { label: 'Response Time', value: fmtDurationSpan(data.enroute_at || data.dispatched_at || '', data.onscene_at || '') },
-      { label: 'Time On Scene', value: fmtDurationSpan(data.onscene_at || '', data.cleared_at || data.closed_at || '') },
-      { label: data.closed_at || data.cleared_at ? 'Total Duration' : 'Call Age', value: fmtDurationSpan(data.created_at || '', data.closed_at || data.cleared_at || new Date().toISOString()) },
-    ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Reporting party
+  // Caller Information
   y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Reporting Party', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Caller Information', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
       y = Math.max(yL, yR); }
     { const rel = data.caller_relationship || '';
-      const yL = addFieldPair(doc, 'Relationship', rel.charAt(0).toUpperCase() + rel.slice(1), lx, y, hfw);
+      const yL = addFieldPair(doc, 'Relationship', rel.toUpperCase(), lx, y, hfw);
       const yR = addFieldPair(doc, 'Caller Address', data.caller_address || '', rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -1201,9 +1012,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
   }
 
-  // Location & premise
+  // Location
   y = checkPageBreak(doc, y, 18, prio);
-  { const sec = openAutoSection(doc, 'Location & Premise', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     // Row 1: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     // Row 2: Latitude | Longitude | Dispatch Code (3 columns)
@@ -1236,9 +1047,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Operational checklist — before Scene Conditions
+  // Flags — before Scene Conditions
   y = checkPageBreak(doc, y, 15, prio);
-  { const flagSec = openAutoSection(doc, 'Operational Checklist', y);
+  { const flagSec = openAutoSection(doc, 'Flags', y);
     // Checkboxes draw at y-1.5, so need extra offset to clear header bar
     y = flagSec.contentY + 2;
     const flagCols = 6;
@@ -1310,7 +1121,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const unitCount2 = unitDetail2?.length || data.assigned_units?.length || 0;
     if (unitCount2 > 0) {
       y = checkPageBreak(doc, y, 18, prio); // header + at least 1 unit row
-      const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.contentY;
+      const uSec = openAutoSection(doc, 'Assigned Units', y); y = uSec.sectionY + SPACING.SECTION_HEADER_H;
       if (unitDetail2 && unitDetail2.length > 0) {
         const UNIT_ROLES2 = ['Primary Officer', 'Secondary Officer', 'Assisting Officer', 'Cover Officer', 'Supervisor On Scene'];
         const uqw = ffw / 4;
@@ -1363,27 +1174,25 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Linked Persons — clean table: section header + column headers + data rows
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
-    const pColW = [ffw * 0.28, ffw * 0.17, ffw * 0.15, ffw * 0.17, ffw * 0.23];
+    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
     const rowH = 4.5;
-    // Column header row — light gray background, dark text
-    doc.setFillColor(...COLOR.BG_ZEBRA);
-    doc.rect(lx, y, ffw, rowH, 'F');
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    // Column header — matches addTableWithShading style exactly
+    const cw = getContentWidth(doc);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
     let hx = lx;
     for (let i = 0; i < pHeaders.length; i++) {
-      doc.text(pHeaders[i], hx + 1.5, y + rowH * 0.65);
+      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
+      doc.text(pHeaders[i], hx + 1, y + (rowH + capH) / 2);
       hx += pColW[i];
     }
-    // Bottom line under header
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(lx, y + rowH, lx + ffw, y + rowH);
     y += rowH;
-    // Data rows — just bottom separator lines, no box rects
+    // Data rows
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const p of data.linked_persons) {
@@ -1391,7 +1200,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const pVals = [
         `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
-        titleCase((p.role || '').replace(/_/g, ' ')).toUpperCase() || '—',
+        (p.role || '').replace(/_/g, ' ').toUpperCase() || '—',
         (p.dob || '—').toUpperCase(),
         [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
         (p.phone || '—').toUpperCase(),
@@ -1413,27 +1222,25 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Linked Vehicles — clean table: section header + column headers + data rows
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
     const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
     const rowH = 4.5;
-    // Column header row — light gray background, dark text
-    doc.setFillColor(...COLOR.BG_ZEBRA);
-    doc.rect(lx, y, ffw, rowH, 'F');
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    // Column header — matches addTableWithShading style
+    const vcw = getContentWidth(doc);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
     let vhx = lx;
     for (let i = 0; i < vHeaders.length; i++) {
-      doc.text(vHeaders[i], vhx + 1.5, y + rowH * 0.65);
+      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
+      doc.text(vHeaders[i], vhx + 1, y + (rowH + capH) / 2);
       vhx += vColW[i];
     }
-    // Bottom line under header
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(lx, y + rowH, lx + ffw, y + rowH);
     y += rowH;
-    // Data rows — just bottom separator lines
+    // Data rows
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const v of data.linked_vehicles) {
@@ -1441,7 +1248,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '';
       const vVals = [
-        titleCase((v.role || '').replace(/_/g, ' ')).toUpperCase() || '—',
+        (v.role || '').replace(/_/g, ' ').toUpperCase() || '—',
         [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
         (v.color || '—').toUpperCase(),
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
@@ -1461,16 +1268,16 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Call Description — dynamic page break ──
+  // ── Incident Details — dynamic page break ──
   y = checkPageBreak(doc, y, 25, prio);
-  { const sec = openAutoSection(doc, 'Call Description', y); y = sec.contentY;
-    y += SPACING.MD;
+  { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('DESCRIPTION', lx, y);
-    y += 2;
+    doc.text('DESCRIPTION', lx, y + 2);
+    y += 4.5;
     doc.setFont('courier', 'normal');
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
       const cw = getContentWidth(doc);
@@ -1483,15 +1290,15 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_INVERTED);
       const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-      doc.text('CALL DESCRIPTION -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
+      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
       doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       // Extra padding so text clears the header bar (matching other section body spacing)
       return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     };
-    y = addFormattedText(doc, data.description || '', lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
-    y += SPACING.SM;
+    y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
+    y += SPACING.MD; // Tight gap before # Subjects row
     // Pack remaining fields tightly — check page break before each group
     y = checkPageBreak(doc, y, 10, prio);
     y = addThreeColumnFields(doc, [
@@ -1542,7 +1349,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       // Visit header line
-      doc.setFont('courier', 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(`Visit #${visit.visit_number}`, lx, y);
@@ -1550,17 +1357,17 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Status badge
       const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('courier', 'normal');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(statusText, lx + visitLabelW, y);
 
       // Units on the right
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
         const unitsW = doc.getTextWidth(unitsText);
@@ -1577,8 +1384,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
 
       if (timeFields.length > 0) {
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
@@ -1594,8 +1401,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       if (mileageFields.length > 0) {
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
         y += SPACING.SM;
@@ -1603,9 +1410,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       // Disposition
       if (visit.disposition) {
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
         y += SPACING.SM;
       }
@@ -1693,7 +1500,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
 
     if (step > 1) {
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1714,7 +1521,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Date/time on far left, author on far right — same line
       doc.setFont('courier', 'bold');
       doc.setFontSize(6);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const tsText = fmtTimestamp(n.created_at).toUpperCase();
       doc.text(tsText, lx, y);
       const authorName = (n.author || 'System').toUpperCase();
@@ -1742,7 +1549,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signatures — full-width stacked (one on top of the other)
@@ -1751,7 +1558,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
 // ── Person Record ────────────────────────────────────────────
 
-function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
+async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -1761,21 +1568,6 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // Determine priority — escalate if active warrants or BOLO
   const hasActiveWarrants = data.warrants && data.warrants.some(w => w.status === 'active');
   const prio = hasActiveWarrants ? 'critical' : data.bolo_active ? 'high' : 'routine';
-  const personAlertFlags = [
-    hasActiveWarrants ? 'ACTIVE WARRANT' : '',
-    data.bolo_active ? 'ACTIVE BOLO' : '',
-    data.is_sex_offender ? 'SEX OFFENDER' : '',
-    data.is_veteran ? 'VETERAN' : '',
-    getMeaningfulPdfValue(data.gang_affiliation) ? 'GANG AFFILIATION' : '',
-    getMeaningfulPdfValue(data.probation_parole) ? 'PROBATION / PAROLE' : '',
-    ...(data.flags || []),
-  ];
-  const personCautionText = [
-    data.caution_flags || '',
-    getMeaningfulPdfValue(data.gang_affiliation) ? `Gang affiliation: ${getMeaningfulPdfValue(data.gang_affiliation)}.` : '',
-    getMeaningfulPdfValue(data.probation_parole) ? `Probation/parole status: ${getMeaningfulPdfValue(data.probation_parole)}${getMeaningfulPdfValue(data.probation_parole_officer) ? ` (${getMeaningfulPdfValue(data.probation_parole_officer)})` : ''}.` : '',
-    data.known_associates ? `Known associates: ${data.known_associates}.` : '',
-  ].filter(Boolean).join(' ');
 
   const personName = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
   setActiveCaseNumber(personName);
@@ -1788,47 +1580,20 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
-  // ── ID Photo (passport-style, right-aligned) ──────────────
-  if (data.id_photo) {
-    const photoW = 25;
-    const photoH = 32;
-    const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - SPACING.MD;
-    addImageToPage(doc, data.id_photo, photoX, y - 3, photoW, photoH);
-    doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(BORDER.FIELD);
-    doc.rect(photoX, y - 3, photoW, photoH);
-    y += photoH + 2;
-  }
-
-  y = addRecordOverviewSection(doc, 'Person Overview', [
-    { label: 'Record ID', value: String(data.id || '') },
-    { label: 'Subject', value: personName },
-    { label: 'Date of Birth', value: fmtDate(data.date_of_birth) },
-    { label: 'Alias', value: data.alias_nickname || '' },
-    { label: 'Phone', value: data.phone || '' },
-    { label: 'Employer', value: data.employer || '' },
-    { label: 'Address', value: [data.address, data.city, data.state, data.zip].filter(Boolean).join(', ') },
-    { label: 'Created', value: fmtTimestamp(data.created_at || '') },
-  ], y, prio);
-  y = addRecordAlertBadges(doc, 'PERSON ALERTS', personAlertFlags, y, prio);
-  if (personCautionText) {
-    y = addCautionBlock(doc, personCautionText, lx, y, ffw);
-  }
-
   // ── 1. Subject Identification ─────────────────────────────
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
     const fifthW = ffw / 5;
-    // Row 1: Last Name (2/5), First Name (2/5), Middle Name (1/5)
+
+    // Row 1: Last Name, First Name, Middle Name — full width, normal layout
     const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, ffw * 0.4);
-    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.4, y, ffw * 0.4);
-    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.8, y, ffw * 0.2);
+    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.4, y, ffw * 0.35);
+    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.75, y, ffw * 0.25);
     y = Math.max(fy1, fy2, fy3);
-    // Row 2: Alias (2/5), DOB (1/5), Gender (1/5), Race (1/5)
-    const thirdW = hfw / 1.5;
+    // Row 2: Alias, DOB, Gender, Race — full width
     const fy4 = addFieldPair(doc, 'Alias / Nickname', data.alias_nickname || '', lx, y, hfw);
-    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), rx, y, thirdW);
-    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', rx + thirdW, y, thirdW * 0.5);
-    const fy7 = addFieldPair(doc, 'Race', data.race || '', rx + thirdW * 1.5, y, thirdW * 0.5);
+    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), rx, y, ffw * 0.2);
+    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', rx + ffw * 0.2, y, ffw * 0.15);
+    const fy7 = addFieldPair(doc, 'Race', data.race || '', rx + ffw * 0.35, y, ffw * 0.15);
     y = Math.max(fy4, fy5, fy6, fy7);
     // Row 3: Marital Status, Citizenship, Place of Birth, Language, Record ID
     const fy8 = addFieldPair(doc, 'Marital Status', data.marital_status || '', lx, y, fifthW);
@@ -1838,6 +1603,25 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const fy12 = addFieldPair(doc, 'Record ID', String(data.id || ''), lx + 4 * fifthW, y, fifthW);
     y = Math.max(fy8, fy9, fy10, fy11, fy12);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+
+    // Photo — B&W photocopy style, top-right corner, rows 1-2 only
+    if (data.id_photo) {
+      const photoW = 14;
+      const photoH = 17;
+      const photoX = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN - photoW - 1;
+      const photoY = sec.contentY + 0.5;
+      try {
+        // Convert to grayscale for document legibility
+        const grayUrl = await convertToGrayscale(data.id_photo!.dataUrl);
+        const grayPhoto = { ...data.id_photo!, dataUrl: grayUrl };
+        addImageToPage(doc, grayPhoto, photoX, photoY, photoW, photoH);
+      } catch {
+        try { addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH); } catch { /* skip */ }
+      }
+      doc.setDrawColor(120, 120, 120);
+      doc.setLineWidth(0.2);
+      doc.rect(photoX, photoY, photoW, photoH);
+    }
   }
 
   // ── 2. Physical Description ───────────────────────────────
@@ -1864,6 +1648,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 3. Scars / Marks / Tattoos ────────────────────────────
+  y += 1; // ensure clear gap after Physical Description section border
   y = addNarrativeSection(doc, 'Scars / Marks / Tattoos', data.scars_marks_tattoos || '', y, prio);
 
   // ── 4. Clothing Description ───────────────────────────────
@@ -1920,22 +1705,78 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── 7b. Law Enforcement Identifiers ────────────────────────
+  if (data.ncic_number || data.sor_number || data.fbi_number || data.state_id_number || data.passport_number || data.immigration_status) {
+    y = checkPageBreak(doc, y, 12, prio);
+    const sec = openAutoSection(doc, 'Law Enforcement Identifiers', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const le1 = addFieldPair(doc, 'NCIC #', data.ncic_number || '', lx, y, qw);
+    const le2 = addFieldPair(doc, 'SOR #', data.sor_number || '', lx + qw, y, qw);
+    const le3 = addFieldPair(doc, 'FBI #', data.fbi_number || '', lx + 2 * qw, y, qw);
+    const le4 = addFieldPair(doc, 'State ID #', data.state_id_number || '', lx + 3 * qw, y, qw);
+    y = Math.max(le1, le2, le3, le4);
+    const tw = ffw / 3;
+    const pp1 = addFieldPair(doc, 'Passport #', data.passport_number || '', lx, y, tw);
+    const pp2 = addFieldPair(doc, 'Passport Country', data.passport_country || '', lx + tw, y, tw);
+    const pp3 = addFieldPair(doc, 'Immigration Status', data.immigration_status || '', lx + 2 * tw, y, tw);
+    y = Math.max(pp1, pp2, pp3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7c. Military Service ──────────────────────────────────
+  if (data.military_branch || data.military_status || data.education_level || data.tribal_affiliation) {
+    y = checkPageBreak(doc, y, 12, prio);
+    const sec = openAutoSection(doc, 'Military Service & Demographics', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const m1 = addFieldPair(doc, 'Military Branch', data.military_branch || '', lx, y, qw);
+    const m2 = addFieldPair(doc, 'Military Status', data.military_status || '', lx + qw, y, qw);
+    const m3 = addFieldPair(doc, 'Education Level', data.education_level || '', lx + 2 * qw, y, qw);
+    const m4 = addFieldPair(doc, 'Tribal Affiliation', data.tribal_affiliation || '', lx + 3 * qw, y, qw);
+    y = Math.max(m1, m2, m3, m4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7d. Medical / Behavioral Flags ────────────────────────
+  if (data.disability_flags || data.mental_health_flags || data.substance_abuse || data.medication_notes) {
+    y = checkPageBreak(doc, y, 14, prio);
+    const sec = openAutoSection(doc, 'Medical / Behavioral Flags', y); y = sec.contentY;
+    const hw = ffw / 2;
+    const md1 = addFieldPair(doc, 'Disability', data.disability_flags || '', lx, y, hw);
+    const md2 = addFieldPair(doc, 'Mental Health', data.mental_health_flags || '', lx + hw, y, hw);
+    y = Math.max(md1, md2);
+    const md3 = addFieldPair(doc, 'Substance Abuse', data.substance_abuse || '', lx, y, hw);
+    const md4 = addFieldPair(doc, 'Medication Notes', data.medication_notes || '', lx + hw, y, hw);
+    y = Math.max(md3, md4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7e. Detailed Identifying Marks ────────────────────────
+  if (data.tattoo_description || data.scar_description || data.piercing_description || data.distinguishing_features || data.identifying_marks_location) {
+    y = checkPageBreak(doc, y, 14, prio);
+    const sec = openAutoSection(doc, 'Detailed Identifying Marks', y); y = sec.contentY;
+    if (data.tattoo_description) y = addNarrativeField(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
+    if (data.scar_description) y = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, ffw);
+    if (data.piercing_description) y = addNarrativeField(doc, 'Piercing Description', data.piercing_description, lx, y, ffw);
+    if (data.distinguishing_features) y = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, ffw);
+    if (data.identifying_marks_location) y = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // ── 8. Flags & Warnings ───────────────────────────────────
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Flags & Warnings', y); y = sec.contentY;
-    // Checkbox row
+    // Checkbox row — add breathing room below header
+    y += 1;
     let flagX = lx;
     flagX = addCheckboxField(doc, 'Sex Offender', !!data.is_sex_offender, flagX, y);
     flagX = addCheckboxField(doc, 'Veteran', !!data.is_veteran, flagX + SPACING.SM, y);
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
-    y += SPACING.LG;
+    y += 4;
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
-    const gangAffiliation = getMeaningfulPdfValue(data.gang_affiliation);
-    const probationParoleValue = getMeaningfulPdfValue(data.probation_parole);
-    const probationOfficer = getMeaningfulPdfValue(data.probation_parole_officer);
-    const probParole = `${probationParoleValue}${probationOfficer ? ` (Officer: ${probationOfficer})` : ''}`.trim();
+    const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;
-    const f1 = addFieldPair(doc, 'Gang Affiliation', gangAffiliation, lx, y, thirdW);
+    const gangVal = data.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(data.gang_affiliation.toLowerCase().trim()) ? data.gang_affiliation : '';
+    const f1 = addFieldPair(doc, 'Gang Affiliation', gangVal, lx, y, thirdW);
     const f2 = addFieldPair(doc, 'Probation / Parole', probParole, lx + thirdW, y, thirdW * 2);
     y = Math.max(f1, f2);
     // Row 3: Known Associates (if present)
@@ -1945,15 +1786,41 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Active Flags — colored pill badges (kept as-is)
-  if (data.flags && data.flags.length > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('ACTIVE FLAGS', lx + 1.5, y + 1.5);
-    y += 2.5;
-    y = addFlagBadges(doc, data.flags, lx, y, ffw, prio);
-    y += 0.5;
+  // Active Flags — parse any format into display strings
+  if (data.flags) {
+    let flagList: string[] = [];
+    const rf: any = data.flags;
+    // Handle: string, JSON string, array of strings, array of objects
+    if (typeof rf === 'string' && rf.length > 1) {
+      try {
+        const parsed = JSON.parse(rf);
+        if (Array.isArray(parsed)) {
+          flagList = parsed.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
+        } else if (typeof parsed === 'object') {
+          flagList = [parsed.type || parsed.name || parsed.label || ''].filter(Boolean);
+        }
+      } catch {
+        flagList = rf.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+    } else if (Array.isArray(rf)) {
+      flagList = rf.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
+    }
+    // Clean up: replace underscores, title case
+    flagList = flagList.map(f => f.replace(/_/g, ' '));
+    if (flagList.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('ACTIVE FLAGS', lx + 1.5, y + 1.5);
+      y += 2.5;
+      y = addFlagBadges(doc, flagList, lx, y, ffw, prio);
+      y += 0.5;
+    }
+  }
+
+  // Caution block — amber warning styling for officer safety (kept as-is)
+  if (data.caution_flags) {
+    y = addCautionBlock(doc, data.caution_flags, lx, y, ffw);
   }
 
   // ── 9. Emergency Contact ──────────────────────────────────
@@ -1970,7 +1837,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 10. Active Warrants ───────────────────────────────────
   if (data.warrants && data.warrants.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.contentY; }
+    { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const warrantRows = data.warrants.map(w => [
       w.warrant_number || 'N/A',
       titleCase(w.type || ''),
@@ -1998,7 +1865,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 11. Incident History ──────────────────────────────────
   if (data.incidents && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.contentY; }
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incidentRows = data.incidents.map(inc => [
       inc.incident_number || 'N/A',
       titleCase((inc.incident_type || '').replace(/_/g, ' ')),
@@ -2024,7 +1891,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 12. Citation History ──────────────────────────────────
   if (data.citations && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Citation History', y); y = sec.contentY; }
+    { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citationRows = data.citations.map(c => [
       c.citation_number || 'N/A',
       titleCase(c.type || ''),
@@ -2050,7 +1917,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 13. Dispatch Call History ──────────────────────────────
   if (data.calls && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
-    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.contentY; }
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
       (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
@@ -2073,14 +1940,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     );
   }
 
-  // ── 14. Criminal History (Full Detail) — force new page ─
+  // ── 14. Criminal History — condensed single table ──────────
   if (data.criminal_records && data.criminal_records.length > 0) {
-    doc.addPage();
-    addConfidentialWatermark(doc);
-    y = 12; // start near top of new page
-    { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.contentY; }
-
-    // Summary table — quick reference overview
+    y = checkPageBreak(doc, y, 30, prio);
+    { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const crCw = getContentWidth(doc);
     const crRows = data.criminal_records.map(r => [
       (r.record_type || '').replace(/_/g, ' ').toUpperCase(),
@@ -2104,84 +1967,6 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y,
       [lx, lx + crCw * 0.13, lx + crCw * 0.45, lx + crCw * 0.55, lx + crCw * 0.70, lx + crCw * 0.87],
     );
-    y += SPACING.MD;
-
-    // Detailed per-record cards — 3 per page, evenly spaced, never split
-    const pageH = doc.internal.pageSize.getHeight();
-    const recordsPerPage = 3;
-    const pageTopY = 14;  // top margin for detail pages
-    const pageBottomY = pageH - LAYOUT.FOOTER_HEIGHT - 4; // safe bottom (matches checkPageBreak)
-    const usableH = pageBottomY - pageTopY;
-    const slotH = usableH / recordsPerPage; // each record gets this vertical slot
-
-    // Helper to render one record card at a given Y position
-    const renderRecordCard = (r: PersonCriminalHistoryRecord, ri: number, startY: number) => {
-      let cy = startY;
-
-      // Record sub-header bar
-      doc.setFillColor(30, 55, 90);
-      doc.rect(lx, cy, ffw, 5, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      doc.text(sanitizePdfText(`RECORD ${ri + 1} — ${(r.record_type || 'UNKNOWN').replace(/_/g, ' ').toUpperCase()}`), lx + 2, cy + 3.2);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      cy += 7;
-
-      // Row 1: Offense + Level
-      { const yL = addFieldPair(doc, 'Offense', r.offense || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Offense Level', (r.offense_level || 'N/A').toUpperCase(), rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 2: Statute + Case Number
-      { const yL = addFieldPair(doc, 'Statute', r.statute || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Case Number', r.case_number || 'N/A', rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 3: Agency + Jurisdiction
-      { const yL = addFieldPair(doc, 'Agency', r.agency || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Jurisdiction', r.jurisdiction || 'N/A', rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 4: Offense Date + Disposition Date
-      { const yL = addFieldPair(doc, 'Offense Date', fmtDate(r.offense_date), lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Disposition Date', fmtDate(r.disposition_date), rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      // Row 5: Disposition + Sentence
-      { const yL = addFieldPair(doc, 'Disposition', r.disposition || 'N/A', lx, cy, hfw);
-        const yR = addFieldPair(doc, 'Sentence', r.sentence || 'N/A', rx, cy, hfw);
-        cy = Math.max(yL, yR); }
-
-      return cy;
-    };
-
-    for (let ri = 0; ri < data.criminal_records.length; ri++) {
-      const slotIndex = ri % recordsPerPage; // 0, 1, or 2 within current page
-
-      // New page for every batch of 3 (including the first batch — summary table stays on its own page)
-      if (slotIndex === 0) {
-        doc.addPage();
-        addConfidentialWatermark(doc);
-      }
-
-      // Position this record in its evenly-distributed slot
-      const slotY = pageTopY + slotIndex * slotH;
-      const cardEndY = renderRecordCard(data.criminal_records[ri], ri, slotY);
-
-      // Draw subtle divider between records on same page
-      if (slotIndex < recordsPerPage - 1 && ri < data.criminal_records.length - 1) {
-        const dividerY = pageTopY + (slotIndex + 1) * slotH - 2;
-        doc.setDrawColor(...COLOR.BORDER_TABLE);
-        doc.setLineWidth(BORDER.TABLE_ROW);
-        doc.line(lx, dividerY, lx + ffw, dividerY);
-      }
-
-      // Track y for last record position
-      if (ri === data.criminal_records.length - 1) {
-        y = cardEndY;
-      }
-    }
   }
 
   // ── 15. Notes ─────────────────────────────────────────────
@@ -2203,7 +1988,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
   // ── 17. Attachments ───────────────────────────────────────
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
+    y = await addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
   // ── 18. Signature Block — full-width stacked ──────────────
@@ -2212,31 +1997,11 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
 // ── Vehicle Record ───────────────────────────────────────────
 
-function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
+async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
-  const stolenStatus = (data.stolen_status || '').trim();
-  const hasStolenStatus = !!stolenStatus && !['not stolen', 'not_stolen', 'none', 'clear', 'recovered'].includes(stolenStatus.toLowerCase());
-  const regDays = daysUntilDate(data.registration_expiry);
-  const vehicleAlertFlags = [
-    hasStolenStatus ? 'STOLEN' : '',
-    data.commercial_vehicle ? 'COMMERCIAL' : '',
-    data.hazmat ? 'HAZMAT' : '',
-    data.tow_status ? 'TOW STATUS' : '',
-    regDays != null && regDays < 0 ? 'REGISTRATION EXPIRED' : '',
-    regDays != null && regDays >= 0 && regDays <= 30 ? 'REGISTRATION EXPIRING' : '',
-    ...(data.flags || []),
-  ];
-  const vehicleCautionText = [
-    hasStolenStatus ? `Vehicle status is ${stolenStatus.toUpperCase()}.` : '',
-    data.tow_company ? `Tow company: ${data.tow_company}.` : '',
-    data.tow_date ? `Tow date: ${fmtDate(data.tow_date)}.` : '',
-    regDays != null && regDays < 0 ? `Registration expired on ${fmtDate(data.registration_expiry)}.` : '',
-    regDays != null && regDays >= 0 && regDays <= 30 ? `Registration expires on ${fmtDate(data.registration_expiry)}.` : '',
-    data.lien_holder ? `Lien holder on file: ${data.lien_holder}.` : '',
-  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.license_plate || 'N/A');
   let y = drawNibrsHeader(doc, {
@@ -2246,21 +2011,6 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     formNumber: 'FORM PS-203',
     caseNumber: data.license_plate || 'N/A',
   });
-
-  y = addRecordOverviewSection(doc, 'Vehicle Overview', [
-    { label: 'Plate', value: data.license_plate || '' },
-    { label: 'Registered State', value: data.plate_state || '' },
-    { label: 'Primary Status', value: hasStolenStatus ? stolenStatus.toUpperCase() : displayStatus(data.tow_status || 'Active') },
-    { label: 'Record Updated', value: fmtTimestamp(data.updated_at || data.created_at) },
-    { label: 'Owner', value: data.owner_name || '' },
-    { label: 'Year / Make / Model', value: [data.year, data.make, data.model].filter(Boolean).join(' ') },
-    { label: 'Color', value: [data.color, data.secondary_color].filter(Boolean).join(' / ') },
-    { label: 'VIN', value: data.vin || '' },
-  ], y);
-  y = addRecordAlertBadges(doc, 'VEHICLE ALERTS', vehicleAlertFlags, y);
-  if (vehicleCautionText) {
-    y = addCautionBlock(doc, vehicleCautionText, lx, y, ffw);
-  }
 
   // ── Vehicle Identification ──
   y = checkPageBreak(doc, y, 25);
@@ -2302,12 +2052,12 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Owner Address (full width)
     y = addFieldPair(doc, 'Owner Address', data.owner_address || '', lx, y, ffw);
-    // Row 3: Checkboxes + Lien Holder
-    y += 1.2;
+    // Row 3: Checkboxes + Lien Holder (clear gap after address)
+    y += 4;
     let flagX = lx;
     flagX = addCheckboxField(doc, 'Commercial', !!data.commercial_vehicle, flagX, y);
     flagX = addCheckboxField(doc, 'Hazmat', !!data.hazmat, flagX + SPACING.SM, y);
-    y += SPACING.LG;
+    y += 5;
     y = addFieldPair(doc, 'Lien Holder', data.lien_holder || '', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2323,9 +2073,9 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Recovery & Tow Status ──
+  // ── Legal Status ──
   y = checkPageBreak(doc, y, 18);
-  { const sec = openAutoSection(doc, 'Recovery & Tow Status', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Legal Status', y); y = sec.contentY;
     const thirdW = ffw / 3;
     // Row 1: Stolen Status, Stolen Date, Recovery Date
     const r1a = addFieldPair(doc, 'Stolen Status', (data.stolen_status || 'Not Stolen').toUpperCase(), lx, y, thirdW);
@@ -2340,16 +2090,26 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Vehicle Flags ──
-  if ((data.flags && data.flags.length > 0) || data.notes) {
+  // ── Vehicle Condition ──
+  if (data.title_status || data.exterior_condition || data.interior_condition || data.estimated_value) {
     y = checkPageBreak(doc, y, 12);
-    const sec = openAutoSection(doc, 'Vehicle Flags & Notes', y); y = sec.contentY;
-    if (data.flags && data.flags.length > 0) {
-      y = addFieldPair(doc, 'Flags', data.flags.join(', '), lx, y, ffw);
-    }
-    if (data.notes) {
-      y = addFieldPair(doc, 'Summary Notes', data.notes, lx, y, ffw);
-    }
+    const sec = openAutoSection(doc, 'Vehicle Condition', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const c1 = addFieldPair(doc, 'Title Status', data.title_status || '', lx, y, qw);
+    const c2 = addFieldPair(doc, 'Exterior', data.exterior_condition || '', lx + qw, y, qw);
+    const c3 = addFieldPair(doc, 'Interior', data.interior_condition || '', lx + 2 * qw, y, qw);
+    const c4 = addFieldPair(doc, 'Est. Value', data.estimated_value ? `$${data.estimated_value}` : '', lx + 3 * qw, y, qw);
+    y = Math.max(c1, c2, c3, c4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Features & Modifications ──
+  if (data.window_tint || data.modifications || data.equipment_notes) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Features & Modifications', y); y = sec.contentY;
+    if (data.window_tint) y = addFieldPair(doc, 'Window Tint', data.window_tint, lx, y, ffw);
+    if (data.modifications) y = addNarrativeField(doc, 'Modifications', data.modifications, lx, y, ffw);
+    if (data.equipment_notes) y = addNarrativeField(doc, 'Equipment Notes', data.equipment_notes, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2357,10 +2117,18 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   y = addNarrativeSection(doc, 'Distinguishing Features', data.distinguishing_features || '', y);
   y = addNarrativeSection(doc, 'Damage Description', data.damage_description || '', y);
 
+  if (data.flags && data.flags.length > 0) {
+    y = checkPageBreak(doc, y, 10);
+    { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
+      y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig());
@@ -2368,29 +2136,13 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
 // ── Warrant ──────────────────────────────────────────────────
 
-function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
+async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
   const statusPrio = data.status === 'active' ? 'critical' : data.status === 'served' ? 'low' : 'medium';
-  const warrantExpiryDays = daysUntilDate(data.expires_at);
-  const warrantAlertFlags = [
-    data.status === 'active' ? 'ACTIVE WARRANT' : '',
-    data.status === 'served' ? 'SERVED' : '',
-    warrantExpiryDays != null && warrantExpiryDays < 0 ? 'EXPIRED' : '',
-    warrantExpiryDays != null && warrantExpiryDays >= 0 && warrantExpiryDays <= 14 ? 'EXPIRING SOON' : '',
-    data.offense_level ? data.offense_level.toUpperCase() : '',
-    data.verified_by ? 'VERIFIED' : '',
-  ];
-  const warrantCautionText = [
-    data.status === 'active' ? 'Warrant remains active and should be confirmed before field contact.' : '',
-    data.issuing_court ? `Issuing court: ${data.issuing_court}.` : '',
-    data.case_number ? `Case number: ${data.case_number}.` : '',
-    data.expires_at ? `Expiration date: ${fmtDate(data.expires_at)}.` : '',
-    data.served_location ? `Service location: ${data.served_location}.` : '',
-  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.warrant_number);
   let y = drawNibrsHeader(doc, {
@@ -2402,24 +2154,9 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
-  y = addRecordOverviewSection(doc, 'Warrant Overview', [
-    { label: 'Warrant Number', value: data.warrant_number || '' },
-    { label: 'Status', value: displayStatus(data.status || '') },
-    { label: 'Type', value: (data.type || '').toUpperCase() },
-    { label: 'Offense Level', value: (data.offense_level || '').toUpperCase() },
-    { label: 'Subject', value: [data.subject_last_name, data.subject_first_name].filter(Boolean).join(', ') },
-    { label: 'Issuing Court', value: data.issuing_court || '' },
-    { label: 'Bail', value: fmtCurrency(data.bail_amount) },
-    { label: 'Expires', value: fmtDate(data.expires_at) },
-  ], y, statusPrio);
-  y = addRecordAlertBadges(doc, 'WARRANT ALERTS', warrantAlertFlags, y, statusPrio);
-  if (warrantCautionText) {
-    y = addCautionBlock(doc, warrantCautionText, lx, y, ffw);
-  }
-
   // ── Warrant Information ──
   y = checkPageBreak(doc, y, 18, statusPrio);
-  { const sec = openAutoSection(doc, 'Warrant Details', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Warrant Information', y); y = sec.contentY;
     const quarterW = ffw / 4;
     // Row 1: Warrant Number (2/5), Type (1/5), Status (1/5), Offense Level (1/5)
     const fifthW = ffw / 5;
@@ -2458,9 +2195,9 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Judicial Authority ──
+  // ── Court Information ──
   y = checkPageBreak(doc, y, 18, statusPrio);
-  { const sec = openAutoSection(doc, 'Judicial Authority', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
     // Row 1: Issuing Court (half), Issuing Judge (half)
     const r1a = addFieldPair(doc, 'Issuing Court', data.issuing_court || '', lx, y, hfw);
     const r1b = addFieldPair(doc, 'Issuing Judge', data.issuing_judge || '', rx, y, hfw);
@@ -2491,7 +2228,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   // ── Source / Verification (conditional) ──
   if (data.data_source || data.search_date || data.verified_by) {
     y = checkPageBreak(doc, y, 18, statusPrio);
-    { const sec = openAutoSection(doc, 'Source & Verification', y); y = sec.contentY;
+    { const sec = openAutoSection(doc, 'Source / Verification', y); y = sec.contentY;
       const thirdW = ffw / 3;
       // Row 1: Data Source (2/3), Search Date (1/3)
       const r1a = addFieldPair(doc, 'Data Source', data.data_source || '', lx, y, thirdW * 2);
@@ -2514,56 +2251,6 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     }
   }
 
-  // Source / Verification (conditional — present for Utah/scraped search results)
-  if (data.data_source || data.search_date || data.verified_by) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'SOURCE' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '25. DATA SOURCE', value: data.data_source || '', ratio: 2 },
-          { label: '26. SEARCH DATE', value: data.search_date || '', ratio: 1 },
-        ]},
-        ...(data.county || data.case_number ? [{ cells: [
-          { label: '27. COUNTY', value: data.county || '', ratio: 1 },
-          { label: '28. CASE NUMBER', value: data.case_number || '', ratio: 1 },
-          { label: '29. FILING DATE', value: fmtDate(data.filing_date), ratio: 1 },
-        ]} as FormRow] : []),
-        ...(data.verified_by ? [{ cells: [
-          { label: '30. VERIFIED BY', value: data.verified_by || '', ratio: 1 },
-          { label: '31. VERIFICATION DATE', value: data.verification_date || '', ratio: 1 },
-        ]} as FormRow] : []),
-      ],
-      y,
-    });
-  }
-
-  // Source / Verification (conditional — present for Utah/scraped search results)
-  if (data.data_source || data.search_date || data.verified_by) {
-    y = drawFormSection(doc, {
-      sideTab: { label: 'SOURCE' },
-      topBanner: true,
-      onPageBreak: formSectionPageBreak,
-      rows: [
-        { cells: [
-          { label: '25. DATA SOURCE', value: data.data_source || '', ratio: 2 },
-          { label: '26. SEARCH DATE', value: data.search_date || '', ratio: 1 },
-        ]},
-        ...(data.county || data.case_number ? [{ cells: [
-          { label: '27. COUNTY', value: data.county || '', ratio: 1 },
-          { label: '28. CASE NUMBER', value: data.case_number || '', ratio: 1 },
-          { label: '29. FILING DATE', value: fmtDate(data.filing_date), ratio: 1 },
-        ]} as FormRow] : []),
-        ...(data.verified_by ? [{ cells: [
-          { label: '30. VERIFIED BY', value: data.verified_by || '', ratio: 1 },
-          { label: '31. VERIFICATION DATE', value: data.verification_date || '', ratio: 1 },
-        ]} as FormRow] : []),
-      ],
-      y,
-    });
-  }
-
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
@@ -2573,23 +2260,11 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
 
 // ── Evidence / Property Custody Report ───────────────────────
 
-function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
+async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
-  const evidenceAlertFlags = [
-    displayStatus((data.status || '').replace(/_/g, ' ')),
-    data.lab_submitted ? 'LAB SUBMITTED' : '',
-    data.photo_taken ? 'PHOTO TAKEN' : '',
-    data.chain_of_custody && data.chain_of_custody.length > 0 ? 'CHAIN OF CUSTODY' : '',
-    data.disposal_method ? 'DISPOSED' : '',
-  ];
-  const evidenceCautionText = [
-    data.storage_location ? `Current storage location: ${data.storage_location}.` : '',
-    data.lab_submitted && data.lab_name ? `Laboratory routing: ${data.lab_name}${data.lab_case_number ? ` (${data.lab_case_number})` : ''}.` : '',
-    data.disposal_method ? `Final disposition: ${data.disposal_method}${data.disposal_date ? ` on ${fmtDate(data.disposal_date)}` : ''}.` : '',
-  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.evidence_number);
   let y = drawNibrsHeader(doc, {
@@ -2599,21 +2274,6 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     formNumber: 'FORM PS-205',
     caseNumber: data.evidence_number,
   });
-
-  y = addRecordOverviewSection(doc, 'Evidence Overview', [
-    { label: 'Evidence Number', value: data.evidence_number || '' },
-    { label: 'Status', value: displayStatus((data.status || '').replace(/_/g, ' ')) },
-    { label: 'Type', value: (data.evidence_type || '').replace(/_/g, ' ').toUpperCase() },
-    { label: 'Category', value: (data.category || '').toUpperCase() },
-    { label: 'Related Incident', value: data.incident_number || '' },
-    { label: 'Collected By', value: data.collected_by || '' },
-    { label: 'Collected', value: fmtTimestamp(data.collected_date) },
-    { label: 'Storage', value: data.storage_location || '' },
-  ], y);
-  y = addRecordAlertBadges(doc, 'EVIDENCE ALERTS', evidenceAlertFlags, y);
-  if (evidenceCautionText) {
-    y = addCautionBlock(doc, evidenceCautionText, lx, y, ffw);
-  }
 
   // ── Evidence Identification ──
   y = checkPageBreak(doc, y, 25);
@@ -2646,9 +2306,9 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = addNarrativeSection(doc, 'Item Description', data.description, y);
   }
 
-  // ── Collection & Intake ──
+  // ── Collection Information ──
   y = checkPageBreak(doc, y, 18);
-  { const sec = openAutoSection(doc, 'Collection & Intake', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Collection Information', y); y = sec.contentY;
     const quarterW = ffw / 4;
     // Row 1: Collected By (half), Collection Date (quarter), Packaging (quarter)
     const r1a = addFieldPair(doc, 'Collected By', data.collected_by || '', lx, y, hfw);
@@ -2691,10 +2351,10 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Laboratory Routing (conditional) ──
+  // ── Lab Analysis (conditional) ──
   if (data.lab_submitted) {
     y = checkPageBreak(doc, y, 12);
-    { const sec = openAutoSection(doc, 'Laboratory Routing', y); y = sec.contentY;
+    { const sec = openAutoSection(doc, 'Lab Analysis', y); y = sec.contentY;
       let flagX = lx;
       flagX = addCheckboxField(doc, 'Submitted to Lab', true, flagX, y);
       y += SPACING.LG;
@@ -2705,10 +2365,10 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     }
   }
 
-  // ── Final Disposition (conditional) ──
+  // ── Disposition / Disposal (conditional) ──
   if (data.disposal_method) {
     y = checkPageBreak(doc, y, 12);
-    { const sec = openAutoSection(doc, 'Final Disposition', y); y = sec.contentY;
+    { const sec = openAutoSection(doc, 'Disposition / Disposal', y); y = sec.contentY;
       const thirdW = ffw / 3;
       const r1a = addFieldPair(doc, 'Method', data.disposal_method, lx, y, thirdW);
       const r1b = addFieldPair(doc, 'Date', fmtDate(data.disposal_date), lx + thirdW, y, thirdW);
@@ -2723,7 +2383,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signature Block — full-width stacked
@@ -2732,7 +2392,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 
 // ── Fleet Vehicle Status Report ──────────────────────────────
 
-function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
+async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2747,25 +2407,6 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     maintenance: 'FLEET MAINTENANCE REPORT',
     mileage_summary: 'FLEET MILEAGE SUMMARY REPORT',
   };
-  const serviceDays = daysUntilDate(data.next_service_due);
-  const registrationDays = daysUntilDate(data.registration_expiry);
-  const insuranceDays = daysUntilDate(data.insurance_expiry);
-  const fleetAlertFlags = [
-    displayStatus((data.status || '').replace(/_/g, ' ')),
-    reportType === 'maintenance' ? 'MAINTENANCE' : '',
-    reportType === 'fuel_logs' ? 'FUEL LOGS' : '',
-    reportType === 'mileage_summary' ? 'MILEAGE SUMMARY' : '',
-    serviceDays != null && serviceDays < 0 ? 'SERVICE OVERDUE' : '',
-    serviceDays != null && serviceDays >= 0 && serviceDays <= 30 ? 'SERVICE DUE' : '',
-    registrationDays != null && registrationDays < 0 ? 'REGISTRATION EXPIRED' : '',
-    insuranceDays != null && insuranceDays < 0 ? 'INSURANCE EXPIRED' : '',
-  ];
-  const fleetCautionText = [
-    data.assigned_unit_call_sign ? `Assigned unit: ${data.assigned_unit_call_sign}.` : 'Vehicle is currently unassigned.',
-    serviceDays != null && serviceDays < 0 ? `Next service date passed on ${fmtDate(data.next_service_due)}.` : '',
-    registrationDays != null && registrationDays < 0 ? `Registration expired on ${fmtDate(data.registration_expiry)}.` : '',
-    insuranceDays != null && insuranceDays < 0 ? `Insurance expired on ${fmtDate(data.insurance_expiry)}.` : '',
-  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.vehicle_number);
   let y = drawNibrsHeader(doc, {
@@ -2775,21 +2416,6 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     formNumber: 'FORM PS-206',
     caseNumber: data.vehicle_number,
   });
-
-  y = addRecordOverviewSection(doc, 'Fleet Overview', [
-    { label: 'Unit Number', value: data.vehicle_number || '' },
-    { label: 'Report Type', value: (reportType || 'status').replace(/_/g, ' ').toUpperCase() },
-    { label: 'Status', value: displayStatus((data.status || '').replace(/_/g, ' ')) },
-    { label: 'Assigned Unit', value: data.assigned_unit_call_sign || 'UNASSIGNED' },
-    { label: 'Year / Make / Model', value: [data.year, data.make, data.model].filter(Boolean).join(' ') },
-    { label: 'Current Mileage', value: data.current_mileage != null ? data.current_mileage.toLocaleString() : '' },
-    { label: 'Next Service Due', value: fmtDate(data.next_service_due) },
-    { label: 'Registration / Insurance', value: [fmtDate(data.registration_expiry), fmtDate(data.insurance_expiry)].filter(Boolean).join(' / ') },
-  ], y);
-  y = addRecordAlertBadges(doc, 'FLEET ALERTS', fleetAlertFlags, y);
-  if (fleetCautionText) {
-    y = addCautionBlock(doc, fleetCautionText, lx, y, ffw);
-  }
 
   // ── Vehicle Information ──
   y = checkPageBreak(doc, y, 25);
@@ -2998,7 +2624,7 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
 
 // ── Personnel / Officer Record ───────────────────────────────
 
-function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
+async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -3006,24 +2632,6 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   const cw = getContentWidth(doc);
 
   const reportType = data.report_type || 'full';
-  const dlDays = daysUntilDate(data.dl_expiry);
-  const trainingCount = data.training_records?.length || 0;
-  const credentialCount = data.credentials?.length || 0;
-  const personnelAlertFlags = [
-    reportType === 'training' ? 'TRAINING' : '',
-    reportType === 'credentials' ? 'CREDENTIALS' : '',
-    reportType === 'equipment' ? 'EQUIPMENT' : '',
-    reportType === 'time' ? 'TIME & ATTENDANCE' : '',
-    data.termination_date ? 'SEPARATED' : '',
-    dlDays != null && dlDays < 0 ? 'LICENSE EXPIRED' : '',
-    dlDays != null && dlDays >= 0 && dlDays <= 30 ? 'LICENSE EXPIRING' : '',
-  ];
-  const personnelCautionText = [
-    data.termination_date ? `Employment end date: ${fmtDate(data.termination_date)}.` : '',
-    dlDays != null && dlDays < 0 ? `Driver license expired on ${fmtDate(data.dl_expiry)}.` : '',
-    trainingCount > 0 ? `${trainingCount} training record${trainingCount === 1 ? '' : 's'} on file.` : '',
-    credentialCount > 0 ? `${credentialCount} credential${credentialCount === 1 ? '' : 's'} on file.` : '',
-  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.badge_number || data.employee_id || 'N/A');
   const reportTitle = reportType === 'credentials' ? 'CREDENTIALS REPORT'
@@ -3038,21 +2646,6 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     formNumber: 'FORM PS-207',
     caseNumber: data.badge_number || data.employee_id || 'N/A',
   });
-
-  y = addRecordOverviewSection(doc, 'Personnel Overview', [
-    { label: 'Badge Number', value: data.badge_number || '' },
-    { label: 'Employee ID', value: data.employee_id || '' },
-    { label: 'Report Type', value: reportType.replace(/_/g, ' ').toUpperCase() },
-    { label: 'Department', value: data.department || '' },
-    { label: 'Officer', value: [data.last_name, data.first_name].filter(Boolean).join(', ') },
-    { label: 'Rank / Role', value: [data.rank, data.role].filter(Boolean).join(' / ').toUpperCase() },
-    { label: 'Hire Date', value: fmtDate(data.hire_date) },
-    { label: 'Shift Preference', value: data.shift_preference || '' },
-  ], y);
-  y = addRecordAlertBadges(doc, 'PERSONNEL ALERTS', personnelAlertFlags, y);
-  if (personnelCautionText) {
-    y = addCautionBlock(doc, personnelCautionText, lx, y, ffw);
-  }
 
   // ── Officer Identification (always shown) ──
   y = checkPageBreak(doc, y, 20);
@@ -3309,7 +2902,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signature Block — full-width stacked
@@ -3318,20 +2911,11 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
 
 // ── Property Record ──────────────────────────────────────────
 
-function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
+async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
-  const propertyAlertFlags = [
-    data.is_active ? 'ACTIVE SITE' : 'INACTIVE SITE',
-    data.gate_code || data.alarm_code ? 'CONTROLLED ACCESS' : '',
-    data.hazard_notes ? 'HAZARD NOTES' : '',
-  ];
-  const propertyCautionText = [
-    data.hazard_notes ? `Hazard notes: ${data.hazard_notes}.` : '',
-    data.emergency_contact ? `Emergency contact: ${data.emergency_contact}.` : '',
-  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.name || 'N/A');
   let y = drawNibrsHeader(doc, {
@@ -3341,19 +2925,6 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     formNumber: 'FORM PS-208',
     caseNumber: data.name || 'N/A',
   });
-
-  y = addRecordOverviewSection(doc, 'Property Overview', [
-    { label: 'Property Name', value: data.name || '' },
-    { label: 'Client', value: data.client_name || '' },
-    { label: 'Property Type', value: data.property_type || '' },
-    { label: 'Status', value: data.is_active ? 'ACTIVE' : 'INACTIVE' },
-    { label: 'Emergency Contact', value: data.emergency_contact || '' },
-    { label: 'Coordinates', value: data.latitude != null && data.longitude != null ? `${data.latitude}, ${data.longitude}` : '' },
-  ], y);
-  y = addRecordAlertBadges(doc, 'PROPERTY ALERTS', propertyAlertFlags, y);
-  if (propertyCautionText) {
-    y = addCautionBlock(doc, propertyCautionText, lx, y, ffw);
-  }
 
   // ── Property Information ──
   y = checkPageBreak(doc, y, 18);
@@ -3366,6 +2937,21 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     const r2a = addFieldPair(doc, 'Property Type', data.property_type || '', lx, y, hfw);
     const r2b = addFieldPair(doc, 'Status', data.is_active ? 'ACTIVE' : 'INACTIVE', rx, y, hfw);
     y = Math.max(r2a, r2b);
+    // Row 3: Building details (if any)
+    if (data.business_type || data.structure_type || data.occupancy_status) {
+      const tw = ffw / 3;
+      const b1 = addFieldPair(doc, 'Business Type', data.business_type || '', lx, y, tw);
+      const b2 = addFieldPair(doc, 'Structure Type', data.structure_type || '', lx + tw, y, tw);
+      const b3 = addFieldPair(doc, 'Occupancy', data.occupancy_status || '', lx + 2 * tw, y, tw);
+      y = Math.max(b1, b2, b3);
+    }
+    if (data.year_built || data.square_footage || data.number_of_stories) {
+      const tw = ffw / 3;
+      const b4 = addFieldPair(doc, 'Year Built', data.year_built || '', lx, y, tw);
+      const b5 = addFieldPair(doc, 'Sq. Footage', data.square_footage || '', lx + tw, y, tw);
+      const b6 = addFieldPair(doc, 'Stories', data.number_of_stories || '', lx + 2 * tw, y, tw);
+      y = Math.max(b4, b5, b6);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3385,20 +2971,64 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   // ── Access & Security ──
   y = checkPageBreak(doc, y, 12);
   { const sec = openAutoSection(doc, 'Access & Security', y); y = sec.contentY;
-    const quarterW = ffw / 4;
-    const r1a = addFieldPair(doc, 'Gate Code', data.gate_code || '', lx, y, quarterW);
-    const r1b = addFieldPair(doc, 'Alarm Code', data.alarm_code || '', lx + quarterW, y, quarterW);
-    const r1c = addFieldPair(doc, 'Emergency Contact', data.emergency_contact || '', lx + quarterW * 2, y, quarterW * 2);
+    const tw = ffw / 4;
+    const r1a = addFieldPair(doc, 'Gate Code', data.gate_code || '', lx, y, tw);
+    const r1b = addFieldPair(doc, 'Alarm Code', data.alarm_code || '', lx + tw, y, tw);
+    const r1c = addFieldPair(doc, 'Emergency Contact', data.emergency_contact || '', lx + tw * 2, y, tw * 2);
     y = Math.max(r1a, r1b, r1c);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Property Administration ──
-  y = checkPageBreak(doc, y, 12);
-  { const sec = openAutoSection(doc, 'Property Administration', y); y = sec.contentY;
-    const r1a = addFieldPair(doc, 'Created', fmtTimestamp(data.created_at || ''), lx, y, hfw);
-    const r1b = addFieldPair(doc, 'Updated', fmtTimestamp(data.updated_at || ''), rx, y, hfw);
-    y = Math.max(r1a, r1b);
+  // ── Owner & Key Holder ──
+  if (data.owner_name || data.key_holder_name) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Owner & Key Holder', y); y = sec.contentY;
+    const hw = ffw / 2;
+    if (data.owner_name || data.owner_phone) {
+      const o1 = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hw);
+      const o2 = addFieldPair(doc, 'Owner Phone', data.owner_phone || '', rx, y, hw);
+      y = Math.max(o1, o2);
+    }
+    if (data.key_holder_name || data.key_holder_phone) {
+      const tw = ffw / 3;
+      const k1 = addFieldPair(doc, 'Key Holder', data.key_holder_name || '', lx, y, tw);
+      const k2 = addFieldPair(doc, 'Key Holder Phone', data.key_holder_phone || '', lx + tw, y, tw);
+      const k3 = addFieldPair(doc, 'Relationship', data.key_holder_relationship || '', lx + 2 * tw, y, tw);
+      y = Math.max(k1, k2, k3);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Security Systems ──
+  if (data.alarm_company || data.camera_system || data.security_features) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Security Systems', y); y = sec.contentY;
+    const tw = ffw / 3;
+    const s1 = addFieldPair(doc, 'Alarm Company', data.alarm_company || '', lx, y, tw);
+    const s2 = addFieldPair(doc, 'Alarm Account', data.alarm_account || '', lx + tw, y, tw);
+    const s3 = addFieldPair(doc, 'Camera System', data.camera_system || '', lx + 2 * tw, y, tw);
+    y = Math.max(s1, s2, s3);
+    if (data.security_features) y = addNarrativeField(doc, 'Security Features', data.security_features, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Facility Details ──
+  if (data.parking_info || data.roof_access || data.utility_shutoffs || data.known_hazards || data.last_inspection_date) {
+    y = checkPageBreak(doc, y, 14);
+    const sec = openAutoSection(doc, 'Facility Details', y); y = sec.contentY;
+    const tw = ffw / 3;
+    if (data.parking_info) y = addFieldPair(doc, 'Parking', data.parking_info, lx, y, ffw);
+    if (data.roof_access || data.utility_shutoffs) {
+      const f1 = addFieldPair(doc, 'Roof Access', data.roof_access || '', lx, y, hfw);
+      const f2 = addFieldPair(doc, 'Utility Shutoffs', data.utility_shutoffs || '', rx, y, hfw);
+      y = Math.max(f1, f2);
+    }
+    if (data.known_hazards) y = addNarrativeField(doc, 'Known Hazards', data.known_hazards, lx, y, ffw);
+    if (data.last_inspection_date || data.inspection_status) {
+      const i1 = addFieldPair(doc, 'Last Inspection', fmtDate(data.last_inspection_date), lx, y, hfw);
+      const i2 = addFieldPair(doc, 'Inspection Status', data.inspection_status || '', rx, y, hfw);
+      y = Math.max(i1, i2);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3411,12 +3041,9 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   // Hazard Notes
   y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
 
-  // Notes
-  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
-
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
-    y = addAttachmentsSection(doc, data.attachment_images, y);
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
   // Signature Block — officer + company seal
@@ -3425,7 +3052,7 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 
 // ── Citation Report ──────────────────────────────────────────
 
-function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
+async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -3439,18 +3066,6 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     warning: 'routine',
   };
   const prio = typePrioMap[data.type] || 'routine';
-  const courtDays = daysUntilDate(data.court_date);
-  const citationAlertFlags = [
-    (data.type || '').replace(/_/g, ' ').toUpperCase(),
-    displayStatus((data.status || '').replace(/_/g, ' ')),
-    courtDays != null ? 'COURT DATE' : '',
-    data.fine_amount != null && data.fine_amount > 0 ? 'FINE ASSESSED' : '',
-  ];
-  const citationCautionText = [
-    data.court_name ? `Court venue: ${data.court_name}.` : '',
-    data.court_date ? `Court date: ${fmtDate(data.court_date)}.` : '',
-    courtDays != null && courtDays < 0 ? 'Court date has passed and disposition should be reviewed.' : '',
-  ].filter(Boolean).join(' ');
 
   setActiveCaseNumber(data.citation_number);
   let y = drawNibrsHeader(doc, {
@@ -3461,29 +3076,14 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     caseNumber: data.citation_number,
   });
 
-  y = addRecordOverviewSection(doc, 'Citation Overview', [
-    { label: 'Citation Number', value: data.citation_number || '' },
-    { label: 'Type', value: (data.type || '').replace(/_/g, ' ').toUpperCase() },
-    { label: 'Status', value: displayStatus((data.status || '').replace(/_/g, ' ')) },
-    { label: 'Violation Date', value: [data.violation_date, data.violation_time].filter(Boolean).join(' @ ') },
-    { label: 'Subject', value: data.person_name || '' },
-    { label: 'Statute', value: data.statute_citation || '' },
-    { label: 'Fine Amount', value: data.fine_amount != null ? fmtCurrency(data.fine_amount) : '' },
-    { label: 'Issuing Officer', value: data.issuing_officer_name || '' },
-  ], y, prio);
-  y = addRecordAlertBadges(doc, 'CITATION ALERTS', citationAlertFlags, y, prio);
-  if (citationCautionText) {
-    y = addCautionBlock(doc, citationCautionText, lx, y, ffw);
-  }
-
   // ── Citation Information ──
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Citation Information', y); y = sec.contentY;
     const quarterW = ffw / 4;
-    // Row 1: Citation Number (half), Type (quarter), Status (quarter)
-    const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, hfw);
-    const r1b = addFieldPair(doc, 'Type', (data.type || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), rx + quarterW, y, quarterW);
+    // Row 1: Citation Number (2/4), Type (1/4), Status (1/4)
+    const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, quarterW * 2);
+    const r1b = addFieldPair(doc, 'Type', (data.type || '').replace(/_/g, ' ').toUpperCase(), lx + quarterW * 2, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + quarterW * 3, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
     const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);
@@ -3500,7 +3100,7 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     // Row 1: Statute/Code (half), Offense Level (quarter), Fine Amount (quarter)
     const r1a = addFieldPair(doc, 'Statute / Code', data.statute_citation || '', lx, y, hfw);
     const r1b = addFieldPair(doc, 'Offense Level', (data.offense_level || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
-    const r1c = addFieldPair(doc, 'Fine Amount', data.fine_amount != null ? fmtCurrency(data.fine_amount) : '', rx + quarterW, y, quarterW);
+    const r1c = addFieldPair(doc, 'Fine Amount', data.fine_amount != null ? fmtCurrency(data.fine_amount) : 'N/A', rx + quarterW, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Violation Description (full width, conditional)
     if (data.violation_description) {
@@ -3567,17 +3167,6 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
 
-  // ── Record Metadata ──
-  if (data.created_at || data.updated_at) {
-    y = checkPageBreak(doc, y, 12, prio);
-    { const sec = openAutoSection(doc, 'Record Metadata', y); y = sec.contentY;
-      const r1a = addFieldPair(doc, 'Created', fmtTimestamp(data.created_at || ''), lx, y, hfw);
-      const r1b = addFieldPair(doc, 'Updated', fmtTimestamp(data.updated_at || ''), rx, y, hfw);
-      y = Math.max(r1a, r1b);
-      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-    }
-  }
-
   // Dual Signature Block — full-width stacked
   y = addStackedSignatures(doc, 'Issuing Officer', 'Recipient', y, getOfficerSig(), undefined, prio);
 }
@@ -3596,10 +3185,10 @@ type RecordDataMap = {
   citation: CitationPdfData;
 };
 
-export function generateRecordPdf<T extends RecordPdfType>(
+export async function generateRecordPdf<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
-): jsPDF {
+): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
 
   // Set form key for footer form numbers
@@ -3618,31 +3207,31 @@ export function generateRecordPdf<T extends RecordPdfType>(
 
   switch (recordType) {
     case 'call':
-      generateCallReport(doc, data as CallPdfData);
+      await generateCallReport(doc, data as CallPdfData);
       break;
     case 'person':
-      generatePersonReport(doc, data as PersonPdfData);
+      await generatePersonReport(doc, data as PersonPdfData);
       break;
     case 'vehicle':
-      generateVehicleReport(doc, data as VehiclePdfData);
+      await generateVehicleReport(doc, data as VehiclePdfData);
       break;
     case 'warrant':
-      generateWarrantReport(doc, data as WarrantPdfData);
+      await generateWarrantReport(doc, data as WarrantPdfData);
       break;
     case 'evidence':
-      generateEvidenceReport(doc, data as EvidencePdfData);
+      await generateEvidenceReport(doc, data as EvidencePdfData);
       break;
     case 'fleet':
-      generateFleetReport(doc, data as FleetPdfData);
+      await generateFleetReport(doc, data as FleetPdfData);
       break;
     case 'personnel':
-      generatePersonnelReport(doc, data as PersonnelPdfData);
+      await generatePersonnelReport(doc, data as PersonnelPdfData);
       break;
     case 'property':
-      generatePropertyReport(doc, data as PropertyPdfData);
+      await generatePropertyReport(doc, data as PropertyPdfData);
       break;
     case 'citation':
-      generateCitationReport(doc, data as CitationPdfData);
+      await generateCitationReport(doc, data as CitationPdfData);
       break;
     default:
       throw new Error(`Unknown record type: ${recordType}`);
@@ -3678,7 +3267,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = parsePdfDate(closedDate) || new Date();
+    const sigDate = closedDate ? new Date(closedDate) : new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
@@ -3688,7 +3277,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
       date: sigDateStr,
     });
 
-    const doc = generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
     const id = identifier || 'record';
     const filename = `${id}_${recordType}.pdf`;
@@ -3725,7 +3314,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = parsePdfDate(closedDate) || new Date();
+    const sigDate = closedDate ? new Date(closedDate) : new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
@@ -3735,7 +3324,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
       date: sigDateStr,
     });
 
-    const doc = generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
@@ -3744,4 +3333,390 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     console.error('Record PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${recordType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
+}
+
+// ── BOLO (Be On The Lookout) Packet PDF ────────────────────
+
+export interface BoloSubject {
+  first_name: string;
+  last_name: string;
+  dob?: string;
+  gender?: string;
+  race?: string;
+  height?: string;
+  weight?: string;
+  hair_color?: string;
+  eye_color?: string;
+  address?: string;
+  photo_url?: string | null;
+  warrants: { warrant_number: string; type: string; charge_description: string; offense_level: string | null; issuing_court: string | null; bail_amount: number | null }[];
+}
+
+/** Generate a multi-page BOLO (Be On The Lookout) packet PDF */
+export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const contentW = pageW - 2 * margin;
+
+  setActiveFormKey('warrant');
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  // Sort by severity: felony first
+  const severityOrder: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
+  const sorted = [...subjects].sort((a, b) => {
+    const aSev = Math.min(...a.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
+    const bSev = Math.min(...b.warrants.map(w => severityOrder[w.offense_level || ''] ?? 4));
+    return aSev - bSev;
+  });
+
+  // Watermark on first page
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState -- safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'BE ON THE LOOKOUT (BOLO) PACKET',
+    formNumber: 'FORM PS-204B',
+    reportDate: fmtDate(new Date().toISOString()),
+  });
+
+  y += 2;
+
+  // Subtitle with count
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(`${sorted.length} SUBJECT${sorted.length !== 1 ? 'S' : ''} WITH ACTIVE WARRANTS`, margin, y);
+  y += 5;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const subj = sorted[i];
+
+    // Check if we need a new page
+    if (y > 240) {
+      doc.addPage();
+      addConfidentialWatermark(doc);
+      // @ts-expect-error jsPDF GState
+      doc.setGState(new doc.GState({ opacity: 1.0 }));
+      y = LAYOUT.PAGE_MARGIN + 5;
+    }
+
+    const sectionStartY = y;
+
+    // Subject header bar
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(margin, y, contentW, 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(`${subj.last_name || '?'}, ${subj.first_name || '?'}`.toUpperCase(), margin + 2, y + 5);
+
+    // Severity badge on right
+    const topSev = subj.warrants.reduce((best, w) => {
+      const o = severityOrder[w.offense_level || ''] ?? 4;
+      return o < best.o ? { o, label: w.offense_level || '' } : best;
+    }, { o: 4, label: '' });
+    if (topSev.label) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      const sevColor: [number, number, number] = topSev.label === 'felony' ? [220, 50, 50] : topSev.label === 'misdemeanor' ? [220, 160, 40] : [120, 120, 120];
+      doc.setTextColor(...sevColor);
+      doc.text(topSev.label.toUpperCase(), margin + contentW - 2, y + 5, { align: 'right' });
+    }
+
+    y += 9;
+
+    // Physical description row
+    const descParts: string[] = [];
+    if (subj.dob) descParts.push(`DOB: ${fmtDate(subj.dob)}`);
+    if (subj.gender) descParts.push(`${subj.gender}`);
+    if (subj.race) descParts.push(`${subj.race}`);
+    if (subj.height) descParts.push(`Ht: ${subj.height}`);
+    if (subj.weight) descParts.push(`Wt: ${subj.weight}`);
+    if (subj.hair_color) descParts.push(`Hair: ${subj.hair_color}`);
+    if (subj.eye_color) descParts.push(`Eyes: ${subj.eye_color}`);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(descParts.join('  |  '), margin + 2, y + 3);
+    y += 5;
+
+    if (subj.address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
+      y += 5;
+    }
+
+    // Photo (if available)
+    if (subj.photo_url) {
+      try {
+        const photoW = 20;
+        const photoH = 24;
+        const photoX = margin + contentW - photoW - 2;
+        const photoY = sectionStartY + 9;
+        doc.addImage(subj.photo_url, 'JPEG', photoX, photoY, photoW, photoH);
+        doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+        doc.setLineWidth(BORDER.FORM_CELL);
+        doc.rect(photoX, photoY, photoW, photoH, 'S');
+      } catch {
+        // Photo URL invalid -- skip
+      }
+    }
+
+    // Warrants table
+    if (subj.warrants.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      // Table header
+      doc.setFillColor(30, 40, 55);
+      doc.rect(margin + 2, y, contentW - 4, 5, 'F');
+      doc.text('WARRANT #', margin + 4, y + 3.5);
+      doc.text('TYPE', margin + 40, y + 3.5);
+      doc.text('CHARGE', margin + 60, y + 3.5);
+      doc.text('COURT', margin + 130, y + 3.5);
+      doc.text('BAIL', margin + contentW - 8, y + 3.5, { align: 'right' });
+      y += 6;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+      for (const w of subj.warrants) {
+        if (y > 260) {
+          doc.addPage();
+          addConfidentialWatermark(doc);
+          // @ts-expect-error jsPDF GState
+          doc.setGState(new doc.GState({ opacity: 1.0 }));
+          y = LAYOUT.PAGE_MARGIN + 5;
+        }
+        doc.text(w.warrant_number || '', margin + 4, y + 3);
+        doc.text((w.type || '').toUpperCase(), margin + 40, y + 3);
+        // Truncate charge if too long
+        const charge = (w.charge_description || '').substring(0, 50);
+        doc.text(charge, margin + 60, y + 3);
+        doc.text((w.issuing_court || '').substring(0, 25), margin + 130, y + 3);
+        doc.text(fmtCurrency(w.bail_amount), margin + contentW - 8, y + 3, { align: 'right' });
+        y += 5;
+      }
+    }
+
+    y += 3;
+
+    // Separator line between subjects
+    if (i < sorted.length - 1) {
+      doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+      doc.setLineWidth(0.2);
+      doc.line(margin, y, margin + contentW, y);
+      y += 3;
+    }
+  }
+
+  // Add page footers and watermarks to all pages
+  const totalPages = doc.getNumberOfPages();
+  for (let pg = 1; pg <= totalPages; pg++) {
+    doc.setPage(pg);
+    addPageFooter(doc, pg, totalPages);
+    if (pg > 1) {
+      addConfidentialWatermark(doc);
+    }
+  }
+
+  return doc;
+}
+
+// ── Warrant Summary Report PDF ──────────────────────────────
+
+export interface WarrantSummaryData {
+  period: { from: string | null; to: string | null };
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  bySeverity: Record<string, number>;
+  bySource: Record<string, number>;
+  topCourts: { issuing_court: string; count: number }[];
+  newThisPeriod: number | null;
+  clearedThisPeriod: number | null;
+  scanActivity: { totalScans: number; totalFound: number; totalCleared: number };
+}
+
+/** Generate a single-page Warrant Activity Summary Report */
+export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const contentW = pageW - 2 * margin;
+  const halfW = (contentW - 4) / 2;
+
+  setActiveFormKey('warrant');
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'WARRANT ACTIVITY SUMMARY REPORT',
+    formNumber: 'FORM PS-204S',
+    reportDate: fmtDate(new Date().toISOString()),
+  });
+
+  y += 2;
+
+  // Period display
+  const periodFrom = data.period.from ? fmtDate(data.period.from) : 'All Time';
+  const periodTo = data.period.to ? fmtDate(data.period.to) : 'Present';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(`REPORTING PERIOD: ${periodFrom} -- ${periodTo}`, margin, y + 3);
+  y += 7;
+
+  // Summary stats
+  const statusEntries = Object.entries(data.byStatus);
+  const totalWarrants = statusEntries.reduce((s, [, n]) => s + n, 0);
+
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SUMMARY' },
+    topBanner: true,
+    rows: [
+      { cells: [
+        { label: 'TOTAL WARRANTS', value: String(totalWarrants), ratio: 1, valueBold: true, align: 'center' },
+        { label: 'NEW THIS PERIOD', value: data.newThisPeriod != null ? String(data.newThisPeriod) : 'N/A', ratio: 1, align: 'center' },
+        { label: 'CLEARED THIS PERIOD', value: data.clearedThisPeriod != null ? String(data.clearedThisPeriod) : 'N/A', ratio: 1, align: 'center' },
+      ]},
+      { cells: statusEntries.map(([status, count]) => ({
+        label: status.toUpperCase(),
+        value: String(count),
+        ratio: 1,
+        align: 'center' as const,
+        valueBold: status === 'active',
+      }))},
+    ],
+    y,
+  });
+
+  y += 2;
+
+  // Helper to draw a simple breakdown table
+  function drawBreakdownTable(title: string, entries: [string, number][], startY: number, x: number, w: number): number {
+    let ty = startY;
+    // Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(title, x, ty + 3);
+    ty += 5;
+
+    // Header row
+    doc.setFillColor(30, 40, 55);
+    doc.rect(x, ty, w, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text('CATEGORY', x + 2, ty + 3.5);
+    doc.text('COUNT', x + w - 2, ty + 3.5, { align: 'right' });
+    ty += 6;
+
+    // Data rows
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    for (const [label, count] of entries) {
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text(titleCase(label.replace(/_/g, ' ')), x + 2, ty + 3);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(String(count), x + w - 2, ty + 3, { align: 'right' });
+      ty += 5;
+    }
+
+    return ty + 2;
+  }
+
+  // Two-column layout for breakdown tables
+  const leftX = margin;
+  const rightX = margin + halfW + 4;
+
+  const typeEntries = Object.entries(data.byType);
+  const sevEntries = Object.entries(data.bySeverity);
+  const sourceEntries = Object.entries(data.bySource);
+
+  const y1 = drawBreakdownTable('BY TYPE', typeEntries, y, leftX, halfW);
+  const y2 = drawBreakdownTable('BY SEVERITY', sevEntries, y, rightX, halfW);
+  y = Math.max(y1, y2);
+
+  y += 2;
+
+  // Source breakdown (full width)
+  if (sourceEntries.length > 0) {
+    y = drawBreakdownTable('BY SOURCE', sourceEntries, y, leftX, contentW);
+  }
+
+  // Top Courts table
+  if (data.topCourts.length > 0) {
+    y += 2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('TOP ISSUING COURTS', margin, y + 3);
+    y += 5;
+
+    doc.setFillColor(30, 40, 55);
+    doc.rect(margin, y, contentW, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text('COURT', margin + 2, y + 3.5);
+    doc.text('WARRANTS', margin + contentW - 2, y + 3.5, { align: 'right' });
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    for (const court of data.topCourts) {
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text(court.issuing_court || 'Unknown', margin + 2, y + 3);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(String(court.count), margin + contentW - 2, y + 3, { align: 'right' });
+      y += 5;
+    }
+    y += 2;
+  }
+
+  // Scan Activity
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SCAN ACTIVITY' },
+    topBanner: true,
+    rows: [
+      { cells: [
+        { label: 'TOTAL SCANS', value: String(data.scanActivity.totalScans), ratio: 1, align: 'center' },
+        { label: 'WARRANTS FOUND', value: String(data.scanActivity.totalFound), ratio: 1, align: 'center', valueBold: true },
+        { label: 'WARRANTS CLEARED', value: String(data.scanActivity.totalCleared), ratio: 1, align: 'center' },
+      ]},
+    ],
+    y,
+  });
+
+  // Footer + watermark
+  const summaryTotalPages = doc.getNumberOfPages();
+  for (let pg = 1; pg <= summaryTotalPages; pg++) {
+    doc.setPage(pg);
+    addPageFooter(doc, pg, summaryTotalPages);
+    if (pg > 1) {
+      addConfidentialWatermark(doc);
+    }
+  }
+
+  return doc;
 }
