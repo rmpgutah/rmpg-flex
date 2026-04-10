@@ -3,5 +3,12 @@
   "version": "99.0.0",
   "description": "No-op stub — jsPDF .html() not used in RMPG Flex",
   "main": "index.js",
-  "module": "index.mjs"
+  "module": "index.mjs",
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "require": "./index.js",
+      "default": "./index.mjs"
+    }
+  }
 }
