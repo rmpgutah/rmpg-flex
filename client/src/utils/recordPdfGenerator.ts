@@ -63,6 +63,36 @@ function getOfficerSig(): PdfSignatureData | undefined {
   return _activeOfficerSig;
 }
 
+// ── Local Helpers ────────────────────────────────────────────
+
+/**
+ * Labeled narrative field: prints a small bold label then word-wrapped body text.
+ * Used for multi-line descriptive fields inside open sections.
+ */
+function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
+  if (!value || !value.trim()) return y;
+  // Label line
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(label.toUpperCase(), x, y + 2);
+  y += 3.5;
+  // Body text — word-wrapped Courier
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  const lineH = 3.5;
+  const raw = sanitizePdfText(value);
+  const lines = doc.splitTextToSize(raw, width - 1) as string[];
+  for (const line of lines) {
+    y = checkPageBreak(doc, y, lineH + 2);
+    doc.text(line, x, y);
+    y += lineH;
+  }
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + 1;
+}
+
 // ── Type Aliases for Record Types ────────────────────────────
 
 export type RecordPdfType =
@@ -1850,16 +1880,16 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = addTableWithShading(
       doc,
       [
-        { label: 'WARRANT #', x: LAYOUT.PAGE_MARGIN + 3 },
-        { label: 'TYPE', x: LAYOUT.PAGE_MARGIN + 32 },
-        { label: 'STATUS', x: LAYOUT.PAGE_MARGIN + 52 },
-        { label: 'CHARGE', x: LAYOUT.PAGE_MARGIN + 75 },
-        { label: 'LEVEL', x: LAYOUT.PAGE_MARGIN + 130 },
-        { label: 'DATE', x: LAYOUT.PAGE_MARGIN + 155 },
+        { label: 'WARRANT #', x: lx },
+        { label: 'TYPE', x: lx + 29 },
+        { label: 'STATUS', x: lx + 49 },
+        { label: 'CHARGE', x: lx + 72 },
+        { label: 'LEVEL', x: lx + 127 },
+        { label: 'DATE', x: lx + 152 },
       ],
       warrantRows,
       y,
-      [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 32, LAYOUT.PAGE_MARGIN + 52, LAYOUT.PAGE_MARGIN + 75, LAYOUT.PAGE_MARGIN + 130, LAYOUT.PAGE_MARGIN + 155],
+      [lx, lx + 29, lx + 49, lx + 72, lx + 127, lx + 152],
     );
   }
 
@@ -1877,15 +1907,15 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = addTableWithShading(
       doc,
       [
-        { label: 'INCIDENT #', x: LAYOUT.PAGE_MARGIN + 3 },
-        { label: 'TYPE', x: LAYOUT.PAGE_MARGIN + 35 },
-        { label: 'ROLE', x: LAYOUT.PAGE_MARGIN + 85 },
-        { label: 'STATUS', x: LAYOUT.PAGE_MARGIN + 115 },
-        { label: 'DATE', x: LAYOUT.PAGE_MARGIN + 150 },
+        { label: 'INCIDENT #', x: lx },
+        { label: 'TYPE', x: lx + 32 },
+        { label: 'ROLE', x: lx + 82 },
+        { label: 'STATUS', x: lx + 112 },
+        { label: 'DATE', x: lx + 147 },
       ],
       incidentRows,
       y,
-      [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 35, LAYOUT.PAGE_MARGIN + 85, LAYOUT.PAGE_MARGIN + 115, LAYOUT.PAGE_MARGIN + 150],
+      [lx, lx + 32, lx + 82, lx + 112, lx + 147],
     );
   }
 
@@ -1903,15 +1933,15 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = addTableWithShading(
       doc,
       [
-        { label: 'CITATION #', x: LAYOUT.PAGE_MARGIN + 3 },
-        { label: 'TYPE', x: LAYOUT.PAGE_MARGIN + 35 },
-        { label: 'STATUS', x: LAYOUT.PAGE_MARGIN + 60 },
-        { label: 'VIOLATION', x: LAYOUT.PAGE_MARGIN + 88 },
-        { label: 'DATE', x: LAYOUT.PAGE_MARGIN + 155 },
+        { label: 'CITATION #', x: lx },
+        { label: 'TYPE', x: lx + 32 },
+        { label: 'STATUS', x: lx + 57 },
+        { label: 'VIOLATION', x: lx + 85 },
+        { label: 'DATE', x: lx + 152 },
       ],
       citationRows,
       y,
-      [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 35, LAYOUT.PAGE_MARGIN + 60, LAYOUT.PAGE_MARGIN + 88, LAYOUT.PAGE_MARGIN + 155],
+      [lx, lx + 32, lx + 57, lx + 85, lx + 152],
     );
   }
 
@@ -1929,15 +1959,15 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = addTableWithShading(
       doc,
       [
-        { label: 'CALL #', x: LAYOUT.PAGE_MARGIN + 3 },
-        { label: 'TYPE', x: LAYOUT.PAGE_MARGIN + 30 },
-        { label: 'STATUS', x: LAYOUT.PAGE_MARGIN + 72 },
-        { label: 'LOCATION', x: LAYOUT.PAGE_MARGIN + 100 },
-        { label: 'DATE', x: LAYOUT.PAGE_MARGIN + 155 },
+        { label: 'CALL #', x: lx },
+        { label: 'TYPE', x: lx + 27 },
+        { label: 'STATUS', x: lx + 69 },
+        { label: 'LOCATION', x: lx + 97 },
+        { label: 'DATE', x: lx + 152 },
       ],
       callRows,
       y,
-      [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 72, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 155],
+      [lx, lx + 27, lx + 69, lx + 97, lx + 152],
     );
   }
 
