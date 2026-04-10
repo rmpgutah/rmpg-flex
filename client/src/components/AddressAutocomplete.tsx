@@ -80,7 +80,7 @@ function injectAutocompleteStyles() {
   style.id = AUTOCOMPLETE_STYLE_ID;
   style.textContent = `
     .pac-container {
-      background: #161b21 !important;
+      background: #141414 !important;
       border: 1px solid #404040 !important;
       /* 69: Use 2px border-radius matching design system */
       border-radius: 2px !important;
@@ -90,8 +90,8 @@ function injectAutocompleteStyles() {
       margin-top: 2px !important;
     }
     .pac-item {
-      background: #161b21 !important;
-      border-top: 1px solid #2b313a !important;
+      background: #141414 !important;
+      border-top: 1px solid #2b2b2b !important;
       color: #d1d5db !important;
       padding: 6px 10px !important;
       font-size: 11px !important;
@@ -102,7 +102,7 @@ function injectAutocompleteStyles() {
       border-top: none !important;
     }
     .pac-item:hover, .pac-item-selected {
-      background: #1b2128 !important;
+      background: #181818 !important;
     }
     .pac-item-query {
       color: #e5e7eb !important;

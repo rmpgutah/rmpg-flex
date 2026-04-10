@@ -724,7 +724,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#1b2128]"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#181818]"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -761,7 +761,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#1b2128]"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#181818]"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,

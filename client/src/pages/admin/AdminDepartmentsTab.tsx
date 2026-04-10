@@ -239,7 +239,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit department' : 'New department'}>
           <div className="bg-surface-base panel-beveled w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#242a32]">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#242424]">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>

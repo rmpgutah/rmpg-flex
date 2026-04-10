@@ -319,8 +319,8 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                 onClick={() => handleEnvironmentChange(env)}
                 className="text-[10px] px-2.5 py-1 rounded-sm transition-colors"
                 style={{
-                  background: environment === env ? (env === 'production' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)') : 'transparent',
-                  border: environment === env ? `1px solid ${env === 'production' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)'}` : '1px solid transparent',
+                  background: environment === env ? (env === 'production' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(136, 136, 136, 0.15)') : 'transparent',
+                  border: environment === env ? `1px solid ${env === 'production' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(136, 136, 136, 0.4)'}` : '1px solid transparent',
                   color: environment === env ? (env === 'production' ? '#f87171' : '#aaaaaa') : '#888888',
                 }}
               >

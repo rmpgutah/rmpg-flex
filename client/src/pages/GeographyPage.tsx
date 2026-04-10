@@ -104,7 +104,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   P1: 'bg-red-600 text-white',
   P2: 'bg-amber-600 text-white',
   P3: 'bg-blue-600 text-white',
-  P4: 'bg-[#2b313a] text-white',
+  P4: 'bg-[#2b2b2b] text-white',
 };
 
 // ── Page Component ─────────────────────────────────────────
@@ -822,8 +822,8 @@ function EditModal({ type, item, onSave, onClose, areas, sections, zones }: {
               </FormField>
               <FormField label="Color">
                 <div className="flex items-center gap-2">
-                  <input type="color" value={form.color || '#6366f1'} onChange={e => set('color', e.target.value)} className="w-8 h-8 border-0 bg-transparent cursor-pointer" />
-                  <input value={form.color || '#6366f1'} onChange={e => set('color', e.target.value)} className="form-input flex-1" />
+                  <input type="color" value={form.color || '#888888'} onChange={e => set('color', e.target.value)} className="w-8 h-8 border-0 bg-transparent cursor-pointer" />
+                  <input value={form.color || '#888888'} onChange={e => set('color', e.target.value)} className="form-input flex-1" />
                 </div>
               </FormField>
               <FormField label="Commander"><input value={form.commander || ''} onChange={e => set('commander', e.target.value)} className="form-input" /></FormField>
