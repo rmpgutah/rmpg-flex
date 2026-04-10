@@ -27,13 +27,15 @@ import { broadcast } from './websocket';
 import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
 
 // Phase 4: emit scraper lifecycle events on the 'scraper_events' WS channel
-// so the Phase 5 Scrapers tab can show a live feed. All calls wrapped in
-// try/catch at the call site so a WS failure can never disrupt a scrape.
-function emitScraperEvent(type: string, data: Record<string, unknown>): void {
+// so the Phase 5 Scrapers tab can show a live feed. All events share a single
+// WSMessageType ('scraper_event') with the specific event name embedded in
+// data.event — this minimizes WSMessageType drift as we add new event kinds.
+// All calls wrapped in try/catch so a WS failure can never disrupt a scrape.
+function emitScraperEvent(event: string, data: Record<string, unknown>): void {
   try {
-    broadcast('scraper_events', type, data);
+    broadcast('scraper_events', 'scraper_event', { event, ...data });
   } catch (e) {
-    console.warn(`[Warrant Scraper] WS broadcast failed for ${type}:`, (e as Error).message);
+    console.warn(`[Warrant Scraper] WS broadcast failed for ${event}:`, (e as Error).message);
   }
 }
 
