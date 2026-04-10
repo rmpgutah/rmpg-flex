@@ -951,7 +951,9 @@ export default function MapPage() {
         if (serverKey) resolvedApiKey = serverKey;
         const serverMapId = await resolveGoogleMapsMapId();
         if (serverMapId) resolvedMapId = serverMapId;
-      } catch { /* use env var fallback */ }
+      } catch (err) {
+        devWarn('[MapPage] Server config fetch failed, using env var fallback:', err);
+      }
       if (cancelled) return;
       if (!resolvedApiKey) {
         setMapError('Google Maps API key not configured. Set it via Admin → Integrations or add VITE_GOOGLE_MAPS_API_KEY to client/.env');

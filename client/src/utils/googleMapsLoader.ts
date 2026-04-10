@@ -715,14 +715,20 @@ export function restoreFromOfflineMode(map: google.maps.Map, prevMapType: string
 // with fallback to env vars. Client-side caches the result.
 
 let _serverConfigPromise: Promise<{ google_maps_api_key?: string; google_maps_map_id?: string }> | null = null;
+let _fetchFailCount = 0;
+const MAX_FETCH_RETRIES = 3;
 
 /**
  * Fetch Google Maps configuration from the server.
  * Returns { google_maps_api_key, google_maps_map_id } or empty object on failure.
- * Caches the result for the session lifetime.
+ * Caches successful results for the session lifetime.
+ * On failure, allows up to MAX_FETCH_RETRIES retries before giving up.
  */
 export async function fetchGoogleMapsConfig(): Promise<{ google_maps_api_key?: string; google_maps_map_id?: string }> {
   if (_serverConfigPromise) return _serverConfigPromise;
+
+  // Stop retrying after max attempts — fall back to env vars permanently
+  if (_fetchFailCount >= MAX_FETCH_RETRIES) return {};
 
   _serverConfigPromise = (async () => {
     try {
@@ -737,11 +743,14 @@ export async function fetchGoogleMapsConfig(): Promise<{ google_maps_api_key?: s
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
+        _fetchFailCount++;
         _serverConfigPromise = null; // reset on failure so we can retry
         return {};
       }
+      _fetchFailCount = 0; // reset on success
       return await res.json();
     } catch {
+      _fetchFailCount++;
       _serverConfigPromise = null; // reset on network error so we can retry
       return {};
     }
@@ -769,4 +778,5 @@ export async function resolveGoogleMapsMapId(): Promise<string> {
 /** Clear the cached server config (e.g. after admin saves new keys). */
 export function clearGoogleMapsConfigCache(): void {
   _serverConfigPromise = null;
+  _fetchFailCount = 0;
 }
