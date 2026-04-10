@@ -1595,10 +1595,30 @@ export default function DispatchPage() {
   // ── Admin timeline edit handler ──
   const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
     if (!selectedCall || !isAdminOrManager) return;
+
+    // Validate the payload before the request: if the caller asked to SET a
+    // value (not clear it), make sure it's a non-empty string that parses as
+    // a real date. This prevents invalid-input crashes like the datetime-local
+    // widget passing through an unparseable value, and gives a clearer error
+    // than the generic "Failed to update timeline" toast.
+    if (value !== null) {
+      if (typeof value !== 'string' || value.length < 10) {
+        addToast('Invalid timestamp format', 'error');
+        setEditingTimestamp(null);
+        return;
+      }
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        addToast('Invalid timestamp value', 'error');
+        setEditingTimestamp(null);
+        return;
+      }
+    }
+
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: value || null }),
+        body: JSON.stringify({ [field]: value }),
       });
       const updated = mapDbCall(result);
       setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
@@ -1606,8 +1626,13 @@ export default function DispatchPage() {
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
       console.error('Failed to update timeline:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to update timeline';
-      addToast(`Timeline update failed: ${msg}`, 'error');
+      // Surface the ACTUAL server error instead of a generic message so users
+      // and support can diagnose. Fall back to the generic string only if the
+      // error has no useful message.
+      const msg = err instanceof Error && err.message
+        ? `Failed to update timeline: ${err.message}`
+        : 'Failed to update timeline';
+      addToast(msg, 'error');
     }
     setEditingTimestamp(null);
   }, [selectedCall, isAdminOrManager, addToast]);
@@ -2737,12 +2762,29 @@ export default function DispatchPage() {
                               defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
                               autoFocus
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                if (e.key === 'Enter') {
+                                  const raw = (e.target as HTMLInputElement).value;
+                                  if (!raw) { setEditingTimestamp(null); return; }
+                                  const parsed = new Date(raw);
+                                  if (Number.isNaN(parsed.getTime())) {
+                                    addToast('Invalid timestamp', 'error');
+                                    setEditingTimestamp(null);
+                                    return;
+                                  }
+                                  handleTimelineEdit(ts.field, parsed.toISOString());
+                                }
                                 if (e.key === 'Escape') setEditingTimestamp(null);
                               }}
                               onBlur={(e) => {
-                                if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
-                                else setEditingTimestamp(null);
+                                const raw = e.target.value;
+                                if (!raw) { setEditingTimestamp(null); return; }
+                                const parsed = new Date(raw);
+                                if (Number.isNaN(parsed.getTime())) {
+                                  addToast('Invalid timestamp', 'error');
+                                  setEditingTimestamp(null);
+                                  return;
+                                }
+                                handleTimelineEdit(ts.field, parsed.toISOString());
                               }}
                             />
                             {ts.value && ts.field !== 'created_at' && (
