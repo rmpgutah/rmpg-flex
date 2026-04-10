@@ -285,7 +285,7 @@ export default function DashCamerasPage() {
                     className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex items-center justify-center h-full"
-                    style={{ background: 'linear-gradient(135deg, #0c0f13 0%, #161b21 100%)' }}>
+                    style={{ background: 'linear-gradient(135deg, #0c0c0c 0%, #141414 100%)' }}>
                     <Film className="w-8 h-8 text-rmpg-600" />
                   </div>
                 )}
@@ -429,10 +429,10 @@ export default function DashCamerasPage() {
 
   // ── Detail Panel (Right Panel) ───────────
   const detailPanel = selectedVideo ? (
-    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent" style={{ background: '#050505' }}>
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ background: '#050505' }}>
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
-        style={{ background: 'linear-gradient(180deg, #2b313a, #1b2128)', borderBottom: '1px solid #161b21' }}>
+        style={{ background: 'linear-gradient(180deg, #2b2b2b, #181818)', borderBottom: '1px solid #141414' }}>
         <Video className="w-3 h-3 text-cyan-400 flex-shrink-0" />
         <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
         <button type="button" onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
@@ -456,7 +456,7 @@ export default function DashCamerasPage() {
           <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-[9px] font-mono font-bold uppercase tracking-wider"
             style={{
               color: selectedVideo.cpg_channel === 'outside' ? '#aaaaaa' : '#c084fc',
-              border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#2563eb40' : '#7c3aed40'}`,
+              border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#6a6a6a40' : '#7c3aed40'}`,
             }}>
             {selectedVideo.cpg_channel === 'outside' ? 'FRONT CAM' : 'REAR CAM'}
           </div>
@@ -691,7 +691,7 @@ export default function DashCamerasPage() {
 
       {/* ── Stats Strip ──────────────────── */}
       <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0" role="group" aria-label="Video statistics"
-        style={{ borderBottom: '1px solid #161b21' }}>
+        style={{ borderBottom: '1px solid #141414' }}>
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
           <Film className="w-3 h-3 text-cyan-400" />
           <span className="text-[10px] font-mono font-bold text-cyan-400">{stats.total}</span>
@@ -700,7 +700,7 @@ export default function DashCamerasPage() {
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
 
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
-          <span className="led-dot" style={{ width: 5, height: 5, background: '#aaaaaa', boxShadow: '0 0 4px #60a5fa80' }} />
+          <span className="led-dot" style={{ width: 5, height: 5, background: '#aaaaaa', boxShadow: '0 0 4px #a0a0a080' }} />
           <span className="text-[10px] font-mono font-bold text-blue-400">{stats.frontCam}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Front</span>
         </div>
@@ -741,7 +741,7 @@ export default function DashCamerasPage() {
 
       {/* ── Filter Bar ───────────────────── */}
       <div className="panel-inset p-1.5 flex items-center gap-2 flex-wrap flex-shrink-0"
-        style={{ borderBottom: '1px solid #161b21' }}>
+        style={{ borderBottom: '1px solid #141414' }}>
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -828,7 +828,7 @@ export default function DashCamerasPage() {
       {/* ── Pagination ───────────────────── */}
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between px-3 py-1 flex-shrink-0"
-          style={{ borderTop: '1px solid #161b21', background: '#050505' }}>
+          style={{ borderTop: '1px solid #141414', background: '#050505' }}>
           <span className="text-[10px] text-rmpg-500">
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>

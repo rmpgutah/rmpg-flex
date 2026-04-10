@@ -73,7 +73,7 @@ function shiftColor(shift: string): string {
 function shiftBg(shift: string): string {
   const s = shift.toLowerCase();
   if (s.includes('day')) return 'rgba(212,160,23,0.15)';
-  if (s.includes('swing')) return 'rgba(59,130,246,0.15)';
+  if (s.includes('swing')) return 'rgba(136, 136, 136,0.15)';
   if (s.includes('night') || s.includes('grave')) return 'rgba(168,85,247,0.15)';
   return 'rgba(107,114,128,0.15)';
 }
@@ -122,7 +122,7 @@ export default function AnalysisDashboardPanel({
         <div className="flex items-center gap-1">
           <button type="button"
             onClick={onRefresh}
-            className="p-1 rounded hover:bg-[#1b2128] transition-colors duration-150"
+            className="p-1 rounded hover:bg-[#181818] transition-colors duration-150"
             title="Refresh analysis"
             aria-label="Refresh analysis data"
           >
@@ -133,7 +133,7 @@ export default function AnalysisDashboardPanel({
           </button>
           <button type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-[#1b2128] transition-colors duration-150"
+            className="p-1 rounded hover:bg-[#181818] transition-colors duration-150"
             title="Close panel"
             aria-label="Close analysis dashboard"
           >
@@ -143,7 +143,7 @@ export default function AnalysisDashboardPanel({
       </div>
 
       {/* ── Scrollable body ────────────────────────────────── */}
-      <div className="overflow-y-auto flex-1 custom-scrollbar scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+      <div className="overflow-y-auto flex-1 custom-scrollbar scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         {loading && !data ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={18} className="animate-spin text-purple-400" />
@@ -160,7 +160,7 @@ export default function AnalysisDashboardPanel({
               <MetricCell value={m?.totalSafetyZones ?? 0} label="Safety Zones" color="#ef4444" />
               <MetricCell value={m?.highRiskZones ?? 0} label="High Risk" color="#991b1b" />
               <MetricCell value={m?.activePredictions ?? 0} label="Predictions" color="#a855f7" />
-              <MetricCell value={m?.activeGeofences ?? 0} label="Geofences" color="#06b6d4" />
+              <MetricCell value={m?.activeGeofences ?? 0} label="Geofences" color="#888888" />
               <MetricCell value={m?.totalEnforcement30d ?? 0} label="Enforcement 30d" color="#f43f5e" />
               <MetricCell value={m?.repeatAddressCount ?? 0} label="Repeat Addrs" color="#f97316" />
             </div>

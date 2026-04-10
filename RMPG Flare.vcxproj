@@ -1,0 +1,446 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{493F5D18-30A3-F9AB-C4EF-499451A66243}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <UseOfMfc>Dynamic</UseOfMfc>
+    <UseOfAtl>Static</UseOfAtl>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <UseOfMfc>Dynamic</UseOfMfc>
+    <UseOfAtl>Static</UseOfAtl>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <UseOfMfc>Dynamic</UseOfMfc>
+    <UseOfAtl>Static</UseOfAtl>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <UseOfMfc>Dynamic</UseOfMfc>
+    <UseOfAtl>Static</UseOfAtl>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.c" />
+    <ClCompile Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\deps\sqlite3\sqlite3.c" />
+    <ClCompile Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\deps\test_extension.c" />
+    <ClCompile Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\src\better_sqlite3.cpp" />
+    <ClCompile Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.c" />
+    <ClCompile Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\deps\sqlite3\sqlite3.c" />
+    <ClCompile Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\deps\test_extension.c" />
+    <ClCompile Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\src\better_sqlite3.cpp" />
+    <ClCompile Include="desktop\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.c" />
+    <ClCompile Include="desktop\node_modules\better-sqlite3\deps\sqlite3\sqlite3.c" />
+    <ClCompile Include="desktop\node_modules\better-sqlite3\deps\test_extension.c" />
+    <ClCompile Include="desktop\node_modules\better-sqlite3\src\better_sqlite3.cpp" />
+    <ClCompile Include="desktop\node_modules\node-addon-api\src\node_api.cc" />
+    <ClCompile Include="desktop\node_modules\node-addon-api\src\node_internals.cc" />
+    <ClCompile Include="desktop\node_modules\node-addon-api\src\nothing.c" />
+    <ClCompile Include="desktop\node_modules\node-gyp\gyp\data\win\large-pdb-shim.cc" />
+    <ClCompile Include="desktop\node_modules\node-gyp\src\win_delay_load_hook.cc" />
+    <ClCompile Include="server\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.c" />
+    <ClCompile Include="server\node_modules\better-sqlite3\deps\sqlite3\sqlite3.c" />
+    <ClCompile Include="server\node_modules\better-sqlite3\deps\test_extension.c" />
+    <ClCompile Include="server\node_modules\better-sqlite3\src\better_sqlite3.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="client\android\app\build\intermediates\assets\debug\mergedebugassets\public\geojson\arcgis-embed.html" />
+    <None Include="client\android\app\build\intermediates\assets\debug\mergedebugassets\public\geojson\webmap.html" />
+    <None Include="client\android\app\build\intermediates\assets\debug\mergedebugassets\public\index.html" />
+    <None Include="client\android\app\build\intermediates\assets\release\mergereleaseassets\public\geojson\arcgis-embed.html" />
+    <None Include="client\android\app\build\intermediates\assets\release\mergereleaseassets\public\geojson\webmap.html" />
+    <None Include="client\android\app\build\intermediates\assets\release\mergereleaseassets\public\index.html" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_0\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_1\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_2\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_3\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_4\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_5\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_6\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\dirs_bucket_7\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_0\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_1\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_2\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_3\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_4\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_5\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_6\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\debug\dexbuilderdebug\out\currentproject\jar_26f106281c52156e4afd9238fd682745d5925a71a31fb486d083530eb8a56d45_bucket_7\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_0\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_1\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_2\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_3\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_4\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_5\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_6\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\dirs_bucket_7\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_0\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_1\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_2\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_3\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_4\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_5\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_6\graph.bin" />
+    <None Include="client\android\app\build\intermediates\desugar_graph\release\dexbuilderrelease\out\currentproject\jar_9c3324c1642134440188b0d2ef3581922b5548cfabfc1708f47f5debbbb7ad58_bucket_7\graph.bin" />
+    <None Include="client\android\app\build\tmp\compiledebugjavawithjavac\previous-compilation-data.bin" />
+    <None Include="client\android\app\build\tmp\compilereleasejavawithjavac\previous-compilation-data.bin" />
+    <None Include="client\android\app\src\main\assets\public\geojson\arcgis-embed.html" />
+    <None Include="client\android\app\src\main\assets\public\geojson\webmap.html" />
+    <None Include="client\android\app\src\main\assets\public\index.html" />
+    <None Include="client\android\build\reports\problems\problems-report.html" />
+    <None Include="client\dist\geojson\arcgis-embed.html" />
+    <None Include="client\dist\geojson\webmap.html" />
+    <None Include="client\dist\index.html" />
+    <None Include="client\index.html" />
+    <None Include="client\node_modules\canvas-color-tracker\example\canvas-huge-1M.html" />
+    <None Include="client\node_modules\canvas-color-tracker\example\canvas-medium.html" />
+    <None Include="client\node_modules\canvas-color-tracker\example\canvas-small.html" />
+    <None Include="client\node_modules\decimal.js-light\doc\API.html" />
+    <None Include="client\node_modules\force-graph\example\auto-colored\index.html" />
+    <None Include="client\node_modules\force-graph\example\basic\index.html" />
+    <None Include="client\node_modules\force-graph\example\beeswarm\index.html" />
+    <None Include="client\node_modules\force-graph\example\build-a-graph\index.html" />
+    <None Include="client\node_modules\force-graph\example\click-to-focus\index.html" />
+    <None Include="client\node_modules\force-graph\example\collision-detection\index.html" />
+    <None Include="client\node_modules\force-graph\example\curved-links-computed-curvature\index.html" />
+    <None Include="client\node_modules\force-graph\example\curved-links\index.html" />
+    <None Include="client\node_modules\force-graph\example\custom-node-shape\index.html" />
+    <None Include="client\node_modules\force-graph\example\dag-yarn\index.html" />
+    <None Include="client\node_modules\force-graph\example\dagre\index.html" />
+    <None Include="client\node_modules\force-graph\example\dash-odd-links\index.html" />
+    <None Include="client\node_modules\force-graph\example\directional-links-arrows\index.html" />
+    <None Include="client\node_modules\force-graph\example\directional-links-particles\index.html" />
+    <None Include="client\node_modules\force-graph\example\dynamic\index.html" />
+    <None Include="client\node_modules\force-graph\example\emit-particles\index.html" />
+    <None Include="client\node_modules\force-graph\example\expandable-nodes\index.html" />
+    <None Include="client\node_modules\force-graph\example\expandable-tree\index.html" />
+    <None Include="client\node_modules\force-graph\example\fit-to-canvas\index.html" />
+    <None Include="client\node_modules\force-graph\example\fix-dragged-nodes\index.html" />
+    <None Include="client\node_modules\force-graph\example\highlight\index.html" />
+    <None Include="client\node_modules\force-graph\example\huge-1m\index.html" />
+    <None Include="client\node_modules\force-graph\example\img-nodes\index.html" />
+    <None Include="client\node_modules\force-graph\example\large-graph\index.html" />
+    <None Include="client\node_modules\force-graph\example\load-json\index.html" />
+    <None Include="client\node_modules\force-graph\example\medium-graph\index.html" />
+    <None Include="client\node_modules\force-graph\example\move-viewport\index.html" />
+    <None Include="client\node_modules\force-graph\example\multi-selection\index.html" />
+    <None Include="client\node_modules\force-graph\example\responsive\index.html" />
+    <None Include="client\node_modules\force-graph\example\text-links\index.html" />
+    <None Include="client\node_modules\force-graph\example\text-nodes\index.html" />
+    <None Include="client\node_modules\force-graph\example\tree\index.html" />
+    <None Include="client\node_modules\lz-string\tests\SpecRunner.html" />
+    <None Include="client\node_modules\plist\examples\browser\index.html" />
+    <None Include="client\node_modules\recharts\umd\report.html" />
+    <None Include="client\node_modules\sax\LICENSE-W3C.html" />
+    <None Include="client\node_modules\tslib\tslib.es6.html" />
+    <None Include="client\node_modules\tslib\tslib.html" />
+    <None Include="client\public\geojson\arcgis-embed.html" />
+    <None Include="client\public\geojson\webmap.html" />
+    <None Include="desktop\dist\mac-arm64\rmpg flex.app\contents\frameworks\electron framework.framework\versions\a\resources\v8_context_snapshot.arm64.bin" />
+    <None Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\client\dist\geojson\arcgis-embed.html" />
+    <None Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\client\dist\geojson\webmap.html" />
+    <None Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\client\dist\index.html" />
+    <None Include="desktop\dist\win-unpacked\LICENSES.chromium.html" />
+    <None Include="desktop\dist\win-unpacked\snapshot_blob.bin" />
+    <None Include="desktop\dist\win-unpacked\v8_context_snapshot.bin" />
+    <None Include="desktop\node_modules\ajv\lib\dot\coerce.def" />
+    <None Include="desktop\node_modules\ajv\lib\dot\defaults.def" />
+    <None Include="desktop\node_modules\ajv\lib\dot\definitions.def" />
+    <None Include="desktop\node_modules\ajv\lib\dot\errors.def" />
+    <None Include="desktop\node_modules\ajv\lib\dot\missing.def" />
+    <None Include="desktop\node_modules\electron\dist\electron.app\contents\frameworks\electron framework.framework\versions\a\resources\v8_context_snapshot.arm64.bin" />
+    <None Include="desktop\node_modules\electron\dist\LICENSES.chromium.html" />
+    <None Include="desktop\node_modules\plist\examples\browser\index.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\bitmapper.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\bitpacker.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\chunkstream.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\constants.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\crc.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\filter-pack.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\filter-parse-async.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\filter-parse-sync.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\filter-parse.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\format-normaliser.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\index.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\interlace.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\packer-async.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\packer-sync.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\packer.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\paeth-predictor.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\parser-async.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\parser-sync.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\parser.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\png-sync.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\png.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\sync-inflate.js.html" />
+    <None Include="node_modules\pngjs\coverage\lcov-report\sync-reader.js.html" />
+    <None Include="node_modules\tslib\tslib.es6.html" />
+    <None Include="node_modules\tslib\tslib.html" />
+    <None Include="server\downloads\index.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\fixture\doc.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\core\files\hc_nodtdstaff.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\core\files\hc_staff.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\anchor.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\anchor2.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\applet.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\applet2.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\area.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\area2.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\base.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\base2.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\basefont.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\body.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\br.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\button.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\collection.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\directory.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\div.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\dl.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\document.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\element.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\fieldset.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\font.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\form.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\form2.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\form3.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\frame.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\frameset.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\head.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\heading.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\hr.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\html.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\HTMLDocument04.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\iframe.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\img.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\input.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\isindex.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\label.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\legend.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\li.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\link.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\link2.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\map.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\menu.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\meta.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\mod.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\object.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\object2.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\olist.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\optgroup.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\option.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\paragraph.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\param.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\pre.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\quote.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\script.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\select.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\style.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\table.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\table1.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\tablecaption.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\tablecell.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\tablecol.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\tablerow.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\tablesection.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\textarea.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\title.html" />
+    <None Include="server\node_modules\%40mixmark-io\domino\test\w3c\level1\html\files\ulist.html" />
+    <None Include="server\node_modules\kareem\coverage\lcov-report\index.html" />
+    <None Include="server\node_modules\kareem\coverage\lcov-report\index.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\bitmapper.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\bitpacker.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\chunkstream.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\constants.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\crc.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\filter-pack.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\filter-parse-async.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\filter-parse-sync.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\filter-parse.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\format-normaliser.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\index.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\interlace.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\packer-async.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\packer-sync.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\packer.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\paeth-predictor.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\parser-async.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\parser-sync.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\parser.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\png-sync.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\png.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\sync-inflate.js.html" />
+    <None Include="server\node_modules\pngjs\coverage\lcov-report\sync-reader.js.html" />
+    <None Include="server\node_modules\tslib\tslib.es6.html" />
+    <None Include="server\node_modules\tslib\tslib.html" />
+    <None Include="server\node_modules\tsyringe\node_modules\tslib\tslib.es6.html" />
+    <None Include="server\node_modules\tsyringe\node_modules\tslib\tslib.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\CapacitorCordova.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\AppDelegate.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDV.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVAvailability.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVAvailabilityDeprecated.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVCommandDelegate.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVCommandDelegateImpl.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVConfigParser.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVInvokedUrlCommand.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVPlugin+Resources.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVPlugin.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVPluginManager.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVPluginResult.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVScreenOrientationDelegate.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVURLProtocol.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVViewController.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\CDVWebViewProcessPoolFactory.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitorcordova\capacitorcordova\classes\public\NSDictionary+CordovaPreferences.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\Capacitor.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPBridgedJSTypes.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPBridgedPlugin.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPBridgeViewController+CDVScreenOrientationDelegate.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPInstanceConfiguration.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPInstanceDescriptor.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPPlugin.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPPluginCall.h" />
+    <ClInclude Include="client\node_modules\%40capacitor\ios\capacitor\capacitor\CAPPluginMethod.h" />
+    <ClInclude Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.h" />
+    <ClInclude Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\deps\sqlite3\sqlite3.h" />
+    <ClInclude Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\deps\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="desktop\dist\mac-arm64\rmpg flex.app\contents\resources\server\node_modules\better-sqlite3\src\better_sqlite3.hpp" />
+    <ClInclude Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.h" />
+    <ClInclude Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\deps\sqlite3\sqlite3.h" />
+    <ClInclude Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\deps\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="desktop\dist\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\src\better_sqlite3.hpp" />
+    <ClInclude Include="desktop\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.h" />
+    <ClInclude Include="desktop\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="desktop\node_modules\better-sqlite3\deps\sqlite3\sqlite3.h" />
+    <ClInclude Include="desktop\node_modules\better-sqlite3\deps\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="desktop\node_modules\better-sqlite3\src\better_sqlite3.hpp" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\external-napi\node_api.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\napi-inl.deprecated.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\napi-inl.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\napi.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\src\node_api.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\src\node_api_types.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\src\node_internals.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\src\util-inl.h" />
+    <ClInclude Include="desktop\node_modules\node-addon-api\src\util.h" />
+    <ClInclude Include="desktop\node_modules\postject\dist\postject-api.h" />
+    <ClInclude Include="server\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3.h" />
+    <ClInclude Include="server\node_modules\better-sqlite3\build\release\obj\gen\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="server\node_modules\better-sqlite3\deps\sqlite3\sqlite3.h" />
+    <ClInclude Include="server\node_modules\better-sqlite3\deps\sqlite3\sqlite3ext.h" />
+    <ClInclude Include="server\node_modules\better-sqlite3\src\better_sqlite3.hpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

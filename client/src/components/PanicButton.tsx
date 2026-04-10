@@ -277,7 +277,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             <button type="button"
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#222222', border: '1px solid #2a3e58', color: '#888888' }}
+              style={{ background: '#222222', border: '1px solid #2a2a2a', color: '#888888' }}
             >
               Cancel
             </button>
@@ -372,14 +372,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#050505', border: '1px solid #2b313a' }}>
+                <div className="text-xs text-center text-white p-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#050505', border: '1px solid #2b313a' }}>
+                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>

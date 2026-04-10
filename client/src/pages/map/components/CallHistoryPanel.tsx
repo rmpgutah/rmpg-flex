@@ -114,14 +114,14 @@ export default function CallHistoryPanel({
           {/* #40: Call count badge with border */}
           <span
             className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm tabular-nums"
-            style={{ background: '#444444', color: '#22c55e', border: '1px solid #0e7490' }}
+            style={{ background: '#444444', color: '#22c55e', border: '1px solid #4a4a4a' }}
           >
             {loading ? '...' : stats.total}
           </span>
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1 hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="toolbar-btn p-1 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close call history panel"
           title="Close"
         >
@@ -232,7 +232,7 @@ export default function CallHistoryPanel({
                 Recent Calls
               </div>
               <div
-                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1 scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent"
+                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
               >
                 {stats.recent.map((call) => {
                   const pColor =
@@ -241,7 +241,7 @@ export default function CallHistoryPanel({
                   return (
                     <div
                       key={call.id}
-                      className="rounded-sm px-2 py-1.5 hover:bg-[#1b2128]/50 transition-colors duration-100"
+                      className="rounded-sm px-2 py-1.5 hover:bg-[#181818]/50 transition-colors duration-100"
                       style={{ borderLeft: `2px solid ${pColor}` }}
                     >
                       <div className="flex items-center justify-between mb-0.5">

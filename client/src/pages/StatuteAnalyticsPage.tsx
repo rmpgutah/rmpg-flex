@@ -196,7 +196,7 @@ export default function StatuteAnalyticsPage() {
 
       {/* Mobile: day selector */}
       {isMobile && (
-        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#080808', borderBottom: '1px solid #2b313a' }}>
+        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#080808', borderBottom: '1px solid #2b2b2b' }}>
           {[30, 60, 90, 180, 365].map(d => (
             <button type="button"
               key={d}
@@ -369,7 +369,7 @@ export default function StatuteAnalyticsPage() {
                     }
                   }
                   return pairs.sort((x, y) => y.score - x.score).slice(0, 8).map((p, i) => (
-                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#2b313a]/50 last:border-0">
+                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#2b2b2b]/50 last:border-0">
                       <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.a}</span>
                       <span className="text-[9px] text-rmpg-500">frequently occurs with</span>
                       <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.b}</span>
