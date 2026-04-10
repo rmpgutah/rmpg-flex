@@ -32,6 +32,35 @@ const BACKOFF_BASE_MS = 2 * 60 * 60_000;  // 2 hours base
 const BACKOFF_MAX_MS = 48 * 60 * 60_000;  // 48 hour cap
 const STAGGER_DELAY_MS = 5_000;           // 5s between source starts
 
+// Tier-based scheduling
+const TIER_INTERVALS_MS: Record<number, number> = {
+  1: 30 * 60_000,    // 30 min — critical
+  2: 90 * 60_000,    // 90 min — high
+  3: 180 * 60_000,   // 180 min — normal (default)
+  4: 360 * 60_000,   // 360 min — low
+};
+
+function resolveInterval(config: WarrantSourceConfig): number {
+  if (config.scrape_interval_minutes && config.scrape_interval_minutes > 0) {
+    return config.scrape_interval_minutes * 60_000; // explicit override (back-compat)
+  }
+  const priority = config.priority ?? 3;
+  return TIER_INTERVALS_MS[priority] ?? TIER_INTERVALS_MS[3];
+}
+
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function resolveJitterMs(sourceKey: string): number {
+  // Deterministic 0-20 minute offset based on source_key hash
+  return (simpleHash(sourceKey) % 1200) * 1000;
+}
+
 // ── Interfaces ──────────────────────────────────────────────
 
 export interface WarrantEntry {
@@ -75,6 +104,15 @@ interface WarrantSourceConfig {
   last_scrape_at: string | null;
   consecutive_errors: number;
   circuit_broken: number;
+  priority?: number;
+  content_hash?: string | null;
+  content_hash_updated_at?: string | null;
+  etag?: string | null;
+  last_modified?: string | null;
+  last_success_at?: string | null;
+  avg_parse_count?: number | null;
+  p95_latency_ms?: number | null;
+  jitter_seed?: number | null;
 }
 
 // ── Scheduler state ─────────────────────────────────────────
@@ -1505,7 +1543,7 @@ async function syncSource(sourceKey: string): Promise<void> {
 
   let runId: number | null = null;
   try {
-    runId = startRun({ source_key: sourceKey, priority: (config as any).priority });
+    runId = startRun({ source_key: sourceKey, priority: config.priority });
   } catch (e) {
     console.warn(`[Warrant Scraper] Failed to start run for ${sourceKey}:`, (e as Error).message);
   }
@@ -1616,12 +1654,16 @@ function scheduleSource(sourceKey: string): void {
   const config = getSourceConfig(sourceKey);
   if (!config || !config.enabled || config.circuit_broken) return;
 
-  const intervalMs = (config.scrape_interval_minutes || 120) * 60_000;
+  const intervalMs = resolveInterval(config);
+  const jitterMs = resolveJitterMs(sourceKey);
 
-  // Initial scrape
-  syncSource(sourceKey).catch(err => {
-    console.error(`[Warrant Scraper] Initial scrape error for ${sourceKey}:`, (err as Error).message);
-  });
+  // Initial scrape delayed by deterministic jitter so boot storm spreads over 20 min
+  const initialTimer = setTimeout(() => {
+    syncSource(sourceKey).catch(err => {
+      console.error(`[Warrant Scraper] Initial scrape error for ${sourceKey}:`, (err as Error).message);
+    });
+  }, jitterMs);
+  if (initialTimer.unref) initialTimer.unref();
 
   // Schedule recurring
   const interval = setInterval(() => {
