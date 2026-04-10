@@ -43,7 +43,7 @@ try {
 
 // Import routes
 import authRoutes from './routes/auth';
-import dispatchRoutes from './routes/dispatch';
+import dispatchRoutes from './routes/dispatch/index';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
 import personnelRoutes, { mountScheduleRoutes } from './routes/personnel';

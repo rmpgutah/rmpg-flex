@@ -12,6 +12,7 @@ import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
 import { buildThreatContext } from '../../utils/threatContext';
 import { findNearestUnits } from '../../utils/proximityAlerts';
+import { createNotification } from '../notifications';
 
 const router = Router();
 
@@ -2134,6 +2135,94 @@ router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 
   } catch (err: any) {
     console.error('[Dispatch] auto-assign error:', err?.message);
     res.status(500).json({ error: 'Failed to auto-assign' });
+  }
+});
+
+// ─── ANOMALY ALERTS ──────────────────────────────────────────
+
+// GET /api/dispatch/anomaly-alerts
+router.get('/anomaly-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = parseInt(req.query.hours as string) || 4;
+    const alerts = db.prepare(`
+      SELECT a.*, u.full_name as acknowledged_by_name
+      FROM anomaly_alerts a
+      LEFT JOIN users u ON a.acknowledged_by = u.id
+      WHERE a.created_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+      ORDER BY a.created_at DESC
+    `).all(hours);
+    res.json(alerts);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly alerts error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to fetch anomaly alerts', code: 'ANOMALY_ALERTS_ERROR' });
+  }
+});
+
+// POST /api/dispatch/anomaly-alerts/:id/acknowledge
+router.post('/anomaly-alerts/:id/acknowledge', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) { res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' }); return; }
+
+    db.prepare(`
+      UPDATE anomaly_alerts SET acknowledged_by = ?, acknowledged_at = ? WHERE id = ?
+    `).run(req.user!.userId, localNow(), req.params.id);
+
+    const updated = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate({ action: 'anomaly_acknowledged', alert: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly acknowledge error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to acknowledge alert', code: 'ANOMALY_ACK_ERROR' });
+  }
+});
+
+// ─── BACKUP REQUEST ──────────────────────────────────────────
+
+// POST /api/dispatch/request-backup
+router.post('/request-backup', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { latitude, longitude, message } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const unit = db.prepare('SELECT * FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'backup_requested', 'unit', ?, ?, ?)
+    `).run(req.user!.userId, unit?.id || null, `Backup requested by ${user?.full_name || 'Unknown'}: ${message || 'No message'}`, req.ip || 'unknown');
+
+    // Broadcast to dispatch channel
+    broadcastDispatchUpdate({
+      action: 'backup_requested',
+      user_id: req.user!.userId,
+      user_name: user?.full_name,
+      badge_number: user?.badge_number,
+      call_sign: unit?.call_sign,
+      current_call_id: unit?.current_call_id,
+      latitude, longitude, message,
+      requested_at: localNow(),
+    });
+
+    // Notify all dispatchers
+    const dispatchers = db.prepare(
+      "SELECT id FROM users WHERE role IN ('admin', 'supervisor', 'dispatcher') AND status = 'active'"
+    ).all() as any[];
+    for (const d of dispatchers) {
+      createNotification(
+        d.id, 'backup_request', `BACKUP: ${unit?.call_sign || user?.full_name}`,
+        message || 'Officer requesting backup',
+        'unit', unit?.id || null, 'critical'
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Aggregates] Backup request error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to process backup request', code: 'BACKUP_REQUEST_ERROR' });
   }
 });
 
