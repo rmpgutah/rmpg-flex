@@ -1727,7 +1727,7 @@ async function scrapeSource(sourceKey: string): Promise<{
 //  SYNC ORCHESTRATOR
 // ════════════════════════════════════════════════════════════
 
-async function syncSource(sourceKey: string): Promise<void> {
+export async function syncSource(sourceKey: string): Promise<void> {
   const db = getDb();
   const config = getSourceConfig(sourceKey);
   if (!config || !config.enabled || config.circuit_broken) {
