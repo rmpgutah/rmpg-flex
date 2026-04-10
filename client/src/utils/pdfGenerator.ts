@@ -1698,10 +1698,7 @@ export function addTableWithShading(
       doc.line(sepX, seg.top, sepX, seg.bottom);
     }
 
-    // Outer border enclosing this segment
-    doc.setDrawColor(...COLOR.BORDER_OUTER);
-    doc.setLineWidth(BORDER.TABLE_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN, seg.top, cw, segH);
+    // No outer border — section header bar provides the visual frame
   }
   // Restore to current (last) page
   doc.setPage(currentPage);
