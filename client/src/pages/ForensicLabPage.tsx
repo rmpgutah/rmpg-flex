@@ -1591,7 +1591,7 @@ export default function ForensicLabPage() {
                   <div className="mt-2 space-y-1 max-h-[200px] overflow-y-auto">
                     {linkSearchResults.map((r: any, i: number) => (
                       <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded-sm border border-rmpg-700 hover:border-brand-500/50 transition-colors">
-                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{r.type}</span>
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{String(r.type).replace(/_/g, ' ')}</span>
                         <span className="text-xs text-rmpg-200 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
                         <button type="button" onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                           <Link2 size={10} className="inline mr-1" />Link

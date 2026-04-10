@@ -2477,8 +2477,8 @@ export default function DispatchPage() {
                           onClick={() => navigate(`/incidents/${inc.id}`)}
                         >
                           <span className="font-mono text-green-400 text-xs font-bold">{inc.incident_number}</span>
-                          <span className="text-xs text-rmpg-200 truncate">{inc.type || inc.incident_type || '--'}</span>
-                          <span className="text-xs text-rmpg-400">{inc.status || '--'}</span>
+                          <span className="text-xs text-rmpg-200 truncate">{(inc.type || inc.incident_type || '--').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          <span className="text-xs text-rmpg-400">{(inc.status || '--').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">
                               <User className="w-3 h-3" /> {inc.officer_name}

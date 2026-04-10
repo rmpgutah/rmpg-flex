@@ -397,8 +397,26 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const fullName = `${name.first}${name.middle ? ' ' + name.middle : ''} ${name.last}`;
     const subjectDesc = `${fullName}${dob ? ', DOB ' + dob : ''}`;
 
-    // description = serve instructions ONLY (what the officer needs to do)
-    const descParts = instructions || 'Serve documents to subject at listed address.';
+    // description = serve instructions, cleaned + summarized for dispatch display
+    const cleanText = (s: string): string => s
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/^\s+|\s+$/g, '');
+    const summarizeInstructions = (raw: string): string => {
+      if (!raw || !raw.trim()) return '';
+      const cleaned = cleanText(raw);
+      // Collapse newlines into single spaces for dispatch display
+      const single = cleaned.replace(/\n+/g, ' ');
+      // Truncate to 500 chars at a word boundary
+      if (single.length <= 500) return single;
+      const cut = single.slice(0, 500);
+      const lastSpace = cut.lastIndexOf(' ');
+      return (lastSpace > 400 ? cut.slice(0, lastSpace) : cut) + '…';
+    };
+    const instructionsText = summarizeInstructions(instructions || '');
+    const descParts = instructionsText ||
+      `SERVE ${docs ? docs.toUpperCase() : 'DOCUMENTS'} TO ${fullName.toUpperCase()} AT ${(address || 'LISTED ADDRESS').toUpperCase()}${dueDate ? ` — DUE ${dueDate}` : ''}`;
 
     // notes = case reference details (court, plaintiff, attorney, documents)
     const notesParts = caseNotes || '';
@@ -449,7 +467,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       address || 'Unknown', propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null,
       sectionId || null, zoneId || null, beatId || null, zoneBeat || null, dispatchCode || null,
-      descParts, notesParts || null, 'phone', userId,
+      descParts, notesParts || null, 'intake', userId,
       subjectDesc,
       attorney.name || null, attorney.phone || null, attorney.email || null,
       'process_service', fee || null, jobNumber || null,

@@ -34,6 +34,27 @@ function isOfflineCapable(method: string, path: string): boolean {
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
+// ─── Image URL helper (adds auth token for <img src=> loads) ────
+/**
+ * Wraps an image URL so it authenticates against /api/uploads endpoints.
+ * - data: URLs and full http(s):// URLs are returned unchanged
+ * - /api/uploads paths get ?token=<jwt> appended (server accepts via authenticateTokenOrQuery)
+ * - Already-signed URLs (containing ?sig=) are returned unchanged
+ */
+export function authedImageUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  if (url.includes('?sig=') || url.includes('&sig=')) return url;
+  // Only append token for API paths that require auth
+  if (url.includes('/api/uploads') || url.startsWith('/api/')) {
+    const token = localStorage.getItem('rmpg_token');
+    if (!token) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}token=${encodeURIComponent(token)}`;
+  }
+  return url;
+}
+
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500; // 500ms dedup window

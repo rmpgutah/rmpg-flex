@@ -19,7 +19,7 @@ import {
   Archive,
   RotateCcw,
 } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
 import PersonFormModal from '../../components/PersonFormModal';
@@ -524,9 +524,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           >
             <div className="flex items-center gap-3">
               {person.id_image_url ? (
-                <img src={(person as any).photo || person.photo_url || person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+                <img src={authedImageUrl((person as any).photo || person.photo_url || person.id_image_url)} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
               ) : (person as any).photo || person.photo_url ? (
-                <img src={(person as any).photo || person.photo_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+                <img src={authedImageUrl((person as any).photo || person.photo_url)} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
               ) : (
                 <div
                   className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white select-none"
@@ -785,10 +785,10 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               {selectedPerson.id_image_url ? (
                 <div className="flex-shrink-0">
                   <div className="w-24 h-32 border border-rmpg-500 bg-rmpg-900 overflow-hidden cursor-pointer group relative"
-                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank', 'noopener,noreferrer')}
+                    onClick={() => window.open(authedImageUrl(selectedPerson.id_image_url!), '_blank', 'noopener,noreferrer')}
                     title="Click to enlarge"
                   >
-                    <img src={selectedPerson.id_image_url} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={authedImageUrl(selectedPerson.id_image_url)} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Eye className="w-4 h-4 text-white" />
                     </div>

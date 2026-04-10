@@ -74,7 +74,7 @@ type Tab = 'tree' | 'areas' | 'sections' | 'zones' | 'beats' | 'codes' | 'premis
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'tree', label: 'Tree View', icon: <Layers className="w-3.5 h-3.5" /> },
   { id: 'areas', label: 'Areas', icon: <MapPin className="w-3.5 h-3.5" /> },
-  { id: 'sections', label: 'Sections', icon: <Grid3X3 className="w-3.5 h-3.5" /> },
+  { id: 'sections', label: 'Sectors', icon: <Grid3X3 className="w-3.5 h-3.5" /> },
   { id: 'zones', label: 'Zones', icon: <Target className="w-3.5 h-3.5" /> },
   { id: 'beats', label: 'Beats', icon: <Crosshair className="w-3.5 h-3.5" /> },
   { id: 'codes', label: 'Dispatch Codes', icon: <Hash className="w-3.5 h-3.5" /> },
@@ -253,7 +253,7 @@ export default function GeographyPage() {
           <MapPin className="w-5 h-5 text-blue-400" />
           <h1 className="text-lg font-bold text-white">Dispatch Geography</h1>
           <span className="text-[10px] text-rmpg-400 font-mono bg-surface-sunken px-2 py-0.5 rounded-sm">
-            {areas.length} Areas · {sections.length} Sections · {zones.length} Zones · {beats.length} Beats
+            {areas.length} Areas · {sections.length} Sectors · {zones.length} Zones · {beats.length} Beats
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -380,7 +380,7 @@ function TreeView({ areas, sections, zones, beats, expanded, onToggle, onExpandA
         return (
           <div key={area.id} className="mb-1">
             <TreeNode level={0} color={area.color} code={area.area_code} name={area.area_name}
-              count={areaSections.length} countLabel="sections" isOpen={isOpen}
+              count={areaSections.length} countLabel="sectors" isOpen={isOpen}
               onToggle={() => onToggle(aKey)} onEdit={() => onEdit('area', area)} onDelete={() => onDelete('area', area.id)} />
             {isOpen && areaSections.map(section => {
               const sKey = 'section-' + section.id;
@@ -433,7 +433,7 @@ function TreeView({ areas, sections, zones, beats, expanded, onToggle, onExpandA
       {/* Unassigned sections (no area) */}
       {(sectionsByArea.get(null) || []).length > 0 && (
         <div className="mt-4 pt-3 border-t border-rmpg-700">
-          <span className="text-[10px] text-rmpg-500 uppercase font-bold">Unassigned Sections</span>
+          <span className="text-[10px] text-rmpg-500 uppercase font-bold">Unassigned Sectors</span>
           {(sectionsByArea.get(null) || []).map(section => {
             const sKey = 'section-' + section.id;
             const sOpen = expanded.has(sKey);
@@ -509,7 +509,7 @@ function AreaList({ items, onEdit, onDelete }: { items: Area[]; onEdit: (a: Area
     <div className="divide-y divide-rmpg-700">
       <div className="grid grid-cols-[40px_100px_1fr_120px_120px_80px_80px] gap-2 px-3 py-1.5 text-[9px] text-rmpg-500 uppercase font-bold bg-surface-sunken">
         <span />
-        <span>Code</span><span>Name</span><span>Commander</span><span>Description</span><span>Sections</span><span />
+        <span>Code</span><span>Name</span><span>Commander</span><span>Description</span><span>Sectors</span><span />
       </div>
       {items.map(a => (
         <div key={a.id} className="grid grid-cols-[40px_100px_1fr_120px_120px_80px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
@@ -560,7 +560,7 @@ function ZoneList({ items, onEdit, onDelete }: { items: Zone[]; onEdit: (z: Zone
   return (
     <div className="divide-y divide-rmpg-700">
       <div className="grid grid-cols-[40px_80px_1fr_100px_100px_80px_80px_80px_60px_80px] gap-2 px-3 py-1.5 text-[9px] text-rmpg-500 uppercase font-bold bg-surface-sunken">
-        <span /><span>Code</span><span>Name</span><span>Section</span><span>Primary Unit</span><span>Backup</span><span>Radio</span><span>Beats</span><span>Active</span><span />
+        <span /><span>Code</span><span>Name</span><span>Sector</span><span>Primary Unit</span><span>Backup</span><span>Radio</span><span>Beats</span><span>Active</span><span />
       </div>
       {items.map(z => (
         <div key={z.id} className="grid grid-cols-[40px_80px_1fr_100px_100px_80px_80px_80px_60px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
@@ -692,9 +692,9 @@ function StatsView({ stats }: { stats: GeoStats | null }) {
         <BarChart3 className="w-3.5 h-3.5" /> Last {stats.days} Days
       </div>
 
-      {/* Section Stats */}
+      {/* Sector Stats */}
       <div>
-        <h3 className="text-xs font-bold text-white mb-2 flex items-center gap-2"><Grid3X3 className="w-3.5 h-3.5 text-blue-400" /> Section Activity</h3>
+        <h3 className="text-xs font-bold text-white mb-2 flex items-center gap-2"><Grid3X3 className="w-3.5 h-3.5 text-blue-400" /> Sector Activity</h3>
         {stats.section_stats.length === 0 ? (
           <p className="text-[10px] text-rmpg-500">No call data by section in this period.</p>
         ) : (
@@ -834,10 +834,10 @@ function EditModal({ type, item, onSave, onClose, areas, sections, zones }: {
 
           {type === 'section' && (
             <>
-              <FormField label="Section Code" required>
+              <FormField label="Sector Code" required>
                 <input value={form.section_code || ''} onChange={e => set('section_code', e.target.value)} className="form-input" placeholder="e.g., SL1" />
               </FormField>
-              <FormField label="Section Name" required>
+              <FormField label="Sector Name" required>
                 <input value={form.section_name || ''} onChange={e => set('section_name', e.target.value)} className="form-input" placeholder="e.g., Salt Lake Metro" />
               </FormField>
               <FormField label="Area">
@@ -866,7 +866,7 @@ function EditModal({ type, item, onSave, onClose, areas, sections, zones }: {
               <FormField label="Zone Name" required>
                 <input value={form.zone_name || ''} onChange={e => set('zone_name', e.target.value)} className="form-input" placeholder="e.g., Salt Lake City" />
               </FormField>
-              <FormField label="Section">
+              <FormField label="Sector">
                 <select value={form.section_id || ''} onChange={e => set('section_id', e.target.value ? parseInt(e.target.value) : null)} className="form-input">
                   <option value="">— None —</option>
                   {sections.map(s => <option key={s.id} value={s.id}>{s.section_code} — {s.section_name}</option>)}
