@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
-  Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
+  Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2, MapPin,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -42,6 +42,137 @@ function timeAgo(dateStr: string): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
   return new Date(dateStr).toLocaleDateString();
+}
+
+// ── Google API Services Panel ────────────────────────────────
+// Lets admins set Google Maps API Key and Map ID via the admin UI.
+// These are stored encrypted in system_config and served to all
+// authenticated users via GET /api/admin/google-maps-config.
+const GOOGLE_API_KEYS = [
+  { key: 'google_maps_api_key', label: 'Google Maps API Key', desc: 'Used for Maps, Geocoding, Places, Static Maps, and Vision API across the entire application' },
+  { key: 'google_maps_map_id', label: 'Google Maps Map ID (optional)', desc: 'Cloud-based map styling ID — enables AdvancedMarkerElement. Leave blank for JSON-styled dark theme' },
+] as const;
+
+function GoogleApiServicesPanel() {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [configured, setConfigured] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await apiFetch<Array<{ config_key: string; has_value: boolean }>>('/admin/third-party-keys');
+        const map: Record<string, boolean> = {};
+        for (const item of data) map[item.config_key] = item.has_value;
+        setConfigured(map);
+      } catch {
+        for (const { key } of GOOGLE_API_KEYS) {
+          try {
+            const resp = await apiFetch<{ configured: boolean }>(`/admin/third-party-keys/${key}`);
+            setConfigured(prev => ({ ...prev, [key]: resp.configured }));
+          } catch { /* silent */ }
+        }
+      }
+    })();
+  }, []);
+
+  const handleSave = async (configKey: string) => {
+    const value = values[configKey]?.trim();
+    if (!value) return;
+    setSaving(configKey);
+    try {
+      await apiFetch('/admin/third-party-keys', {
+        method: 'PUT',
+        body: JSON.stringify({ key: configKey, value }),
+      });
+      setConfigured(prev => ({ ...prev, [configKey]: true }));
+      setValues(prev => ({ ...prev, [configKey]: '' }));
+    } catch { /* silent */ }
+    setSaving(null);
+  };
+
+  const handleClear = async (configKey: string) => {
+    setSaving(configKey);
+    try {
+      await apiFetch('/admin/third-party-keys', {
+        method: 'DELETE',
+        body: JSON.stringify({ key: configKey }),
+      });
+      setConfigured(prev => ({ ...prev, [configKey]: false }));
+    } catch { /* silent */ }
+    setSaving(null);
+  };
+
+  return (
+    <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1c2e42]">
+        <MapPin className="w-4 h-4 text-brand-400" />
+        <h2 className="text-sm font-semibold text-rmpg-300">Google API Services</h2>
+      </div>
+      <div className="p-4 space-y-1">
+        <p className="text-[10px] text-rmpg-600 mb-3">
+          Configure your Google Cloud API key for Maps, Geocoding, Places, Vision OCR, and Static Maps.
+          Keys are AES-256-GCM encrypted at rest. The API key can also be set via the <code className="text-rmpg-400">GOOGLE_MAPS_API_KEY</code> environment variable — admin-configured keys take priority.
+        </p>
+        {GOOGLE_API_KEYS.map(({ key, label, desc }) => (
+          <div key={key} className="flex flex-col gap-2 p-3 bg-[#050505] border border-[#1c2e42] rounded-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold text-rmpg-300">{label}</div>
+                <div className="text-[10px] text-rmpg-600">{desc}</div>
+              </div>
+              {configured[key] ? (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-sm bg-green-900/30 text-green-400 border border-green-700/40">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Configured
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-sm bg-yellow-900/30 text-yellow-400 border border-yellow-700/40">
+                  <AlertTriangle className="w-3 h-3" />
+                  Not Set
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showKey[key] ? 'text' : 'password'}
+                  value={values[key] || ''}
+                  onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
+                  placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste key here...'}
+                  className="w-full px-3 py-2 pr-8 bg-[#0a0a0a] border border-[#1c2e42] rounded-sm text-xs text-white font-mono placeholder-[#445566] focus:outline-none focus:border-brand-500"
+                />
+                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
+                  {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSave(key)}
+                disabled={!values[key]?.trim() || saving === key}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white rounded-sm transition-colors"
+              >
+                {saving === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save
+              </button>
+              {configured[key] && (
+                <button
+                  type="button"
+                  onClick={() => handleClear(key)}
+                  disabled={saving === key}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/30 border border-red-700/30 rounded-sm transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── Third-Party API Keys Panel ──────────────────────────────
@@ -454,6 +585,9 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+
+      {/* ── Google API Services ── */}
+      <GoogleApiServicesPanel />
 
       {/* ── Third-Party RapidAPI Keys ── */}
       <ThirdPartyApiKeysPanel />

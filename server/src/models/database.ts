@@ -5178,6 +5178,13 @@ function migrateSchema(): void {
   addCol('warrant_service_attempts', 'signature_data', 'TEXT');
   addCol('warrant_service_attempts', 'attempt_duration_minutes', 'INTEGER');
 
+  // ── GEOFENCES — align schema with route/client column names ──
+  // The CREATE TABLE uses `type`, `geometry`, `active` but the mapGeofences
+  // route and client hooks reference `zone_type`, `polygon_coords`, `is_active`.
+  addCol('geofences', 'zone_type', "TEXT DEFAULT 'custom'");
+  addCol('geofences', 'polygon_coords', 'TEXT');
+  addCol('geofences', 'is_active', 'INTEGER DEFAULT 1');
+
   console.log('Schema migration completed.');
 }
 
@@ -5659,8 +5666,6 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_shift_plans_status ON shift_plans(status);
 
     -- Dashcam videos indexes
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_unit ON dashcam_videos(unit_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_officer ON dashcam_videos(officer_id);
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_date ON dashcam_videos(recorded_at);
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_incident ON dashcam_videos(incident_id);
 
@@ -5754,7 +5759,7 @@ function createIndexes(): void {
 
     -- Patrol breaks indexes
     CREATE INDEX IF NOT EXISTS idx_patrol_breaks_officer ON patrol_breaks(officer_id);
-    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_date ON patrol_breaks(start_time);
+    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_date ON patrol_breaks(break_start);
 
     -- Fleet pretrip checklists indexes
     CREATE INDEX IF NOT EXISTS idx_pretrip_vehicle ON fleet_pretrip_checklists(vehicle_id);
@@ -5767,7 +5772,7 @@ function createIndexes(): void {
 
     -- Person associates indexes
     CREATE INDEX IF NOT EXISTS idx_person_assoc_person ON person_associates(person_id);
-    CREATE INDEX IF NOT EXISTS idx_person_assoc_associated ON person_associates(associated_person_id);
+    CREATE INDEX IF NOT EXISTS idx_person_assoc_associated ON person_associates(associate_id);
 
     -- ClearPath GPS indexes
     CREATE INDEX IF NOT EXISTS idx_cpgps_vehicles_unit ON cpgps_vehicles(unit_number);
@@ -5780,7 +5785,7 @@ function createIndexes(): void {
 
     -- Warrant watch indexes
     CREATE INDEX IF NOT EXISTS idx_warrant_watch_runs_created ON warrant_watch_runs(created_at);
-    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(run_id);
+    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(scan_run_id);
     CREATE INDEX IF NOT EXISTS idx_scraped_warrants_name ON scraped_warrants(last_name, first_name);
     CREATE INDEX IF NOT EXISTS idx_scraped_warrants_status ON scraped_warrants(status);
 
@@ -5796,7 +5801,7 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_callsign ON gps_breadcrumbs(call_sign);
 
     -- System announcements indexes
-    CREATE INDEX IF NOT EXISTS idx_announcements_active ON system_announcements(is_active);
+    CREATE INDEX IF NOT EXISTS idx_announcements_active ON system_announcements(active);
     CREATE INDEX IF NOT EXISTS idx_announcements_expires ON system_announcements(expires_at);
 
     -- Record locks indexes
@@ -5824,21 +5829,12 @@ function createIndexes(): void {
     -- [FIX 70] Composite index for sessions user+active lookup
     CREATE INDEX IF NOT EXISTS idx_sessions_user_active ON sessions(user_id, is_active);
 
-    -- [FIX 71] Index on trusted_devices for user+fingerprint lookups
-    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user_fp ON trusted_devices(user_id, device_fingerprint);
-
-    -- [FIX 72] Index on password_history for user+created_at ordering
-    CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history(user_id, created_at);
-
     -- [FIX 73] Index for call_units junction table common queries
-    CREATE INDEX IF NOT EXISTS idx_call_units_call ON call_units(call_id, unassigned_at);
-    CREATE INDEX IF NOT EXISTS idx_call_units_unit ON call_units(unit_id, unassigned_at);
+    CREATE INDEX IF NOT EXISTS idx_call_units_call ON call_units(call_id, cleared_at);
+    CREATE INDEX IF NOT EXISTS idx_call_units_unit ON call_units(unit_id, cleared_at);
 
     -- [FIX 74] Index on radio_transcripts for channel+time queries
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_channel ON radio_transcripts(channel, transmitted_at);
-
-    -- [FIX 75] Index for security_notifications user lookup
-    CREATE INDEX IF NOT EXISTS idx_security_notifications_user ON security_notifications(user_id);
   `);
   } catch (err: any) {
     console.warn('[DB] createIndexes partially failed (non-fatal):', err?.message || 'Unknown error');
