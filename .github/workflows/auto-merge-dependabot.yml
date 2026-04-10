@@ -1,7 +1,22 @@
 name: "Auto-merge Dependabot"
 
+# ─── pull_request_target, NOT pull_request ───────────────────────
+# Dependabot-authored PRs run with a downgraded GITHUB_TOKEN (read-only
+# for `contents`). A `pull_request` workflow that declares write perms
+# is rejected at dispatch time — `startup_failure` with zero jobs.
+#
+# `pull_request_target` runs in the context of the base branch (main)
+# with main's full repository permissions, and loads the workflow file
+# from main — not the PR branch. This is GitHub's documented trigger
+# for Dependabot auto-merge workflows.
+#
+# Security: this trigger runs with write access BEFORE review, which is
+# dangerous for fork PRs. Safe here because (a) this is a private repo,
+# (b) Dependabot PRs are same-repo (never forks), and (c) the
+# `if: github.actor == 'dependabot[bot]'` guard blocks all other actors.
+# ──────────────────────────────────────────────────────────────────
 on:
-  pull_request:
+  pull_request_target:
 
 permissions:
   contents: write
