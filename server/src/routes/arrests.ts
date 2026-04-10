@@ -1180,9 +1180,11 @@ router.get('/manual/:id/linked-records', validateParamIdMiddleware, (req: Reques
     if (record.full_name) {
       try {
         links.warrants = db.prepare(`
-          SELECT id, warrant_number, warrant_type, status, subject_name FROM warrants
-          WHERE subject_name LIKE ? AND status = 'active' LIMIT 10
-        `).all(`%${record.last_name}%`);
+          SELECT w.id, w.warrant_number, w.type as warrant_type, w.status,
+            COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name
+          FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+          WHERE (p.last_name LIKE ? OR p.first_name LIKE ?) AND w.status = 'active' LIMIT 10
+        `).all(`%${record.last_name}%`, `%${record.last_name}%`);
       } catch { /* warrants table may not exist */ }
     }
 
