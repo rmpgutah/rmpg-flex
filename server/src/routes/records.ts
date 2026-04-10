@@ -3936,32 +3936,6 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
 // ════════════════════════════════════════════════════════════
 try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_associates (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, associate_person_id INTEGER REFERENCES persons(id) ON DELETE SET NULL, associate_name TEXT NOT NULL, relationship_type TEXT DEFAULT 'associate', notes TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
 
-router.get('/persons/:id/associates', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
-    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
-    const associates = db.prepare(`SELECT pa.*, p.first_name as assoc_first, p.last_name as assoc_last, p.photo_url as assoc_photo, p.dob as assoc_dob, p.flags as assoc_flags FROM person_associates pa LEFT JOIN persons p ON pa.associate_person_id = p.id WHERE pa.person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
-    const reverseAssociates = db.prepare(`SELECT pa.*, p.first_name as owner_first, p.last_name as owner_last, p.photo_url as owner_photo FROM person_associates pa LEFT JOIN persons p ON pa.person_id = p.id WHERE pa.associate_person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
-    res.json({ data: { associates, reverse_associates: reverseAssociates } });
-  } catch (error: any) { console.error('Get associates error:', error); res.status(500).json({ error: 'Failed to get associates', code: 'GET_ASSOCIATES_ERROR' }); }
-});
-
-router.post('/persons/:id/associates', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
-    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
-    const { associate_person_id, associate_name, relationship_type, notes } = req.body;
-    if (!associate_name?.trim() && !associate_person_id) { res.status(400).json({ error: 'associate_name or associate_person_id required', code: 'MISSING_ASSOCIATE' }); return; }
-    let name = associate_name || '';
-    if (associate_person_id && !name) { const ap = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(associate_person_id) as any; if (ap) name = `${ap.first_name} ${ap.last_name}`; }
-    const now = localNow();
-    const result = db.prepare('INSERT INTO person_associates (person_id, associate_person_id, associate_name, relationship_type, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.params.id, associate_person_id || null, name, relationship_type || 'associate', notes || null, req.user!.userId, now);
-    auditLog(req, 'CREATE', 'person_associate', Number(result.lastInsertRowid), `Added associate "${name}" to person #${req.params.id}`);
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
-  } catch (error: any) { console.error('Create associate error:', error); res.status(500).json({ error: 'Failed to create associate', code: 'CREATE_ASSOCIATE_ERROR' }); }
-});
 
 router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
   try {
