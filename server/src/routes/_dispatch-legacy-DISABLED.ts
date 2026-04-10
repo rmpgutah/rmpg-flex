@@ -2509,12 +2509,13 @@ router.get('/premise-history', (req: Request, res: Response) => {
     const db = getDb();
     const { address } = req.query;
 
-    if (!address || (address as string).length < 3) {
+    if (typeof address !== 'string' || address.trim().length < 3) {
       res.status(400).json({ error: 'Address must be at least 3 characters' });
       return;
     }
 
-    const searchTerm = `%${address}%`;
+    const normalizedAddress = address.trim();
+    const searchTerm = `%${normalizedAddress}%`;
 
     // Find prior calls at this address (fuzzy match on location_address)
     const calls = db.prepare(`
