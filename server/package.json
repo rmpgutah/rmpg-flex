@@ -20,7 +20,7 @@
     "@azure/msal-node": "^5.0.6",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@simplewebauthn/server": "^13.2.3",
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.7.0",
     "cheerio": "^1.2.0",
     "cors": "^2.8.5",
@@ -52,7 +52,7 @@
     "path-to-regexp": "0.1.13"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^3.0.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
