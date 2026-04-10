@@ -397,6 +397,13 @@ export default function Layout() {
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
   const [callsByPriority, setCallsByPriority] = useState<{priority: string; count: number}[]>([]);
+
+  // Phase 5: warrant scraper health — polls /api/warrants/scrapers/health every 30s.
+  // The badge is visible ONLY when any source is degraded/failed/broken — alert
+  // fatigue is real, so when everything's healthy the badge disappears entirely.
+  const [scraperHealth, setScraperHealth] = useState<{
+    healthy: number; degraded: number; failed: number; circuit_broken: number;
+  } | null>(null);
   const [activeBOLOs, setActiveBOLOs] = useState(0);
   const [emailUnreadCount, setEmailUnreadCount] = useState(0);
 
@@ -608,6 +615,11 @@ export default function Layout() {
       const email = await apiFetch<{ count: number }>('/email/unread-count');
       setEmailUnreadCount(email.count || 0);
     } catch { /* silent — email may not be configured */ }
+    try {
+      // Phase 5: cheap scraper health for the conditional header badge
+      const health = await apiFetch<{ healthy: number; degraded: number; failed: number; circuit_broken: number }>('/warrants/scrapers/health');
+      setScraperHealth(health);
+    } catch { /* silent — scraper may not be enabled */ }
   }, []);
 
   // Fetch on mount and every 30 seconds
@@ -932,6 +944,29 @@ export default function Layout() {
                 <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
                 <span className="text-[9px] font-mono font-bold text-rmpg-300 tabular-nums">{presence.count}</span>
               </div>
+
+              {/* 7: Warrant scraper health — invisible when all healthy (alert fatigue) */}
+              {scraperHealth && (scraperHealth.degraded + scraperHealth.failed + scraperHealth.circuit_broken) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/warrants?tab=scrapers')}
+                  className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken hover:bg-surface-raised transition-colors"
+                  title={`Warrant scrapers: ${scraperHealth.healthy} healthy, ${scraperHealth.degraded} degraded, ${scraperHealth.failed} failed, ${scraperHealth.circuit_broken} broken`}
+                >
+                  {scraperHealth.healthy > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-green-400 tabular-nums">●{scraperHealth.healthy}</span>
+                  )}
+                  {scraperHealth.degraded > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-amber-400 tabular-nums">◐{scraperHealth.degraded}</span>
+                  )}
+                  {scraperHealth.failed > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-red-400 tabular-nums">○{scraperHealth.failed}</span>
+                  )}
+                  {scraperHealth.circuit_broken > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-red-600 tabular-nums">✕{scraperHealth.circuit_broken}</span>
+                  )}
+                </button>
+              )}
 
               {/* Notifications */}
               <NotificationCenter />
