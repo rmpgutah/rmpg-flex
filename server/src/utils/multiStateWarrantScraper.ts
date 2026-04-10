@@ -21,6 +21,7 @@
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { startRun, completeRun, failRun } from './scraperRunner';
+import { Semaphore } from './semaphore';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -28,6 +29,11 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const REQUEST_TIMEOUT_MS = 20_000;
 const CIRCUIT_BREAKER_THRESHOLD = 15;     // Higher threshold — many sites are flaky
 const STARTUP_DELAY_MS = 60_000;          // 60s after boot (let jail roster start first)
+
+// Concurrency cap — limits parallel HTTP fetches across all warrant sources
+// to prevent boot-storm socket exhaustion and WAF correlation.
+const FETCH_CONCURRENCY = 5;
+const fetchSemaphore = new Semaphore(FETCH_CONCURRENCY);
 const BACKOFF_BASE_MS = 2 * 60 * 60_000;  // 2 hours base
 const BACKOFF_MAX_MS = 48 * 60 * 60_000;  // 48 hour cap
 const STAGGER_DELAY_MS = 5_000;           // 5s between source starts
@@ -1550,7 +1556,13 @@ async function syncSource(sourceKey: string): Promise<void> {
 
   try {
     console.log(`[Warrant Scraper] ── ${config.display_name} ──`);
-    const result = await scrapeSource(sourceKey);
+    await fetchSemaphore.acquire();
+    let result;
+    try {
+      result = await scrapeSource(sourceKey);
+    } finally {
+      fetchSemaphore.release();
+    }
 
     // Success — reset error counter
     db.prepare(`
