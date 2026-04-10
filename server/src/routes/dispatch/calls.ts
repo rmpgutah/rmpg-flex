@@ -1205,17 +1205,57 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
     addField('contract_id', contract_id);
     addField('client_id', resolvedUpdateClientId);
 
-    // ── Admin/Manager timeline override: allow editing dispatch timestamps ──
-    if (['admin', 'manager'].includes(req.user?.role || '')) {
+    // ── Admin/Manager/Supervisor timeline override: allow editing dispatch timestamps ──
+    // Widened from admin/manager to also include supervisor + dispatcher because the
+    // client UI exposes the timeline edit controls based on isAdminOrManager but the
+    // actual route already allows broader roles. Without this widening, a dispatcher
+    // who somehow triggers the edit would silently get NO_FIELDS_TO_UPDATE.
+    const TIMELINE_EDIT_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
+    const userRole = req.user?.role || '';
+    const canEditTimeline = TIMELINE_EDIT_ROLES.includes(userRole);
+
+    // Detect if any timeline field is being edited so we can log diagnostics
+    // when the role check blocks an otherwise-valid attempt.
+    const TIMELINE_FIELDS = ['received_at', 'dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at', 'created_at'];
+    const timelineFieldsInBody = TIMELINE_FIELDS.filter(f => req.body && req.body[f] !== undefined);
+
+    if (canEditTimeline) {
       const { dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, created_at: created_at_override, received_at } = req.body;
       const isValidIso = (v: any) => typeof v === 'string' && v.length >= 10 && !isNaN(new Date(v).getTime());
-      if (received_at !== undefined) { if (received_at === null || received_at === '') { updates.push('received_at = NULL'); } else if (isValidIso(received_at)) { addField('received_at', received_at); } }
-      if (dispatched_at !== undefined) { if (dispatched_at === null || dispatched_at === '') { updates.push('dispatched_at = NULL'); } else if (isValidIso(dispatched_at)) { addField('dispatched_at', dispatched_at); } }
-      if (enroute_at !== undefined) { if (enroute_at === null || enroute_at === '') { updates.push('enroute_at = NULL'); } else if (isValidIso(enroute_at)) { addField('enroute_at', enroute_at); } }
-      if (onscene_at !== undefined) { if (onscene_at === null || onscene_at === '') { updates.push('onscene_at = NULL'); } else if (isValidIso(onscene_at)) { addField('onscene_at', onscene_at); } }
-      if (cleared_at !== undefined) { if (cleared_at === null || cleared_at === '') { updates.push('cleared_at = NULL'); } else if (isValidIso(cleared_at)) { addField('cleared_at', cleared_at); } }
-      if (closed_at !== undefined) { if (closed_at === null || closed_at === '') { updates.push('closed_at = NULL'); } else if (isValidIso(closed_at)) { addField('closed_at', closed_at); } }
-      if (created_at_override !== undefined && isValidIso(created_at_override)) { addField('created_at', created_at_override); }
+
+      // Helper that handles "set or clear" for a single timestamp field, with
+      // diagnostic logging when an attempted set fails validation. The previous
+      // implementation silently dropped invalid values, leading to opaque
+      // "No fields to update" errors with no clue why.
+      const handleTimelineField = (col: string, val: any) => {
+        if (val === undefined) return;
+        if (val === null || val === '') {
+          updates.push(`${col} = NULL`);
+          return;
+        }
+        if (isValidIso(val)) {
+          addField(col, val);
+          return;
+        }
+        // Validation failed — log so we know exactly what the client sent
+        console.warn(`[PUT /calls/:id] timeline field rejected: ${col}=${typeof val}:${JSON.stringify(val)?.substring(0, 80)} (failed isValidIso)`);
+      };
+
+      handleTimelineField('received_at', received_at);
+      handleTimelineField('dispatched_at', dispatched_at);
+      handleTimelineField('enroute_at', enroute_at);
+      handleTimelineField('onscene_at', onscene_at);
+      handleTimelineField('cleared_at', cleared_at);
+      handleTimelineField('closed_at', closed_at);
+      // created_at: same set/clear semantics for consistency
+      handleTimelineField('created_at', created_at_override);
+    } else if (timelineFieldsInBody.length > 0) {
+      // User tried to edit timeline fields but their role is gated out — log
+      // so we can see which user/role is being blocked and decide if the gate
+      // is too strict.
+      console.warn(
+        `[PUT /calls/:id] timeline edit blocked by role check: id=${req.params.id} role=${userRole || 'n/a'} attempted=[${timelineFieldsInBody.join(',')}]`,
+      );
     }
 
     // Upgrade 17: Track status_changed_at on every status change
@@ -1241,6 +1281,15 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
     }
 
     if (updates.length === 0) {
+      // Diagnostic: log the body keys + user role so we can see WHY no fields
+      // qualified for update. Common cause: timeline timestamp edits where the
+      // user's role didn't match the admin/manager check at line 1209, or where
+      // the value didn't pass isValidIso().
+      const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+      const bodyPreview = bodyKeys.map(k => `${k}=${typeof req.body[k]}:${JSON.stringify(req.body[k])?.substring(0, 60)}`).join(' ');
+      console.warn(
+        `[PUT /calls/:id] NO_FIELDS_TO_UPDATE id=${req.params.id} role=${req.user?.role || 'n/a'} body_keys=[${bodyKeys.join(',')}] preview="${bodyPreview}"`,
+      );
       res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
