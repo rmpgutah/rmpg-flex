@@ -1493,13 +1493,22 @@ async function syncSource(sourceKey: string): Promise<void> {
   if (!config || !config.enabled || config.circuit_broken) {
     // Record skipped runs for circuit-broken sources so metrics show them
     if (config && config.circuit_broken) {
-      const skipRunId = startRun({ source_key: sourceKey });
-      completeRun(skipRunId, { skipped_reason: 'circuit_broken' });
+      try {
+        const skipRunId = startRun({ source_key: sourceKey });
+        completeRun(skipRunId, { skipped_reason: 'circuit_broken' });
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to record skip run for ${sourceKey}:`, (e as Error).message);
+      }
     }
     return;
   }
 
-  const runId = startRun({ source_key: sourceKey, priority: (config as any).priority });
+  let runId: number | null = null;
+  try {
+    runId = startRun({ source_key: sourceKey, priority: (config as any).priority });
+  } catch (e) {
+    console.warn(`[Warrant Scraper] Failed to start run for ${sourceKey}:`, (e as Error).message);
+  }
 
   try {
     console.log(`[Warrant Scraper] ── ${config.display_name} ──`);
@@ -1514,18 +1523,32 @@ async function syncSource(sourceKey: string): Promise<void> {
 
     backoffAttempts.delete(sourceKey);
 
-    completeRun(runId, {
-      http_status: 200,
-      parsed_count: result.records_found,
-      inserted_count: result.inserted,
-      updated_count: result.updated,
-      parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
-    });
+    if (runId !== null) {
+      try {
+        completeRun(runId, {
+          http_status: 200,
+          // parsed_count is the raw parser output (pre-dedupe). For distinct counts, use inserted_count + updated_count.
+          parsed_count: result.records_found,
+          inserted_count: result.inserted,
+          updated_count: result.updated,
+          // TODO(phase3): parser_used will need updating when fallback cascade lands
+          parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+        });
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to complete run for ${sourceKey}:`, (e as Error).message);
+      }
+    }
 
     console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
 
   } catch (err) {
-    failRun(runId, { error_message: (err as Error).message });
+    if (runId !== null) {
+      try {
+        failRun(runId, { error_message: (err as Error).message });
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to record failed run for ${sourceKey}:`, (e as Error).message);
+      }
+    }
     const errMsg = (err as Error).message || 'unknown error';
 
     // Permanent errors (404 = page gone) — disable source, don't circuit break
