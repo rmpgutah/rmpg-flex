@@ -20,7 +20,7 @@ interface PIP {
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
-  extended: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  extended: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   failed: 'bg-red-900/50 text-red-400 border border-red-700/50',
   cancelled: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
 };

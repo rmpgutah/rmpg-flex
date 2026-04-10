@@ -19,8 +19,8 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
   const [visible, setVisible] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
-  const touchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const touchTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const computeCoords = useCallback(() => {
     if (!triggerRef.current) return;
@@ -101,7 +101,7 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
       </div>
       {visible && createPortal(
         <div
-          className={`fixed z-[9999] pointer-events-none px-2 py-1 text-[10px] font-medium text-rmpg-100 bg-surface-base border border-[#2a3e58] shadow-lg max-w-xs ${className}`}
+          className={`fixed z-[9999] pointer-events-none px-2 py-1 text-[10px] font-medium text-rmpg-100 bg-surface-base border border-[#2e2e2e] shadow-lg max-w-xs ${className}`}
           style={positionStyles[position]}
         >
           {content}

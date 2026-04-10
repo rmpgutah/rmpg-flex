@@ -36,7 +36,7 @@ router.get('/checkpoints', (req: Request, res: Response) => {
 router.get('/checkpoints/property/:propertyId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const propertyId = parseInt(req.params.propertyId, 10);
+    const propertyId = parseInt(req.params.propertyId as string, 10);
     if (isNaN(propertyId)) {
       res.status(400).json({ error: 'Invalid property ID', code: 'INVALID_PROPERTY_ID' });
       return;
@@ -165,7 +165,7 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
       WHERE pc.id = ?
     `).get(id);
 
-    broadcastPatrolUpdate({ type: 'checkpoint_updated', id: parseInt(id) });
+    broadcastPatrolUpdate({ type: 'checkpoint_updated', id: parseInt(id as string) });
     res.json({ data: updated });
   } catch (error) {
     console.error('Error updating checkpoint:', error);
@@ -552,13 +552,13 @@ router.get('/optimize-route', (req: Request, res: Response) => {
     `).all(...params) as any[];
 
     if (checkpoints.length === 0) {
-      res.json({ optimized_order: [], total_distance_km: 0 });
+      res.json({ optimized_order: [], total_distance_mi: 0 });
       return;
     }
 
-    // Haversine distance in km
+    // Haversine distance in miles
     function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
-      const R = 6371;
+      const R = 3958.8;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLng = (lng2 - lng1) * Math.PI / 180;
       const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
@@ -587,13 +587,13 @@ router.get('/optimize-route', (req: Request, res: Response) => {
       }
       if (!nearest) break;
       visited.add(nearest.id);
-      order.push({ ...nearest, distance_from_previous_km: Math.round(nearestDist * 100) / 100 });
+      order.push({ ...nearest, distance_from_previous_mi: Math.round(nearestDist * 100) / 100 });
       totalDist += nearestDist;
       currentLat = nearest.latitude;
       currentLng = nearest.longitude;
     }
 
-    res.json({ optimized_order: order, total_distance_km: Math.round(totalDist * 100) / 100 });
+    res.json({ optimized_order: order, total_distance_mi: Math.round(totalDist * 100) / 100 });
   } catch (error) {
     console.error('Error optimizing route:', error);
     res.status(500).json({ error: 'Failed to optimize route', code: 'FAILED_TO_OPTIMIZE_ROUTE' });

@@ -17,7 +17,7 @@ import type { NextFunction } from 'express';
 /** Validate Graph API string IDs (alphanumeric, hyphens, underscores, equals, plus). Blocks path traversal. */
 function validateGraphId(req: Request, res: Response, next: NextFunction) {
   const id = req.params.id || req.params.aid;
-  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
+  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id as string)) {
     return res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' });
   }
   next();
@@ -587,7 +587,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     const client = await getGraphClient();
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
-      .select('id,name,contentType,size,isInline')
+      .select('id,name,contentType,size,isInline,contentId')
       .get();
 
     res.json((result.value || []).map((a: any) => ({
@@ -1608,7 +1608,7 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
         const client = await getGraphClient();
         const result = await client
           .api('/me/messages')
-          .filter(`conversationId eq '${convId.replace(/'/g, "''")}'`)
+          .filter(`conversationId eq '${(convId as string).replace(/'/g, "''")}'`)
           .select('id,conversationId,subject,from,toRecipients,ccRecipients,body,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
           .orderby('receivedDateTime asc')
           .top(50)
@@ -1680,6 +1680,41 @@ router.get('/threads', authenticateToken, (req: Request, res: Response) => {
     res.json(messages);
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// Image Proxy — loads external email images through the server
+// to bypass CORS/referrer restrictions on CDN-hosted content
+// ════════════════════════════════════════════════════════════
+router.get('/image-proxy', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const url = req.query.url as string;
+    if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      res.status(400).json({ error: 'Valid http/https URL required' });
+      return;
+    }
+    const parsed = new URL(url);
+    if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(parsed.hostname) ||
+        parsed.hostname.startsWith('10.') || parsed.hostname.startsWith('192.168.') || parsed.hostname.startsWith('172.')) {
+      res.status(403).json({ error: 'Internal URLs not allowed' });
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RMPG-Flex/1.0)', 'Accept': 'image/*,*/*;q=0.8' } });
+    clearTimeout(timeout);
+    if (!response.ok) { res.status(response.status).end(); return; }
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    if (!contentType.startsWith('image/')) { res.status(415).json({ error: 'Not an image' }); return; }
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.send(buffer);
+  } catch (err: any) {
+    if (err.name === 'AbortError') { res.status(504).json({ error: 'Image fetch timeout' }); }
+    else { res.status(502).json({ error: 'Failed to fetch image' }); }
   }
 });
 

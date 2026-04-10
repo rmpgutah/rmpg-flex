@@ -38,7 +38,7 @@ const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
 
 const CATEGORY_COLORS: Record<string, string> = {
   policy: 'bg-red-900/40 text-red-400 border-red-700/50',
-  procedure: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
+  procedure: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   sop: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   training_manual: 'bg-green-900/40 text-green-400 border-green-700/50',
   form: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
@@ -48,7 +48,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 function fileIcon(mimeType?: string) {
   if (!mimeType) return <File className="w-5 h-5 text-rmpg-400" />;
-  if (mimeType.startsWith('image/')) return <FileImage className="w-5 h-5 text-blue-400" />;
+  if (mimeType.startsWith('image/')) return <FileImage className="w-5 h-5 text-gray-400" />;
   if (mimeType.startsWith('video/')) return <FileVideo className="w-5 h-5 text-purple-400" />;
   if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv'))
     return <FileSpreadsheet className="w-5 h-5 text-green-400" />;
@@ -286,7 +286,7 @@ export default function TrainingDocsPage() {
                 {/* Icon */}
                 <div className="flex-shrink-0 mt-0.5">
                   {doc.content_type === 'link' ? (
-                    <ExternalLink className="w-5 h-5 text-blue-400" />
+                    <ExternalLink className="w-5 h-5 text-gray-400" />
                   ) : (
                     fileIcon(doc.mime_type)
                   )}

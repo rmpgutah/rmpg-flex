@@ -81,7 +81,7 @@ const RECORD_TYPE_CLASSES: Record<string, string> = {
   booking: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
   probation: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   parole: 'bg-purple-900/50 text-purple-400 border-purple-600/50',
-  court_order: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  court_order: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
   restraining_order: 'bg-pink-900/40 text-pink-300 border-pink-700/50',
   sex_offense: 'bg-red-900/70 text-red-300 border-red-500/70',
   dui: 'bg-amber-900/60 text-amber-400 border-amber-600/50',

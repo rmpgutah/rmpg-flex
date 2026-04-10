@@ -29,7 +29,7 @@ interface AttendanceSummary {
 const TYPE_COLORS: Record<string, string> = {
   absent: 'bg-red-900/50 text-red-400 border border-red-700/50',
   tardy: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
-  early_departure: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  early_departure: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   no_call_no_show: 'bg-red-900/60 text-red-300 border border-red-600/50',
 };
 

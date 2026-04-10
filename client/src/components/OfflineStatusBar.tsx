@@ -56,7 +56,7 @@ export default function OfflineStatusBar() {
           {syncStatus.table && `${syncStatus.table} `}
           ({syncStatus.current}/{syncStatus.total})
         </span>
-        <div className="w-24 h-1.5 bg-blue-900/50 overflow-hidden" style={{ borderRadius: 1 }}>
+        <div className="w-24 h-1.5 bg-gray-900/50 overflow-hidden" style={{ borderRadius: 1 }}>
           <div
             className="h-full transition-all duration-300"
             style={{ width: `${pct}%`, background: '#888888' }}

@@ -234,6 +234,15 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
       return;
     }
 
+    // Reject off-duty or out-of-service units
+    if (['off_duty', 'out_of_service'].includes(unit.status)) {
+      res.status(409).json({
+        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`,
+        code: 'UNIT_UNAVAILABLE',
+      });
+      return;
+    }
+
     // Allow multi-dispatch: units can be assigned to multiple calls at the same location
     // Only block if the other call is at a DIFFERENT location (safety check)
     if (unit.current_call_id && unit.current_call_id !== call.id) {
@@ -278,14 +287,15 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
 
     // Transaction: update call + unit + activity log atomically
     const assignTx = db.transaction(() => {
-      // Update call: add unit to assigned_unit_ids, set dispatched if pending
+      // Update call: add unit to assigned_unit_ids, set dispatched if pending, record dispatcher
       db.prepare(`
         UPDATE calls_for_service SET
           status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
           assigned_unit_ids = ?,
-          dispatched_at = COALESCE(dispatched_at, ?)
+          dispatched_at = COALESCE(dispatched_at, ?),
+          dispatcher_id = COALESCE(dispatcher_id, ?)
         WHERE id = ?
-      `).run(JSON.stringify(currentUnits), now, call.id);
+      `).run(JSON.stringify(currentUnits), now, req.user!.userId, call.id);
 
       // Update unit: set status to dispatched and link to this call
       db.prepare(`
@@ -498,6 +508,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       cleared: 'cleared_at',
       closed: 'closed_at',
       archived: 'archived_at',
+      on_hold: 'status_changed_at', // on_hold uses status_changed_at as its timestamp
     };
 
     const tsField = timestampField[status];
@@ -566,6 +577,13 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     // Transaction: update call + free units + activity log atomically
     let freedUnitIds: number[] = [];
     const statusTx = db.transaction(() => {
+      // Re-read status inside transaction to prevent concurrent update race
+      const freshCall = db.prepare('SELECT status FROM calls_for_service WHERE id = ?').get(call.id) as any;
+      if (freshCall.status !== call.status) {
+        // Status changed between read and write — abort
+        throw new Error('STALE_STATUS');
+      }
+
       db.prepare(updateQuery).run(...updateParams);
 
       // ── PSO 72-hour deadline: set precise deadline when PSO call is cleared/closed ──
@@ -618,7 +636,15 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         VALUES (?, 'status_change', 'call', ?, ?, ?)
       `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
     });
-    statusTx();
+    try {
+      statusTx();
+    } catch (err: any) {
+      if (err.message === 'STALE_STATUS') {
+        res.status(409).json({ error: 'Call status changed by another user. Please refresh.', code: 'STALE_STATUS' });
+        return;
+      }
+      throw err;
+    }
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     if (!updated) {
@@ -626,6 +652,23 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       return;
     }
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
+
+    // Notify assigned officers of status changes
+    try {
+      let unitIds: number[] = [];
+      try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+      for (const uid of unitIds) {
+        const unitRow = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(uid) as any;
+        if (unitRow?.officer_id && unitRow.officer_id !== req.user!.userId) {
+          createNotification(
+            unitRow.officer_id, 'dispatch',
+            `Call ${call.call_number}: ${status.replace(/_/g, ' ')}`,
+            `${call.incident_type} — status changed to ${status}`,
+            'call', call.id, status === 'cancelled' ? 'high' : 'normal',
+          );
+        }
+      }
+    } catch { /* non-critical */ }
 
     // Start welfare monitoring for high-priority calls when going onscene
     if (status === 'onscene') {
@@ -876,6 +919,18 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    // Prevent duplicate promotion — if an incident already exists for this call, return it
+    const existingIncident = db.prepare('SELECT id, incident_number FROM incidents WHERE call_id = ?').get(call.id) as any;
+    if (existingIncident) {
+      res.status(409).json({
+        error: 'Incident already exists for this call',
+        code: 'INCIDENT_ALREADY_EXISTS',
+        incident_id: existingIncident.id,
+        incident_number: existingIncident.incident_number,
+      });
+      return;
+    }
 
     // Generate incident number
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
@@ -1136,7 +1191,7 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
 router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const linkId = parseInt(req.params.linkId, 10);
+    const linkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(linkId) || linkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(linkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
@@ -1175,7 +1230,7 @@ router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole(
 router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const delPLinkId = parseInt(req.params.linkId, 10);
+    const delPLinkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(delPLinkId) || delPLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
       .get(delPLinkId, req.params.id) as any;
@@ -1304,7 +1359,7 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
 router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const vLinkId = parseInt(req.params.linkId, 10);
+    const vLinkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(vLinkId) || vLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(vLinkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
@@ -1345,7 +1400,7 @@ router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole
 router.delete('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const delVLinkId = parseInt(req.params.linkId, 10);
+    const delVLinkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(delVLinkId) || delVLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare(`SELECT cv.*, v.make, v.model, v.year, v.plate_number
       FROM call_vehicles cv LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
@@ -1755,7 +1810,7 @@ router.put('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole('a
 
     db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
 
-    auditLog(req, 'note_edited', 'call', call.id, null, `Edited note ${req.params.noteId} on call ${call.call_number}`);
+    auditLog(req, 'note_edited', 'call', call.id, `Edited note ${req.params.noteId} on call ${call.call_number}`);
 
     const updated = db.prepare(`
       SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,
@@ -1792,7 +1847,7 @@ router.delete('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole
 
     db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
 
-    auditLog(req, 'note_deleted', 'call', call.id, null, `Deleted note "${(deletedNote.text || '').slice(0, 50)}..." from call ${call.call_number}`);
+    auditLog(req, 'note_deleted', 'call', call.id, `Deleted note "${(deletedNote.text || '').slice(0, 50)}..." from call ${call.call_number}`);
 
     const updated = db.prepare(`
       SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,

@@ -20,14 +20,14 @@ interface DamageReport {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  minor: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  minor: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   moderate: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   major: 'bg-red-900/50 text-red-400 border border-red-700/50',
   totaled: 'bg-red-900/70 text-red-300 border border-red-600/50',
 };
 
 const REPAIR_COLORS: Record<string, string> = {
-  reported: 'text-blue-400', estimated: 'text-amber-400', approved: 'text-purple-400',
+  reported: 'text-gray-400', estimated: 'text-amber-400', approved: 'text-purple-400',
   in_repair: 'text-cyan-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
 };
 

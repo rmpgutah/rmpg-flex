@@ -1727,7 +1727,7 @@ export default function AdminSystemTab({
                                     <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${
                                       unit.status === 'available' ? 'bg-green-900/40 text-green-400 border-green-700/50' :
                                       unit.status === 'dispatched' ? 'bg-amber-900/40 text-amber-400 border-amber-700/50' :
-                                      unit.status === 'enroute' ? 'bg-blue-900/40 text-blue-400 border-blue-700/50' :
+                                      unit.status === 'enroute' ? 'bg-gray-900/40 text-gray-400 border-gray-700/50' :
                                       unit.status === 'onscene' ? 'bg-purple-900/40 text-purple-400 border-purple-700/50' :
                                       unit.status === 'busy' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
                                       'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50'
@@ -1738,7 +1738,7 @@ export default function AdminSystemTab({
                                   <td className="text-xs font-mono text-rmpg-300">{unit.current_call_number || <span className="text-rmpg-500">-</span>}</td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button type="button" onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-blue-400" title="Edit unit">
+                                      <button type="button" onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-gray-400" title="Edit unit">
                                         <Edit className="w-3.5 h-3.5" />
                                       </button>
                                       {!unit.current_call_id && (
@@ -1961,7 +1961,7 @@ export default function AdminSystemTab({
                                     <span className={`font-mono font-bold text-xs ${
                                       tpl.priority === 'P1' ? 'text-red-400' :
                                       tpl.priority === 'P2' ? 'text-amber-400' :
-                                      tpl.priority === 'P3' ? 'text-blue-400' :
+                                      tpl.priority === 'P3' ? 'text-gray-400' :
                                       'text-rmpg-400'
                                     }`}>{tpl.priority}</span>
                                   </td>
@@ -2200,7 +2200,7 @@ export default function AdminSystemTab({
                             <td className="px-2 py-1.5 text-rmpg-200 max-w-[250px] truncate">{s.short_title}</td>
                             <td className="px-2 py-1.5">
                               <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
-                                s.category === 'criminal' ? 'bg-red-900/30 text-red-400 border-red-700/40' : 'bg-blue-900/30 text-blue-400 border-blue-700/40'
+                                s.category === 'criminal' ? 'bg-red-900/30 text-red-400 border-red-700/40' : 'bg-gray-900/30 text-gray-400 border-gray-700/40'
                               }`}>
                                 {s.category === 'criminal' ? 'Criminal' : 'Vehicle'}
                               </span>

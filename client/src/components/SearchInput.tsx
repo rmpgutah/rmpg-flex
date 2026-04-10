@@ -19,7 +19,7 @@ export default function SearchInput({
   autoFocus = false,
 }: SearchInputProps) {
   const [localValue, setLocalValue] = useState(value);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Sync external value changes
@@ -76,7 +76,7 @@ export default function SearchInput({
         aria-label={placeholder}
         autoComplete="off"
         autoFocus={autoFocus}
-        className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-200 placeholder-rmpg-500 focus:outline-none focus:border-brand-600 focus:shadow-[0_0_0_1px_rgba(26,90,158,0.3)] transition-all"
+        className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-200 placeholder-rmpg-500 focus:outline-none focus:border-brand-600 focus:shadow-[0_0_0_1px_rgba(136,136,136,0.3)] transition-all"
       />
       {localValue && (
         <button type="button"

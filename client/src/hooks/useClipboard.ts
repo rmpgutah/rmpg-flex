@@ -16,7 +16,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
  */
 export function useClipboard(resetDelay = 2000) {
   const [copied, setCopied] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const copy = useCallback(
     async (text: string): Promise<boolean> => {

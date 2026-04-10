@@ -5,11 +5,14 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '..
 import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
-import { identifyBeat } from '../../utils/geofence';
+import { identifyBeat, reloadGeofence, findNearestBeat } from '../../utils/geofence';
+import fs from 'fs';
+import path from 'path';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
 import { buildThreatContext } from '../../utils/threatContext';
 import { findNearestUnits } from '../../utils/proximityAlerts';
+import { createNotification } from '../notifications';
 
 const router = Router();
 
@@ -1108,20 +1111,34 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       return;
     }
 
-    const beat = identifyBeat(latNum, lngNum);
+    let beat = identifyBeat(latNum, lngNum);
+    let exact = true;
+
     if (!beat) {
-      res.json({ found: false });
-      return;
+      const nearest = findNearestBeat(latNum, lngNum);
+      if (!nearest) {
+        res.json({ found: false });
+        return;
+      }
+      beat = nearest;
+      exact = false;
     }
 
-    // Lookup dispatch_districts table for rich names
-    const district = db.prepare(
-      'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-    ).get(beat.city_code, beat.district_letter) as any;
+    // Lookup dispatch_districts table for rich names — try dispatch_code first, then zone_id + beat_id
+    let district = db.prepare(
+      'SELECT * FROM dispatch_districts WHERE dispatch_code = ?'
+    ).get(beat.beat_code) as any;
+
+    if (!district) {
+      district = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+      ).get(beat.city_code, beat.district_letter) as any;
+    }
 
     if (district) {
       res.json({
         found: true,
+        exact,
         section_id: district.section_id,
         zone_id: district.zone_name,
         beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
@@ -1135,6 +1152,7 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       // Fallback to raw geofence data
       res.json({
         found: true,
+        exact,
         section_id: beat.district_letter,
         zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
         beat_id: beat.beat_id,
@@ -1143,6 +1161,124 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
   } catch (error: any) {
     console.error('[Dispatch] district identify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_IDENTIFY_ERROR' });
+  }
+});
+
+// GET /api/dispatch/districts/call-density — Call counts per beat zone
+router.get('/districts/call-density', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const range = req.query.range as string || '24h';
+    const hoursMap: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 };
+    const hours = hoursMap[range] || 24;
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const rows = db.prepare('SELECT zone_beat, COUNT(*) as call_count FROM calls_for_service WHERE zone_beat IS NOT NULL AND zone_beat != ? AND created_at >= ? GROUP BY zone_beat ORDER BY call_count DESC').all('', cutoff) as any[];
+    setCacheHeaders(res, 120);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('[Dispatch] call density error:', error?.message);
+    if (error?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to get call density', code: 'CALL_DENSITY_ERROR' });
+  }
+});
+
+// POST /api/dispatch/districts/reload-geofence — Hot-reload geofence data
+router.post('/districts/reload-geofence', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    reloadGeofence();
+    res.json({ success: true, message: 'Geofence data reloaded' });
+  } catch (error: any) { console.error('[Dispatch] geofence reload error:', error?.message); res.status(500).json({ error: 'Failed to reload geofence', code: 'GEOFENCE_RELOAD_ERROR' }); }
+});
+
+// POST /api/dispatch/districts — Create district row
+router.post('/districts', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
+    if (!section_id?.trim() || !zone_id?.trim() || !beat_id?.trim() || !section_name?.trim() || !zone_name?.trim() || !beat_name?.trim()) {
+      res.status(400).json({ error: 'section_id, zone_id, beat_id, section_name, zone_name, beat_name are required', code: 'MISSING_FIELDS' });
+      return;
+    }
+    const code = dispatch_code?.trim() || `${section_id.trim()}-${zone_id.trim()}/${beat_id.trim()}`;
+    const existing = db.prepare('SELECT id FROM dispatch_districts WHERE dispatch_code = ?').get(code);
+    if (existing) { res.status(409).json({ error: 'Duplicate dispatch code', code: 'DUPLICATE_DISTRICT' }); return; }
+    const result = db.prepare('INSERT INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(section_id.trim(), zone_id.trim(), beat_id.trim(), code, section_name.trim(), zone_name.trim(), beat_name.trim(), beat_descriptor?.trim() || null);
+    auditLog(req, 'CREATE' as any, 'dispatch_district' as any, result.lastInsertRowid as number, `Created district ${code}`);
+    res.status(201).json({ success: true, id: result.lastInsertRowid, dispatch_code: code });
+  } catch (error: any) { console.error('[Dispatch] district create error:', error?.message); res.status(500).json({ error: 'Failed to create district', code: 'DISTRICT_CREATE_ERROR' }); }
+});
+
+// PUT /api/dispatch/districts/:id — Update district row
+router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
+    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
+    db.prepare('UPDATE dispatch_districts SET section_id = COALESCE(?, section_id), zone_id = COALESCE(?, zone_id), beat_id = COALESCE(?, beat_id), dispatch_code = COALESCE(?, dispatch_code), section_name = COALESCE(?, section_name), zone_name = COALESCE(?, zone_name), beat_name = COALESCE(?, beat_name), beat_descriptor = COALESCE(?, beat_descriptor) WHERE id = ?').run(section_id || null, zone_id || null, beat_id || null, dispatch_code || null, section_name || null, zone_name || null, beat_name || null, beat_descriptor ?? null, id);
+    auditLog(req, 'UPDATE' as any, 'dispatch_district' as any, id, `Updated district ${existing.dispatch_code}`);
+    res.json({ success: true });
+  } catch (error: any) { console.error('[Dispatch] district update error:', error?.message); res.status(500).json({ error: 'Failed to update district', code: 'DISTRICT_UPDATE_ERROR' }); }
+});
+
+// DELETE /api/dispatch/districts/:id — Delete district row
+router.delete('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
+    db.prepare('DELETE FROM dispatch_districts WHERE id = ?').run(id);
+    auditLog(req, 'DELETE' as any, 'dispatch_district' as any, id, `Deleted district ${existing.dispatch_code}`);
+    res.json({ success: true });
+  } catch (error: any) { console.error('[Dispatch] district delete error:', error?.message); res.status(500).json({ error: 'Failed to delete district', code: 'DISTRICT_DELETE_ERROR' }); }
+});
+
+// PUT /api/dispatch/districts/beat-geometry/:beatCode — Update beat polygon in GeoJSON file
+router.put('/districts/beat-geometry/:beatCode', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const beatCode = req.params.beatCode;
+    const { geometry } = req.body;
+
+    if (!geometry || !geometry.type || !geometry.coordinates) {
+      res.status(400).json({ error: 'Valid GeoJSON geometry required', code: 'INVALID_GEOMETRY' });
+      return;
+    }
+
+    // Read beat.geojson — try dist/ first (production), fall back to public/ (dev)
+    const distPath = path.resolve(__dirname, '../../../client/dist/geojson/beat.geojson');
+    const publicPath = path.resolve(__dirname, '../../../client/public/geojson/beat.geojson');
+    const geojsonPath = fs.existsSync(distPath) ? distPath : publicPath;
+    if (!fs.existsSync(geojsonPath)) {
+      res.status(404).json({ error: 'beat.geojson not found', code: 'GEOJSON_NOT_FOUND' });
+      return;
+    }
+
+    const raw = JSON.parse(fs.readFileSync(geojsonPath, 'utf-8'));
+    const feature = raw.features.find((f: any) => f.properties?.beat_code === beatCode);
+    if (!feature) {
+      res.status(404).json({ error: `Beat ${beatCode} not found in GeoJSON`, code: 'BEAT_NOT_FOUND' });
+      return;
+    }
+
+    feature.geometry = geometry;
+    const serialized = JSON.stringify(raw);
+    fs.writeFileSync(geojsonPath, serialized);
+    // Also write to the other location so dist and public stay in sync
+    const otherPath = geojsonPath === distPath ? publicPath : distPath;
+    try { if (fs.existsSync(path.dirname(otherPath))) fs.writeFileSync(otherPath, serialized); } catch { /* other path may not exist */ }
+
+    // Reload geofence engine so identifyBeat() uses updated polygons
+    reloadGeofence();
+
+    auditLog(req, 'UPDATE' as any, 'beat_geometry' as any, 0, `Updated geometry for beat ${beatCode}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Dispatch] beat geometry update error:', error?.message);
+    res.status(500).json({ error: 'Failed to update beat geometry', code: 'BEAT_GEOMETRY_ERROR' });
   }
 });
 
@@ -1820,6 +1956,273 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
   } catch (error: any) {
     console.error('[Dispatch] history-map error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error', code: 'HISTORY_MAP_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// DISPATCH QUEUE — Officer assignment queue with priority sorting
+// Shows pending/unassigned calls sorted by priority + age
+// ════════════════════════════════════════════════════════════
+
+router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Pending calls needing assignment (no units or status=pending)
+    const pending = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status,
+        c.location_address, c.caller_name, c.description,
+        c.section_id, c.zone_id, c.beat_id, c.dispatch_code,
+        c.latitude, c.longitude, c.created_at,
+        c.assigned_unit_ids,
+        ROUND((julianday('now') - julianday(c.created_at)) * 1440) as wait_minutes
+      FROM calls_for_service c
+      WHERE c.status IN ('pending', 'dispatched')
+      ORDER BY
+        CASE c.priority WHEN 'P1' THEN 0 WHEN 'P2' THEN 1 WHEN 'P3' THEN 2 WHEN 'P4' THEN 3 ELSE 4 END,
+        c.created_at ASC
+      LIMIT 100
+    `).all() as any[];
+
+    // Available units for assignment
+    const availableUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
+        u.current_call_id, u.last_status_change,
+        usr.first_name, usr.last_name, usr.badge_number
+      FROM units u
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      WHERE u.status = 'available'
+      ORDER BY u.call_sign
+    `).all() as any[];
+
+    // Units currently dispatched (for workload view)
+    const busyUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.current_call_id,
+        c.call_number as current_call_number, c.incident_type as current_call_type,
+        c.priority as current_call_priority,
+        usr.first_name, usr.last_name
+      FROM units u
+      LEFT JOIN calls_for_service c ON c.id = u.current_call_id
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      WHERE u.status IN ('dispatched', 'enroute', 'onscene')
+      ORDER BY CASE u.status WHEN 'onscene' THEN 0 WHEN 'enroute' THEN 1 WHEN 'dispatched' THEN 2 ELSE 3 END
+    `).all() as any[];
+
+    // Nearest unit recommendations for each pending call
+    const recommendations: Record<string, any[]> = {};
+    for (const call of pending) {
+      if (call.latitude && call.longitude && availableUnits.length > 0) {
+        const nearest = availableUnits
+          .filter((u: any) => u.latitude && u.longitude)
+          .map((u: any) => {
+            const dlat = (call.latitude - u.latitude) * 111;
+            const dlng = (call.longitude - u.longitude) * 85;
+            return { ...u, distance_km: Math.sqrt(dlat * dlat + dlng * dlng) };
+          })
+          .sort((a: any, b: any) => a.distance_km - b.distance_km)
+          .slice(0, 3);
+        recommendations[call.id] = nearest;
+      }
+    }
+
+    // Stats
+    const p1Count = pending.filter((c: any) => c.priority === 'P1').length;
+    const p2Count = pending.filter((c: any) => c.priority === 'P2').length;
+    const avgWait = pending.length > 0 ? Math.round(pending.reduce((sum: number, c: any) => sum + (c.wait_minutes || 0), 0) / pending.length) : 0;
+
+    res.json({
+      pending,
+      available_units: availableUnits,
+      busy_units: busyUnits,
+      recommendations,
+      stats: {
+        pending_count: pending.length,
+        p1_count: p1Count,
+        p2_count: p2Count,
+        available_unit_count: availableUnits.length,
+        busy_unit_count: busyUnits.length,
+        avg_wait_minutes: avgWait,
+      },
+    });
+  } catch (err: any) {
+    console.error('[Dispatch] queue error:', err?.message);
+    res.status(500).json({ error: 'Failed to load dispatch queue' });
+  }
+});
+
+// POST /api/dispatch/queue/assign — Quick-assign unit to call from queue
+router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id, unit_id } = req.body;
+    if (!call_id || !unit_id) {
+      res.status(400).json({ error: 'call_id and unit_id required' });
+      return;
+    }
+
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call_id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
+
+    const now = localNow();
+
+    // Update unit status to dispatched
+    db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('dispatched', call_id, now, now, unit_id);
+
+    // Add unit to call's assigned_unit_ids
+    let unitIds: string[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { unitIds = []; }
+    if (!unitIds.includes(String(unit_id))) unitIds.push(String(unit_id));
+    db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, status = ?, dispatched_at = COALESCE(dispatched_at, ?), updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
+
+    // Log
+    auditLog(req, 'DISPATCH_ASSIGN', 'calls_for_service', call_id, JSON.stringify({ unit_id, call_sign: unit.call_sign }));
+
+    // Broadcast
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: call.status === 'pending' ? 'dispatched' : call.status } });
+    broadcastUnitUpdate({ action: 'unit_status', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
+
+    res.json({ success: true, call_number: call.call_number, unit_call_sign: unit.call_sign });
+  } catch (err: any) {
+    console.error('[Dispatch] queue assign error:', err?.message);
+    res.status(500).json({ error: 'Failed to assign unit' });
+  }
+});
+
+// POST /api/dispatch/queue/auto-assign — Auto-assign nearest available unit
+router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id } = req.body;
+    if (!call_id) { res.status(400).json({ error: 'call_id required' }); return; }
+
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call_id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call.latitude || !call.longitude) { res.status(400).json({ error: 'Call has no GPS coordinates for auto-assign' }); return; }
+
+    // Find nearest available unit with GPS
+    const units = db.prepare("SELECT * FROM units WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL").all() as any[];
+    if (units.length === 0) { res.status(404).json({ error: 'No available units with GPS' }); return; }
+
+    let nearest = units[0];
+    let minDist = Infinity;
+    for (const u of units) {
+      const dlat = (call.latitude - u.latitude) * 111;
+      const dlng = (call.longitude - u.longitude) * 85;
+      const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+      if (dist < minDist) { minDist = dist; nearest = u; }
+    }
+
+    const now = localNow();
+    db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('dispatched', call_id, now, now, nearest.id);
+
+    let unitIds: string[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { unitIds = []; }
+    if (!unitIds.includes(String(nearest.id))) unitIds.push(String(nearest.id));
+    db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, status = ?, dispatched_at = COALESCE(dispatched_at, ?), updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
+
+    auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, JSON.stringify({ unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) }));
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: 'dispatched' } });
+    broadcastUnitUpdate({ action: 'unit_status', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
+
+    res.json({ success: true, call_number: call.call_number, unit_call_sign: nearest.call_sign, distance_km: parseFloat(minDist.toFixed(2)) });
+  } catch (err: any) {
+    console.error('[Dispatch] auto-assign error:', err?.message);
+    res.status(500).json({ error: 'Failed to auto-assign' });
+  }
+});
+
+// ─── ANOMALY ALERTS ──────────────────────────────────────────
+
+// GET /api/dispatch/anomaly-alerts
+router.get('/anomaly-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = parseInt(req.query.hours as string) || 4;
+    const alerts = db.prepare(`
+      SELECT a.*, u.full_name as acknowledged_by_name
+      FROM anomaly_alerts a
+      LEFT JOIN users u ON a.acknowledged_by = u.id
+      WHERE a.created_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+      ORDER BY a.created_at DESC
+    `).all(hours);
+    res.json(alerts);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly alerts error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to fetch anomaly alerts', code: 'ANOMALY_ALERTS_ERROR' });
+  }
+});
+
+// POST /api/dispatch/anomaly-alerts/:id/acknowledge
+router.post('/anomaly-alerts/:id/acknowledge', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) { res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' }); return; }
+
+    db.prepare(`
+      UPDATE anomaly_alerts SET acknowledged_by = ?, acknowledged_at = ? WHERE id = ?
+    `).run(req.user!.userId, localNow(), req.params.id);
+
+    const updated = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate({ action: 'anomaly_acknowledged', alert: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly acknowledge error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to acknowledge alert', code: 'ANOMALY_ACK_ERROR' });
+  }
+});
+
+// ─── BACKUP REQUEST ──────────────────────────────────────────
+
+// POST /api/dispatch/request-backup
+router.post('/request-backup', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { latitude, longitude, message } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const unit = db.prepare('SELECT * FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'backup_requested', 'unit', ?, ?, ?)
+    `).run(req.user!.userId, unit?.id || null, `Backup requested by ${user?.full_name || 'Unknown'}: ${message || 'No message'}`, req.ip || 'unknown');
+
+    // Broadcast to dispatch channel
+    broadcastDispatchUpdate({
+      action: 'backup_requested',
+      user_id: req.user!.userId,
+      user_name: user?.full_name,
+      badge_number: user?.badge_number,
+      call_sign: unit?.call_sign,
+      current_call_id: unit?.current_call_id,
+      latitude, longitude, message,
+      requested_at: localNow(),
+    });
+
+    // Notify all dispatchers
+    const dispatchers = db.prepare(
+      "SELECT id FROM users WHERE role IN ('admin', 'supervisor', 'dispatcher') AND status = 'active'"
+    ).all() as any[];
+    for (const d of dispatchers) {
+      createNotification(
+        d.id, 'backup_request', `BACKUP: ${unit?.call_sign || user?.full_name}`,
+        message || 'Officer requesting backup',
+        'unit', unit?.id || null, 'critical'
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Aggregates] Backup request error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to process backup request', code: 'BACKUP_REQUEST_ERROR' });
   }
 });
 

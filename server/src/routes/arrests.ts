@@ -31,6 +31,7 @@ import {
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
+import { createNotification, createNotificationForRoles } from './notifications';
 
 const router = Router();
 router.use(authenticateToken);
@@ -211,7 +212,37 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     // Run cross-linking for the new record
     try { crossLinkArrests(); } catch { /* non-critical */ }
 
-    res.json({ success: true, id: newId, message: 'Booking record created' });
+    // Check for active warrants matching this person by name
+    try {
+      const personName = fullName;
+      const activeWarrants = db.prepare(`
+        SELECT COUNT(*) as cnt FROM warrants w
+        JOIN persons p ON w.subject_person_id = p.id
+        WHERE w.status = 'active'
+          AND LOWER(TRIM(p.first_name || ' ' || p.last_name)) = LOWER(TRIM(?))
+      `).get(personName) as { cnt: number } | undefined;
+
+      if (activeWarrants && activeWarrants.cnt > 0) {
+        // Notify the arresting officer
+        createNotification(
+          user.userId, 'warrant',
+          `Warrant Hit: ${personName}`,
+          `Person has ${activeWarrants.cnt} active warrant(s). Verify and coordinate with court.`,
+          'warrant', 0, 'high'
+        );
+        // Notify supervisors and admins
+        createNotificationForRoles(
+          ['admin', 'manager', 'supervisor'],
+          'warrant',
+          `Warrant Hit on Arrest: ${personName}`,
+          `Arrested person has ${activeWarrants.cnt} active warrant(s).`,
+          'warrant', 0, 'high',
+          'warrant.hit_on_arrest', user.userId
+        );
+      }
+    } catch { /* non-critical — don't block arrest creation */ }
+
+    res.status(201).json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
     if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
       res.status(400).json({ error: err.message }); return;
@@ -238,7 +269,7 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
     const fields: Record<string, string> = {
       full_name: b.full_name, first_name: b.first_name, last_name: b.last_name, middle_name: b.middle_name,
       date_of_birth: b.date_of_birth, booking_date: b.booking_date, release_date: b.release_date,
-      county: b.county, status: b.status, booking_number: b.booking_number, agency: b.agency,
+      county: b.county, state: b.state, status: b.status, booking_number: b.booking_number, agency: b.agency,
       gender: b.gender, race: b.race, height: b.height, weight: b.weight,
       hair_color: b.hair_color, eye_color: b.eye_color, address: b.address,
       hold_reason: b.hold_reason, notes: b.notes,
@@ -876,7 +907,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
 router.get('/manual/:id/checklist', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
@@ -932,7 +963,7 @@ router.get('/manual/:id/checklist', validateParamIdMiddleware, (req: Request, re
 router.put('/manual/:id/checklist', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
@@ -968,7 +999,7 @@ router.put('/manual/:id/checklist', validateParamIdMiddleware, requireRole('admi
 router.get('/manual/:id/property', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
@@ -985,7 +1016,7 @@ router.get('/manual/:id/property', validateParamIdMiddleware, (req: Request, res
 router.post('/manual/:id/property', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
@@ -1029,7 +1060,7 @@ router.post('/manual/:id/property', validateParamIdMiddleware, requireRole('admi
 router.delete('/manual/:id/property/:itemId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
@@ -1056,7 +1087,7 @@ router.delete('/manual/:id/property/:itemId', validateParamIdMiddleware, require
 router.post('/manual/:id/miranda', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
@@ -1111,7 +1142,7 @@ router.post('/manual/:id/miranda', validateParamIdMiddleware, requireRole('admin
 router.get('/manual/:id/miranda', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
@@ -1132,7 +1163,7 @@ router.get('/manual/:id/miranda', validateParamIdMiddleware, (req: Request, res:
 router.get('/manual/:id/linked-records', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 

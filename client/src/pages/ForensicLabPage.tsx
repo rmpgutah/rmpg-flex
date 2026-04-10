@@ -12,7 +12,7 @@ import {
   Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
   Fingerprint, Cpu, FlaskConical, Camera, Shield, Network,
   HelpCircle, ChevronLeft, Package, Upload, Trash2, RefreshCw,
-  Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp,
+  Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp, X,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import FormModal from '../components/FormModal';
@@ -46,7 +46,7 @@ const PRIORITIES = [
 ] as const;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
-  submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-blue-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
+  submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-gray-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: '#a78bfa', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
   assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-sky-900/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: '#fbbf24', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
@@ -154,12 +154,12 @@ interface ForensicCase {
   case_type: string;
   status: string;
   priority: string;
-  incident_id: number | null;
+  linked_incident_id: number | null;
   requesting_officer_id: number | null;
   requesting_officer_name: string | null;
   assigned_examiner_id: number | null;
   assigned_examiner_name: string | null;
-  synopsis: string | null;
+  description: string | null;
   findings: string | null;
   conclusion: string | null;
   methodology: string | null;
@@ -183,7 +183,7 @@ interface ForensicExhibit {
   forensic_case_id: number;
   exhibit_number: string;
   description: string;
-  item_type: string;
+  exhibit_type: string;
   condition_received: string;
   examination_requested: string;
   examination_performed: string | null;
@@ -235,7 +235,7 @@ interface WizardData {
   synopsis: string;
   incident_id: string;
   notes: string;
-  exhibits: { description: string; item_type: string; condition_received: string; examination_requested: string }[];
+  exhibits: { description: string; exhibit_type: string; condition_received: string; examination_requested: string }[];
 }
 
 const EMPTY_WIZARD: WizardData = {
@@ -272,6 +272,7 @@ export default function ForensicLabPage() {
   const [cases, setCases] = useState<ForensicCase[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -286,10 +287,10 @@ export default function ForensicLabPage() {
   const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
   // Exhibit modal
   const [showExhibitModal, setShowExhibitModal] = useState(false);
-  const [exhibitForm, setExhibitForm] = useState({ description: '', item_type: '', condition_received: '', examination_requested: '' });
+  const [exhibitForm, setExhibitForm] = useState({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
   // Edit case modal
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ synopsis: '', findings: '', conclusion: '', notes: '', due_date: '' });
+  const [editForm, setEditForm] = useState({ description: '', findings: '', conclusion: '', notes: '', due_date: '' });
   // Timeline note
   const [timelineNote, setTimelineNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
@@ -395,6 +396,7 @@ export default function ForensicLabPage() {
 
   const fetchCases = useCallback(async (tab?: Tab, signal?: AbortSignal) => {
     setLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams();
       if (searchTerm) params.set('search', searchTerm);
@@ -411,6 +413,7 @@ export default function ForensicLabPage() {
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       console.error('Fetch forensic cases error:', err);
+      setFetchError(err?.message || 'Failed to load forensic cases');
       addToast('Failed to load forensic cases', 'error');
     } finally {
       setLoading(false);
@@ -453,8 +456,8 @@ export default function ForensicLabPage() {
           title: wizardData.title,
           case_type: wizardData.case_type,
           priority: wizardData.priority,
-          synopsis: wizardData.synopsis,
-          incident_id: wizardData.incident_id ? Number(wizardData.incident_id) : null,
+          description: wizardData.synopsis,
+          linked_incident_id: wizardData.incident_id ? Number(wizardData.incident_id) : null,
           notes: wizardData.notes,
         }),
       });
@@ -513,7 +516,7 @@ export default function ForensicLabPage() {
         body: JSON.stringify(exhibitForm),
       });
       setShowExhibitModal(false);
-      setExhibitForm({ description: '', item_type: '', condition_received: '', examination_requested: '' });
+      setExhibitForm({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
       console.error('Add exhibit error:', err);
@@ -544,7 +547,7 @@ export default function ForensicLabPage() {
   const openEditModal = () => {
     if (!selectedCase) return;
     setEditForm({
-      synopsis: selectedCase.synopsis || '',
+      description: selectedCase.description || '',
       findings: selectedCase.findings || '',
       conclusion: selectedCase.conclusion || '',
       notes: selectedCase.notes || '',
@@ -895,10 +898,10 @@ export default function ForensicLabPage() {
                     <div className="flex justify-between"><span className="text-rmpg-400">Examiner</span><span className="text-rmpg-200">{selectedCase.assigned_examiner_name || 'Unassigned'}</span></div>
                     <div className="flex justify-between"><span className="text-rmpg-400">Received</span><span className="text-rmpg-200 font-mono">{formatDate(selectedCase.received_date)}</span></div>
                     <div className="flex justify-between"><span className="text-rmpg-400">Due Date</span><span className={`font-mono ${overdue ? 'text-red-400 font-bold' : 'text-rmpg-200'}`}>{formatDate(selectedCase.due_date)}</span></div>
-                    {selectedCase.incident_id && (
+                    {selectedCase.linked_incident_id && (
                       <div className="flex justify-between">
                         <span className="text-rmpg-400">Linked Incident</span>
-                        <button type="button" onClick={() => navigate(`/incidents?id=${selectedCase.incident_id}`)} className="text-brand-400 hover:underline">#{selectedCase.incident_id}</button>
+                        <button type="button" onClick={() => navigate(`/incidents?id=${selectedCase.linked_incident_id}`)} className="text-brand-400 hover:underline">#{selectedCase.linked_incident_id}</button>
                       </div>
                     )}
                   </div>
@@ -925,10 +928,10 @@ export default function ForensicLabPage() {
                   </div>
                 </div>
               </div>
-              {selectedCase.synopsis && (
+              {selectedCase.description && (
                 <div className="panel-beveled bg-surface-sunken p-3">
                   <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Synopsis</div>
-                  <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedCase.synopsis}</p>
+                  <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedCase.description}</p>
                 </div>
               )}
               {selectedCase.findings && (
@@ -1210,7 +1213,7 @@ export default function ForensicLabPage() {
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-semibold text-rmpg-200">{ex.description}</div>
                             <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-                              {ex.item_type && <span>Type: {ex.item_type}</span>}
+                              {ex.exhibit_type && <span>Type: {ex.exhibit_type}</span>}
                               {ex.condition_received && <span>Condition: {ex.condition_received}</span>}
                               <span className="font-bold uppercase" style={{ color: exStatus.color }}>{(ex.status || '').replace(/_/g, ' ')}</span>
                             </div>
@@ -1567,7 +1570,7 @@ export default function ForensicLabPage() {
               {/* Link Search */}
               <div className="panel-beveled bg-surface-sunken p-3">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Link Entity to Case</div>
-                <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300 mb-2">
+                <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300 mb-2">
                   <Info size={10} className="inline mr-1" />
                   Search for persons, incidents, evidence, or cases to link to this forensic case.
                 </div>
@@ -1684,7 +1687,7 @@ export default function ForensicLabPage() {
             isDirty={exhibitForm.description.trim().length > 0}
           >
             <div className="space-y-3">
-              <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+              <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                 <Info size={10} className="inline mr-1" />
                 Each exhibit is auto-assigned a letter (A, B, C...) for chain of custody tracking.
               </div>
@@ -1703,8 +1706,8 @@ export default function ForensicLabPage() {
                   <label className="block text-[11px] text-rmpg-400 mb-1">Item Type</label>
                   <input
                     type="text"
-                    value={exhibitForm.item_type}
-                    onChange={e => setExhibitForm(f => ({ ...f, item_type: e.target.value }))}
+                    value={exhibitForm.exhibit_type}
+                    onChange={e => setExhibitForm(f => ({ ...f, exhibit_type: e.target.value }))}
                     className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
                     placeholder="e.g. Cell phone"
                   />
@@ -1753,8 +1756,8 @@ export default function ForensicLabPage() {
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
                 <textarea
-                  value={editForm.synopsis}
-                  onChange={e => setEditForm(f => ({ ...f, synopsis: e.target.value }))}
+                  value={editForm.description}
+                  onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Case synopsis..."
                 />
@@ -1812,7 +1815,7 @@ export default function ForensicLabPage() {
             isDirty={custodyForm.from_person.trim().length > 0 || custodyForm.to_person.trim().length > 0}
           >
             <div className="space-y-3">
-              <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+              <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                 <Info size={10} className="inline mr-1" />
                 Record every transfer of evidence to maintain a complete chain of custody.
               </div>
@@ -1874,6 +1877,13 @@ export default function ForensicLabPage() {
 
   return (
     <div className="flex flex-col h-full bg-surface-base">
+      {/* Error Banner */}
+      {fetchError && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-3 h-3" /> {fetchError}
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken flex-wrap">
         <div className="flex items-center gap-1.5">
@@ -1905,7 +1915,7 @@ export default function ForensicLabPage() {
             <div className="text-[8px] text-rmpg-500 uppercase">Active</div>
           </div>
           <div className="text-center">
-            <div className="text-sm font-bold font-mono text-blue-400">{stats.by_status?.submitted || 0}</div>
+            <div className="text-sm font-bold font-mono text-gray-400">{stats.by_status?.submitted || 0}</div>
             <div className="text-[8px] text-rmpg-500 uppercase">Pending</div>
           </div>
           {!isMobile && (
@@ -1942,7 +1952,7 @@ export default function ForensicLabPage() {
             </div>
             <div className="flex items-center gap-1">
               <span className="text-rmpg-500">Avg Turnaround:</span>
-              <span className="text-blue-400 font-bold font-mono">{stats.overdue > 0 ? 'Behind schedule' : 'On track'}</span>
+              <span className="text-gray-400 font-bold font-mono">{stats.overdue > 0 ? 'Behind schedule' : 'On track'}</span>
             </div>
             {stats.overdue > 0 && (
               <div className="flex items-center gap-1 ml-auto">
@@ -2003,14 +2013,16 @@ export default function ForensicLabPage() {
             {showFilters && (
               <div className="flex items-center gap-2 flex-wrap">
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                  className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none">
+                  className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
+                  aria-label="Filter by case status">
                   <option value="">All Statuses</option>
                   {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                     <option key={k} value={k}>{v.label}</option>
                   ))}
                 </select>
                 <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                  className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none">
+                  className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
+                  aria-label="Filter by case type">
                   <option value="">All Types</option>
                   {CASE_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -2126,7 +2138,7 @@ export default function ForensicLabPage() {
                   <FileText size={16} className="text-brand-400" />
                   <h3 className="text-sm font-bold text-white">Case Information</h3>
                 </div>
-                <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+                <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                   <Info size={10} className="inline mr-1" />
                   Start by describing the case. A lab case number will be auto-generated (e.g. FL-2026-0001).
                   Choose the type of forensic examination needed and the priority level.
@@ -2230,7 +2242,7 @@ export default function ForensicLabPage() {
                   <Package size={16} className="text-brand-400" />
                   <h3 className="text-sm font-bold text-white">Evidence Intake</h3>
                 </div>
-                <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded-sm text-[10px] text-blue-300">
+                <div className="p-2 bg-gray-900/10 border border-gray-800/30 rounded-sm text-[10px] text-gray-300">
                   <Info size={10} className="inline mr-1" />
                   Add each piece of evidence as a separate exhibit. Each will be assigned a letter (A, B, C...).
                   You can skip this step and add exhibits later.
@@ -2261,10 +2273,10 @@ export default function ForensicLabPage() {
                     <div className="grid grid-cols-3 gap-2">
                       <input
                         type="text"
-                        value={ex.item_type}
+                        value={ex.exhibit_type}
                         onChange={e => {
                           const exhibits = [...wizardData.exhibits];
-                          exhibits[i] = { ...exhibits[i], item_type: e.target.value };
+                          exhibits[i] = { ...exhibits[i], exhibit_type: e.target.value };
                           setWizardData(d => ({ ...d, exhibits }));
                         }}
                         className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
@@ -2302,7 +2314,7 @@ export default function ForensicLabPage() {
                 <button type="button"
                   onClick={() => setWizardData(d => ({
                     ...d,
-                    exhibits: [...d.exhibits, { description: '', item_type: '', condition_received: '', examination_requested: '' }],
+                    exhibits: [...d.exhibits, { description: '', exhibit_type: '', condition_received: '', examination_requested: '' }],
                   }))}
                   className="toolbar-btn text-xs w-full justify-center py-2"
                 >

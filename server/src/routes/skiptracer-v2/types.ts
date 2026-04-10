@@ -204,7 +204,7 @@ export interface CustodyRecord {
 // Source Result — output from a single data source adapter
 // ============================================================
 
-export type SourceCategory = 'people' | 'court' | 'property' | 'business' | 'registry' | 'osint';
+export type SourceCategory = 'people' | 'court' | 'property' | 'business' | 'registry' | 'osint' | 'reference';
 
 export interface SourceResult {
   source: string;
@@ -232,6 +232,8 @@ export interface SourceResult {
   sexOffenderRecords?: SexOffenderRecord[];
   custodyRecords?: CustodyRecord[];
   photos?: Array<{ source: string; url: string; description?: string }>;
+  /** Generic metadata bag for reference/enrichment sources */
+  meta?: Record<string, unknown>;
 }
 
 // ============================================================

@@ -484,7 +484,7 @@ export default function AdminClientsTab({
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">Incidents</div>
                   </div>
                   <div className="panel-beveled p-3 text-center bg-surface-base">
-                    <div className="text-2xl font-bold text-blue-400">{clientCalls.length}</div>
+                    <div className="text-2xl font-bold text-gray-400">{clientCalls.length}</div>
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">CFS Calls</div>
                   </div>
                 </div>

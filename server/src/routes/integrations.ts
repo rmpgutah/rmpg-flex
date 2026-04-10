@@ -5,6 +5,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { encryptApiKey, decryptApiKey } from '../utils/serveManagerClient';
+import { hashApiKey } from '../utils/apiKeyHash';
 
 const router = Router();
 router.use(authenticateToken);
@@ -260,7 +261,7 @@ router.post('/keys', requireRole('admin'), (req: Request, res: Response) => {
     const rawKey = crypto.randomBytes(32).toString('hex');
     const fullKey = `rmpg_ps_${rawKey}`;
     const keyPrefix = `rmpg_ps_${rawKey.slice(0, 8)}...`;
-    const keyHash = crypto.createHash('sha256').update(fullKey).digest('hex');
+    const keyHash = hashApiKey(fullKey);
 
     const scopeList = Array.isArray(scopes) ? JSON.stringify(scopes) : '["service_request"]';
     const userId = (req as any).user?.id || null;

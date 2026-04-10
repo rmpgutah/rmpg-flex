@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { printWithLightMaps } from '../utils/googleMapsLoader';
+import { APP_VERSION } from '../utils/version';
 import {
   Radio,
   FileText,
@@ -692,7 +693,9 @@ export default function MenuBar({
           { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
           { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Use of Force', icon: AlertTriangle, action: () => navigate('/use-of-force') },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
+          { type: 'action', label: 'Serve Intake Upload', icon: Upload, action: () => navigate('/serve-intake') },
         ],
       },
       {
@@ -733,6 +736,7 @@ export default function MenuBar({
           { type: 'action', label: 'Security Policy', icon: ShieldAlert, action: () => navigate('/admin') },
           { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin') },
           { type: 'separator' },
+          { type: 'action', label: 'Security Dashboard', icon: Shield, action: () => navigate('/security-dashboard') },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
           { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
@@ -787,9 +791,9 @@ export default function MenuBar({
       },
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
-      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/') },
+      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/help') },
       // Version string with monospace for alignment
-      { type: 'action', label: 'Version 5.3.9', icon: Shield, disabled: true, action: () => {} },
+      { type: 'action', label: `Version ${APP_VERSION}`, icon: Shield, disabled: true, action: () => {} },
     ],
   };
 
@@ -1092,7 +1096,7 @@ const OFFENSE_COLORS: Record<string, string> = {
   class_a_misdemeanor: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
   class_b_misdemeanor: 'bg-amber-900/30 text-amber-400 border-amber-700/30',
   class_c_misdemeanor: 'bg-yellow-900/30 text-yellow-400 border-yellow-700/30',
-  infraction: 'bg-blue-900/30 text-blue-400 border-blue-700/30',
+  infraction: 'bg-gray-900/30 text-gray-400 border-gray-700/30',
   enhancement: 'bg-purple-900/30 text-purple-400 border-purple-700/30',
 };
 

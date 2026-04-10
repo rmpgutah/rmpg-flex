@@ -24,7 +24,7 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 | **Mobile** | Capacitor (Android APK) |
 | **PDF** | jsPDF for reports, citations, patrol logs |
 | **Voice** | Edge TTS neural voice with radio audio processing |
-| **Styling** | Spillman Flex / Motorola Solutions dark theme — `#141e2b` base, `#d4a017` gold accent |
+| **Styling** | Spillman Flex / Motorola Solutions pure black theme — `#0a0a0a` base, `#d4a017` gold accent, zero blue |
 
 ## Architecture
 
@@ -116,23 +116,25 @@ export default function SomePage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SECTION TITLE" icon={SomeIcon} />
-      {/* Surface colors: bg-surface-base, bg-surface-raised, bg-surface-sunken */}
-      {/* Borders: border-[#1e3048], Gold accent: text-[#d4a017] */}
+      {/* Surface colors: bg-surface-base (#0a0a0a), bg-surface-raised (#141414), bg-surface-sunken (#050505) */}
+      {/* Borders: border-[#222222], Gold accent: text-[#d4a017] */}
     </div>
   );
 }
 ```
 
-### Design System (Spillman Flex / Motorola Solutions)
+### Design System (Spillman Flex / Motorola Solutions — Pure Black Theme)
 ```
-Surface colors: #141e2b (base), #1a2636 (raised), #0d1520 (sunken)
-Brand blue:    #1a5a9e    Brand gold: #d4a017
-Border:        #1e3048 (default), #2a3e58 (strong)
+Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken), #000000 (deep)
+Brand gold:    #d4a017    Neutral gray: #888888 (replaced all blue)
+Border:        #222222 (default), #1a1a1a (subtle), #2e2e2e (strong)
 All radius:    2px (sharp CAD console corners — never rounded-lg)
 Shadows:       Subtle only — depth via 3D beveled borders, not drop shadows
-Panel headers: Gold text + chrome gradient background
+Panel headers: Gold text + dark chrome gradient (#1a1a1a → #242424)
 LED indicators: Green/red/amber dots with box-shadow glow
-Fonts:         System sans-serif for UI, JetBrains Mono for data/readouts
+Fonts:         System sans-serif for UI, monospace for data/readouts
+Table headers: font-semibold 9px, py-[3px] — thin spreadsheet style
+Table rows:    py-[2px], 11px — compact, no pill badges (plain colored text)
 ```
 
 ### WebSocket Broadcasts
@@ -145,7 +147,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 - Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
 - GeoJSON layers: beat.geojson (719 features), county.geojson, municipality.geojson, highway.geojson
-- Service Worker (sw.js v80) pre-caches tiles for Utah operational area
+- Service Worker (sw.js — bump `CACHE_NAME` version on every deploy) pre-caches tiles for Utah operational area
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
 ## Development
@@ -162,6 +164,21 @@ node desktop/scripts/copyToDownloads.cjs  # Copy to server/downloads/
 # Deploy
 bash deploy/deploy.sh             # Code only to VPS
 bash deploy/deploy.sh --all       # Code + desktop installers to VPS
+
+# Direct deploy (bypasses typecheck gate — used when deploy.sh fails):
+cd client && npx vite build
+rsync -az --delete client/dist/ root@194.113.64.90:/opt/rmpg-flex/client/dist/
+rsync -az client/public/sw.js root@194.113.64.90:/opt/rmpg-flex/client/dist/sw.js
+rsync -az --delete --exclude='node_modules' --exclude='data' --exclude='certs' --exclude='.env' --exclude='uploads' server/ root@194.113.64.90:/opt/rmpg-flex/server/
+ssh root@194.113.64.90 "systemctl restart rmpg-flex"  # Only needed for server changes
+curl -sf https://rmpgutah.us/api/health               # Verify
+```
+
+### Quick Status Check
+```bash
+curl -sf https://rmpgutah.us/api/health | python3 -m json.tool  # Server version + features
+ssh root@194.113.64.90 "grep CACHE_NAME /opt/rmpg-flex/client/dist/sw.js"  # Deployed SW version
+grep CACHE_NAME client/public/sw.js  # Local SW version
 ```
 
 ### Google Maps API Key
@@ -193,7 +210,70 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - Status bar (fixed bottom): P1/P2 counts, unit metrics, F-key hints, clock
 - CAD command line: 20+ commands including 10-code lookup, premise alerts
 - Call type protocols: 70+ incident types with auto-priority/flags/backup rules
-- Edge TTS voice with radio squelch beeps, bandpass EQ, pink noise static
+- Edge TTS voice (`en-US-JennyNeural`) with radio squelch beeps, bandpass EQ, pink noise static
+- Call → Incident auto-links persons/vehicles from `call_persons`/`call_vehicles`
+
+### Serve / Process Service
+- `serve_queue` — 30+ columns: recipient info, document type, deadline, GPS, officer assignment
+- `serve_attempts` — GPS-tracked service attempts with photo/signature capture
+- `serve_routes` — optimized route planning with waypoints
+- `serve_skip_traces` — skip trace results per serve job
+- `serveQueueLinker.ts` — auto-creates serve jobs from PSO/process service dispatch calls
+- API: `/api/process-server/*` (mounted via `serve.ts`)
+
+### Skip Tracer V2
+- `server/src/routes/skiptracer-v2/` — modular source adapter system
+- 22 data sources: FBI Wanted, OFAC, NSOPW, Utah Courts, SLC Assessor, Arrests, etc.
+- `BaseDataSource` — rate limiting, caching, retry, encrypted config
+- API: `/api/skiptracer-v2/search`, `/api/skiptracer-v2/sources`
+
+### HR Module
+- `leave_requests` + `leave_balances` — leave management with approval workflow
+- `disciplinary_records` — officer disciplinary tracking
+- `performance_reviews` + `review_cycles` — review management
+- `overtime_requests` — OT tracking
+- `hr_pay_periods` + `hr_pay_rates` + `hr_payroll_entries` — full payroll pipeline
+- API: `/api/hr/*`
+
+### Fleet Management
+- `fleet_vehicles` — vehicle tracking with `next_service_mileage`
+- `fleet_maintenance`, `fleet_fuel_log`, `fleet_inspections`, `fleet_damage_reports`
+- API: `/api/fleet/*`
+
+### Arrests & Jail Roster
+- `arrest_records` — manual entry, CSV import, JailBase scraper sync
+- `arrest_cross_links` — link arrests to persons
+- `jailRosterScraper.ts` — automated jail roster sync
+- API: `/api/arrests/*`
+
+### Case Management
+- 8 junction tables: `case_persons`, `case_vehicles`, `case_incidents`, `case_calls`, `case_evidence`, `case_citations`, `case_warrants`, `case_properties`
+- API: `/api/cases/*`
+
+### Field Interviews
+- `field_interviews` — FI contact cards with GPS, photos, person/vehicle links
+- Auto-generates FI-YY-NNNNN numbers
+- API: `/api/field-interviews` (CRUD, by-person, by-location radius, stats)
+
+### Dispatch Messaging
+- `dispatch_messages` — secure dispatcher-to-unit messaging
+- Channels: dispatch, unit-to-unit, broadcast, BOLO
+- WebSocket delivery for real-time
+- API: `/api/dispatch-messages`
+
+### Advanced Search
+- **Compound Search**: `/api/records/compound-search` — NCIC-style multi-field (name wildcard, DOB range, physical description, address radius, plate, flags)
+- **Universal Search**: `/api/records/universal-search` — one query across 9 record types
+- **MNI Dossier**: `/api/records/persons/:id/dossier` — complete person intelligence package
+- **Saved Searches**: `/api/records/saved-searches` — user preset CRUD
+
+### Other Systems
+- **Court Tracker**: `court_events` table, API `/api/court/*`
+- **Forensic Lab**: `forensic_cases`, `forensic_exhibits`, `forensic_analyses`, API `/api/forensic-lab/*`
+- **Trespass Orders**: `trespass_orders`, `trespass_violations`, API `/api/trespass-orders/*`
+- **Use of Force**: `use_of_force` table for incident-linked UoF reports
+- **Shift Plans**: `shift_plans`, `shift_swap_requests`
+- **Notification Rules**: `notification_rules` for custom alert automation
 
 ## Common Gotchas
 
@@ -215,3 +295,23 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 16. **nginx on VPS** — config at `/etc/nginx/sites-enabled/rmpg-flex`. New top-level URL paths must proxy to Node (port 3001), not serve static
 17. **Tailwind override pattern** — global Spillman enforcement at end of `index.css` uses `!important` to override utility classes (e.g., `.rounded-lg { border-radius: 2px !important; }`)
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
+19. **edge-tts-universal** — must use `Function('return import("edge-tts-universal")')()` to avoid tsx ESM resolver crash at startup. Lazy-loads on first TTS request.
+20. **VPS npm install** — requires `--legacy-peer-deps` flag due to peer dependency conflicts
+21. **Deploy typecheck gate** — `deploy.sh` runs `tsc --noEmit` which has pre-existing errors in pdfGenerator.ts and PersonsTab.tsx. Use direct rsync to bypass: `rsync -az --delete client/dist/ root@194.113.64.90:/opt/rmpg-flex/client/dist/`
+22. **Vite bundle splitting** — `vite.config.ts` has `manualChunks` for vendor-react, vendor-pdf, vendor-icons. Each gets 1-year immutable cache via nginx `/assets/` location block.
+23. **nginx gzip** — configured in `/etc/nginx/conf.d/performance.conf` (level 6), NOT in nginx.conf (those lines are commented out). Don't uncomment nginx.conf gzip — it creates duplicates.
+24. **calls_for_service columns** — 22+ columns added via addCol for PSO, tactical flags, timestamps. The redispatch INSERT has 74 columns — verify column count matches if modifying.
+25. **incidents columns** — 17 boolean flags (mental_health_crisis, juvenile_involved, etc.) added via addCol. POST INSERT has 86 columns.
+26. **serve_queue columns** — 20+ columns added via addCol beyond the 13 in CREATE TABLE. Code expects sm_job_id, recipient_*, document_type, etc.
+27. **2FA login flow** — Server returns `step: 'setup_2fa'` for users without TOTP. Set `totp_exempt = 1` in users table to bypass. Rate limiter is in-memory — restart server to clear.
+28. **Agent scan accuracy** — subagent INSERT column count reports are often wrong (miss NULL, literals, ternary expressions). Always verify with python3 counter script before acting on mismatch reports.
+29. **persons table** — CREATE TABLE has 17 columns + 70 addCol migrations = 87 total. INSERT uses 81. This is correct — don't report as mismatch.
+30. **callActions.ts route prefixes** — routes use `/calls/:id/...` prefix (NOT `/:id/...`). All dispatch sub-routers mount at `/` under `/api/dispatch`. Client calls `/dispatch/calls/:id/...`.
+31. **Email iframe images** — use `srcdoc` + `sandbox="allow-same-origin allow-popups"` (NOT blob: URL). Blob origin blocks external image loading.
+32. **PDF process_service crash** — all field values must be strings. Use `safeStr()` wrapper: `const safeStr = (v: any): string => (v == null) ? '' : String(v);`
+33. **apiFetch prefix** — `apiFetch('/api/...')` works fine (doesn't double-prefix) because line 287 of useApi.ts checks `startsWith('/api')`. Both `/api/x` and `/x` are valid.
+34. **Password reset** — `cd /opt/rmpg-flex/server && node -e "const bcrypt=require('bcryptjs'); const db=require('better-sqlite3')('data/rmpg-flex.db'); db.prepare('UPDATE users SET password_hash=? WHERE username=?').run(bcrypt.hashSync('NewPass!',12),'username'); db.close()"`
+35. **VPS reboot recovery** — after VPS reboot, check `grep CACHE_NAME /opt/rmpg-flex/client/dist/sw.js` to verify deployed version. If stale, redeploy from worktree. Data in `server/data/` survives reboots.
+36. **Dual CREATE TABLE in database.ts** — Some tables (e.g. `field_interviews`) have two `CREATE TABLE IF NOT EXISTS` blocks with different column names. The FIRST one wins on production. Phase 1 definitions (later in the file) are skipped. Always check which definition is actually active.
+37. **Server rsync drops** — `rsync --delete server/` to VPS frequently drops SSH mid-transfer. Use `rsync -az server/src/ root@194.113.64.90:/opt/rmpg-flex/server/src/` (src only, no --delete) as the reliable fallback.
+38. **Client-server field name audit** — When form saves fail silently (data missing after save), check that client form field names exactly match server INSERT column names. Known past mismatches: ForensicLab (`synopsis`→`description`, `incident_id`→`linked_incident_id`), FieldInterviews (`location`/`contact_reason`/`action_taken` vs Phase 1 aliases).

@@ -27,7 +27,7 @@ import type { BodyCamVideo } from '../types';
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
   checked_in: 'bg-green-900/50 text-green-400 border-green-700/50',
-  in_storage: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  in_storage: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   checked_out: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   submitted_to_le: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   pending_disposition: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
@@ -452,7 +452,7 @@ export default function EvidencePropertyPage() {
           <div className="flex gap-3 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
             {[
               { label: 'TOTAL', value: stats.total_items || 0, color: 'text-white' },
-              { label: 'IN STORAGE', value: stats.by_status?.in_storage || 0, color: 'text-blue-400' },
+              { label: 'IN STORAGE', value: stats.by_status?.in_storage || 0, color: 'text-gray-400' },
               { label: 'CHECKED OUT', value: stats.by_status?.checked_out || 0, color: 'text-amber-400' },
               { label: 'PENDING', value: stats.pending_disposition || 0, color: 'text-orange-400' },
             ].map(s => (

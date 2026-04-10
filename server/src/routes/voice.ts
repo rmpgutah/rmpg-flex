@@ -27,7 +27,14 @@ function getMeaningfulWarningValue(value: unknown): string | null {
 // ─── Multer for audio upload (max 5MB) ───────────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5, parts: 10, fieldSize: 100 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('audio/') || file.mimetype === 'application/octet-stream') {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: audio formats`));
+    }
+  },
 });
 
 // ─── Rate limiting (10 commands/min per user) ────────
@@ -285,13 +292,13 @@ function composeAreaCheckNarrative(lat: number, lng: number): string {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   try {
     const calls = db.prepare(
-      `SELECT call_type, location_address, priority FROM calls_for_service
+      `SELECT incident_type, location_address, priority FROM calls_for_service
        WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
-       AND created_at >= ? AND archived = 0
+       AND created_at >= ?
        ORDER BY created_at DESC LIMIT 10`
     ).all(lat - delta, lat + delta, lng - delta, lng + delta, cutoff) as any[];
     if (calls.length === 0) return 'No recent activity in this area in the last 24 hours.';
-    const types = [...new Set(calls.map((c: any) => c.call_type).filter(Boolean))];
+    const types = [...new Set(calls.map((c: any) => c.incident_type).filter(Boolean))];
     const highPri = calls.filter((c: any) => c.priority === 'P1' || c.priority === 'P2').length;
     let msg = `${calls.length} calls in this area in the last 24 hours`;
     if (types.length > 0) msg += `, types include ${types.slice(0, 4).join(', ')}`;

@@ -654,7 +654,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
 
           {status.runningJobs > 0 && (
-            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-blue-950/30 border border-blue-800/40 text-blue-400">
+            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-gray-950/30 border border-gray-800/40 text-gray-400">
               <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" role="status" aria-label="Loading" />
               {status.runningJobs} job(s) currently running
             </div>

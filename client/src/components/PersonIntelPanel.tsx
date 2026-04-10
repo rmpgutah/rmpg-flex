@@ -44,7 +44,7 @@ const SEVERITY_STYLES: Record<string, string> = {
   felony: 'bg-red-900/50 text-red-300 border-red-600',
   misdemeanor: 'bg-amber-900/50 text-amber-300 border-amber-600',
   bench: 'bg-orange-900/50 text-orange-300 border-orange-600',
-  civil: 'bg-blue-900/50 text-blue-300 border-blue-600',
+  civil: 'bg-gray-900/50 text-gray-300 border-gray-600',
 };
 
 // ── Component ────────────────────────────────────────────────
@@ -260,7 +260,7 @@ export default function PersonIntelPanel() {
                           </span>
                         )}
                         {result.courtRecords.length > 0 && (
-                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border bg-blue-900/40 text-blue-400 border-blue-700/50">
+                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border bg-gray-900/40 text-gray-400 border-gray-700/50">
                             {result.courtRecords.length} court
                           </span>
                         )}
@@ -336,8 +336,8 @@ export default function PersonIntelPanel() {
                         {result.courtRecords.length > 0 && (
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <FileText className="w-3.5 h-3.5 text-blue-400" />
-                              <span className="text-xs font-bold uppercase text-blue-400">Court Records ({result.courtRecords.length})</span>
+                              <FileText className="w-3.5 h-3.5 text-gray-400" />
+                              <span className="text-xs font-bold uppercase text-gray-400">Court Records ({result.courtRecords.length})</span>
                             </div>
                             <div className="space-y-1">
                               {result.courtRecords.slice(0, 10).map((cr: any, i: number) => (
@@ -465,7 +465,7 @@ export default function PersonIntelPanel() {
                     <button type="button"
                       onClick={() => handleMerge(d.id2, d.id1)}
                       disabled={merging}
-                      className="toolbar-btn text-[8px] bg-blue-900/30 text-blue-400 border-blue-700/30"
+                      className="toolbar-btn text-[8px] bg-gray-900/30 text-gray-400 border-gray-700/30"
                     >
                       Keep #{d.id2}, Merge #{d.id1}
                     </button>

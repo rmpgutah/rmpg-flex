@@ -10,6 +10,7 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
+import { computeRiskScore } from '../../utils/riskScoring';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -262,6 +263,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       pso_attempt_number: createAttemptNumber,
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
+      process_attempts, process_served_at, process_service_result,
       client_id: requestClientId,
       // Historical entry fields (optional)
       created_at: customCreatedAt,
@@ -323,6 +325,16 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
     if (!VALID_PRIORITIES.includes(normalizedPriority)) {
       res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`, code: 'INVALID_PRIORITY' });
+      return;
+    }
+
+    // Max length validation
+    if (location_address && String(location_address).length > 500) {
+      res.status(400).json({ error: 'Location address too long (max 500 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+    if (description && String(description).length > 10000) {
+      res.status(400).json({ error: 'Description too long (max 10000 chars)', code: 'FIELD_TOO_LONG' });
       return;
     }
 
@@ -555,6 +567,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         process_service_type: process_service_type || null,
         process_served_to: process_served_to || null,
         process_served_address: process_served_address || null,
+        process_attempts: process_attempts || null,
+        process_served_at: process_served_at || null,
+        process_service_result: process_service_result || null,
         contract_id: contract_id || null,
         client_id: resolvedClientId,
         priority_score: priorityScore,
@@ -841,7 +856,7 @@ router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'offic
 
 // GET /api/dispatch/calls/:id - Get single call with details
 // NOTE: \\d+ constraint ensures this doesn't shadow named routes like /calls/search, /calls/active, /calls/stats/*
-router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -922,7 +937,7 @@ router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1057,6 +1072,16 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
     // Upgrade 16: Validate location_address if being updated
     if (location_address !== undefined && String(location_address).trim().length < 3) {
       res.status(400).json({ error: 'location_address must be at least 3 characters', code: 'ADDRESS_TOO_SHORT' });
+      return;
+    }
+
+    // Max length validation
+    if (location_address && String(location_address).length > 500) {
+      res.status(400).json({ error: 'Location address too long (max 500 chars)', code: 'FIELD_TOO_LONG' });
+      return;
+    }
+    if (description && String(description).length > 10000) {
+      res.status(400).json({ error: 'Description too long (max 10000 chars)', code: 'FIELD_TOO_LONG' });
       return;
     }
 
@@ -1794,10 +1819,9 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
     }
 
     // Upgrade 21: Disposition required for clearing/closing in bulk
-    if (['cleared', 'closed'].includes(status) && !disposition) {
-      res.status(400).json({ error: 'Disposition is required when clearing or closing calls', code: 'DISPOSITION_REQUIRED' });
-      return;
-    }
+    // (Falls back to each call's existing disposition if not provided in bulk request)
+    const requiresDisposition = ['cleared', 'closed'].includes(status);
+    // No longer rejecting — will inherit from existing call.disposition per call
 
     const now = localNow();
     const timestampField: Record<string, string> = {
@@ -1812,8 +1836,12 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
         const id = parseInt(String(callId), 10);
         if (isNaN(id) || id < 1) continue;
 
-        const call = db.prepare('SELECT id, call_number, status FROM calls_for_service WHERE id = ?').get(id) as any;
+        const call = db.prepare('SELECT id, call_number, status, disposition FROM calls_for_service WHERE id = ?').get(id) as any;
         if (!call || call.status === 'archived') continue;
+
+        // For clear/close, require a disposition (from request or existing on call)
+        const resolvedDisposition = disposition || call.disposition;
+        if (requiresDisposition && !resolvedDisposition) continue; // skip calls without disposition
 
         let updateSql = `UPDATE calls_for_service SET status = ?, status_changed_at = ?, updated_at = ?`;
         const updateParams: any[] = [status, now, now];
@@ -1822,9 +1850,9 @@ router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'),
           updateSql += `, ${tsField} = COALESCE(${tsField}, ?)`;
           updateParams.push(now);
         }
-        if (disposition) {
+        if (resolvedDisposition) {
           updateSql += `, disposition = ?`;
-          updateParams.push(disposition);
+          updateParams.push(resolvedDisposition);
         }
         updateSql += ` WHERE id = ?`;
         updateParams.push(id);
@@ -2179,6 +2207,23 @@ router.get('/calls/:id/notes-analysis', validateParamIdMiddleware, requireRole('
   } catch (error: any) {
     console.error('Notes analysis error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to analyze notes', code: 'NOTES_ANALYSIS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/risk-score - Recalculate risk score for a call
+router.get('/calls/:id/risk-score', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const riskScore = computeRiskScore(call.id);
+    db.prepare('UPDATE calls_for_service SET risk_score = ? WHERE id = ?').run(riskScore, call.id);
+
+    res.json({ call_id: call.id, risk_score: riskScore });
+  } catch (error: any) {
+    console.error('[Calls] Risk score error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to compute risk score', code: 'RISK_SCORE_ERROR' });
   }
 });
 

@@ -22,7 +22,7 @@ const SEVERITY_STYLES: Record<string, string> = {
   felony: 'bg-red-950 border-red-700 text-red-200',
   misdemeanor: 'bg-amber-950 border-amber-700 text-amber-200',
   bench: 'bg-orange-950 border-orange-700 text-orange-200',
-  civil: 'bg-blue-950 border-blue-700 text-blue-200',
+  civil: 'bg-gray-950 border-gray-700 text-gray-200',
 };
 
 interface Props {

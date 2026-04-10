@@ -31,7 +31,7 @@ interface AdminInvoiceTabProps {
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  sent: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
+  sent: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -41,7 +41,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
   contract_base: <FileText className="w-3 h-3 text-brand-400" />,
-  service_hours: <Clock className="w-3 h-3 text-blue-400" />,
+  service_hours: <Clock className="w-3 h-3 text-gray-400" />,
   incident_response: <AlertCircle className="w-3 h-3 text-red-400" />,
   dispatch_call: <Hash className="w-3 h-3 text-amber-400" />,
   citation: <FileText className="w-3 h-3 text-purple-400" />,
@@ -350,7 +350,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   <td className="p-1.5">
                     <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
-                      {inv.status}
+                      {(inv.status || '').replace(/_/g, ' ')}
                     </span>
                   </td>
                   <td className="p-1.5 text-right font-mono text-white">{formatCurrency(inv.total)}</td>
@@ -452,7 +452,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 <button type="button" onClick={handleRegenerate} className="toolbar-btn text-amber-400" title="Re-generate line items" disabled={saving}>
                   <RefreshCw className="w-3.5 h-3.5" /> <span className="text-[10px]">Regenerate</span>
                 </button>
-                <button type="button" onClick={() => handleStatusChange('sent')} className="toolbar-btn text-blue-400" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('sent')} className="toolbar-btn text-gray-400" disabled={saving}>
                   <Send className="w-3.5 h-3.5" /> <span className="text-[10px]">Send</span>
                 </button>
                 <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>

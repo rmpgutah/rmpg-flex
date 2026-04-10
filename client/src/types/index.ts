@@ -176,6 +176,28 @@ export interface Property {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  business_type?: string;
+  structure_type?: string;
+  occupancy_status?: string;
+  year_built?: string;
+  square_footage?: string;
+  number_of_stories?: string;
+  security_features?: string;
+  key_holder_name?: string;
+  key_holder_phone?: string;
+  key_holder_relationship?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  last_inspection_date?: string;
+  inspection_status?: string;
+  alarm_company?: string;
+  alarm_account?: string;
+  camera_system?: string;
+  parking_info?: string;
+  roof_access?: string;
+  utility_shutoffs?: string;
+  known_hazards?: string;
+  previous_incidents_count?: number;
 }
 
 // --- CAD / Dispatch ---
@@ -334,6 +356,8 @@ export interface CallForService {
   previous_status?: CallStatus;
   created_by: string;
   updated_at: string;
+  // Risk assessment
+  risk_score?: number;
   // Visit history (PSO calls)
   visit_history?: VisitHistory[];
 }
@@ -498,8 +522,30 @@ export interface Person {
   known_associates?: string;
   emergency_contact_relationship?: string;
   caution_flags?: string;
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
+  disability_flags?: string;
+  mental_health_flags?: string;
+  substance_abuse?: string;
+  medication_notes?: string;
+  education_level?: string;
+  military_branch?: string;
+  military_status?: string;
+  tribal_affiliation?: string;
+  identifying_marks_location?: string;
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  distinguishing_features?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
+  photo_url?: string;
+  photo?: string;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
@@ -544,6 +590,15 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
+  title_status?: string;
+  exterior_condition?: string;
+  interior_condition?: string;
+  estimated_value?: string;
+  window_tint?: string;
+  modifications?: string;
+  equipment_notes?: string;
+  registered_owner?: string;
+  registration_state?: string;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
@@ -581,6 +636,11 @@ export interface Evidence {
   estimated_value?: number;
   category?: string;
   notes?: string;
+  condition?: string;
+  quantity?: number;
+  is_biological?: boolean;
+  narcotics_flag?: boolean;
+  temperature_sensitive?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -836,6 +896,12 @@ export interface BodyCamera {
 
 export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
 
+export type BwcInteractionType =
+  | 'routine' | 'enforcement' | 'use_of_force' | 'critical_incident' | 'complaint'
+  | 'traffic_stop' | 'arrest' | 'search_warrant' | 'domestic_violence'
+  | 'welfare_check' | 'community_contact' | 'foot_pursuit' | 'vehicle_pursuit'
+  | 'interview' | 'evidence_collection' | 'field_training' | 'other';
+
 export interface BodyCamVideo {
   id: number;
   camera_id: number;
@@ -851,6 +917,7 @@ export interface BodyCamVideo {
   retention_status: VideoRetention;
   overlay_status?: OverlayStatus;
   overlay_error?: string | null;
+  interaction_type?: string;
   notes?: string;
   uploaded_by: string;
   created_at: string;
@@ -861,6 +928,27 @@ export interface BodyCamVideo {
 
 // --- Dash Cam Videos ---
 
+export type DashCameraStatus = 'installed' | 'available' | 'maintenance' | 'damaged' | 'lost';
+
+export interface DashCamera {
+  id: number;
+  vehicle_id?: number;
+  vehicle_number?: string;
+  camera_id: string;
+  make?: string;
+  model?: string;
+  firmware_version?: string;
+  storage_capacity_gb?: number;
+  channel_count?: number;
+  status: DashCameraStatus;
+  condition?: string;
+  installed_at?: string;
+  removed_at?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashCamVideo {
   id: number;
   vehicle_id?: number;
@@ -869,6 +957,11 @@ export interface DashCamVideo {
   vehicle_model?: string;
   vehicle_year?: number;
   unit_call_sign?: string;
+  officer_name?: string;
+  call_sign?: string;
+  device_name?: string;
+  heading?: number;
+  camera_serial?: string;
   title: string;
   file_path: string;
   file_size: number;
@@ -2433,7 +2526,7 @@ export interface OffenderAlert {
   person_name?: string; // joined from persons
   dob?: string; // joined from persons
   is_sex_offender?: boolean; // joined from persons
-  gang_affiliation?: string; // joined from persons
+  gang_affiliation?: string; // joined from related records (not a Person interface field)
   alert_type: OffenderAlertType;
   status: OffenderAlertStatus;
   description: string;
@@ -3076,9 +3169,11 @@ export interface MniPersonResult {
   id: number;
   first_name: string;
   last_name: string;
+  dob?: string;
   date_of_birth?: string;
   gender?: string;
   race?: string;
+  dl_number?: string;
   drivers_license_number?: string;
   phone?: string;
   address?: string;
@@ -3102,4 +3197,58 @@ export interface MniPersonDetail {
 export interface GeographyTree {
   areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
   unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
+}
+
+// --- Integration Hub ---
+
+export interface IntegrationStatus {
+  id: string;
+  name: string;
+  description?: string;
+  health: 'healthy' | 'degraded' | 'error' | 'unconfigured';
+  configured: boolean;
+  lastSync: string | null;
+  lastError?: string;
+  stats: Record<string, number>;
+  uptimePercent: number | null;
+}
+
+// --- ClearPathGPS (Fleet GPS) ---
+
+export interface CpgpsVehicle {
+  id: number;
+  vehicle_id?: number;
+  name?: string;
+  device_serial?: string;
+  vin?: string;
+  odometer?: number;
+  engine_hours?: number;
+  last_lat?: number;
+  last_lon?: number;
+  last_speed?: number;
+  last_heading?: number;
+  last_reported_at?: string;
+  synced_at?: string;
+}
+
+export interface CpgpsTrip {
+  id: number;
+  trip_start?: string;
+  trip_end?: string;
+  distance_miles?: number;
+  drive_duration_seconds?: number;
+  idle_duration_seconds?: number;
+  max_speed?: number;
+  start_address?: string;
+  end_address?: string;
+}
+
+export interface CpgpsAlert {
+  id: number;
+  alert_type?: string;
+  severity?: 'critical' | 'high' | 'medium' | 'low';
+  message?: string;
+  triggered_at?: string;
+  lat?: number;
+  lon?: number;
 }

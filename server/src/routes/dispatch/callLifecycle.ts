@@ -478,7 +478,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
 router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const entryId = parseInt(req.params.entryId, 10);
+    const entryId = parseInt(req.params.entryId as string, 10);
     if (isNaN(entryId) || entryId < 1) {
       res.status(400).json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' });
       return;
@@ -525,7 +525,7 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
 router.delete('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const delEntryId = parseInt(req.params.entryId, 10);
+    const delEntryId = parseInt(req.params.entryId as string, 10);
     if (isNaN(delEntryId) || delEntryId < 1) {
       res.status(400).json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' });
       return;

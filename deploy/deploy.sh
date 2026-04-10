@@ -198,6 +198,7 @@ if [ "$UPLOAD_CODE" = true ]; then
     --exclude='server/certs' \
     --exclude='server/.env' \
     --exclude='server/uploads' \
+    --exclude='client/.env' \
     --exclude='desktop' \
     --exclude='.DS_Store' \
     --exclude='.claude' \

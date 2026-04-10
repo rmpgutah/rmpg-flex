@@ -130,17 +130,17 @@ export function useMapPredictions(
         // Fix 58: format prediction scores as percentages in info window
         const pctScore = `${Math.round(normalizedScore)}%`;
         const html = `
-          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a">
+          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
             <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">
               Predicted Hotspot
             </div>
             <table style="width:100%;font-size:11px;border-collapse:collapse">
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Confidence</td><td style="font-weight:bold;color:#fff">${pctScore}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Raw Score</td><td style="color:#9ca3af">${hs.score}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Incidents</td><td style="color:#e0e0e0">${hs.incident_count}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Top Types</td><td style="color:#e0e0e0">${hs.top_types ? escapeHtml(hs.top_types) : '—'}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Weapons</td><td style="color:#ef4444">${hs.weapons_count}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">DV</td><td style="color:#f59e0b">${hs.dv_count}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Confidence</td><td style="font-weight:bold;color:#fff">${pctScore}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Raw Score</td><td style="color:#9ca3af">${hs.score}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Incidents</td><td style="color:#e0e0e0">${hs.incident_count}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Top Types</td><td style="color:#e0e0e0">${hs.top_types ? escapeHtml(hs.top_types) : '—'}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Weapons</td><td style="color:#ef4444">${hs.weapons_count}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">DV</td><td style="color:#f59e0b">${hs.dv_count}</td></tr>
             </table>
           </div>
         `;

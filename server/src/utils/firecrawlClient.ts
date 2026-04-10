@@ -176,7 +176,7 @@ function extractLinks(html: string, baseUrl: string): string[] {
     const $ = cheerio.load(html);
     $('a[href]').each((_i, el) => {
       const href = $(el).attr('href')?.trim();
-      if (!href || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('#')) return;
+      if (!href || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('#') || href.startsWith('data:') || href.startsWith('vbscript:')) return;
       try {
         const resolved = new URL(href, baseUrl).href;
         if (!links.includes(resolved)) links.push(resolved);

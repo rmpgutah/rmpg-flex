@@ -202,7 +202,7 @@ router.get('/sync-log', requireRole('admin'), (req: Request, res: Response) => {
 router.delete('/record/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid record ID', code: 'INVALID_RECORD_ID' });
       return;

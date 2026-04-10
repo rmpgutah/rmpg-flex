@@ -281,7 +281,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.text(sanitizePdfText(branding.report_header_text), pageW / 2, titleY, { align: 'center' });
 
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(sanitizePdfText(branding.report_subheader_text), pageW / 2, titleY + 6, { align: 'center' });
 

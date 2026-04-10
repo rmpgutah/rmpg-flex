@@ -76,7 +76,7 @@ function routeButton(unitCallSign: string, callNumber: string, uLat: number, uLn
 
 function findClosestButton(callId: string): string {
   return `<button data-find-closest="${escapeHtml(callId)}"
-    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(26,90,158,0.3);">
+    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(136,136,136,0.3);">
     &#9737; FIND CLOSEST UNIT
   </button>`;
 }
@@ -456,7 +456,7 @@ export function buildPropertyInfoWindow(
         const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#cccccc' : C_BLUE;
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
           <div style="overflow:hidden;flex:1;">
-            <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
+            <span style="color:#a0a0a0;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
             <span style="color:${C_TEXT_MUTED};font-size:8px;margin-left:4px;">${escapeHtml((c.incident_type || '').replace(/_/g, ' '))}</span>
           </div>
           <div style="text-align:right;flex-shrink:0;margin-left:6px;">
@@ -478,7 +478,7 @@ export function buildPropertyInfoWindow(
     contactsTab += `
       ${sectionHeader('Client Contact', '#a78bfa')}
       ${details.client_contact ? `<div style="font-size:9px;color:${C_TEXT_DIM};">${escapeHtml(details.client_contact)}</div>` : ''}
-      ${details.client_phone ? `<div style="font-size:9px;color:#93c5fd;">${escapeHtml(details.client_phone)}</div>` : ''}
+      ${details.client_phone ? `<div style="font-size:9px;color:#a0a0a0;">${escapeHtml(details.client_phone)}</div>` : ''}
     `;
   }
 

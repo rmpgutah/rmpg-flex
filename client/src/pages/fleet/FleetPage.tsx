@@ -38,7 +38,7 @@ type ModalMode = 'none' | 'new_vehicle' | 'edit_vehicle' | 'log_maintenance' | '
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: '#666666',
+  out_of_service: '#ef4444', retired: '#6b7280',
 };
 
 const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
@@ -974,7 +974,13 @@ export default function FleetPage() {
                       {regStatus === 'expiring' && <span className="text-[8px] text-amber-400">REG SOON</span>}
                       {insStatus === 'expired' && <span className="text-[8px] text-red-400 font-bold">INS EXP</span>}
                       {insStatus === 'expiring' && <span className="text-[8px] text-amber-400">INS SOON</span>}
-                      {svcStatus === 'expired' && <span className="text-[8px] text-amber-400 font-bold">SVC DUE</span>}
+                      {/* Maintenance due alert with days count */}
+                      {v.next_service_due && (() => {
+                        const daysUntil = Math.ceil((new Date(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        if (daysUntil < 0) return <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold">OVERDUE {Math.abs(daysUntil)}d</span>;
+                        if (daysUntil <= 14) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
+                        return null;
+                      })()}
                     </div>
                   </div>
                   {/* Utilization bar */}
@@ -1205,7 +1211,7 @@ export default function FleetPage() {
 
       {/* Feature 20: Cost Per Mile Display */}
       {costPerMile && (
-        <div className="fixed right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl" style={{ bottom: 'max(4rem, calc(4rem + env(safe-area-inset-bottom, 0px)))' }}>
+        <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
             <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>

@@ -52,13 +52,13 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer'), 
 // GET /api/colorado-doc/offender/:docNumber — Get specific offender by DOC number
 router.get('/offender/:docNumber', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
-    if (!req.params.docNumber || req.params.docNumber.trim().length < 1) {
+    if (!req.params.docNumber || (req.params.docNumber as string).trim().length < 1) {
       res.status(400).json({ error: 'docNumber is required', code: 'DOCNUMBER_IS_REQUIRED' });
       return;
     }
 
     // Validate docNumber format — alphanumeric, reasonable length
-    const docNumber = req.params.docNumber.trim();
+    const docNumber = (req.params.docNumber as string).trim();
     if (docNumber.length > 20 || !/^[A-Za-z0-9\-]+$/.test(docNumber)) {
       res.status(400).json({ error: 'docNumber must be alphanumeric (max 20 characters)', code: 'DOCNUMBER_MUST_BE_ALPHANUMERIC' });
       return;

@@ -27,7 +27,7 @@ const ROLE_HEX: Record<string, string> = {
 const ChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#050505', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
+    <div style={{ background: '#050505', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
       <div style={{ color: '#e0e0e0', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
         {payload[0].name}: {payload[0].value}
       </div>
@@ -289,10 +289,22 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
   );
 }
 
+interface DutyHoursData {
+  officers: { officer_id: number; officer_name: string; total_hours: number; total_overtime: number; shift_count: number }[];
+  flagged_excessive_hours: { officer_id: number; officer_name: string; total_hours: number }[];
+}
+
+interface CertWarningsData {
+  summary: { expired: number; within_30: number; within_60: number; within_90: number };
+  warnings: { credential_id: number; officer_name: string; credential_type: string; days_until: number; severity: string }[];
+}
+
 function DutyHoursPanel() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<DutyHoursData | null>(null);
   useEffect(() => {
-    apiFetch('/api/personnel/duty-hours?period=14').then((d: any) => d && setData(d)).catch(() => {});
+    apiFetch<DutyHoursData>('/api/personnel/duty-hours?period=14')
+      .then((d) => d && setData(d))
+      .catch((err) => console.warn('[Personnel] Duty hours fetch failed:', err?.message));
   }, []);
   if (!data?.officers?.length) return null;
   const flagged = data.flagged_excessive_hours || [];
@@ -305,7 +317,7 @@ function DutyHoursPanel() {
         )}
       </h4>
       <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
-        {data.officers.slice(0, 10).map((o: any) => (
+        {data.officers.slice(0, 10).map((o) => (
           <div key={o.officer_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200">{o.officer_name}</span>
             <span className="font-mono text-cyan-400">{o.total_hours}h</span>
@@ -319,9 +331,11 @@ function DutyHoursPanel() {
 }
 
 function CertWarningsPanel() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<CertWarningsData | null>(null);
   useEffect(() => {
-    apiFetch('/api/personnel/cert-expiration-warnings').then((d: any) => d && setData(d)).catch(() => {});
+    apiFetch<CertWarningsData>('/api/personnel/cert-expiration-warnings')
+      .then((d) => d && setData(d))
+      .catch((err) => console.warn('[Personnel] Cert warnings fetch failed:', err?.message));
   }, []);
   if (!data?.warnings?.length) return null;
   return (
@@ -333,10 +347,10 @@ function CertWarningsPanel() {
         <div className="text-center p-1 bg-red-900/20 rounded"><span className="text-xs font-bold text-red-400">{data.summary.expired}</span><div className="text-[7px] text-rmpg-500">Expired</div></div>
         <div className="text-center p-1 bg-red-900/10 rounded"><span className="text-xs font-bold text-red-300">{data.summary.within_30}</span><div className="text-[7px] text-rmpg-500">30d</div></div>
         <div className="text-center p-1 bg-amber-900/10 rounded"><span className="text-xs font-bold text-amber-400">{data.summary.within_60}</span><div className="text-[7px] text-rmpg-500">60d</div></div>
-        <div className="text-center p-1 bg-blue-900/10 rounded"><span className="text-xs font-bold text-blue-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
+        <div className="text-center p-1 bg-gray-900/10 rounded"><span className="text-xs font-bold text-gray-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
       </div>
       <div className="space-y-0.5 max-h-[100px] overflow-y-auto">
-        {data.warnings.slice(0, 8).map((w: any) => (
+        {data.warnings.slice(0, 8).map((w) => (
           <div key={w.credential_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200">{w.officer_name}</span>
             <span className="text-rmpg-400">{w.credential_type}</span>

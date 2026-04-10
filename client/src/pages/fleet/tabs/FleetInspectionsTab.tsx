@@ -6,7 +6,7 @@ import type { FleetInspection, InspectionType, InspectionResult, InspectionItemS
 import { formatMilitary } from '../utils/fleetFormatters';
 
 const TYPE_BADGE: Record<InspectionType, { bg: string; text: string; border: string }> = {
-  pre_trip: { bg: 'bg-blue-900/30', text: 'text-blue-400', border: 'border-blue-700/40' },
+  pre_trip: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
   post_trip: { bg: 'bg-cyan-900/30', text: 'text-cyan-400', border: 'border-cyan-700/40' },
   monthly: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700/40' },
   annual: { bg: 'bg-green-900/30', text: 'text-green-400', border: 'border-green-700/40' },
@@ -58,8 +58,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <ClipboardCheck className="w-3.5 h-3.5 mx-auto text-blue-400 mb-1" />
-          <div className="text-sm font-bold font-mono text-blue-400">{inspections.length}</div>
+          <ClipboardCheck className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
+          <div className="text-sm font-bold font-mono text-gray-400">{inspections.length}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">

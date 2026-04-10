@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Database,
   UserCircle,
@@ -14,6 +15,7 @@ import {
   Warehouse,
   DollarSign,
   X,
+  Users,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -27,6 +29,7 @@ import PrintButton from '../components/PrintButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ExportButton from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
+import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
 import { useToast } from '../components/ToastProvider';
 
@@ -63,9 +66,23 @@ const timeAgo = (date: string): string => {
 export default function RecordsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const [urlParams] = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+
+  // Handle cross-module navigation params (?tab=persons&personId=X)
+  useEffect(() => {
+    const tab = urlParams.get('tab');
+    const personId = urlParams.get('personId');
+    if (tab && ['persons', 'vehicles', 'properties', 'evidence'].includes(tab)) {
+      setActiveTab(tab as TabId);
+    }
+    if (personId && tab === 'persons') {
+      setSearchQuery(personId);
+    }
+  }, []); // Only on mount
 
   // Data state
   const [persons, setPersons] = useState<Person[]>([]);
@@ -364,6 +381,10 @@ export default function RecordsPage() {
         {activeTab === 'persons' && (
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
+            <button type="button" className="toolbar-btn print:hidden text-amber-400" onClick={() => setShowDuplicatesModal(true)}>
+              <Users className="w-3.5 h-3.5" />
+              Duplicates
+            </button>
             {!showArchived && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
@@ -453,7 +474,7 @@ export default function RecordsPage() {
           <span className="text-white font-bold">{persons.length}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Car className="w-2.5 h-2.5 text-blue-400" />
+          <Car className="w-2.5 h-2.5 text-gray-400" />
           <span className="text-rmpg-400">V:</span>
           <span className="text-white font-bold">{vehicles.length}</span>
         </div>
@@ -626,6 +647,12 @@ export default function RecordsPage() {
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      <PersonDuplicatesModal
+        isOpen={showDuplicatesModal}
+        onClose={() => setShowDuplicatesModal(false)}
+        onMergeComplete={() => fetchPersons({ silent: true })}
       />
     </div>
   );

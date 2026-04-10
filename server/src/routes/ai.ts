@@ -61,7 +61,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
 // ─── GET /test/:provider — test a specific provider connection ───
 router.get('/test/:provider', requireRole('admin'), async (req: Request, res: Response) => {
   try {
-    const result = await aiManager.testProvider(req.params.provider);
+    const result = await aiManager.testProvider(req.params.provider as string);
     res.json(result);
   } catch (err: any) {
     console.error('[AI] /test error:', err?.message || err);

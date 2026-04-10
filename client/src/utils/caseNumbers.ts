@@ -325,7 +325,7 @@ export const CATEGORY_COLORS: Record<IncidentCategory, string> = {
   'Security': 'bg-brand-900/40 text-brand-300 border-brand-700/50',
   'Criminal': 'bg-red-900/40 text-red-300 border-red-700/50',
   'Disorder': 'bg-amber-900/40 text-amber-300 border-amber-700/50',
-  'Traffic': 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  'Traffic': 'bg-gray-900/40 text-gray-300 border-gray-700/50',
   'Medical/Fire': 'bg-green-900/40 text-green-300 border-green-700/50',
   'Service': 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   'Admin': 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-500/50',

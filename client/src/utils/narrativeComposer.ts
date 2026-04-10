@@ -376,8 +376,8 @@ export function composeDispatchNarrative(
   // 5c. Nearest units (full detail only)
   if (level === 'full' && extra?.nearestUnits && extra.nearestUnits.length > 0) {
     const unitParts = extra.nearestUnits.slice(0, 3).map(u => {
-      const dist = u.distance >= 1000
-        ? `${(u.distance / 1000).toFixed(1)} kilometers`
+      const dist = u.distance >= 1609
+        ? `${(u.distance / 1609.34).toFixed(1)} miles`
         : `${u.distance} meters`;
       return `${u.callSign}, ${dist}, ${u.etaMinutes} minute${u.etaMinutes !== 1 ? 's' : ''}`;
     });
