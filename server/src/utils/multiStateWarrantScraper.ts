@@ -24,6 +24,7 @@ import { localNow } from './timeUtils';
 import { startRun, completeRun, failRun } from './scraperRunner';
 import { Semaphore } from './semaphore';
 import { broadcast } from './websocket';
+import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
 
 // Phase 4: emit scraper lifecycle events on the 'scraper_events' WS channel
 // so the Phase 5 Scrapers tab can show a live feed. All calls wrapped in
@@ -1861,6 +1862,19 @@ export async function syncSource(sourceKey: string): Promise<void> {
       parser_used: result.parserUsed ?? (WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic'),
     });
 
+    // Phase 4: parser drift detection — if we got HTTP 200 but parsed 0 records
+    // (and it wasn't an intentional cache short-circuit), the last 5 runs may
+    // all show the same pattern. checkParserDrift reads warrant_scraper_runs
+    // and fires a notification when all 5 are HTTP 200 + 0 parsed.
+    if (
+      result.records_found === 0 &&
+      result.unchanged !== true &&
+      result.status !== 304 &&
+      (result.status ?? 200) === 200
+    ) {
+      checkParserDrift(sourceKey, config.display_name);
+    }
+
   } catch (err) {
     if (runId !== null) {
       try {
@@ -1903,6 +1917,9 @@ export async function syncSource(sourceKey: string): Promise<void> {
       console.warn(`[Warrant Scraper] CIRCUIT BREAKER: ${config.display_name} (${errorCount} errors)`);
 
       db.prepare('UPDATE warrant_scraper_config SET circuit_broken = 1 WHERE source_key = ?').run(sourceKey);
+
+      // Phase 4: notify admins when a source trips the breaker
+      alertCircuitBroken(sourceKey, config.display_name);
 
       const interval = sourceIntervals.get(sourceKey);
       if (interval) { clearInterval(interval); sourceIntervals.delete(sourceKey); }
