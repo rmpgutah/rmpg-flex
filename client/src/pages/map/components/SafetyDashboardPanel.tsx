@@ -163,7 +163,7 @@ export default function SafetyDashboardPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -442,7 +442,7 @@ export default function SafetyDashboardPanel({
                   key={`alert-${i}-${alert.slice(0, 20)}`}
                   className="text-[10px] text-rmpg-400 pl-2"
                   style={{
-                    borderLeft: '2px solid #1e2a3a',
+                    borderLeft: '2px solid #222222',
                   }}
                 >
                   {alert}
@@ -470,7 +470,7 @@ function ThreatCard({
   return (
     <div
       className="rounded-sm p-1.5 flex items-center gap-1.5 transition-all duration-150 hover:border-[#2a3f5a]"
-      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+      style={{ background: '#050505', border: '1px solid #222222' }}
     >
       <span className="led-dot" style={{ background: count > 0 ? ledColor : '#444444' }} />
       <span className="text-sm font-bold text-rmpg-200 tabular-nums">{count}</span>

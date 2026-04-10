@@ -485,16 +485,19 @@ export default function ServePage() {
       }
 
       const center = { lat: 40.7608, lng: -111.891 }; // SLC default
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+      const mapOptions: google.maps.MapOptions = {
         center,
         zoom: 11,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapContainerRef.current, mapOptions);
 
       mapRef.current = map;
       infoWindowRef.current = new google.maps.InfoWindow();
@@ -656,7 +659,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={() => setRoutePlannerOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136,136,136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
             title="Plan Route"
             aria-label="Plan Route"
           >
@@ -928,7 +931,7 @@ export default function ServePage() {
                   <div className="flex items-center gap-2 pt-2">
                     <button type="button"
                       onClick={() => setRoutePlannerOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136,136,136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                       aria-label="Open Route Planner"
                     >
                       <Route size={12} />
@@ -961,7 +964,7 @@ export default function ServePage() {
                 <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
                 <button type="button"
                   onClick={() => setRoutePlannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136,136,136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                   aria-label="Open Route Planner"
                 >
                   <Route size={12} />

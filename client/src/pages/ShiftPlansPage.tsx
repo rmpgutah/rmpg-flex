@@ -52,7 +52,7 @@ function todayStr() {
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   draft:     { bg: 'rgba(107,114,128,0.15)', text: '#999999', border: '#555555' },
   active:    { bg: 'rgba(34,197,94,0.15)',    text: '#22c55e', border: '#16a34a' },
-  completed: { bg: 'rgba(59,130,246,0.15)',   text: '#888888', border: '#888888' },
+  completed: { bg: 'rgba(136,136,136,0.15)',   text: '#888888', border: '#888888' },
   archived:  { bg: 'rgba(100,116,139,0.15)',  text: '#888888', border: '#666666' },
 };
 
@@ -251,7 +251,7 @@ export default function ShiftPlansPage() {
 
           {/* Create form */}
           {showCreateForm && (
-            <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'rgba(59,130,246,0.06)' }}>
+            <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'rgba(136,136,136,0.06)' }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold text-gray-400 uppercase">New Shift Plan</span>
                 <button type="button" onClick={() => setShowCreateForm(false)} className="text-rmpg-500 hover:text-white">
@@ -320,7 +320,7 @@ export default function ShiftPlansPage() {
                     onClick={() => sp.setActivePlanId(plan.id)}
                     className="px-3 py-2.5 cursor-pointer transition-all duration-150 border-b border-rmpg-800/50 hover:brightness-110"
                     style={{
-                      background: isSelected ? 'rgba(59,130,246,0.08)' : 'transparent',
+                      background: isSelected ? 'rgba(136,136,136,0.08)' : 'transparent',
                       borderLeft: `3px solid ${shiftConfig?.color || '#666666'}`,
                     }}
                     role="button"

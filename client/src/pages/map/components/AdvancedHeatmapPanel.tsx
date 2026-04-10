@@ -95,7 +95,7 @@ const MODE_CONFIG: {
   accent: string;
   accentBg: string;
 }[] = [
-  { key: 'density', label: 'DENSITY', icon: BarChart3, accent: '#888888', accentBg: 'rgba(59,130,246,0.15)' },
+  { key: 'density', label: 'DENSITY', icon: BarChart3, accent: '#888888', accentBg: 'rgba(136,136,136,0.15)' },
   { key: 'risk', label: 'RISK', icon: AlertTriangle, accent: '#ef4444', accentBg: 'rgba(239,68,68,0.15)' },
   { key: 'temporal', label: 'TEMPORAL', icon: Clock, accent: '#f97316', accentBg: 'rgba(249,115,22,0.15)' },
   { key: 'comparison', label: 'COMPARE', icon: GitCompare, accent: '#a855f7', accentBg: 'rgba(168,85,247,0.15)' },
@@ -262,7 +262,7 @@ export default function AdvancedHeatmapPanel({
         maxHeight: '85vh',
         background: '#0a0a0a',
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
-        border: '1px solid #1e2a3a',
+        border: '1px solid #222222',
       }}
       role="complementary"
       aria-label="Advanced heatmap controls"
@@ -270,7 +270,7 @@ export default function AdvancedHeatmapPanel({
       {/* ── Header Bar ────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-4 py-2.5 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
       >
         <div className="flex items-center gap-2.5">
           <SlidersHorizontal size={14} className="text-rmpg-400" />
@@ -314,7 +314,7 @@ export default function AdvancedHeatmapPanel({
                   className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-[#141414]/50"
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
-                    border: active ? `2px solid ${m.accent}` : '1px solid #1e2a3a',
+                    border: active ? `2px solid ${m.accent}` : '1px solid #222222',
                     color: active ? m.accent : '#666666',
                   }}
                   aria-label={`${m.label} heatmap mode`}
@@ -330,7 +330,7 @@ export default function AdvancedHeatmapPanel({
           </div>
 
           {/* ── Quick Presets ── */}
-          <div className="mt-2.5 pt-2" style={{ borderTop: '1px solid #1e2a3a' }}>
+          <div className="mt-2.5 pt-2" style={{ borderTop: '1px solid #222222' }}>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Zap size={10} className="text-rmpg-500" />
               <span className="text-[8px] uppercase tracking-widest font-bold text-rmpg-500">Quick Presets</span>
@@ -386,7 +386,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([Math.min(v, hourRange[1]), hourRange[1]]);
                   }}
-                  className="w-full h-1 accent-blue-500 cursor-pointer"
+                  className="w-full h-1 accent-[#888888] cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>
@@ -401,7 +401,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([hourRange[0], Math.max(v, hourRange[0])]);
                   }}
-                  className="w-full h-1 accent-blue-500 cursor-pointer"
+                  className="w-full h-1 accent-[#888888] cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>
@@ -427,7 +427,7 @@ export default function AdvancedHeatmapPanel({
                     style={{
                       background: 'rgba(255,255,255,0.03)',
                       color: '#666666',
-                      border: '1px solid #1e2a3a',
+                      border: '1px solid #222222',
                     }}
                   >
                     {preset.label}
@@ -611,7 +611,7 @@ export default function AdvancedHeatmapPanel({
                 style={{
                   background: 'rgba(255,255,255,0.03)',
                   color: '#666666',
-                  border: '1px solid #1e2a3a',
+                  border: '1px solid #222222',
                 }}
               >
                 All
@@ -622,7 +622,7 @@ export default function AdvancedHeatmapPanel({
                 style={{
                   background: 'rgba(255,255,255,0.03)',
                   color: '#666666',
-                  border: '1px solid #1e2a3a',
+                  border: '1px solid #222222',
                 }}
               >
                 Clear
@@ -631,7 +631,7 @@ export default function AdvancedHeatmapPanel({
           </div>
           <div
             className="max-h-32 overflow-y-auto space-y-0.5 rounded-sm p-1"
-            style={{ background: '#050505', border: '1px solid #1e2a3a', scrollbarWidth: 'thin' }}
+            style={{ background: '#050505', border: '1px solid #222222', scrollbarWidth: 'thin' }}
           >
             {availableTypes.map((t) => {
               const checked = types.includes(t.incident_type);
@@ -678,7 +678,7 @@ export default function AdvancedHeatmapPanel({
               {/* Digital time display */}
               <div
                 className="flex items-center justify-center py-2 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #222222' }}
               >
                 <span className="text-[18px] font-mono font-bold" style={{ color: '#f97316' }}>
                   {formatHourCompact(temporalHour)}
@@ -795,7 +795,7 @@ export default function AdvancedHeatmapPanel({
               {/* Color legend */}
               <div
                 className="flex items-center justify-between px-3 py-2 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #222222' }}
               >
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} />
@@ -852,7 +852,7 @@ export default function AdvancedHeatmapPanel({
               {/* Total incidents */}
               <div
                 className="flex items-center justify-between px-3 py-2.5 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #222222' }}
               >
                 <span className="text-[8px] uppercase tracking-wider text-rmpg-500 font-semibold">
                   Total Incidents

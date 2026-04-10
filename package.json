@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex",
-  "version": "5.5.0",
+  "version": "5.7.0",
   "description": "RMPG Flex - CAD/RMS for Rocky Mountain Protective Group",
   "private": true,
   "engines": {
@@ -44,7 +44,7 @@
     "health": "curl -sf https://rmpgutah.us/api/health"
   },
   "dependencies": {
-    "groq-sdk": "^1.1.1",
+    "groq-sdk": "^1.1.2",
     "jspdf": "^4.2.1",
     "otpauth": "^9.5.0",
     "pdf-parse": "^2.4.5",

@@ -31,7 +31,7 @@ function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_pag
   // Field Sheet: contains Party to Serve, Instructions, Address + city/state/zip on separate line
   if (/Party to Serve|Instructions\s*\n.*Sub-serve|Date & Time.*Description of Service/i.test(text)) return 'field_sheet';
   // Info Page: contains JOB number header, CLIENT/SERVER columns, Service Attempts, Recipient
-  if (/^JOB\b|Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/im.test(text)) return 'info_page';
+  if (/^JOB\b/im.test(text) || /Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/i.test(text)) return 'info_page';
   return 'unknown';
 }
 
@@ -327,7 +327,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     if (address) {
       try {
         const geo = await geocodeAddress(address);
-        if (geo) { latitude = geo.lat; longitude = geo.lng; }
+        if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
       } catch { /* geocode failed — continue without coords */ }
     }
 
@@ -465,7 +465,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)').run(callId, personId, 'involved', userId, now);
     } catch { /* already linked */ }
 
-    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, null, { person_id: personId, property_id: propertyId, job_number: jobNumber });
+    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, JSON.stringify({ person_id: personId, property_id: propertyId, job_number: jobNumber }));
 
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 

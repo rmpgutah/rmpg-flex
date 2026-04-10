@@ -57,6 +57,7 @@ const dashcamStorage = multer.diskStorage({
 
 const dashcamUpload = multer({
   storage: dashcamStorage,
+  limits: { fileSize: 10 * 1024 * 1024 * 1024, files: 1, fields: 20, parts: 25, fieldSize: 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
@@ -804,7 +805,7 @@ router.get('/:id', (req: Request, res: Response) => {
     }
 
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id) || id < 1) {
       res.status(400).json({ error: 'Invalid vehicle ID', code: 'INVALID_VEHICLE_ID' });
       return;
@@ -984,6 +985,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       plate_number: v => v ?? null, plate_state: v => v ?? null,
       status: v => v ?? null, current_mileage: v => v ?? null,
       next_service_mileage: v => v ?? null,
+      last_service_date: v => v ?? null, next_service_due: v => v ?? null,
       insurance_expiry: v => v ?? null, registration_expiry: v => v ?? null,
       notes: v => v ?? null,
     };
@@ -1002,7 +1004,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     // God Mode: admin can override odometer readings (including lowering)
     if (req.user?.role === 'admin' && current_mileage !== undefined && existing.current_mileage && current_mileage < existing.current_mileage) {
-      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', parseInt(id), `Admin God Mode: overriding odometer on ${existing.vehicle_number} (${existing.current_mileage} → ${current_mileage})`);
+      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', parseInt(id as string), `Admin God Mode: overriding odometer on ${existing.vehicle_number} (${existing.current_mileage} → ${current_mileage})`);
     }
 
     if (fFields.length > 0) {

@@ -277,14 +277,15 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
 
     // Transaction: update call + unit + activity log atomically
     const assignTx = db.transaction(() => {
-      // Update call: add unit to assigned_unit_ids, set dispatched if pending
+      // Update call: add unit to assigned_unit_ids, set dispatched if pending, record dispatcher
       db.prepare(`
         UPDATE calls_for_service SET
           status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
           assigned_unit_ids = ?,
-          dispatched_at = COALESCE(dispatched_at, ?)
+          dispatched_at = COALESCE(dispatched_at, ?),
+          dispatcher_id = COALESCE(dispatcher_id, ?)
         WHERE id = ?
-      `).run(JSON.stringify(currentUnits), now, call.id);
+      `).run(JSON.stringify(currentUnits), now, req.user!.userId, call.id);
 
       // Update unit: set status to dispatched and link to this call
       db.prepare(`
@@ -497,6 +498,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       cleared: 'cleared_at',
       closed: 'closed_at',
       archived: 'archived_at',
+      on_hold: 'status_changed_at', // on_hold uses status_changed_at as its timestamp
     };
 
     const tsField = timestampField[status];
@@ -908,6 +910,18 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
+    // Prevent duplicate promotion — if an incident already exists for this call, return it
+    const existingIncident = db.prepare('SELECT id, incident_number FROM incidents WHERE call_id = ?').get(call.id) as any;
+    if (existingIncident) {
+      res.status(409).json({
+        error: 'Incident already exists for this call',
+        code: 'INCIDENT_ALREADY_EXISTS',
+        incident_id: existingIncident.id,
+        incident_number: existingIncident.incident_number,
+      });
+      return;
+    }
+
     // Generate incident number
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
 
@@ -1165,7 +1179,7 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
 router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const linkId = parseInt(req.params.linkId, 10);
+    const linkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(linkId) || linkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(linkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
@@ -1204,7 +1218,7 @@ router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole(
 router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const delPLinkId = parseInt(req.params.linkId, 10);
+    const delPLinkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(delPLinkId) || delPLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
       .get(delPLinkId, req.params.id) as any;
@@ -1333,7 +1347,7 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
 router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const vLinkId = parseInt(req.params.linkId, 10);
+    const vLinkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(vLinkId) || vLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(vLinkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
@@ -1374,7 +1388,7 @@ router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole
 router.delete('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const delVLinkId = parseInt(req.params.linkId, 10);
+    const delVLinkId = parseInt(req.params.linkId as string, 10);
     if (isNaN(delVLinkId) || delVLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare(`SELECT cv.*, v.make, v.model, v.year, v.plate_number
       FROM call_vehicles cv LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
@@ -1784,7 +1798,7 @@ router.put('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole('a
 
     db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
 
-    auditLog(req, 'note_edited', 'call', call.id, null, `Edited note ${req.params.noteId} on call ${call.call_number}`);
+    auditLog(req, 'note_edited', 'call', call.id, `Edited note ${req.params.noteId} on call ${call.call_number}`);
 
     const updated = db.prepare(`
       SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,
@@ -1821,7 +1835,7 @@ router.delete('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole
 
     db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
 
-    auditLog(req, 'note_deleted', 'call', call.id, null, `Deleted note "${(deletedNote.text || '').slice(0, 50)}..." from call ${call.call_number}`);
+    auditLog(req, 'note_deleted', 'call', call.id, `Deleted note "${(deletedNote.text || '').slice(0, 50)}..." from call ${call.call_number}`);
 
     const updated = db.prepare(`
       SELECT c.*, p.name as property_name, u.full_name as dispatcher_name, cl.name as client_name,

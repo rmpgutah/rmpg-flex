@@ -15,6 +15,7 @@ import {
   Warehouse,
   DollarSign,
   X,
+  Users,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -28,6 +29,7 @@ import PrintButton from '../components/PrintButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ExportButton from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
+import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
 import { useToast } from '../components/ToastProvider';
 
@@ -68,6 +70,7 @@ export default function RecordsPage() {
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
 
   // Handle cross-module navigation params (?tab=persons&personId=X)
   useEffect(() => {
@@ -378,6 +381,10 @@ export default function RecordsPage() {
         {activeTab === 'persons' && (
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
+            <button type="button" className="toolbar-btn print:hidden text-amber-400" onClick={() => setShowDuplicatesModal(true)}>
+              <Users className="w-3.5 h-3.5" />
+              Duplicates
+            </button>
             {!showArchived && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
@@ -640,6 +647,12 @@ export default function RecordsPage() {
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      <PersonDuplicatesModal
+        isOpen={showDuplicatesModal}
+        onClose={() => setShowDuplicatesModal(false)}
+        onMergeComplete={() => fetchPersons({ silent: true })}
       />
     </div>
   );

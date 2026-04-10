@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Plus,
@@ -33,6 +33,7 @@ import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPers
 import StatusBadge from '../components/StatusBadge';
 import IncidentFormModal, { type IncidentFormData } from '../components/IncidentFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import AddLinkModal from '../components/AddLinkModal';
 import FileAttachments from '../components/FileAttachments';
 import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
@@ -188,6 +189,7 @@ const timeAgo = (date: string): string => {
 
 export default function IncidentsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
@@ -387,6 +389,19 @@ export default function IncidentsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidents]);
+
+  // Auto-select incident when navigated from dispatch linked incidents
+  useEffect(() => {
+    const selectId = (location.state as any)?.selectIncidentId;
+    if (selectId && incidents.length > 0) {
+      const found = incidents.find((i) => i.id === selectId);
+      if (found) {
+        setSelectedIncident(found);
+        // Clear the state so it doesn't re-select on every render
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [incidents, location.state]);
 
   // Fetch full incident detail (linked persons, vehicles, evidence, offenses, officers, links) when selected
   const fetchIncidentDetail = useCallback(async (incidentId: string) => {
@@ -1159,6 +1174,16 @@ export default function IncidentsPage() {
             pdfData.latitude = callDetail.latitude;
             pdfData.longitude = callDetail.longitude;
           }
+          // Resolve responding_vehicle_id to fleet vehicle call sign
+          const vehId = callDetail.responding_vehicle_id || pdfData.responding_vehicle_id;
+          if (vehId) {
+            try {
+              const fv = await apiFetch<any>(`/fleet/${vehId}`);
+              if (fv?.vehicle_number) {
+                pdfData.responding_vehicle_id = fv.vehicle_number;
+              }
+            } catch { /* vehicle lookup optional */ }
+          }
         }
       } catch { /* call detail optional */ }
 
@@ -1200,14 +1225,16 @@ export default function IncidentsPage() {
             }}
             onPreview={async (reportType) => {
               try {
+                if (!selectedIncident) { addToast('No incident selected', 'error'); return; }
                 if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData);
                 setPdfBlobUrl(blobUrl);
                 setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()}`);
                 setPdfViewerOpen(true);
-              } catch (err) {
+              } catch (err: any) {
                 console.error('[IncidentsPage] PDF preview failed:', err);
+                addToast(err?.message || 'PDF preview generation failed', 'error');
               }
             }}
             onSignAndExport={async (reportType, signature) => {
@@ -2453,54 +2480,12 @@ export default function IncidentsPage() {
       )}
 
       {/* ═══ Add Cross-Reference Link Modal ═══ */}
-      {showAddLinkModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddLinkModal(false)}>
-          <form
-            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
-            style={{ borderRadius: 2 }}
-            onClick={(e) => e.stopPropagation()}
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const data: Record<string, any> = {};
-              fd.forEach((v, k) => { if (v) data[k] = v; });
-              try {
-                await apiFetch(`/incidents/${selectedIncident.id}/links`, { method: 'POST', body: JSON.stringify(data) });
-                setShowAddLinkModal(false);
-                fetchIncidentDetail(selectedIncident.id);
-              } catch { /* error */ }
-            }}
-          >
-            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
-              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
-              <button type="button" onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="p-4 space-y-3">
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record Type *</label>
-                <select name="linked_type" required className="input-dark w-full text-xs">
-                  <option value="">Select type...</option>
-                  <option value="incident">Incident Report</option>
-                  <option value="call">Call for Service</option>
-                  <option value="case">Case</option>
-                  <option value="warrant">Warrant</option>
-                  <option value="citation">Citation</option>
-                  <option value="arrest">Arrest Record</option>
-                </select>
-              </div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record ID *</label>
-                <input name="linked_id" type="number" required className="input-dark w-full text-xs" placeholder="Enter the record ID number" />
-              </div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link Reason</label>
-                <input name="link_reason" className="input-dark w-full text-xs" placeholder="e.g., Related incident, follow-up, same suspect" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowAddLinkModal(false)} className="toolbar-btn">Cancel</button>
-              <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Link className="w-3 h-3" /> Link Record</button>
-            </div>
-          </form>
-        </div>
-      )}
+      <AddLinkModal
+        isOpen={showAddLinkModal && !!selectedIncident}
+        onClose={() => setShowAddLinkModal(false)}
+        incidentId={selectedIncident?.id || ''}
+        onLinked={() => { setShowAddLinkModal(false); if (selectedIncident) fetchIncidentDetail(selectedIncident.id); }}
+      />
     </div>
   );
 }

@@ -1109,7 +1109,7 @@ function RecordFormModal({
               type="submit"
               disabled={saving || !form.first_name || !form.last_name}
               className="px-4 py-1.5 text-xs font-bold rounded-sm flex items-center gap-1.5 disabled:opacity-50"
-              style={{ background: '#888888', color: '#fff', border: '1px solid #2a7acf' }}
+              style={{ background: '#888888', color: '#fff', border: '1px solid #2e2e2e' }}
             >
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
               {record ? 'Update' : 'Create'} Entry
@@ -1210,7 +1210,7 @@ function ImportModal({
               onClick={() => parsed && onImport(parsed)}
               disabled={!parsed}
               className="px-3 py-1.5 text-[11px] font-bold rounded-sm disabled:opacity-40"
-              style={{ background: '#888888', color: '#fff', border: '1px solid #2a7acf' }}
+              style={{ background: '#888888', color: '#fff', border: '1px solid #2e2e2e' }}
             >
               Import {parsed ? parsed.length : 0} Records
             </button>

@@ -69,6 +69,8 @@ const TrainingDocsPage = lazyRetry(() => import('./pages/TrainingDocsPage'));
 const TrainingPage = lazyRetry(() => import('./pages/TrainingPage'));
 const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
 const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
+const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
+const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
 const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
 const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
 const ArrestRecordsPage = lazyRetry(() => import('./pages/ArrestRecordsPage'));
@@ -78,7 +80,9 @@ const ServePage = lazyRetry(() => import('./pages/ServePage'));
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
+const GeoDataViewerPage = lazyRetry(() => import('./pages/GeoDataViewerPage'));
 const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
+const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
@@ -211,6 +215,7 @@ function AppRoutes() {
             <Route path="/dispatch" element={<DispatchPage />} />
             <Route path="/map" element={<MapPage />} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
+            <Route path="/geo-data" element={<RouteErrorBoundary><GeoDataViewerPage /></RouteErrorBoundary>} />
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
@@ -247,6 +252,8 @@ function AppRoutes() {
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
             <Route path="/forensics" element={<RouteErrorBoundary><ForensicsPage /></RouteErrorBoundary>} />
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
+            <Route path="/use-of-force" element={<RouteErrorBoundary><UseOfForcePage /></RouteErrorBoundary>} />
+            <Route path="/security-dashboard" element={<RouteErrorBoundary><SecurityDashboardPage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
             <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />
             <Route path="/arrest-records" element={<RouteErrorBoundary><ArrestRecordsPage /></RouteErrorBoundary>} />
@@ -255,6 +262,7 @@ function AppRoutes() {
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
+            <Route path="/help" element={<RouteErrorBoundary><HelpPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />

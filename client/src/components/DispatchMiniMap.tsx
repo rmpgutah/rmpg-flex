@@ -83,7 +83,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
   // Load Google Maps script with retry + online auto-recovery
   useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
     if (!apiKey) {
       setError('Map key not configured');
       return;
@@ -124,15 +124,18 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+      const mapOptions: google.maps.MapOptions = {
         center,
         zoom: MINI_ZOOM,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         gestureHandling: 'cooperative',
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapContainerRef.current, mapOptions);
       mapRef.current = map;
       registerMapInstance(map);
 
@@ -338,7 +341,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // ── Auth error (config problem, not connectivity) ──
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060c14' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
@@ -401,7 +404,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#060c14',
+          background: '#050505',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>

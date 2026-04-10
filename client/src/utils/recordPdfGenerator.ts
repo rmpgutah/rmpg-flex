@@ -313,6 +313,12 @@ export interface PersonPdfData {
   shoe_size?: string;
   scars_marks_tattoos?: string;
   clothing_description?: string;
+  // Detailed marks
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  identifying_marks_location?: string;
+  distinguishing_features?: string;
   // Contact
   phone?: string;
   phone_secondary?: string;
@@ -332,6 +338,15 @@ export interface PersonPdfData {
   id_state?: string;
   id_expiry?: string;
   ssn_last4?: string;
+  // Law Enforcement IDs
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  // Passport / Immigration
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
   // Employment / Demographics
   employer?: string;
   occupation?: string;
@@ -339,6 +354,16 @@ export interface PersonPdfData {
   citizenship?: string;
   marital_status?: string;
   place_of_birth?: string;
+  // Education & Military
+  education_level?: string;
+  military_branch?: string;
+  military_status?: string;
+  tribal_affiliation?: string;
+  // Health / Medical
+  disability_flags?: string;
+  mental_health_flags?: string;
+  substance_abuse?: string;
+  medication_notes?: string;
   // Flags
   is_sex_offender?: boolean;
   is_veteran?: boolean;
@@ -391,14 +416,17 @@ export interface VehiclePdfData {
   odometer?: string;
   // Owner
   owner_name?: string;
+  registered_owner?: string;
   owner_address?: string;
   owner_phone?: string;
   commercial_vehicle?: boolean;
   hazmat?: boolean;
-  // Insurance
+  // Insurance & Registration
   insurance_company?: string;
   insurance_policy?: string;
   registration_expiry?: string;
+  registration_state?: string;
+  title_status?: string;
   // Legal
   stolen_status?: string;
   stolen_date?: string;
@@ -407,6 +435,13 @@ export interface VehiclePdfData {
   tow_company?: string;
   tow_date?: string;
   lien_holder?: string;
+  // Condition & Value
+  exterior_condition?: string;
+  interior_condition?: string;
+  estimated_value?: string;
+  window_tint?: string;
+  modifications?: string;
+  equipment_notes?: string;
   // Description
   distinguishing_features?: string;
   damage_description?: string;
@@ -690,6 +725,34 @@ export interface PropertyPdfData {
   access_instructions?: string;
   post_orders?: string;
   hazard_notes?: string;
+  notes?: string;
+  // Building details
+  business_type?: string;
+  structure_type?: string;
+  occupancy_status?: string;
+  year_built?: string;
+  square_footage?: string;
+  number_of_stories?: string;
+  // Security
+  security_features?: string;
+  alarm_company?: string;
+  alarm_account?: string;
+  camera_system?: string;
+  roof_access?: string;
+  // Key holder
+  key_holder_name?: string;
+  key_holder_phone?: string;
+  key_holder_relationship?: string;
+  // Owner
+  owner_name?: string;
+  owner_phone?: string;
+  // Inspection
+  last_inspection_date?: string;
+  inspection_status?: string;
+  // Site details
+  parking_info?: string;
+  utility_shutoffs?: string;
+  known_hazards?: string;
   created_at?: string;
   updated_at?: string;
   attachment_images?: PdfImage[];
@@ -1212,9 +1275,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('DESCRIPTION', lx, y + 1.5);
-    y += 2;
+    doc.text('DESCRIPTION', lx, y + 2);
+    y += 4.5;
     doc.setFont('courier', 'normal');
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
       const cw = getContentWidth(doc);
@@ -1235,7 +1299,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     };
     y = addFormattedText(doc, (data.description || '').toUpperCase(), lx, y, ffw, FONT.SIZE_FIELD_VALUE, descPageBreak);
-    y += SPACING.SM;
+    y += SPACING.MD; // Tight gap before # Subjects row
     // Pack remaining fields tightly — check page break before each group
     y = checkPageBreak(doc, y, 10, prio);
     y = addThreeColumnFields(doc, [
@@ -1286,7 +1350,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       // Visit header line
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('courier', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(`Visit #${visit.visit_number}`, lx, y);
@@ -1294,7 +1358,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Status badge
       const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
       const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(statusText, lx + visitLabelW, y);
@@ -1303,7 +1367,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
@@ -1321,7 +1385,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
 
       if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
@@ -1338,7 +1402,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
 
       if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
@@ -1347,7 +1411,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       // Disposition
       if (visit.disposition) {
-        doc.setFont('helvetica', 'italic');
+        doc.setFont('courier', 'normal');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
@@ -1588,6 +1652,29 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   y += 1; // ensure clear gap after Physical Description section border
   y = addNarrativeSection(doc, 'Scars / Marks / Tattoos', data.scars_marks_tattoos || '', y, prio);
 
+  // ── 3a. Detailed Marks Descriptions ───────────────────────
+  if (data.tattoo_description || data.scar_description || data.piercing_description || data.identifying_marks_location || data.distinguishing_features) {
+    y = checkPageBreak(doc, y, 18, prio);
+    { const sec = openAutoSection(doc, 'Identifying Marks Detail', y); y = sec.contentY;
+      if (data.tattoo_description) {
+        y = addFieldPair(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
+      }
+      if (data.scar_description) {
+        y = addFieldPair(doc, 'Scar Description', data.scar_description, lx, y, ffw);
+      }
+      if (data.piercing_description) {
+        y = addFieldPair(doc, 'Piercing Description', data.piercing_description, lx, y, ffw);
+      }
+      if (data.identifying_marks_location) {
+        y = addFieldPair(doc, 'Marks Location', data.identifying_marks_location, lx, y, ffw);
+      }
+      if (data.distinguishing_features) {
+        y = addFieldPair(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
   // ── 4. Clothing Description ───────────────────────────────
   y = addNarrativeSection(doc, 'Clothing Description', data.clothing_description || '', y, prio);
 
@@ -1628,6 +1715,19 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = Math.max(i1, i2, i3, i4);
     // Row 3: SSN Last 4
     y = addFieldPair(doc, 'SSN Last 4', data.ssn_last4 ? `***-**-${data.ssn_last4}` : '', lx, y, ffw);
+    // Row 4: LE IDs — NCIC, FBI, State ID, SOR
+    const quarterW = ffw / 4;
+    const le1 = addFieldPair(doc, 'NCIC #', data.ncic_number || '', lx, y, quarterW);
+    const le2 = addFieldPair(doc, 'FBI #', data.fbi_number || '', lx + quarterW, y, quarterW);
+    const le3 = addFieldPair(doc, 'State ID #', data.state_id_number || '', lx + quarterW * 2, y, quarterW);
+    const le4 = addFieldPair(doc, 'SOR #', data.sor_number || '', lx + quarterW * 3, y, quarterW);
+    y = Math.max(le1, le2, le3, le4);
+    // Row 5: Passport & Immigration
+    const thirdWid = ffw / 3;
+    const pp1 = addFieldPair(doc, 'Passport #', data.passport_number || '', lx, y, thirdWid);
+    const pp2 = addFieldPair(doc, 'Passport Country', data.passport_country || '', lx + thirdWid, y, thirdWid);
+    const pp3 = addFieldPair(doc, 'Immigration Status', data.immigration_status || '', lx + thirdWid * 2, y, thirdWid);
+    y = Math.max(pp1, pp2, pp3);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -1640,6 +1740,36 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const e3 = addFieldPair(doc, 'Language', data.language || '', lx + 2 * thirdW, y, thirdW);
     y = Math.max(e1, e2, e3);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7a. Education & Military ──────────────────────────────
+  if (data.education_level || data.military_branch || data.military_status || data.tribal_affiliation) {
+    y = checkPageBreak(doc, y, 12, prio);
+    { const sec = openAutoSection(doc, 'Education & Military', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const em1 = addFieldPair(doc, 'Education Level', data.education_level || '', lx, y, quarterW);
+      const em2 = addFieldPair(doc, 'Military Branch', data.military_branch || '', lx + quarterW, y, quarterW);
+      const em3 = addFieldPair(doc, 'Military Status', data.military_status || '', lx + quarterW * 2, y, quarterW);
+      const em4 = addFieldPair(doc, 'Tribal Affiliation', data.tribal_affiliation || '', lx + quarterW * 3, y, quarterW);
+      y = Math.max(em1, em2, em3, em4);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── 7b. Health & Medical ──────────────────────────────────
+  if (data.disability_flags || data.mental_health_flags || data.substance_abuse || data.medication_notes) {
+    y = checkPageBreak(doc, y, 16, prio);
+    { const sec = openAutoSection(doc, 'Health & Medical', y); y = sec.contentY;
+      const thirdWh = ffw / 3;
+      const hm1 = addFieldPair(doc, 'Disabilities', data.disability_flags || '', lx, y, thirdWh);
+      const hm2 = addFieldPair(doc, 'Mental Health', data.mental_health_flags || '', lx + thirdWh, y, thirdWh);
+      const hm3 = addFieldPair(doc, 'Substance Abuse', data.substance_abuse || '', lx + thirdWh * 2, y, thirdWh);
+      y = Math.max(hm1, hm2, hm3);
+      if (data.medication_notes) {
+        y = addFieldPair(doc, 'Medication Notes', data.medication_notes, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // ── 8. Flags & Warnings ───────────────────────────────────
@@ -1923,15 +2053,18 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   // ── Owner Information ──
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, 'Owner Information', y); y = sec.contentY;
-    // Row 1: Owner Name (half), Phone (quarter), Odometer (quarter)
-    const r1a = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hfw);
+    // Row 1: Owner Name (half), Registered Owner (half)
+    const r0a = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hfw);
+    const r0b = addFieldPair(doc, 'Registered Owner', data.registered_owner || '', rx, y, hfw);
+    y = Math.max(r0a, r0b);
+    // Row 2: Phone (quarter), Odometer (quarter)
     const quarterW = ffw / 4;
-    const r1b = addFieldPair(doc, 'Phone', data.owner_phone || '', rx, y, quarterW);
-    const r1c = addFieldPair(doc, 'Odometer', data.odometer || '', rx + quarterW, y, quarterW);
-    y = Math.max(r1a, r1b, r1c);
-    // Row 2: Owner Address (full width)
+    const r1b = addFieldPair(doc, 'Phone', data.owner_phone || '', lx, y, quarterW);
+    const r1c = addFieldPair(doc, 'Odometer', data.odometer || '', lx + quarterW, y, quarterW);
+    y = Math.max(r1b, r1c);
+    // Row 3: Owner Address (full width)
     y = addFieldPair(doc, 'Owner Address', data.owner_address || '', lx, y, ffw);
-    // Row 3: Checkboxes + Lien Holder (clear gap after address)
+    // Row 4: Checkboxes + Lien Holder (clear gap after address)
     y += 4;
     let flagX = lx;
     flagX = addCheckboxField(doc, 'Commercial', !!data.commercial_vehicle, flagX, y);
@@ -1944,12 +2077,37 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   // ── Insurance & Registration ──
   y = checkPageBreak(doc, y, 12);
   { const sec = openAutoSection(doc, 'Insurance & Registration', y); y = sec.contentY;
-    const fifthW = ffw / 5;
-    const r1a = addFieldPair(doc, 'Insurance Company', data.insurance_company || '', lx, y, fifthW * 2);
-    const r1b = addFieldPair(doc, 'Policy Number', data.insurance_policy || '', lx + fifthW * 2, y, fifthW * 2);
-    const r1c = addFieldPair(doc, 'Reg. Expiry', fmtDate(data.registration_expiry), lx + fifthW * 4, y, fifthW);
-    y = Math.max(r1a, r1b, r1c);
+    const sixthWi = ffw / 6;
+    const r1a = addFieldPair(doc, 'Insurance Company', data.insurance_company || '', lx, y, sixthWi * 2);
+    const r1b = addFieldPair(doc, 'Policy Number', data.insurance_policy || '', lx + sixthWi * 2, y, sixthWi * 2);
+    const r1c = addFieldPair(doc, 'Reg. Expiry', fmtDate(data.registration_expiry), lx + sixthWi * 4, y, sixthWi);
+    const r1d = addFieldPair(doc, 'Reg. State', data.registration_state || '', lx + sixthWi * 5, y, sixthWi);
+    y = Math.max(r1a, r1b, r1c, r1d);
+    // Row 2: Title Status
+    y = addFieldPair(doc, 'Title Status', data.title_status || '', lx, y, hfw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Condition & Value ──
+  if (data.exterior_condition || data.interior_condition || data.estimated_value || data.window_tint || data.modifications || data.equipment_notes) {
+    y = checkPageBreak(doc, y, 16);
+    { const sec = openAutoSection(doc, 'Condition & Value', y); y = sec.contentY;
+      const thirdWc = ffw / 3;
+      const cv1 = addFieldPair(doc, 'Exterior Condition', data.exterior_condition || '', lx, y, thirdWc);
+      const cv2 = addFieldPair(doc, 'Interior Condition', data.interior_condition || '', lx + thirdWc, y, thirdWc);
+      const cv3 = addFieldPair(doc, 'Estimated Value', data.estimated_value ? `$${data.estimated_value}` : '', lx + thirdWc * 2, y, thirdWc);
+      y = Math.max(cv1, cv2, cv3);
+      if (data.window_tint) {
+        y = addFieldPair(doc, 'Window Tint', data.window_tint, lx, y, ffw);
+      }
+      if (data.modifications) {
+        y = addFieldPair(doc, 'Modifications', data.modifications, lx, y, ffw);
+      }
+      if (data.equipment_notes) {
+        y = addFieldPair(doc, 'Equipment Notes', data.equipment_notes, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // ── Legal Status ──
@@ -2793,7 +2951,25 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     const r2a = addFieldPair(doc, 'Property Type', data.property_type || '', lx, y, hfw);
     const r2b = addFieldPair(doc, 'Status', data.is_active ? 'ACTIVE' : 'INACTIVE', rx, y, hfw);
     y = Math.max(r2a, r2b);
+    // Row 3: Business Type, Structure Type
+    const r3a = addFieldPair(doc, 'Business Type', data.business_type || '', lx, y, hfw);
+    const r3b = addFieldPair(doc, 'Structure Type', data.structure_type || '', rx, y, hfw);
+    y = Math.max(r3a, r3b);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Building Details ──
+  if (data.occupancy_status || data.year_built || data.square_footage || data.number_of_stories) {
+    y = checkPageBreak(doc, y, 12);
+    { const sec = openAutoSection(doc, 'Building Details', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const bd1 = addFieldPair(doc, 'Occupancy', data.occupancy_status || '', lx, y, quarterW);
+      const bd2 = addFieldPair(doc, 'Year Built', data.year_built || '', lx + quarterW, y, quarterW);
+      const bd3 = addFieldPair(doc, 'Sq. Footage', data.square_footage || '', lx + quarterW * 2, y, quarterW);
+      const bd4 = addFieldPair(doc, 'Stories', data.number_of_stories || '', lx + quarterW * 3, y, quarterW);
+      y = Math.max(bd1, bd2, bd3, bd4);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // ── Location ──
@@ -2810,14 +2986,55 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Access & Security ──
-  y = checkPageBreak(doc, y, 12);
+  y = checkPageBreak(doc, y, 18);
   { const sec = openAutoSection(doc, 'Access & Security', y); y = sec.contentY;
     const quarterW = ffw / 4;
     const r1a = addFieldPair(doc, 'Gate Code', data.gate_code || '', lx, y, quarterW);
     const r1b = addFieldPair(doc, 'Alarm Code', data.alarm_code || '', lx + quarterW, y, quarterW);
     const r1c = addFieldPair(doc, 'Emergency Contact', data.emergency_contact || '', lx + quarterW * 2, y, quarterW * 2);
     y = Math.max(r1a, r1b, r1c);
+    // Row 2: Alarm Company, Alarm Account, Camera System
+    const thirdW = ffw / 3;
+    const r2a = addFieldPair(doc, 'Alarm Company', data.alarm_company || '', lx, y, thirdW);
+    const r2b = addFieldPair(doc, 'Alarm Account', data.alarm_account || '', lx + thirdW, y, thirdW);
+    const r2c = addFieldPair(doc, 'Camera System', data.camera_system || '', lx + thirdW * 2, y, thirdW);
+    y = Math.max(r2a, r2b, r2c);
+    // Row 3: Security Features, Roof Access
+    const sr1 = addFieldPair(doc, 'Security Features', data.security_features || '', lx, y, hfw);
+    const sr2 = addFieldPair(doc, 'Roof Access', data.roof_access || '', rx, y, hfw);
+    y = Math.max(sr1, sr2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Key Holder / Owner ──
+  if (data.key_holder_name || data.owner_name) {
+    y = checkPageBreak(doc, y, 14);
+    { const sec = openAutoSection(doc, 'Key Holder & Owner', y); y = sec.contentY;
+      const thirdWk = ffw / 3;
+      if (data.key_holder_name || data.key_holder_phone) {
+        const kh1 = addFieldPair(doc, 'Key Holder', data.key_holder_name || '', lx, y, thirdWk);
+        const kh2 = addFieldPair(doc, 'KH Phone', data.key_holder_phone || '', lx + thirdWk, y, thirdWk);
+        const kh3 = addFieldPair(doc, 'KH Relationship', data.key_holder_relationship || '', lx + thirdWk * 2, y, thirdWk);
+        y = Math.max(kh1, kh2, kh3);
+      }
+      if (data.owner_name || data.owner_phone) {
+        const ow1 = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hfw);
+        const ow2 = addFieldPair(doc, 'Owner Phone', data.owner_phone || '', rx, y, hfw);
+        y = Math.max(ow1, ow2);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── Inspection ──
+  if (data.last_inspection_date || data.inspection_status) {
+    y = checkPageBreak(doc, y, 10);
+    { const sec = openAutoSection(doc, 'Inspection', y); y = sec.contentY;
+      const ins1 = addFieldPair(doc, 'Last Inspection', fmtDate(data.last_inspection_date), lx, y, hfw);
+      const ins2 = addFieldPair(doc, 'Inspection Status', data.inspection_status || '', rx, y, hfw);
+      y = Math.max(ins1, ins2);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // Access Instructions
@@ -2826,8 +3043,24 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   // Post Orders
   y = addNarrativeSection(doc, 'Post Orders', data.post_orders || '', y);
 
+  // Site Details
+  if (data.parking_info) {
+    y = addNarrativeSection(doc, 'Parking Info', data.parking_info, y);
+  }
+  if (data.utility_shutoffs) {
+    y = addNarrativeSection(doc, 'Utility Shutoffs', data.utility_shutoffs, y);
+  }
+
   // Hazard Notes
   y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
+  if (data.known_hazards) {
+    y = addNarrativeSection(doc, 'Known Hazards', data.known_hazards, y);
+  }
+
+  // Notes
+  if (data.notes) {
+    y = addNarrativeSection(doc, 'Notes', data.notes, y);
+  }
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -3230,14 +3463,14 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
     if (subj.hair_color) descParts.push(`Hair: ${subj.hair_color}`);
     if (subj.eye_color) descParts.push(`Eyes: ${subj.eye_color}`);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(descParts.join('  |  '), margin + 2, y + 3);
     y += 5;
 
     if (subj.address) {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
@@ -3275,7 +3508,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
       doc.text('BAIL', margin + contentW - 8, y + 3.5, { align: 'right' });
       y += 6;
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
@@ -3420,7 +3653,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     ty += 6;
 
     // Data rows
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(6.5);
     for (const [label, count] of entries) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -3470,7 +3703,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     doc.text('WARRANTS', margin + contentW - 2, y + 3.5, { align: 'right' });
     y += 6;
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(6.5);
     for (const court of data.topCourts) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);

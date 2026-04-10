@@ -7,6 +7,15 @@ vi.mock('bcryptjs', () => ({
   },
 }));
 
+// Force requireSpecial=true so tests are deterministic regardless of .env
+vi.mock('../../src/config', async (importOriginal) => {
+  const actual = await importOriginal() as any;
+  return {
+    ...actual,
+    default: { ...actual.default, password: { ...actual.default.password, requireSpecial: true } },
+  };
+});
+
 import { validatePassword, checkPasswordHistory, isPasswordExpired, getPasswordPolicyDescription } from '../../src/middleware/validatePassword';
 import bcryptjs from 'bcryptjs';
 

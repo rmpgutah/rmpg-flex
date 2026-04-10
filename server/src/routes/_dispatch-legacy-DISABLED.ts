@@ -1552,7 +1552,7 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
 router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.unitId);
+    const unitId = parseInt(req.params.unitId as string);
     const hours = parseInt(req.query.hours as string) || 8;
 
     const rows = db.prepare(`
@@ -2509,12 +2509,13 @@ router.get('/premise-history', (req: Request, res: Response) => {
     const db = getDb();
     const { address } = req.query;
 
-    if (!address || (address as string).length < 3) {
+    if (typeof address !== 'string' || address.trim().length < 3) {
       res.status(400).json({ error: 'Address must be at least 3 characters' });
       return;
     }
 
-    const searchTerm = `%${address}%`;
+    const normalizedAddress = address.trim();
+    const searchTerm = `%${normalizedAddress}%`;
 
     // Find prior calls at this address (fuzzy match on location_address)
     const calls = db.prepare(`

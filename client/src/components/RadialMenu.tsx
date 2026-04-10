@@ -19,7 +19,7 @@ interface MenuSegment {
 }
 
 const SEGMENTS: MenuSegment[] = [
-  { label: 'Status', icon: Radio, color: '#3b82f6', action: 'status' },
+  { label: 'Status', icon: Radio, color: '#888888', action: 'status' },
   { label: 'Panic', icon: AlertTriangle, color: '#ef4444', action: 'panic' },
   { label: 'Note', icon: StickyNote, color: '#22c55e', action: 'note' },
   { label: 'Backup', icon: Shield, color: '#f97316', action: 'backup' },
@@ -34,7 +34,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
   const [showNote, setShowNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [feedback, setFeedback] = useState('');
-  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const longPressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const showFeedback = (msg: string) => {
@@ -202,7 +202,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         onTouchEnd={() => clearTimeout(longPressTimer.current)}
         className="fixed bottom-20 right-4 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
         style={{
-          background: isOpen ? '#ef4444' : '#1a5a9e',
+          background: isOpen ? '#ef4444' : '#888888',
           border: '2px solid rgba(255,255,255,0.2)',
         }}
         title="Quick Actions (long-press on mobile)"

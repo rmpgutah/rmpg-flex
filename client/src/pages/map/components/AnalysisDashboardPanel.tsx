@@ -73,7 +73,7 @@ function shiftColor(shift: string): string {
 function shiftBg(shift: string): string {
   const s = shift.toLowerCase();
   if (s.includes('day')) return 'rgba(212,160,23,0.15)';
-  if (s.includes('swing')) return 'rgba(59,130,246,0.15)';
+  if (s.includes('swing')) return 'rgba(136,136,136,0.15)';
   if (s.includes('night') || s.includes('grave')) return 'rgba(168,85,247,0.15)';
   return 'rgba(107,114,128,0.15)';
 }
@@ -102,13 +102,13 @@ export default function AnalysisDashboardPanel({
         width: 320,
         maxHeight: 'calc(100dvh - 160px)',
         background: '#0a0a0a',
-        border: '1px solid #1e2a3a',
+        border: '1px solid #222222',
       }}
     >
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-purple-400" />
@@ -395,7 +395,7 @@ function MetricCell({
   return (
     <div
       className="flex flex-col items-center justify-center py-2 px-1 rounded-sm panel-inset"
-      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+      style={{ background: '#050505', border: '1px solid #222222' }}
     >
       {/* #52: Metric cell value with text shadow glow */}
       <span className="text-[14px] font-mono font-bold leading-none tabular-nums" style={{ color, textShadow: `0 0 8px ${color}30` }}>
@@ -420,9 +420,9 @@ function SectionBlock({
   return (
     <div
       className="rounded-sm p-2 panel-inset"
-      style={{ background: '#0a0a0a', border: '1px solid #1e2a3a' }}
+      style={{ background: '#0a0a0a', border: '1px solid #222222' }}
     >
-      <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #1e2a3a, #2a3f5a, #1e2a3a) 1' }}>
+      <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #222222, #2a3f5a, #222222) 1' }}>
         {icon}
         <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-400">
           {title}

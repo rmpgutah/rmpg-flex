@@ -6,6 +6,8 @@ import {
   FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
+  Handshake, Globe, GraduationCap, FlaskConical, ShieldAlert, Fingerprint,
+  Send, Truck, UserCog, Layers, HelpCircle,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -30,6 +32,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Tactical Map' },
+      { path: '/geography', icon: Map, label: 'Geography' },
+      { path: '/geo-data', icon: Layers, label: 'Geo Data Viewer' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
@@ -41,11 +45,13 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/incidents', icon: FileText, label: 'Incidents' },
       { path: '/records', icon: Database, label: 'Records' },
+      { path: '/arrest-records', icon: Fingerprint, label: 'Arrest Records' },
       { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
       { path: '/criminal-history', icon: Search, label: 'Criminal History' },
       { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
       { path: '/evidence', icon: Package, label: 'Evidence' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
+      { path: '/use-of-force', icon: ShieldAlert, label: 'Use of Force' },
     ],
   },
   {
@@ -53,11 +59,13 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Enforcement',
     items: [
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
+      { path: '/national-warrants', icon: AlertTriangle, label: 'National Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+      { path: '/serve', icon: Send, label: 'Process Service' },
     ],
   },
   {
@@ -65,9 +73,11 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Personnel & Fleet',
     items: [
       { path: '/personnel', icon: Users, label: 'Personnel' },
+      { path: '/hr', icon: UserCog, label: 'Human Resources' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
       { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+      { path: '/training', icon: GraduationCap, label: 'Training' },
     ],
   },
   {
@@ -78,6 +88,17 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/radio', icon: Radio, label: 'Radio' },
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    ],
+  },
+  {
+    id: 'investigate',
+    label: 'Investigations',
+    items: [
+      { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
+      { path: '/microbilt', icon: Search, label: 'Skip Tracer V2' },
+      { path: '/forensic-lab', icon: FlaskConical, label: 'Forensic Lab' },
+      { path: '/web-research', icon: Globe, label: 'Web Research' },
+      { path: '/crm', icon: Handshake, label: 'CRM' },
     ],
   },
   {
@@ -96,8 +117,10 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     id: 'system',
     label: 'System',
     items: [
+      { path: '/help', icon: HelpCircle, label: 'Help' },
       { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
+      { path: '/security-dashboard', icon: ShieldAlert, label: 'Security', adminOnly: true },
     ],
   },
 ];
@@ -106,7 +129,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 const CONTRACT_MANAGER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/hr',
+  '/security-dashboard', '/forensic-lab', '/use-of-force',
 ]);
 
 interface SidebarProps {

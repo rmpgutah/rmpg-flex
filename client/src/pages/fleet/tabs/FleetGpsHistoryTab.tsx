@@ -51,7 +51,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   hard_turn: '#f97316',
   speeding: '#dc2626',
   impact: '#dc2626',
-  video_start: '#3b82f6',
+  video_start: '#888888',
   video_stop: '#6b7280',
   panic: '#dc2626',
   sos: '#dc2626',
@@ -115,7 +115,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Controls bar */}
-      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: '#060c14' }}>
+      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: '#050505' }}>
         <div className="flex gap-0.5">
           {(['breadcrumbs', 'events'] as const).map(t => (
             <button
@@ -155,7 +155,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
         ) : subTab === 'breadcrumbs' ? (
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#0d1520' }}>
+              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#050505' }}>
                 <th className="px-2 py-1.5 font-bold">Time</th>
                 <th className="px-2 py-1.5 font-bold">Location</th>
                 <th className="px-2 py-1.5 font-bold">Speed</th>
@@ -179,7 +179,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
                   </td>
                   <td className="px-2 py-1">
                     <span className="text-[8px] font-bold uppercase px-1 py-0.5" style={{
-                      color: bc.unit_status === 'available' ? '#22c55e' : bc.unit_status === 'enroute' ? '#3b82f6' : '#a0a0a0',
+                      color: bc.unit_status === 'available' ? '#22c55e' : bc.unit_status === 'enroute' ? '#888888' : '#a0a0a0',
                     }}>
                       {bc.unit_status || '-'}
                     </span>
@@ -195,7 +195,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
         ) : (
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#0d1520' }}>
+              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#050505' }}>
                 <th className="px-2 py-1.5 font-bold">Time</th>
                 <th className="px-2 py-1.5 font-bold">Event</th>
                 <th className="px-2 py-1.5 font-bold">Location</th>

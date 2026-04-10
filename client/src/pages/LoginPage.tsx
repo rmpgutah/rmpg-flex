@@ -331,7 +331,7 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #0a0a0a 100%)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #050505 0%, #0a0a0a 100%)' }}>
       {/* Animated grid background */}
       <div className="login-grid-bg" />
 
@@ -1032,7 +1032,7 @@ export default function LoginPage() {
           <div
             className="text-center py-1.5 px-3"
             style={{
-              background: '#060c14',
+              background: '#050505',
               border: '1px solid #222222',
               borderTop: '2px solid #333333',
             }}

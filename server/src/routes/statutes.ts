@@ -283,7 +283,7 @@ router.delete('/entity/:id', (req: Request, res: Response) => {
 router.get('/penalty/:citation', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const citation = decodeURIComponent(req.params.citation);
+    const citation = decodeURIComponent(req.params.citation as string);
 
     const statute = db.prepare(`
       SELECT id, citation, short_title, description, offense_level, category,
@@ -400,7 +400,7 @@ router.post('/:id/amendment', requireRole('admin', 'manager'), (req: Request, re
 
     // Store amendment in activity_log with structured data
     const amendmentData = {
-      statute_id: parseInt(req.params.id),
+      statute_id: parseInt(req.params.id as string),
       citation: statute.citation,
       amendment_type: amendment_type, // 'amended', 'repealed', 'enacted', 'renumbered'
       description,

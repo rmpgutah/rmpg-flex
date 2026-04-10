@@ -9,6 +9,8 @@ import {
   updateMapStyles,
   onOnlineRetryMaps,
   monitorTileLoading,
+  resolveGoogleMapsApiKey,
+  resolveGoogleMapsMapId,
 } from '../../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../../utils/devLog';
 import { injectKeyframes, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
@@ -61,14 +63,13 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       return;
     }
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
-      setMapLoaded(false);
-      return;
-    }
-
+    let cancelled = false;
+    let pendingOnlineListener: (() => void) | null = null;
+    let dismissObserver: MutationObserver | null = null;
+    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
     let authFailed = false;
+    let resolvedMapId = '';
+
     (window as any).gm_authFailure = () => {
       authFailed = true;
       console.error('[MapPage] Google Maps authentication failure — API key rejected');
@@ -89,28 +90,27 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       );
     };
 
-    let cancelled = false;
-    let pendingOnlineListener: (() => void) | null = null;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000];
-    let dismissObserver: MutationObserver | null = null;
-    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
     function initMap() {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
-      const map = new google.maps.Map(mapRef.current, {
+      const mapId = resolvedMapId;
+      const mapOptions: google.maps.MapOptions = {
         center: { lat: 40.7608, lng: -111.8910 },
         zoom: 12,
         disableDefaultUI: true,
         zoomControl: false,
-        styles: DARK_MAP_STYLE,
+        styles: mapId ? undefined : DARK_MAP_STYLE,
         backgroundColor: '#171717',
         renderingType: 'RASTER' as any,
         isFractionalZoomEnabled: false,
         gestureHandling: 'greedy',
-      });
+      };
+      if (mapId) (mapOptions as any).mapId = mapId;
+      const map = new google.maps.Map(mapRef.current, mapOptions);
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
@@ -151,8 +151,16 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
-      useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
+      // When mapId is configured, enable AdvancedMarkerElement for modern marker support.
+      // Without mapId, fall back to OverlayView-based markers which work on all map types.
+      if (mapId && google.maps.marker?.AdvancedMarkerElement) {
+        useAdvancedMarkersRef.current = true;
+        devLog('[MapPage] Using AdvancedMarkerElement (mapId configured)');
+      } else {
+        useAdvancedMarkersRef.current = false;
+        devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      }
 
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
       tileMonitorCleanupRef.current = monitorTileLoading(map, {
@@ -190,7 +198,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         return;
       }
 
-      loadGoogleMaps(apiKey)
+      loadGoogleMaps(resolvedApiKey)
         .then(() => initMap())
         .catch((err: any) => {
           if (cancelled) return;
@@ -213,20 +221,36 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         });
     }
 
-    attemptLoad(0);
+    // Resolve API key from server (admin-managed) or env var, then begin loading
+    let resolvedApiKey = '';
+    let unsubOnline: (() => void) | null = null;
 
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) {
-        devLog('[MapPage] Online auto-retry triggered — reinitializing map');
-        setMapError(null);
-        initMap();
+    (async () => {
+      resolvedApiKey = await resolveGoogleMapsApiKey();
+      if (cancelled) return;
+      if (!resolvedApiKey) {
+        setMapError('Google Maps API key not configured. Set it via Admin → Integrations or add VITE_GOOGLE_MAPS_API_KEY to client/.env');
+        setMapLoaded(false);
+        return;
       }
-    });
+      resolvedMapId = await resolveGoogleMapsMapId();
+      if (cancelled) return;
+
+      attemptLoad(0);
+
+      unsubOnline = onOnlineRetryMaps(resolvedApiKey, () => {
+        if (!cancelled && !mapInstanceRef.current) {
+          devLog('[MapPage] Online auto-retry triggered — reinitializing map');
+          setMapError(null);
+          initMap();
+        }
+      });
+    })();
 
     return () => {
       cancelled = true;
       if (pendingOnlineListener) { window.removeEventListener('online', pendingOnlineListener); pendingOnlineListener = null; }
-      unsubOnline();
+      if (unsubOnline) unsubOnline();
       if (dismissTimer) clearTimeout(dismissTimer);
       if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }

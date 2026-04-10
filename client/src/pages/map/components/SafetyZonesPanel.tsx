@@ -56,7 +56,7 @@ export default function SafetyZonesPanel({
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
       >
         <div className="flex items-center gap-2">
           <ShieldAlert size={14} className="text-red-400" />
@@ -142,7 +142,7 @@ export default function SafetyZonesPanel({
             {/* ── Aggregate stats ─────────────────────────── */}
             <div
               className="grid grid-cols-3 gap-1 rounded-sm px-1 py-2"
-              style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+              style={{ background: '#050505', border: '1px solid #222222' }}
             >
               <div className="text-center">
                 <Swords size={12} className="text-red-400 mx-auto mb-0.5" />

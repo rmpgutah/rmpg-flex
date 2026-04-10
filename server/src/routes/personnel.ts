@@ -56,6 +56,7 @@ const bodycamStorage = multer.diskStorage({
 
 const bodycamUpload = multer({
   storage: bodycamStorage,
+  limits: { fileSize: 10 * 1024 * 1024 * 1024, files: 1, fields: 20, parts: 25, fieldSize: 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
@@ -514,7 +515,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 router.post('/bodycam-videos/:videoId/reprocess', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const videoId = parseInt(req.params.videoId, 10);
+    const videoId = parseInt(req.params.videoId as string, 10);
     if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     db.prepare("UPDATE body_camera_recordings SET overlay_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(videoId);
     res.json({ success: true, message: 'Reprocessing queued' });
@@ -2929,6 +2930,60 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // GET /api/personnel/body-cameras/export — CSV export
+  parentRouter.get('/personnel/body-cameras/export', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const rows = db.prepare(`
+        SELECT c.camera_id, c.make, c.model, c.firmware_version, c.storage_capacity_gb,
+               c.status, c.condition, c.assigned_at, c.notes, u.full_name as officer_name, c.created_at
+        FROM body_cameras c
+        LEFT JOIN users u ON c.officer_id = u.id
+        ORDER BY c.status, c.camera_id
+        LIMIT 10000
+      `).all() as any[];
+      const headers = ['Camera ID', 'Make', 'Model', 'Firmware', 'Storage (GB)', 'Status', 'Condition', 'Assigned At', 'Notes', 'Officer', 'Created'];
+      const csvRows = rows.map((r: any) => [
+        r.camera_id, r.make, r.model, r.firmware_version, r.storage_capacity_gb,
+        r.status, r.condition, r.assigned_at, (r.notes || '').replace(/"/g, '""'), r.officer_name, r.created_at,
+      ]);
+      const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="body_cameras_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      console.error('Body cameras export error:', err?.message);
+      res.status(500).json({ error: 'Failed to export', code: 'EXPORT_BODY_CAMERAS_ERROR' });
+    }
+  });
+
+  // GET /api/personnel/bodycam-videos/export — CSV export
+  parentRouter.get('/personnel/bodycam-videos/export', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const rows = db.prepare(`
+        SELECT v.id, v.title, v.camera_id, v.officer_id, v.incident_id, v.duration_seconds,
+               v.file_size_bytes, v.recorded_at, v.status, u.full_name as officer_name, v.created_at
+        FROM bodycam_videos v
+        LEFT JOIN users u ON v.officer_id = u.id
+        ORDER BY v.recorded_at DESC
+        LIMIT 10000
+      `).all() as any[];
+      const headers = ['ID', 'Title', 'Camera ID', 'Officer ID', 'Incident ID', 'Duration (s)', 'Size (bytes)', 'Recorded At', 'Status', 'Officer', 'Created'];
+      const csvRows = rows.map((r: any) => [
+        r.id, (r.title || '').replace(/"/g, '""'), r.camera_id, r.officer_id, r.incident_id,
+        r.duration_seconds, r.file_size_bytes, r.recorded_at, r.status, r.officer_name, r.created_at,
+      ]);
+      const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="bodycam_videos_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      console.error('Bodycam videos export error:', err?.message);
+      res.status(500).json({ error: 'Failed to export', code: 'EXPORT_BODYCAM_VIDEOS_ERROR' });
+    }
+  });
+
   // GET /api/personnel/:id/body-cameras - Get cameras for specific officer
   parentRouter.get('/personnel/:id/body-cameras', authenticateToken, (req: Request, res: Response) => {
     try {
@@ -3291,7 +3346,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.post('/personnel/bodycam-videos/:videoId/assign-review', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const videoId = parseInt(req.params.videoId, 10);
+      const videoId = parseInt(req.params.videoId as string, 10);
       if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
 
       const { reviewer_id, priority, notes } = req.body;
@@ -3353,7 +3408,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.post('/personnel/bodycam-videos/:videoId/redaction-request', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const videoId = parseInt(req.params.videoId, 10);
+      const videoId = parseInt(req.params.videoId as string, 10);
       if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
 
       const { reason, start_time_seconds, end_time_seconds, redaction_type } = req.body;
@@ -3413,7 +3468,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.put('/personnel/bodycam-videos/redaction-requests/:requestId/approve', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const reqId = parseInt(req.params.requestId, 10);
+      const reqId = parseInt(req.params.requestId as string, 10);
       if (isNaN(reqId)) { res.status(400).json({ error: 'Invalid request ID' }); return; }
       const now = localNow();
       const { status, notes } = req.body;
@@ -4145,7 +4200,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.put('/training/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       const { course_name, category, provider, completed_date, expiry_date, score, hours, certificate_number, status, notes, training_type, officer_id } = req.body;
       const now = localNow();
@@ -4163,7 +4218,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.delete('/training/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       db.prepare('UPDATE training_records SET archived_at = ? WHERE id = ?').run(localNow(), id);
       res.json({ success: true });
@@ -4206,7 +4261,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.put('/training-requirements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       const { course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description } = req.body;
       db.prepare(`
@@ -4223,7 +4278,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   router.delete('/training-requirements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(req.params.id as string, 10);
       if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
       db.prepare('UPDATE training_requirements SET is_active = 0 WHERE id = ?').run(id);
       res.json({ success: true });

@@ -7,6 +7,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   FileWarning,
   Plus,
@@ -27,6 +28,7 @@ import {
   FileText,
   Ban,
   RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -174,6 +176,9 @@ interface CitationForm {
   court_time: string;
   court_room: string;
   appearance_required: boolean;
+  weather_conditions: string;
+  road_conditions: string;
+  is_equipment_violation: boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────
@@ -267,6 +272,9 @@ const EMPTY_FORM: CitationForm = {
   court_time: '',
   court_room: '',
   appearance_required: false,
+  weather_conditions: '',
+  road_conditions: '',
+  is_equipment_violation: false,
 };
 
 // formatDate imported from ../utils/dateUtils
@@ -296,6 +304,7 @@ export default function CitationsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
 
@@ -324,7 +333,7 @@ export default function CitationsPage() {
 
   // Duplicate detection
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
-  const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>();
+  const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Data completeness
   const [completeness, setCompleteness] = useState<{ score: number; grade: string; missing_required: string[]; missing_recommended: string[] } | null>(null);
@@ -344,7 +353,7 @@ export default function CitationsPage() {
   const [personSearching, setPersonSearching] = useState(false);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const personDropdownRef = useRef<HTMLDivElement>(null);
-  const personSearchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const personSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -619,6 +628,9 @@ export default function CitationsPage() {
       court_time: (c as any).court_time || '',
       court_room: (c as any).court_room || '',
       appearance_required: !!(c as any).appearance_required,
+      weather_conditions: (c as any).weather_conditions || '',
+      road_conditions: (c as any).road_conditions || '',
+      is_equipment_violation: !!(c as any).is_equipment_violation,
     });
     setPersonSearch(c.person_name || '');
     setSaveError('');
@@ -1373,8 +1385,15 @@ export default function CitationsPage() {
             </div>
 
             {form.person_id && (
-              <div className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1">
+              <div
+                className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-brand-900/30 transition-colors"
+                onClick={() => navigate(`/records?tab=persons&personId=${form.person_id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/records?tab=persons&personId=${form.person_id}`); }}
+              >
                 <Check size={10} /> Linked to person record #{form.person_id}
+                <ExternalLink size={9} className="ml-1 opacity-60" />
               </div>
             )}
 
@@ -1466,7 +1485,7 @@ export default function CitationsPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -1474,7 +1493,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -1482,7 +1501,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
                   {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}

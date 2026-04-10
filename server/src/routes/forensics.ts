@@ -134,7 +134,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid forensic case ID', code: 'INVALID_FORENSIC_CASE_ID' }); return; }
     const row = db.prepare(`
       SELECT fc.*,
@@ -716,7 +716,7 @@ router.post('/hash-sets', (req: Request, res: Response) => {
 router.delete('/hash-sets/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const existing = db.prepare('SELECT id, name FROM forensic_hash_sets WHERE id = ?').get(id) as any;
@@ -824,7 +824,7 @@ router.post('/:caseId/evidence-intake', (req: Request, res: Response) => {
       now, now
     );
 
-    logActivity(parseInt(req.params.caseId), 'evidence_intake', `Evidence intake: ${exhibit_number} — ${item_description}`, user.id, user.full_name, Number(info.lastInsertRowid));
+    logActivity(parseInt(req.params.caseId as string), 'evidence_intake', `Evidence intake: ${exhibit_number} — ${item_description}`, user.id, user.full_name, Number(info.lastInsertRowid));
 
     const exhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json({ data: exhibit });
@@ -916,7 +916,7 @@ router.post('/:caseId/exhibits/:exhibitId/custody-transfer', (req: Request, res:
     };
 
     logActivity(
-      parseInt(req.params.caseId),
+      parseInt(req.params.caseId as string),
       'custody_transfer',
       `Custody transfer: ${exhibit.exhibit_number} from ${user.full_name} to ${transferred_to_name || 'unknown'}. Reason: ${reason || 'examination'}`,
       user.id, user.full_name, exhibit.id
@@ -1027,7 +1027,7 @@ router.post('/:caseId/generate-report', (req: Request, res: Response) => {
     const now = localNow();
     db.prepare('UPDATE forensic_cases SET status = ?, completed_date = COALESCE(completed_date, ?), updated_at = ? WHERE id = ?')
       .run('report_draft', now, now, req.params.caseId);
-    logActivity(parseInt(req.params.caseId), 'report_generated', 'Examination report generated', user.id, user.full_name);
+    logActivity(parseInt(req.params.caseId as string), 'report_generated', 'Examination report generated', user.id, user.full_name);
 
     res.json({ data: report });
   } catch (error: any) {
@@ -1375,7 +1375,7 @@ router.post('/:caseId/analyses/:analysisId/apply-template', (req: Request, res: 
       template_name = ?, results = ?, conclusion = ?, updated_at = ? WHERE id = ?`)
       .run(template_name, JSON.stringify(result_data || {}), conclusion || existing.conclusion, now, req.params.analysisId);
 
-    logActivity(parseInt(req.params.caseId), 'template_applied',
+    logActivity(parseInt(req.params.caseId as string), 'template_applied',
       `Applied ${template_name} template to analysis`, user.id, user.full_name);
 
     const updated = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(req.params.analysisId);
@@ -1414,7 +1414,7 @@ router.post('/:caseId/qc-check', (req: Request, res: Response) => {
       performed_at: now,
     };
 
-    logActivity(parseInt(req.params.caseId), 'qc_check',
+    logActivity(parseInt(req.params.caseId as string), 'qc_check',
       `QC ${check_type}: ${pass !== false ? 'PASS' : 'FAIL'} by ${user.full_name}. ${reviewer_notes || ''}`,
       user.id, user.full_name);
 
@@ -1422,7 +1422,7 @@ router.post('/:caseId/qc-check', (req: Request, res: Response) => {
     if (check_type === 'peer_review' && pass !== false && fc.status === 'report_drafted') {
       db.prepare('UPDATE forensic_cases SET status = ?, updated_at = ? WHERE id = ?')
         .run('reviewed', now, req.params.caseId);
-      logActivity(parseInt(req.params.caseId), 'status_changed', 'Status: report_drafted → reviewed (QC passed)', user.id, user.full_name);
+      logActivity(parseInt(req.params.caseId as string), 'status_changed', 'Status: report_drafted → reviewed (QC passed)', user.id, user.full_name);
     }
 
     res.json({ data: qcData });

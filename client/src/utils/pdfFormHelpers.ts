@@ -367,7 +367,7 @@ export function drawCodeReferenceTable(
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(sanitizePdfText(codes[i].code || ''), cellX + 1, curY + 2.3);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(sanitizePdfText(`= ${codes[i].description || ''}`), cellX + 5.5, curY + 2.3, {

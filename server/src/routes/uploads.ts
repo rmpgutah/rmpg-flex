@@ -68,7 +68,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: MAX_FILE_SIZE },
+  limits: { fileSize: MAX_FILE_SIZE, files: 10, fields: 20, parts: 35, fieldSize: 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_TYPES.has(file.mimetype)) {
       cb(null, true);
@@ -112,7 +112,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
 
   if (sigParam && expParam) {
     const fileId = req.params.fileId;
-    if (fileId && verifyFileAccess(fileId, sigParam, expParam)) {
+    if (fileId && verifyFileAccess(fileId as string, sigParam, expParam)) {
       // Signed access verified — minimal user context for read-only serving
       req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
       next();
@@ -197,7 +197,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
       return;
     }
 
-    const { sig, exp } = signFileAccess(req.params.fileId);
+    const { sig, exp } = signFileAccess(req.params.fileId as string);
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
     console.error('Sign file error:', error);

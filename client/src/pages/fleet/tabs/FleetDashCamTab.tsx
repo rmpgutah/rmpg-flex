@@ -133,7 +133,7 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
                   </div>
                 </div>
                 <span className={`text-[8px] px-1.5 py-0.5 font-bold uppercase flex-shrink-0 ${
-                  vid.classification === 'evidence' ? 'bg-blue-900/40 text-blue-400' :
+                  vid.classification === 'evidence' ? 'bg-gray-900/40 text-gray-400' :
                   vid.classification === 'flagged' ? 'bg-amber-900/40 text-amber-400' :
                   vid.classification === 'restricted' ? 'bg-red-900/40 text-red-400' :
                   'bg-rmpg-700 text-rmpg-400'

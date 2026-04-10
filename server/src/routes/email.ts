@@ -17,7 +17,7 @@ import type { NextFunction } from 'express';
 /** Validate Graph API string IDs (alphanumeric, hyphens, underscores, equals, plus). Blocks path traversal. */
 function validateGraphId(req: Request, res: Response, next: NextFunction) {
   const id = req.params.id || req.params.aid;
-  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
+  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id as string)) {
     return res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' });
   }
   next();
@@ -587,7 +587,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     const client = await getGraphClient();
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
-      .select('id,name,contentType,size,isInline')
+      .select('id,name,contentType,size,isInline,contentId')
       .get();
 
     res.json((result.value || []).map((a: any) => ({
@@ -1608,7 +1608,7 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
         const client = await getGraphClient();
         const result = await client
           .api('/me/messages')
-          .filter(`conversationId eq '${convId.replace(/'/g, "''")}'`)
+          .filter(`conversationId eq '${(convId as string).replace(/'/g, "''")}'`)
           .select('id,conversationId,subject,from,toRecipients,ccRecipients,body,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
           .orderby('receivedDateTime asc')
           .top(50)

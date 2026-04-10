@@ -657,7 +657,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                   : /hard_brake|hard_turn|hard_accel|speeding/i.test(evt.event_type)
                   ? 'text-amber-400 bg-amber-950/30 border-amber-800/40'
                   : /ignition|power/i.test(evt.event_type)
-                  ? 'text-blue-400 bg-blue-950/30 border-blue-800/40'
+                  ? 'text-gray-400 bg-gray-900/30 border-gray-700/40'
                   : 'text-rmpg-300 bg-surface-sunken border-rmpg-600';
                 return (
                   <div

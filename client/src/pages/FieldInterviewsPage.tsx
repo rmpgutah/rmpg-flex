@@ -61,6 +61,7 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 const EMPTY_FORM = {
+  date: new Date().toISOString().slice(0, 10),
   subject_first_name: '', subject_last_name: '', subject_dob: '',
   subject_gender: '', subject_race: '', subject_height: '', subject_weight: '',
   subject_hair: '', subject_eye: '', subject_clothing: '', subject_description: '',
@@ -69,6 +70,7 @@ const EMPTY_FORM = {
   vehicle_plate: '', vehicle_description: '',
   person_id: '',
   section_id: '', zone_id: '', beat_id: '',
+  gang_affiliation: '',
 };
 
 const timeAgo = (date: string): string => {
@@ -198,6 +200,7 @@ export default function FieldInterviewsPage() {
     setEditingFi(fi);
     clearAllErrors();
     setFormData({
+      date: (fi as any).date || fi.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       subject_first_name: fi.subject_first_name || '',
       subject_last_name: fi.subject_last_name || '',
       subject_dob: fi.subject_dob || '',
@@ -220,6 +223,7 @@ export default function FieldInterviewsPage() {
       section_id: (fi as any).section_id || '',
       zone_id: (fi as any).zone_id || '',
       beat_id: (fi as any).beat_id || '',
+      gang_affiliation: (fi as any).gang_affiliation || '',
     });
     setFormOpen(true);
   };
@@ -313,7 +317,7 @@ export default function FieldInterviewsPage() {
       <PanelTitleBar icon={ClipboardList} title="FIELD INTERVIEWS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/field-interviews?per_page=9999" exportFilename="field_interviews_export.csv" />
+        <ExportButton exportUrl="/field-interviews/export/csv" exportFilename="field_interviews_export.csv" />
         <button type="button" onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New FI Card
         </button>
@@ -582,7 +586,7 @@ export default function FieldInterviewsPage() {
               {/* UPGRADE 44: Gang Affiliation field */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div><label className="field-label">Gang Affiliation</label>
-                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={(formData as any).gang_affiliation || ''} onChange={e => update('gang_affiliation' as any, e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={formData.gang_affiliation} onChange={e => update('gang_affiliation', e.target.value)} /></div>
                 <div><label className="field-label">Description</label>
                   <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Physical description" value={formData.subject_description} onChange={e => update('subject_description', e.target.value)} /></div>
               </div>
