@@ -58,6 +58,7 @@ import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
+import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
@@ -230,7 +231,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -244,7 +245,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -662,6 +663,7 @@ export default function AdminPage() {
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
+        { id: 'warrant_scrapers', label: 'Warrant Scrapers', icon: Shield },
         { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
@@ -924,6 +926,14 @@ export default function AdminPage() {
 
         {activeTab === 'arrests' && (
           <AdminArrestsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'warrant_scrapers' && (
+          <AdminWarrantScrapersTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
