@@ -495,7 +495,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 1: Calendar View */}
         {activeView === 'calendar' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-2">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-2">
             <div className="flex items-center justify-between mb-2">
               <button type="button" onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1">
                 <ChevronLeft style={{ width: 14, height: 14 }} />
@@ -549,7 +549,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 10: Statistics View */}
         {activeView === 'stats' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-3 space-y-3">
             {statsLoading ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : stats ? (
@@ -613,7 +613,7 @@ export default function CourtTrackerPage() {
 
         {/* Event List (upcoming + list views) */}
         {(activeView === 'upcoming' || activeView === 'list') && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {loading && activeView === 'list' ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : displayEvents.length === 0 ? (
@@ -690,7 +690,7 @@ export default function CourtTrackerPage() {
               )}
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>
@@ -1229,7 +1229,7 @@ export default function CourtTrackerPage() {
               <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent space-y-2">
+              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-2">
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
@@ -1283,7 +1283,7 @@ export default function CourtTrackerPage() {
                 </button>
               </div>
               {citationSearchResults.length > 0 ? (
-                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent space-y-1">
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
                   {citationSearchResults.map((c: any) => (
                     <div key={c.id} className="flex items-center justify-between px-3 py-2 border border-rmpg-700 bg-surface-sunken hover:bg-rmpg-800/50">
                       <div>

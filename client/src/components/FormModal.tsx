@@ -149,7 +149,7 @@ export default function FormModal({
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />

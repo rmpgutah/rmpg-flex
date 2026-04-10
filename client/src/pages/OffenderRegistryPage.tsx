@@ -529,7 +529,7 @@ export default function OffenderRegistryPage() {
                     <MapPin size={10} className="text-red-400" />
                     Registered Address / Ban Zone
                   </div>
-                  <div className="h-40 bg-[#0c0f13] relative">
+                  <div className="h-40 bg-[#0c0c0c] relative">
                     {staticMapApiKey ? (
                       <img
                         src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${staticMapApiKey}&style=feature:all|element:geometry|color:0x121212&style=feature:all|element:labels.text.fill|color:0x8a8a8a`}
@@ -546,7 +546,7 @@ export default function OffenderRegistryPage() {
                     )}
                   </div>
                   {selected.location_address && (
-                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#2b313a]">
+                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#2b2b2b]">
                       <MapPin size={10} className="text-rmpg-500" />
                       {selected.location_address}
                     </div>

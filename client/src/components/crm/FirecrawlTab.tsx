@@ -10271,7 +10271,7 @@ function LeadGenPanel() {
       <div className="flex items-center gap-2 mb-3">
         <Users size={16} className="text-[#888888]" />
         <h3 className="text-sm font-bold text-white uppercase tracking-wider">Lead Generation</h3>
-        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#60a5fa] font-bold uppercase">Firecrawl</span>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#a0a0a0] font-bold uppercase">Firecrawl</span>
       </div>
 
       {configured === false && (
@@ -10284,7 +10284,7 @@ function LeadGenPanel() {
         <select
           value={searchType}
           onChange={e => setSearchType(e.target.value as any)}
-          className="px-2 py-2 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[11px] text-white"
+          className="px-2 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white"
         >
           <option value="company">Company</option>
           <option value="person">Person</option>
@@ -10297,13 +10297,13 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-[#0c0f13] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
+          className="flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
         />
         <button
           type="button"
           onClick={handleSearch}
           disabled={loading || !query.trim()}
-          className="px-4 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
+          className="px-4 py-2 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
           Search
@@ -10311,14 +10311,14 @@ function LeadGenPanel() {
       </div>
 
       {results && (
-        <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
-          <div className="px-3 py-2 bg-[#1b2128] border-b border-[#1e2d40] flex items-center justify-between">
+        <div className="border border-[#1a1a1a] rounded-sm overflow-hidden">
+          <div className="px-3 py-2 bg-[#181818] border-b border-[#1a1a1a] flex items-center justify-between">
             <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
             <span className="text-[9px] text-[#556677] font-mono">
               {Array.isArray(results.results) ? results.results.length : (results.results && typeof results.results === 'object') ? Object.keys(results.results).length : '—'} entries
             </span>
           </div>
-          <div className="p-3 bg-[#0c0f13] max-h-[500px] overflow-y-auto">
+          <div className="p-3 bg-[#0c0c0c] max-h-[500px] overflow-y-auto">
             <pre className="text-[10px] text-[#8899aa] font-mono whitespace-pre-wrap break-words">
               {JSON.stringify(results.results, null, 2)}
             </pre>

@@ -139,8 +139,8 @@ export default function OfflineMapFallback({
         100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
       }
       @keyframes rmpg-gps-glow {
-        0%, 100% { box-shadow: 0 0 4px #3b82f6, 0 0 8px #3b82f680; }
-        50%      { box-shadow: 0 0 8px #3b82f6, 0 0 16px #3b82f680; }
+        0%, 100% { box-shadow: 0 0 4px #888888, 0 0 8px #88888880; }
+        50%      { box-shadow: 0 0 8px #888888, 0 0 16px #88888880; }
       }
     `;
     document.head.appendChild(s);
@@ -282,7 +282,7 @@ export default function OfflineMapFallback({
               position:absolute;top:50%;left:50%;
               width:20px;height:20px;
               background:transparent;
-              border:2px solid #3b82f6;
+              border:2px solid #888888;
               border-radius:50%;
               animation:rmpg-pulse-ring 2s ease-out infinite;
               pointer-events:none;
@@ -293,7 +293,7 @@ export default function OfflineMapFallback({
               width:0;height:0;
               border-left:9px solid transparent;
               border-right:9px solid transparent;
-              border-bottom:24px solid rgba(59,130,246,0.5);
+              border-bottom:24px solid rgba(136, 136, 136,0.5);
               transform-origin:center bottom;
               transform:rotate(${headingDeg >= 0 ? headingDeg : 0}deg);
               margin-left:-9px;margin-top:-38px;
@@ -304,7 +304,7 @@ export default function OfflineMapFallback({
             <div style="
               position:absolute;top:50%;left:50%;
               width:14px;height:14px;
-              background:#3b82f6;
+              background:#888888;
               border:2.5px solid #fff;
               border-radius:50%;
               transform:translate(-50%,-50%);
@@ -382,7 +382,7 @@ export default function OfflineMapFallback({
               "></div>
               <div style="
                 background:rgba(6,12,20,0.92);
-                border:1px solid #2b313a;
+                border:1px solid #2b2b2b;
                 padding:1px 4px;
                 display:flex;align-items:center;gap:3px;
                 border-radius:2px;
@@ -502,9 +502,9 @@ export default function OfflineMapFallback({
         className: 'rmpg-prop-marker',
         html: `<div style="
           width:10px;height:10px;border-radius:50%;
-          background:radial-gradient(circle at 35% 35%, #60a5fa, #1e3a5f);
+          background:radial-gradient(circle at 35% 35%, #a0a0a0, #1e3a5f);
           border:2px solid rgba(255,255,255,0.9);
-          box-shadow:0 0 6px rgba(59,130,246,0.6), 0 1px 3px rgba(0,0,0,0.4);
+          box-shadow:0 0 6px rgba(136, 136, 136,0.6), 0 1px 3px rgba(0,0,0,0.4);
         "></div>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7],
@@ -512,7 +512,7 @@ export default function OfflineMapFallback({
 
       const marker = L.marker([prop.lat, prop.lng], { icon, zIndexOffset: 200 }).addTo(map);
       const tooltipHtml = `<div style="text-align:center;">
-        <div style="font-weight:900;font-size:9px;color:#60a5fa;">${prop.name}</div>
+        <div style="font-weight:900;font-size:9px;color:#a0a0a0;">${prop.name}</div>
         ${prop.address ? `<div style="font-size:7px;opacity:0.7;">${prop.address}</div>` : ''}
         ${prop.client_name ? `<div style="font-size:7px;color:#d4a017;">Client: ${prop.client_name}</div>` : ''}
       </div>`;
@@ -588,7 +588,7 @@ export default function OfflineMapFallback({
           className="absolute bottom-20 right-3 z-[1000] p-2 transition-colors hover:border-blue-500"
           style={{
             background: 'rgba(6, 12, 20, 0.95)',
-            border: '1px solid #2a3e58',
+            border: '1px solid #2a2a2a',
             borderRadius: 2,
           }}
           title="Center on your position"
@@ -602,7 +602,7 @@ export default function OfflineMapFallback({
         className="absolute bottom-3 left-3 z-[1000] flex flex-col gap-1"
         style={{
           background: 'rgba(6, 12, 20, 0.92)',
-          border: '1px solid #2b313a',
+          border: '1px solid #2b2b2b',
           borderRadius: 2,
           padding: compact ? '3px 6px' : '4px 8px',
         }}
@@ -652,7 +652,7 @@ export default function OfflineMapFallback({
       <style>{`
         .leaflet-tooltip-dark {
           background: rgba(6, 12, 20, 0.95) !important;
-          border: 1px solid #2a3e58 !important;
+          border: 1px solid #2a2a2a !important;
           color: #fff !important;
           font-family: 'JetBrains Mono', monospace !important;
           font-size: 9px !important;
@@ -677,7 +677,7 @@ export default function OfflineMapFallback({
         /* Dark theme for Leaflet zoom controls */
         .leaflet-control-zoom a {
           background: rgba(6, 12, 20, 0.95) !important;
-          border-color: #2a3e58 !important;
+          border-color: #2a2a2a !important;
           color: #b0bcc8 !important;
           width: 30px !important;
           height: 30px !important;
@@ -685,7 +685,7 @@ export default function OfflineMapFallback({
           font-size: 16px !important;
         }
         .leaflet-control-zoom a:hover {
-          background: #2b313a !important;
+          background: #2b2b2b !important;
           color: #fff !important;
         }
         /* Hide Leaflet's default tile error styling */
