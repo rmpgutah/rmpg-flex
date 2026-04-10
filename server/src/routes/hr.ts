@@ -140,7 +140,7 @@ router.get('/leave', (req: Request, res: Response) => {
     // Officers see only their own
     if (!isManagerOrAbove(user.role)) {
       sql += ' AND lr.officer_id = ?';
-      params.push(user.id);
+      params.push(user.userId);
     } else if (officer_id) {
       sql += ' AND lr.officer_id = ?';
       params.push(Number(officer_id));
@@ -195,14 +195,22 @@ router.post('/leave', (req: Request, res: Response) => {
     const result = db.prepare(
       `INSERT INTO leave_requests (officer_id, type, start_date, end_date, hours_requested, reason, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-    ).run(user.id, validType, validStart, validEnd, validHours, validReason, now, now);
+    ).run(user.userId, validType, validStart, validEnd, validHours, validReason, now, now);
 
     auditLog(req, 'CREATE', 'leave_request', Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+    // Widened to catch all sanitize.ts validator error messages:
+    // "X is required", "X is not a valid date", "X exceeds max length",
+    // "X must be an integer", "X must be one of: ..." — previously only
+    // "Invalid " and "must be" were caught, leaking validation errors as 500.
+    if (error.message?.startsWith('Invalid ') ||
+        error.message?.includes('must be') ||
+        error.message?.includes('is required') ||
+        error.message?.includes('is not a valid') ||
+        error.message?.includes('exceeds max length')) {
       res.status(400).json({ error: error.message }); return;
     }
     console.error('[HR] Leave create error:', error?.message);
@@ -218,9 +226,9 @@ router.put('/leave/:id', validateParamIdMiddleware, (req: Request, res: Response
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
-    if (existing.officer_id !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Can only update own requests', code: 'CAN_ONLY_UPDATE_OWN' });
+    if (existing.officer_id !== user.userId && user.role !== 'admin') return res.status(403).json({ error: 'Can only update own requests', code: 'CAN_ONLY_UPDATE_OWN' });
     if (existing.status !== 'pending' && user.role !== 'admin') return res.status(400).json({ error: 'Can only update pending requests', code: 'CAN_ONLY_UPDATE_PENDING' });
-    if (user.role === 'admin' && (existing.officer_id !== user.id || existing.status !== 'pending')) {
+    if (user.role === 'admin' && (existing.officer_id !== user.userId || existing.status !== 'pending')) {
       auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: bypassed leave update restriction (owner: ${existing.officer_id}, status: ${existing.status})`);
     }
 
@@ -272,7 +280,7 @@ router.post('/leave/:id/approve', validateParamIdMiddleware, requireRole('admin'
     db.prepare(
       `UPDATE leave_requests SET status = 'approved', reviewed_by = ?, reviewed_at = ?,
        review_notes = ?, updated_at = ? WHERE id = ?`
-    ).run(user.id, now, review_notes || null, now, id);
+    ).run(user.userId, now, review_notes || null, now, id);
 
     // Deduct hours from leave_balances
     const year = new Date(existing.start_date).getFullYear();
@@ -318,7 +326,7 @@ router.post('/leave/:id/deny', validateParamIdMiddleware, requireRole('admin', '
     db.prepare(
       `UPDATE leave_requests SET status = 'denied', reviewed_by = ?, reviewed_at = ?,
        review_notes = ?, updated_at = ? WHERE id = ?`
-    ).run(user.id, now, review_notes || null, now, id);
+    ).run(user.userId, now, review_notes || null, now, id);
 
     auditLog(req, 'UPDATE', 'leave_request', id, `Leave request denied`);
     res.json({ success: true });
@@ -346,7 +354,7 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
     );
 
     for (const id of ids) {
-      const result = stmt.run(user.id, now, review_notes || 'Bulk approved', now, Number(id));
+      const result = stmt.run(user.userId, now, review_notes || 'Bulk approved', now, Number(id));
       if (result.changes > 0) {
         approved++;
         // Update balance
@@ -378,9 +386,9 @@ router.delete('/leave/:id', validateParamIdMiddleware, (req: Request, res: Respo
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
-    if (existing.officer_id !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Can only cancel own requests', code: 'CAN_ONLY_CANCEL_OWN' });
+    if (existing.officer_id !== user.userId && user.role !== 'admin') return res.status(403).json({ error: 'Can only cancel own requests', code: 'CAN_ONLY_CANCEL_OWN' });
     if (existing.status !== 'pending' && user.role !== 'admin') return res.status(400).json({ error: 'Can only cancel pending requests', code: 'CAN_ONLY_CANCEL_PENDING' });
-    if (user.role === 'admin' && (existing.officer_id !== user.id || existing.status !== 'pending')) {
+    if (user.role === 'admin' && (existing.officer_id !== user.userId || existing.status !== 'pending')) {
       auditLog(req, 'ADMIN_OVERRIDE', 'leave_request', id, `Admin God Mode: bypassed leave cancel restriction (owner: ${existing.officer_id}, status: ${existing.status})`);
     }
 
@@ -410,13 +418,13 @@ router.get('/leave/balances', (req: Request, res: Response) => {
       db.prepare(
         `INSERT OR IGNORE INTO leave_balances (officer_id, year, vacation_total, vacation_used, sick_total, sick_used, personal_total, personal_used, created_at, updated_at)
          VALUES (?, ?, 80, 0, 40, 0, 24, 0, ?, ?)`
-      ).run(user.id, targetYear, now, now);
+      ).run(user.userId, targetYear, now, now);
 
       const row = db.prepare(
         `SELECT lb.*, u.full_name as officer_name FROM leave_balances lb
          JOIN users u ON u.id = lb.officer_id
          WHERE lb.officer_id = ? AND lb.year = ?`
-      ).get(user.id, targetYear);
+      ).get(user.userId, targetYear);
       return res.json(row ? [row] : []);
     }
 
@@ -504,7 +512,7 @@ router.get('/disciplinary', (req: Request, res: Response) => {
                  FROM disciplinary_records dr
                  JOIN users u ON u.id = dr.officer_id
                  WHERE dr.officer_id = ?`;
-      const params: any[] = [user.id];
+      const params: any[] = [user.userId];
 
       if (type) { sql += ' AND dr.type = ?'; params.push(type); }
       if (severity) { sql += ' AND dr.severity = ?'; params.push(severity); }
@@ -546,7 +554,7 @@ router.get('/disciplinary/:officerId/timeline', (req: Request, res: Response) =>
     const officerId = Number(req.params.officerId);
 
     // Officers can only see own timeline
-    if (!isManagerOrAbove(user.role) && user.id !== officerId) {
+    if (!isManagerOrAbove(user.role) && user.userId !== officerId) {
       return res.status(403).json({ error: 'Access denied', code: 'ACCESS_DENIED' });
     }
 
@@ -596,13 +604,17 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     if (!validIncDate) return res.status(400).json({ error: 'incident_date is required (YYYY-MM-DD)', code: 'INCIDENTDATE_IS_REQUIRED_YYYYMMDD' });
     const validDesc = validateStr(description, 'description', 5000);
     if (!validDesc) return res.status(400).json({ error: 'description is required', code: 'DESCRIPTION_IS_REQUIRED' });
-    const validDiscType = validateEnum(type, DISC_TYPES, 'type') || 'verbal_warning';
-    const validSeverity = validateEnum(severity, DISC_SEVERITIES, 'severity') || 'minor';
-    const validDiscStatus = validateEnum(status, DISC_STATUSES, 'status') || 'open';
+    // validateEnum throws on invalid/undefined values, so `|| 'default'` was dead code.
+    // Apply defaults BEFORE validation so fields are optional with sensible defaults.
+    const validDiscType = validateEnum(type || 'verbal_warning', DISC_TYPES, 'type');
+    const validSeverity = validateEnum(severity || 'minor', DISC_SEVERITIES, 'severity');
+    const validDiscStatus = validateEnum(status || 'open', DISC_STATUSES, 'status');
+    // Optional fields: only validate if provided. validateStr throws on
+    // undefined, so unconditional calls were treating these as required.
     if (follow_up_date) validateDateStr(follow_up_date, 'follow_up_date');
-    validateStr(action_taken, 'action_taken', 2000);
-    validateStr(follow_up_notes, 'follow_up_notes', 5000);
-    validateStr(witness, 'witness', 200);
+    if (action_taken) validateStr(action_taken, 'action_taken', 2000);
+    if (follow_up_notes) validateStr(follow_up_notes, 'follow_up_notes', 5000);
+    if (witness) validateStr(witness, 'witness', 200);
 
     const now = localNow();
     const result = db.prepare(
@@ -611,14 +623,22 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(validOfficerId, validDiscType, validSeverity, validIncDate, validDesc,
       action_taken || null, follow_up_date || null, follow_up_notes || null,
-      validDiscStatus, user.id, witness || null, attachments || '[]', now, now);
+      validDiscStatus, user.userId, witness || null, attachments || '[]', now, now);
 
     auditLog(req, 'CREATE', 'disciplinary_record', Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
     broadcast('admin', 'hr:updated', { entity: 'disciplinary', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+    // Widened to catch all sanitize.ts validator error messages:
+    // "X is required", "X is not a valid date", "X exceeds max length",
+    // "X must be an integer", "X must be one of: ..." — previously only
+    // "Invalid " and "must be" were caught, leaking validation errors as 500.
+    if (error.message?.startsWith('Invalid ') ||
+        error.message?.includes('must be') ||
+        error.message?.includes('is required') ||
+        error.message?.includes('is not a valid') ||
+        error.message?.includes('exceeds max length')) {
       res.status(400).json({ error: error.message }); return;
     }
     console.error('[HR] Disciplinary create error:', error?.message);
@@ -694,7 +714,7 @@ router.get('/reviews', (req: Request, res: Response) => {
 
     if (!isManagerOrAbove(user.role)) {
       sql += ' AND pr.officer_id = ?';
-      params.push(user.id);
+      params.push(user.userId);
     } else {
       if (officer_id) { sql += ' AND pr.officer_id = ?'; params.push(Number(officer_id)); }
       if (reviewer_id) { sql += ' AND pr.reviewer_id = ?'; params.push(Number(reviewer_id)); }
@@ -740,7 +760,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
        review_date, type, overall_rating, categories, strengths, areas_for_improvement, goals, status,
        created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(validOid, reviewer_id || user.id, validStart, validEnd,
+    ).run(validOid, reviewer_id || user.userId, validStart, validEnd,
       review_date || null, validRevType, overall_rating || null,
       typeof categories === 'object' ? JSON.stringify(categories) : (categories || '{}'),
       strengths || null, areas_for_improvement || null, goals || null,
@@ -751,7 +771,15 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     broadcast('admin', 'hr:updated', { entity: 'review', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+    // Widened to catch all sanitize.ts validator error messages:
+    // "X is required", "X is not a valid date", "X exceeds max length",
+    // "X must be an integer", "X must be one of: ..." — previously only
+    // "Invalid " and "must be" were caught, leaking validation errors as 500.
+    if (error.message?.startsWith('Invalid ') ||
+        error.message?.includes('must be') ||
+        error.message?.includes('is required') ||
+        error.message?.includes('is not a valid') ||
+        error.message?.includes('exceeds max length')) {
       res.status(400).json({ error: error.message }); return;
     }
     console.error('[HR] Review create error:', error?.message);
@@ -770,7 +798,7 @@ router.put('/reviews/:id', validateParamIdMiddleware, (req: Request, res: Respon
 
     // Managers/admins/supervisors can update any; officers can only update own drafts
     if (!isManagerOrAbove(user.role) && user.role !== 'admin') {
-      if (existing.officer_id !== user.id || existing.status !== 'draft') {
+      if (existing.officer_id !== user.userId || existing.status !== 'draft') {
         return res.status(403).json({ error: 'Can only update own draft reviews', code: 'CAN_ONLY_UPDATE_OWN' });
       }
     }
@@ -818,8 +846,8 @@ router.post('/reviews/:id/acknowledge', validateParamIdMiddleware, (req: Request
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Review not found', code: 'REVIEW_NOT_FOUND' });
-    if (existing.officer_id !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Can only acknowledge own reviews', code: 'CAN_ONLY_ACKNOWLEDGE_OWN' });
-    if (user.role === 'admin' && existing.officer_id !== user.id) {
+    if (existing.officer_id !== user.userId && user.role !== 'admin') return res.status(403).json({ error: 'Can only acknowledge own reviews', code: 'CAN_ONLY_ACKNOWLEDGE_OWN' });
+    if (user.role === 'admin' && existing.officer_id !== user.userId) {
       auditLog(req, 'ADMIN_OVERRIDE', 'performance_review', id, `Admin God Mode: bypassed own-review-only acknowledge restriction (officer_id: ${existing.officer_id})`);
     }
 
@@ -1216,8 +1244,8 @@ router.post('/payroll/periods/:id/populate', validateParamIdMiddleware, requireR
     `);
 
     for (const user of activeUsers) {
-      if (existingIds.has(user.id)) continue;
-      insert.run(user.id, id, user.pay_rate_id ?? null, now, now);
+      if (existingIds.has(user.userId)) continue;
+      insert.run(user.userId, id, user.pay_rate_id ?? null, now, now);
       created++;
     }
 
@@ -1664,7 +1692,7 @@ router.post('/acknowledgments', (req: Request, res: Response) => {
     db.prepare(
       `INSERT OR REPLACE INTO hr_handbook_acknowledgments (officer_id, document_id, acknowledged_at, signature, ip_address)
        VALUES (?, ?, ?, ?, ?)`
-    ).run(user.id, document_id, localNow(), signature || null, req.ip || 'unknown');
+    ).run(user.userId, document_id, localNow(), signature || null, req.ip || 'unknown');
 
     res.json({ success: true });
   } catch (error: any) {
@@ -1683,7 +1711,7 @@ router.get('/grievances', (req: Request, res: Response) => {
                JOIN users u ON u.id = g.officer_id
                LEFT JOIN users a ON a.id = g.assigned_to WHERE 1=1`;
     const params: any[] = [];
-    if (!isManagerOrAbove(user.role)) { sql += ' AND g.officer_id = ?'; params.push(user.id); }
+    if (!isManagerOrAbove(user.role)) { sql += ' AND g.officer_id = ?'; params.push(user.userId); }
     else if (officer_id) { sql += ' AND g.officer_id = ?'; params.push(Number(officer_id)); }
     if (status) { sql += ' AND g.status = ?'; params.push(status); }
     sql += ' ORDER BY g.created_at DESC';
@@ -1703,7 +1731,7 @@ router.post('/grievances', (req: Request, res: Response) => {
     const result = db.prepare(
       `INSERT INTO hr_grievances (officer_id, type, subject, description, priority, filed_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(user.id, type || 'general', subject, description, priority || 'normal', now, now, now);
+    ).run(user.userId, type || 'general', subject, description, priority || 'normal', now, now, now);
     auditLog(req, 'CREATE', 'hr_grievance', Number(result.lastInsertRowid), `Grievance filed: ${subject}`);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
@@ -1877,7 +1905,7 @@ router.get('/benefits', (req: Request, res: Response) => {
     const { officer_id } = req.query;
     let sql = `SELECT b.*, u.full_name as officer_name FROM hr_benefits b JOIN users u ON u.id = b.officer_id WHERE 1=1`;
     const params: any[] = [];
-    if (!isManagerOrAbove(user.role)) { sql += ' AND b.officer_id = ?'; params.push(user.id); }
+    if (!isManagerOrAbove(user.role)) { sql += ' AND b.officer_id = ?'; params.push(user.userId); }
     else if (officer_id) { sql += ' AND b.officer_id = ?'; params.push(Number(officer_id)); }
     sql += ' ORDER BY b.benefit_type';
     res.json(db.prepare(sql).all(...params));
@@ -2045,7 +2073,7 @@ router.get('/attendance', (req: Request, res: Response) => {
                JOIN users u ON u.id = a.officer_id
                LEFT JOIN users d ON d.id = a.documented_by WHERE 1=1`;
     const params: any[] = [];
-    if (!isManagerOrAbove(user.role)) { sql += ' AND a.officer_id = ?'; params.push(user.id); }
+    if (!isManagerOrAbove(user.role)) { sql += ' AND a.officer_id = ?'; params.push(user.userId); }
     else if (officer_id) { sql += ' AND a.officer_id = ?'; params.push(Number(officer_id)); }
     if (start_date) { sql += ' AND a.date >= ?'; params.push(start_date); }
     if (end_date) { sql += ' AND a.date <= ?'; params.push(end_date); }
@@ -2120,7 +2148,7 @@ router.get('/performance-reviews', (req: Request, res: Response) => {
   const user = (req as any).user;
   let sql = `SELECT r.*, u.full_name as officer_name, rev.full_name as reviewer_name FROM hr_performance_reviews r JOIN users u ON u.id = r.officer_id LEFT JOIN users rev ON rev.id = r.reviewer_id WHERE 1=1`;
   const params: any[] = [];
-  if (!isManagerOrAbove(user.role)) { sql += ' AND r.officer_id = ?'; params.push(user.id); }
+  if (!isManagerOrAbove(user.role)) { sql += ' AND r.officer_id = ?'; params.push(user.userId); }
   sql += ' ORDER BY r.review_date DESC';
   try { res.json(db.prepare(sql).all(...params)); } catch { res.json([]); }
 });
@@ -2165,7 +2193,7 @@ router.get('/disciplinary-actions', (req: Request, res: Response) => {
     const user = (req as any).user;
     let sql = `SELECT d.*, u.full_name as officer_name, iu.full_name as issued_by_name FROM hr_disciplinary d JOIN users u ON u.id = d.officer_id LEFT JOIN users iu ON iu.id = d.issued_by WHERE 1=1`;
     const params: any[] = [];
-    if (!isManagerOrAbove(user.role)) { sql += ' AND d.officer_id = ?'; params.push(user.id); }
+    if (!isManagerOrAbove(user.role)) { sql += ' AND d.officer_id = ?'; params.push(user.userId); }
     sql += ' ORDER BY d.issued_date DESC';
     res.json(db.prepare(sql).all(...params));
   } catch { res.json([]); }

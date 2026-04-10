@@ -152,16 +152,18 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       res.status(400).json({ error: 'business_name is required', code: 'BUSINESSNAME_IS_REQUIRED' });
       return;
     }
-    validateStr(contact_name, 'contact_name', 200);
-    validateStr(contact_email, 'contact_email', 200);
-    validateStr(contact_phone, 'contact_phone', 30);
-    validateStr(contact_title, 'contact_title', 100);
-    validateStr(address, 'address', 500);
-    validateStr(city, 'city', 100);
-    validateStr(state, 'state', 10);
-    validateStr(zip, 'zip', 20);
-    validateStr(industry, 'industry', 200);
-    validateStr(source, 'source', 100);
+    // Optional fields: only validate if provided. validateStr throws on
+    // undefined, so unconditional calls improperly treated these as required.
+    if (contact_name) validateStr(contact_name, 'contact_name', 200);
+    if (contact_email) validateStr(contact_email, 'contact_email', 200);
+    if (contact_phone) validateStr(contact_phone, 'contact_phone', 30);
+    if (contact_title) validateStr(contact_title, 'contact_title', 100);
+    if (address) validateStr(address, 'address', 500);
+    if (city) validateStr(city, 'city', 100);
+    if (state) validateStr(state, 'state', 10);
+    if (zip) validateStr(zip, 'zip', 20);
+    if (industry) validateStr(industry, 'industry', 200);
+    if (source) validateStr(source, 'source', 100);
     if (estimated_value != null) requireFloat(estimated_value, 'estimated_value', 0, 100_000_000);
     if (pipeline_stage) validateEnum(pipeline_stage, PIPELINE_STAGES, 'pipeline_stage');
     if (assigned_to) requireInt(assigned_to, 'assigned_to');
@@ -214,7 +216,12 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     broadcast('admin', 'lead:created', lead);
     res.json(lead);
   } catch (err: any) {
-    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
+    // Widened to catch all sanitize.ts validator error messages (see hr.ts)
+    if (err.message?.startsWith('Invalid ') ||
+        err.message?.includes('must be') ||
+        err.message?.includes('is required') ||
+        err.message?.includes('is not a valid') ||
+        err.message?.includes('exceeds max length')) {
       res.status(400).json({ error: err.message }); return;
     }
     console.error('CRM leads error:', err?.message || err);

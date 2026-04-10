@@ -37,6 +37,12 @@ export async function createTestApp(): Promise<Application> {
   const citationRoutes = (await import('../../src/routes/citations')).default;
   const personnelRoutes = (await import('../../src/routes/personnel')).default;
   const mapGeofenceRoutes = (await import('../../src/routes/mapGeofences')).default;
+  const warrantRoutes = (await import('../../src/routes/warrants')).default;
+  const fleetRoutes = (await import('../../src/routes/fleet')).default;
+  const hrRoutes = (await import('../../src/routes/hr')).default;
+  const courtRoutes = (await import('../../src/routes/court')).default;
+  const crmRoutes = (await import('../../src/routes/crm')).default;
+  const crmLeadsRoutes = (await import('../../src/routes/crmLeads')).default;
 
   app.use('/api/auth', authRoutes);
   app.use('/api/dispatch', dispatchRoutes);
@@ -45,6 +51,12 @@ export async function createTestApp(): Promise<Application> {
   app.use('/api/citations', citationRoutes);
   app.use('/api/personnel', personnelRoutes);
   app.use('/api/map-geofences', mapGeofenceRoutes);
+  app.use('/api/warrants', warrantRoutes);
+  app.use('/api/fleet', fleetRoutes);
+  app.use('/api/hr', hrRoutes);
+  app.use('/api/court', courtRoutes);
+  app.use('/api/crm', crmRoutes);
+  app.use('/api/crm-leads', crmLeadsRoutes);
 
   // Error handler (multer-aware, mirrors production)
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
