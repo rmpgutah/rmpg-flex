@@ -72,6 +72,11 @@ deploy/           Deployment scripts (deploy.sh, deploy-all.sh)
 
 ## Code Patterns
 
+### Express Route Ordering
+- Parameterized routes (`/:id`) MUST be defined AFTER all specific string routes (`/national-coverage`, `/dashboard/stats`, etc.)
+- Express matches top-to-bottom and stops at first match — `/:id` is greedy and catches everything
+- Check `warrants.ts`, `dispatch/calls.ts` — both have this pattern and are sensitive to ordering
+
 ### Express Route Pattern
 ```typescript
 import { Router, Request, Response } from 'express';
@@ -125,16 +130,16 @@ export default function SomePage() {
 
 ### Design System (Spillman Flex / Motorola Solutions — Pure Black)
 ```
-Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken)
-Brand gray:    #888888    Brand gold: #d4a017
-Border:        #222222 (default), #2e2e2e (strong)
+Surface colors: #141e2b (base), #1a2636 (raised), #0d1520 (sunken)
+Brand blue:    #1a5a9e    Brand gold: #d4a017
+Border:        #1e3048 (default), #2a3e58 (strong)
 All radius:    2px (sharp CAD console corners — never rounded-lg)
 Shadows:       Subtle only — depth via 3D beveled borders, not drop shadows
 Panel headers: Gold text + dark gradient background
 LED indicators: Green/red/amber dots with box-shadow glow
 Fonts:         System sans-serif for UI, JetBrains Mono for data/readouts
-CSS variables: --surface-base, --surface-raised, --brand-blue (now gray), --border-default
-Tailwind blue palette: Overridden to grayscale (text-blue-500 renders gray)
+CSS variables: --surface-base, --surface-raised, --brand-blue, --border-default
+Tailwind tokens: bg-surface-base, bg-surface-raised, bg-surface-sunken (use these, not hardcoded hex)
 CSS utility classes: .panel-base, .panel-raised, .panel-sunken (map to CSS vars)
 Input classes: .input-dark, .select-dark, .textarea-dark (blocky Motorola-style)
 ```
@@ -175,7 +180,19 @@ bash deploy/deploy.sh --all       # Code + desktop installers to VPS
 ### Google Maps API Key
 Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 
+### Worktree Merge Safety
+- After any merge from worktree to main, check for lost files: `diff <(find client/src server/src -name '*.ts' -o -name '*.tsx' | sort) <(find .claude/worktrees/*/client/src .claude/worktrees/*/server/src -name '*.ts' -o -name '*.tsx' | sed 's|.*/client/|client/|;s|.*/server/|server/|' | sort) | grep '^<'`
+- Key files that repeatedly get lost: PDF generators, statusLabels.ts, map hooks, fleet tabs
+- Always deploy from main (which has all accumulated fixes), not from worktree directly
+
 ## Key Systems
+
+### National Warrant System
+- `scraped_warrants` stores ALL warrants nationally (not just matched persons)
+- `person_id` is set when a warrant matches a local person (for alerts)
+- `warrant_scraper_config` has 173 sources across 50 states — auto-disables on 404
+- Paginated sources (e.g., Flathead MT A-Z) use `PAGINATED_SOURCES` map in multiStateWarrantScraper.ts
+- FBI API uses `api.fbi.gov` JSON endpoint (not HTML scraping) — needs `Accept: application/json`
 
 ### Dispatch Geography (3-tier)
 - `dispatch_districts` table — stores section_id, zone_id, beat_id, dispatch_code, names
