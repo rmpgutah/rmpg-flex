@@ -22,6 +22,8 @@ import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
+import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
+import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
 import { getAppVersion } from './utils/appVersion';
 
@@ -626,6 +628,25 @@ try {
       console.log('[Arrests] Auto-sync scheduler started');
     } catch (err: any) {
       console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+    }
+
+    // Start multi-state warrant scraper (polls configured sources on schedule)
+    try {
+      scheduleWarrantScraper();
+    } catch (err: any) {
+      console.warn('[Warrant Scraper] Failed to start scheduler:', err?.message || err);
+    }
+
+    // Nightly warrant scraper maintenance
+    try {
+      // First run 6h after boot (lets scheduler settle)
+      setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+
+      // Then every 24h
+      const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
+      if (nightlyInterval.unref) nightlyInterval.unref();
+    } catch (err: any) {
+      console.warn('[Scraper Nightly] Failed to schedule:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
