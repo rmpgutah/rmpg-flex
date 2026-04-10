@@ -1338,8 +1338,18 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
       });
     }
   } catch (error: any) {
-    console.error('Update call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' });
+    // Phase 5 diagnostic: include req.body field names + caller role + call id
+    // so timeline-update failures (the "Failed to update timeline" toast) are
+    // diagnosable from production logs without having to reproduce.
+    const fieldNames = req.body && typeof req.body === 'object' ? Object.keys(req.body).join(',') : 'n/a';
+    console.error(
+      `Update call error: id=${req.params.id} role=${req.user?.role || 'n/a'} fields=[${fieldNames}] err="${error?.message || 'Unknown error'}"`,
+    );
+    if (error?.stack) console.error(error.stack);
+    res.status(500).json({
+      error: error?.message ? `Update failed: ${error.message}` : 'Failed to update call',
+      code: 'UPDATE_CALL_ERROR',
+    });
   }
 });
 
