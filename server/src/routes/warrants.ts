@@ -6,6 +6,7 @@ import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/universalWarrantScanner';
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
+import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
 
 const router = Router();
 
@@ -882,6 +883,116 @@ router.get('/national-coverage', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('National coverage error:', error);
     res.status(500).json({ error: 'Failed to get national coverage', code: 'NATIONAL_COVERAGE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ⚠️  ROUTE ORDER SENSITIVE — /:id below is parameterized and greedy.
+// All /scrapers/* routes MUST appear ABOVE router.get('/:id', ...).
+// See CLAUDE.md "Express Route Ordering" rule.
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/warrants/scrapers/health — cheap summary for header badge
+// MUST be defined BEFORE /scrapers/:source_key to avoid "health" matching :source_key
+router.get('/scrapers/health', (req: Request, res: Response) => {
+  try {
+    res.json(getHealthSummary());
+  } catch (err: any) {
+    console.error('GET /scrapers/health error:', err);
+    res.status(500).json({ error: 'Failed to fetch health', code: 'FETCH_HEALTH_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/metrics/summary?window=24
+// Also defined BEFORE /scrapers/:source_key for the same reason.
+router.get('/scrapers/metrics/summary', (req: Request, res: Response) => {
+  try {
+    const window = Math.max(1, Math.min(720, parseInt((req.query.window as string) || '24', 10) || 24));
+    const db = getDb();
+    const sources = db.prepare('SELECT source_key FROM warrant_scraper_config WHERE enabled = 1').all() as { source_key: string }[];
+    const all = sources.map(s => getSourceMetrics(s.source_key, window));
+
+    const totalRuns = all.reduce((sum, m) => sum + m.total_runs, 0);
+    const totalInserted = all.reduce((sum, m) => sum + m.total_inserted, 0);
+    const totalUpdated = all.reduce((sum, m) => sum + m.total_updated, 0);
+    const totalSuccess = all.reduce((sum, m) => sum + m.successful_runs + m.unchanged_runs, 0);
+
+    const gradeDist: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    for (const m of all) gradeDist[m.health_grade] = (gradeDist[m.health_grade] ?? 0) + 1;
+
+    res.json({
+      window_hours: window,
+      total_sources: all.length,
+      total_runs: totalRuns,
+      total_warrants_inserted: totalInserted,
+      total_warrants_updated: totalUpdated,
+      avg_success_rate: totalRuns > 0 ? totalSuccess / totalRuns : 0,
+      grade_distribution: gradeDist,
+    });
+  } catch (err: any) {
+    console.error('GET /scrapers/metrics/summary error:', err);
+    res.status(500).json({ error: 'Failed to fetch summary', code: 'FETCH_SUMMARY_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers — list all sources with 24h metrics
+router.get('/scrapers', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sources = db.prepare(`
+      SELECT source_key, display_name, state, county, source_url, source_type,
+        enabled, circuit_broken, priority, consecutive_errors,
+        last_scrape_at, last_success_at, last_error,
+        avg_parse_count, p95_latency_ms,
+        (SELECT COUNT(*) FROM scraped_warrants WHERE source_key = warrant_scraper_config.source_key) AS warrant_count
+      FROM warrant_scraper_config
+      ORDER BY priority, state, county
+    `).all() as any[];
+
+    const withMetrics = sources.map(s => ({
+      ...s,
+      metrics_24h: getSourceMetrics(s.source_key, 24),
+    }));
+    res.json({ sources: withMetrics });
+  } catch (err: any) {
+    console.error('GET /scrapers error:', err);
+    res.status(500).json({ error: 'Failed to fetch scrapers', code: 'FETCH_SCRAPERS_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/:source_key — single source with 24h + 7d metrics
+router.get('/scrapers/:source_key', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const source = db.prepare('SELECT * FROM warrant_scraper_config WHERE source_key = ?').get(req.params.source_key);
+    if (!source) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+    res.json({
+      ...source,
+      metrics_24h: getSourceMetrics(req.params.source_key, 24),
+      metrics_7d: getSourceMetrics(req.params.source_key, 168),
+    });
+  } catch (err: any) {
+    console.error('GET /scrapers/:source_key error:', err);
+    res.status(500).json({ error: 'Failed to fetch source', code: 'FETCH_SOURCE_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/:source_key/runs?limit=50&offset=0
+router.get('/scrapers/:source_key/runs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.max(1, Math.min(200, parseInt((req.query.limit as string) || '50', 10) || 50));
+    const offset = Math.max(0, parseInt((req.query.offset as string) || '0', 10) || 0);
+    const runs = db.prepare(`
+      SELECT * FROM warrant_scraper_runs
+      WHERE source_key = ?
+      ORDER BY started_at DESC
+      LIMIT ? OFFSET ?
+    `).all(req.params.source_key, limit, offset);
+    res.json({ runs });
+  } catch (err: any) {
+    console.error('GET /scrapers/:source_key/runs error:', err);
+    res.status(500).json({ error: 'Failed to fetch runs', code: 'FETCH_RUNS_ERROR' });
   }
 });
 
