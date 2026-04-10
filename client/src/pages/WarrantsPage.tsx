@@ -50,6 +50,7 @@ import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '.
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================
 // Types
@@ -330,7 +331,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'search-all' | 'watch' | 'sources';
+type TabId = 'dashboard' | 'warrants' | 'search-all' | 'watch' | 'sources' | 'scrapers';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
@@ -338,6 +339,7 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
   { id: 'search-all', label: 'SEARCH ALL', icon: Globe },
   { id: 'watch', label: 'WATCH LIST', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
+  { id: 'scrapers', label: 'SCRAPERS', icon: Zap, roleGated: true },
 ];
 
 const FEED_RANGES = ['1H', '8H', '24H', '7D'] as const;
@@ -3128,6 +3130,13 @@ export default function WarrantsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ================================================================
+          TAB 4: SCRAPERS — admin/manager only, phase 5 dashboard
+         ================================================================ */}
+      {activeTab === 'scrapers' && (isGodMode || isAdminOrManager) && (
+        <ScrapersTab />
       )}
 
       {/* ================================================================
