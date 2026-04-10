@@ -443,15 +443,6 @@ router.get('/calls/:id', (req: Request, res: Response) => {
 
 // PUT /api/dispatch/calls/:id - Update call
 router.put('/calls/:id', (req: Request, res: Response) => {
-  // Entry log — this is the live handler (dispatch.ts is imported before
-  // dispatch/index.ts due to bundler module resolution picking the .ts file).
-  try {
-    const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
-    console.log(
-      `[PUT /calls/:id dispatch.ts ENTRY] id=${req.params.id} role=${req.user?.role || 'n/a'} body_keys=[${bodyKeys.join(',')}]`,
-    );
-  } catch { /* never let logging break requests */ }
-
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
