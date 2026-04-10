@@ -287,6 +287,77 @@ function stripHtml(html: string): string {
 // Most sheriff warrant pages list wanted persons in HTML tables
 // or card-style divs. This generic parser handles common patterns.
 
+// ── Phase 3: Parser fallback cascade ────────────────────────
+// When a registered custom parser returns 0 results or throws,
+// fall back to the generic parser; if that also fails, a last-
+// ditch all-caps name extraction runs. Drift signals are logged
+// when tier 1 fails so the dashboard can surface parser rot.
+
+export interface ParseResult {
+  entries: WarrantEntry[];
+  parserUsed: 'custom' | 'generic' | 'fallback';
+  driftSignal?: string;
+}
+
+export function parseWithFallback(config: WarrantSourceConfig, html: string): ParseResult {
+  const customParser = WARRANT_PARSERS[config.source_key];
+
+  if (customParser) {
+    try {
+      const entries = customParser.parseWarrants(html);
+      if (entries.length > 0) {
+        return { entries, parserUsed: 'custom' };
+      }
+      // Custom returned 0 — log drift and try generic
+      return { ...runGeneric(config.source_key, html), driftSignal: 'custom_zero_results' };
+    } catch (err) {
+      const msg = (err as Error).message || 'unknown';
+      return { ...runGeneric(config.source_key, html), driftSignal: `custom_threw:${msg.substring(0, 80)}` };
+    }
+  }
+
+  return runGeneric(config.source_key, html);
+}
+
+function runGeneric(sourceKey: string, html: string): ParseResult {
+  try {
+    const generic = createGenericWarrantParser(sourceKey);
+    const entries = generic.parseWarrants(html);
+    if (entries.length > 0) {
+      return { entries, parserUsed: 'generic' };
+    }
+  } catch { /* fall through to all-caps extraction */ }
+
+  // Tier 3: last-ditch all-caps name extraction
+  const names = extractAllCapsNames(html);
+  return {
+    entries: names.map(n => createBlankEntry(n)),
+    parserUsed: 'fallback',
+  };
+}
+
+function extractAllCapsNames(html: string): string[] {
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const matches = text.match(/\b[A-Z]{2,}(?:,\s*[A-Z]{2,})?(?:\s+[A-Z]{2,})?\b/g) || [];
+  const uniq = new Set<string>();
+  for (const m of matches) {
+    if (m.length >= 5 && m.length <= 60) uniq.add(m.trim());
+  }
+  return Array.from(uniq).slice(0, 50);
+}
+
+function createBlankEntry(name: string): WarrantEntry {
+  const parts = name.includes(',') ? name.split(',').map(s => s.trim()) : name.split(/\s+/);
+  const [last = '', first = ''] = parts;
+  return {
+    warrant_id: '', full_name: name, first_name: first, last_name: last, middle_name: '',
+    date_of_birth: '', age: null, gender: '', race: '', city: '', state: '',
+    warrant_type: 'unknown', case_number: '', court_name: '', issue_date: '',
+    charge_description: '', bail_amount: '', offense_level: '', photo_url: '',
+    detail_url: '',
+  };
+}
+
 function createGenericWarrantParser(sourceKey: string): WarrantParser {
   return {
     sourceKey,
@@ -1506,6 +1577,8 @@ async function scrapeSource(sourceKey: string): Promise<{
   newHash?: string | null;
   etag?: string | null;
   lastModified?: string | null;
+  parserUsed?: 'custom' | 'generic' | 'fallback';
+  driftSignal?: string;
 }> {
   const config = getSourceConfig(sourceKey);
   if (!config) throw new Error(`Unknown warrant source: ${sourceKey}`);
@@ -1598,7 +1671,12 @@ async function scrapeSource(sourceKey: string): Promise<{
     };
   }
 
-  entries = parser.parseWarrants(fetchResult.body);
+  // Phase 3: parser fallback cascade (custom → generic → all-caps)
+  const parseResult = parseWithFallback(config, fetchResult.body);
+  entries = parseResult.entries;
+  if (parseResult.driftSignal) {
+    console.warn(`[Warrant Scraper] Drift signal for ${sourceKey}: ${parseResult.driftSignal}`);
+  }
 
   const { inserted, updated } = upsertWarrants(sourceKey, entries);
   const cleared = detectClearedWarrants(sourceKey, entries.map(e => e.warrant_id));
@@ -1615,6 +1693,8 @@ async function scrapeSource(sourceKey: string): Promise<{
     newHash,
     etag: fetchResult.etag,
     lastModified: fetchResult.lastModified,
+    parserUsed: parseResult.parserUsed,
+    driftSignal: parseResult.driftSignal,
   };
 }
 
@@ -1710,8 +1790,8 @@ async function syncSource(sourceKey: string): Promise<void> {
             parsed_count: result.records_found,
             inserted_count: result.inserted,
             updated_count: result.updated,
-            // TODO(phase3): parser_used will need updating when fallback cascade lands
-            parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+            // Phase 3: actual parser used (custom → generic → fallback cascade)
+            parser_used: result.parserUsed ?? (WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic'),
           });
         }
       } catch (e) {
