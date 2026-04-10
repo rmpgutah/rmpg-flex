@@ -18,10 +18,15 @@
 //   - Scheduler: per-source configurable intervals
 // ============================================================
 
+import { createHash } from 'node:crypto';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { startRun, completeRun, failRun } from './scraperRunner';
 import { Semaphore } from './semaphore';
+
+function sha256(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
+}
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -143,9 +148,22 @@ function getRandomUA(): string {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
-async function fetchPage(url: string, retries = 2): Promise<string> {
+export interface FetchResult {
+  body: string;
+  status: number;
+  etag: string | null;
+  lastModified: string | null;
+  bytes: number;
+}
+
+async function fetchPage(
+  url: string,
+  opts: { retries?: number; etag?: string | null; lastModified?: string | null } = {},
+): Promise<FetchResult> {
+  const retries = opts.retries ?? 3;
   const domain = new URL(url).hostname;
   const isApiEndpoint = domain.startsWith('api.') || url.includes('/api/');
+  let lastErr: Error | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
@@ -175,12 +193,22 @@ async function fetchPage(url: string, retries = 2): Promise<string> {
         'sec-ch-ua-platform': '"Windows"',
       };
 
+      // Conditional request headers (If-None-Match / If-Modified-Since) — phase 2
+      if (opts.etag) headers['If-None-Match'] = opts.etag;
+      if (opts.lastModified) headers['If-Modified-Since'] = opts.lastModified;
+
       const res = await fetch(url, {
         headers,
         signal: controller.signal,
         redirect: 'follow',
       });
       clearTimeout(timeout);
+
+      // 304 Not Modified — short-circuit success, no body to parse
+      if (res.status === 304) {
+        return { body: '', status: 304, etag: null, lastModified: null, bytes: 0 };
+      }
+
       // 404 = page moved/restructured — permanent, don't retry
       if (res.status === 404) throw new Error(`HTTP_PERMANENT_404`);
       // 403 = blocked — might work with retry after delay
@@ -188,32 +216,43 @@ async function fetchPage(url: string, retries = 2): Promise<string> {
         await sleep(3000 * (attempt + 1));
         continue;
       }
-      // 429 = rate limited — retry after delay
+      // 429 = rate limited — honor Retry-After header
       if (res.status === 429 && attempt < retries) {
         const retryAfter = parseInt(res.headers.get('retry-after') || '10', 10);
         await sleep(retryAfter * 1000);
         continue;
       }
-      // 5xx = server error — retry
-      if (res.status >= 500 && attempt < retries) {
-        await sleep(2000 * (attempt + 1));
+      // 5xx / 408 = server error — retry with exponential backoff
+      if ((res.status >= 500 || res.status === 408) && attempt < retries) {
+        const backoff = Math.min(1000 * Math.pow(2, attempt), 8000) + Math.floor(Math.random() * 500);
+        await sleep(backoff);
         continue;
       }
       if (!res.ok) throw new Error(`HTTP_${res.status}`);
-      return await res.text();
+
+      const body = await res.text();
+      return {
+        body,
+        status: res.status,
+        etag: res.headers.get('etag'),
+        lastModified: res.headers.get('last-modified'),
+        bytes: body.length,
+      };
     } catch (e: any) {
       clearTimeout(timeout);
-      // Don't retry permanent errors or already-classified errors
+      lastErr = e as Error;
+      // Don't retry permanent errors or already-classified 4xx errors
       if (e?.message?.startsWith('HTTP_PERMANENT_') || e?.message?.startsWith('HTTP_4')) throw e;
-      // Retry on network errors (timeout, DNS, connection reset)
+      // Retry on network errors (timeout, DNS, connection reset) with exponential backoff
       if (attempt < retries) {
-        await sleep(2000 * (attempt + 1));
+        const backoff = Math.min(1000 * Math.pow(2, attempt), 8000) + Math.floor(Math.random() * 500);
+        await sleep(backoff);
         continue;
       }
       throw e;
     }
   }
-  throw new Error('fetchPage: max retries exceeded');
+  throw lastErr ?? new Error('fetchPage: max retries exceeded');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -1462,6 +1501,11 @@ async function scrapeSource(sourceKey: string): Promise<{
   inserted: number;
   updated: number;
   cleared: number;
+  status?: number;
+  unchanged?: boolean;
+  newHash?: string | null;
+  etag?: string | null;
+  lastModified?: string | null;
 }> {
   const config = getSourceConfig(sourceKey);
   if (!config) throw new Error(`Unknown warrant source: ${sourceKey}`);
@@ -1493,6 +1537,8 @@ async function scrapeSource(sourceKey: string): Promise<{
   const parser = WARRANT_PARSERS[sourceKey] || createGenericWarrantParser(sourceKey);
 
   // Paginated sources: fetch multiple pages and concatenate results
+  // Content hashing / conditional fetch is DISABLED for paginated sources to
+  // preserve existing multi-page semantics (each page may have its own etag).
   const paginatedUrls = PAGINATED_SOURCES[sourceKey];
   let entries: WarrantEntry[];
 
@@ -1500,8 +1546,8 @@ async function scrapeSource(sourceKey: string): Promise<{
     entries = [];
     for (const pageUrl of paginatedUrls) {
       try {
-        const pageContent = await fetchPage(pageUrl);
-        const pageEntries = parser.parseWarrants(pageContent);
+        const pageResult = await fetchPage(pageUrl);
+        const pageEntries = parser.parseWarrants(pageResult.body);
         entries.push(...pageEntries);
         // Small delay between pages to avoid rate limiting
         await sleep(1500);
@@ -1511,11 +1557,48 @@ async function scrapeSource(sourceKey: string): Promise<{
         // Only fail if ALL pages fail
       }
     }
-  } else {
-    // Single page source
-    const content = await fetchPage(config.source_url);
-    entries = parser.parseWarrants(content);
+
+    const { inserted, updated } = upsertWarrants(sourceKey, entries);
+    const cleared = detectClearedWarrants(sourceKey, entries.map(e => e.warrant_id));
+    crossLinkWarrants();
+    return { records_found: entries.length, inserted, updated, cleared };
   }
+
+  // Single page source — use conditional fetch + content hash short-circuit
+  const fetchResult = await fetchPage(config.source_url, {
+    etag: config.etag ?? null,
+    lastModified: config.last_modified ?? null,
+  });
+
+  // 304 Not Modified — skip parsing entirely
+  if (fetchResult.status === 304) {
+    return {
+      records_found: 0,
+      inserted: 0,
+      updated: 0,
+      cleared: 0,
+      status: 304,
+    };
+  }
+
+  // Compute body hash and compare to stored content_hash.
+  // If unchanged, skip parsing (same records already present).
+  const newHash = sha256(fetchResult.body);
+  if (config.content_hash && newHash === config.content_hash) {
+    return {
+      records_found: 0,
+      inserted: 0,
+      updated: 0,
+      cleared: 0,
+      status: fetchResult.status,
+      unchanged: true,
+      newHash,
+      etag: fetchResult.etag,
+      lastModified: fetchResult.lastModified,
+    };
+  }
+
+  entries = parser.parseWarrants(fetchResult.body);
 
   const { inserted, updated } = upsertWarrants(sourceKey, entries);
   const cleared = detectClearedWarrants(sourceKey, entries.map(e => e.warrant_id));
@@ -1523,7 +1606,16 @@ async function scrapeSource(sourceKey: string): Promise<{
   // Cross-link with persons
   crossLinkWarrants();
 
-  return { records_found: entries.length, inserted, updated, cleared };
+  return {
+    records_found: entries.length,
+    inserted,
+    updated,
+    cleared,
+    status: fetchResult.status,
+    newHash,
+    etag: fetchResult.etag,
+    lastModified: fetchResult.lastModified,
+  };
 }
 
 
@@ -1573,23 +1665,67 @@ async function syncSource(sourceKey: string): Promise<void> {
 
     backoffAttempts.delete(sourceKey);
 
+    // Phase 2: persist content_hash / etag / last_modified for conditional requests
+    // on next cycle. Only update when scrapeSource returned a new hash (i.e. cache miss
+    // where parsing actually ran, OR content_unchanged case where we still want to
+    // refresh content_hash_updated_at / etag / last_modified metadata).
+    if (result.newHash) {
+      try {
+        db.prepare(`
+          UPDATE warrant_scraper_config
+          SET content_hash = ?, content_hash_updated_at = ?, etag = ?, last_modified = ?
+          WHERE source_key = ?
+        `).run(
+          result.newHash,
+          localNow(),
+          result.etag ?? null,
+          result.lastModified ?? null,
+          sourceKey,
+        );
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to persist content_hash for ${sourceKey}:`, (e as Error).message);
+      }
+    }
+
     if (runId !== null) {
       try {
-        completeRun(runId, {
-          http_status: 200,
-          // parsed_count is the raw parser output (pre-dedupe). For distinct counts, use inserted_count + updated_count.
-          parsed_count: result.records_found,
-          inserted_count: result.inserted,
-          updated_count: result.updated,
-          // TODO(phase3): parser_used will need updating when fallback cascade lands
-          parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
-        });
+        // Record skip runs for cache hits (304 or content_unchanged) so metrics
+        // reflect the short-circuit.
+        if (result.status === 304) {
+          completeRun(runId, {
+            http_status: 304,
+            skipped_reason: 'not_modified',
+            parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+          });
+        } else if (result.unchanged) {
+          completeRun(runId, {
+            http_status: result.status ?? 200,
+            skipped_reason: 'content_unchanged',
+            parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+          });
+        } else {
+          completeRun(runId, {
+            http_status: result.status ?? 200,
+            // parsed_count is the raw parser output (pre-dedupe). For distinct counts, use inserted_count + updated_count.
+            parsed_count: result.records_found,
+            inserted_count: result.inserted,
+            updated_count: result.updated,
+            // TODO(phase3): parser_used will need updating when fallback cascade lands
+            parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+          });
+        }
       } catch (e) {
         console.warn(`[Warrant Scraper] Failed to complete run for ${sourceKey}:`, (e as Error).message);
       }
     }
 
-    console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
+    if (result.status === 304) {
+      console.log(`[Warrant Scraper] ${config.display_name}: 304 Not Modified — skipped parse`);
+    } else if (result.unchanged) {
+      console.log(`[Warrant Scraper] ${config.display_name}: content unchanged (hash match) — skipped parse`);
+    } else {
+      console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
+    }
 
   } catch (err) {
     if (runId !== null) {
