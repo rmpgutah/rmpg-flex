@@ -949,7 +949,20 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  // Debug: log every entry with request context so we can see what's actually
+  // reaching this handler vs being filtered upstream.
+  try {
+    const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+    console.log(
+      `[PUT /calls/:id ENTRY] id=${req.params.id} role=${req.user?.role || 'n/a'} user=${req.user?.username || 'n/a'} body_keys=[${bodyKeys.join(',')}] bodyType=${typeof req.body}`,
+    );
+    if (bodyKeys.length > 0 && bodyKeys.length <= 10) {
+      // Log full body for small payloads (timeline edits are 1-2 fields)
+      console.log(`[PUT /calls/:id ENTRY] body=${JSON.stringify(req.body).substring(0, 500)}`);
+    }
+  } catch { /* never let logging break the request */ }
+
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
