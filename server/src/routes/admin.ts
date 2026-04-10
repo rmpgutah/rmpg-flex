@@ -1796,25 +1796,7 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'google_maps_map_id',
 ];
 
-function encryptValue(plaintext: string): string {
-  const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
-}
-
-function decryptValue(stored: string): string {
-  const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
-  decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
-}
+import { encryptConfigValue, decryptConfigValue } from '../utils/configEncryption';
 
 // GET /api/admin/google-maps-config — return decrypted Google Maps keys for authenticated users
 // This is NOT restricted to admin — any authenticated user needs the Maps API key for the client
@@ -1829,7 +1811,7 @@ router.get('/google-maps-config', (req: Request, res: Response) => {
       ).get(configKey) as { config_value: string } | undefined;
       if (row?.config_value) {
         try {
-          result[configKey] = decryptValue(row.config_value);
+          result[configKey] = decryptConfigValue(row.config_value);
         } catch {
           // Decryption failed — value may be plain text or corrupted
         }
@@ -1897,7 +1879,7 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
     }
 
     const db = getDb();
-    const encrypted = encryptValue(value.trim());
+    const encrypted = encryptConfigValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;

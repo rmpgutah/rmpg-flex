@@ -727,15 +727,22 @@ export async function fetchGoogleMapsConfig(): Promise<{ google_maps_api_key?: s
   _serverConfigPromise = (async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return {};
+      if (!token) {
+        _serverConfigPromise = null; // reset so we retry after login
+        return {};
+      }
 
       const base = import.meta.env.VITE_API_BASE_URL || '';
       const res = await fetch(`${base}/api/admin/google-maps-config`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return {};
+      if (!res.ok) {
+        _serverConfigPromise = null; // reset on failure so we can retry
+        return {};
+      }
       return await res.json();
     } catch {
+      _serverConfigPromise = null; // reset on network error so we can retry
       return {};
     }
   })();

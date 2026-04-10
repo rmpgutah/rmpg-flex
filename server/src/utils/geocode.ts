@@ -1,40 +1,20 @@
 import { getDb } from '../models/database';
 import { broadcastDispatchUpdate } from './websocket';
-import crypto from 'crypto';
-import { config } from '../config';
-
-// Resolve Google Maps API key: prefer system_config (admin-managed), fall back to env var
-function resolveGoogleMapsApiKey(): string | undefined {
-  try {
-    const db = getDb();
-    const row = db.prepare(
-      "SELECT config_value FROM system_config WHERE config_key = 'google_maps_api_key' AND is_active = 1 LIMIT 1"
-    ).get() as { config_value: string } | undefined;
-    if (row?.config_value) {
-      const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
-      const [ivHex, authTagHex, ciphertext] = row.config_value.split(':');
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
-      decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-      let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-      return decrypted;
-    }
-  } catch {
-    // DB not ready or decryption failed — fall through to env var
-  }
-  return process.env.GOOGLE_MAPS_API_KEY;
-}
+import { resolveGoogleMapsApiKey } from './configEncryption';
 
 // Lazily resolved so the DB is ready when first used
 let _cachedGoogleKey: string | undefined;
 let _cacheTime = 0;
+let _cacheResolving = false;
 const CACHE_TTL_MS = 5 * 60 * 1000; // re-check every 5 min
 
 function getGoogleMapsApiKey(): string | undefined {
   const now = Date.now();
-  if (!_cachedGoogleKey || now - _cacheTime > CACHE_TTL_MS) {
+  if ((!_cachedGoogleKey || now - _cacheTime > CACHE_TTL_MS) && !_cacheResolving) {
+    _cacheResolving = true;
     _cachedGoogleKey = resolveGoogleMapsApiKey();
-    _cacheTime = now;
+    _cacheTime = Date.now();
+    _cacheResolving = false;
   }
   return _cachedGoogleKey;
 }

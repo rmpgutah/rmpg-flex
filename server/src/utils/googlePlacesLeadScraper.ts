@@ -13,34 +13,10 @@ import {
   sleep, upsertLead, registerScraper,
   getSourceConfig, type ScrapeResult,
 } from './leadScraperBase';
-import crypto from 'crypto';
-import { getDb } from '../models/database';
-import { config } from '../config';
+import { resolveGoogleMapsApiKey } from './configEncryption';
 
 const SOURCE_KEY = 'google_places';
 const REQUEST_DELAY_MS = 1_000;
-
-/** Resolve Google Maps API key: prefer system_config (admin-managed), fall back to env var */
-function resolveGoogleMapsApiKey(): string | undefined {
-  try {
-    const db = getDb();
-    const row = db.prepare(
-      "SELECT config_value FROM system_config WHERE config_key = 'google_maps_api_key' AND is_active = 1 LIMIT 1"
-    ).get() as { config_value: string } | undefined;
-    if (row?.config_value) {
-      const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
-      const [ivHex, authTagHex, ciphertext] = row.config_value.split(':');
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
-      decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-      let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-      return decrypted;
-    }
-  } catch {
-    // DB not ready or decryption failed — fall through to env var
-  }
-  return process.env.GOOGLE_MAPS_API_KEY;
-}
 
 // Search queries and their RMPG service mappings
 const SEARCH_QUERIES = [
