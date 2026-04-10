@@ -104,9 +104,9 @@ const MODE_CONFIG: {
 const COLOR_SCHEME_GRADIENTS: Record<HeatmapColorScheme, string[]> = {
   heat: ['#888888', '#22c55e', '#eab308', '#f97316', '#ef4444'],
   risk: ['#22c55e', '#eab308', '#f97316', '#ef4444', '#7f1d1d'],
-  blue: ['#cccccc', '#888888', '#555555', '#222222', '#0c1929'],
+  blue: ['#cccccc', '#888888', '#555555', '#222222', '#171717'],
   green: ['#86efac', '#22c55e', '#15803d', '#14532d', '#0a2918'],
-  purple: ['#c4b5fd', '#a855f7', '#7c3aed', '#5b21b6', '#2e1065'],
+  purple: ['#c4b5fd', '#a855f7', '#7c3aed', '#5b21b6', '#232323'],
 };
 
 const RESOLUTION_OPTIONS: { key: HeatmapResolution; label: string }[] = [
@@ -262,7 +262,7 @@ export default function AdvancedHeatmapPanel({
         maxHeight: '85vh',
         background: '#0a0a0a',
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
-        border: '1px solid #1e2a3a',
+        border: '1px solid #282828',
       }}
       role="complementary"
       aria-label="Advanced heatmap controls"
@@ -270,7 +270,7 @@ export default function AdvancedHeatmapPanel({
       {/* ── Header Bar ────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-4 py-2.5 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2.5">
           <SlidersHorizontal size={14} className="text-rmpg-400" />
@@ -314,7 +314,7 @@ export default function AdvancedHeatmapPanel({
                   className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-[#181818]/50"
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
-                    border: active ? `2px solid ${m.accent}` : '1px solid #1e2a3a',
+                    border: active ? `2px solid ${m.accent}` : '1px solid #282828',
                     color: active ? m.accent : '#666666',
                   }}
                   aria-label={`${m.label} heatmap mode`}
@@ -330,7 +330,7 @@ export default function AdvancedHeatmapPanel({
           </div>
 
           {/* ── Quick Presets ── */}
-          <div className="mt-2.5 pt-2" style={{ borderTop: '1px solid #1e2a3a' }}>
+          <div className="mt-2.5 pt-2" style={{ borderTop: '1px solid #282828' }}>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Zap size={10} className="text-rmpg-500" />
               <span className="text-[8px] uppercase tracking-widest font-bold text-rmpg-500">Quick Presets</span>
@@ -427,7 +427,7 @@ export default function AdvancedHeatmapPanel({
                     style={{
                       background: 'rgba(255,255,255,0.03)',
                       color: '#666666',
-                      border: '1px solid #1e2a3a',
+                      border: '1px solid #282828',
                     }}
                   >
                     {preset.label}
@@ -611,7 +611,7 @@ export default function AdvancedHeatmapPanel({
                 style={{
                   background: 'rgba(255,255,255,0.03)',
                   color: '#666666',
-                  border: '1px solid #1e2a3a',
+                  border: '1px solid #282828',
                 }}
               >
                 All
@@ -622,7 +622,7 @@ export default function AdvancedHeatmapPanel({
                 style={{
                   background: 'rgba(255,255,255,0.03)',
                   color: '#666666',
-                  border: '1px solid #1e2a3a',
+                  border: '1px solid #282828',
                 }}
               >
                 Clear
@@ -631,7 +631,7 @@ export default function AdvancedHeatmapPanel({
           </div>
           <div
             className="max-h-32 overflow-y-auto space-y-0.5 rounded-sm p-1"
-            style={{ background: '#050505', border: '1px solid #1e2a3a', scrollbarWidth: 'thin' }}
+            style={{ background: '#050505', border: '1px solid #282828', scrollbarWidth: 'thin' }}
           >
             {availableTypes.map((t) => {
               const checked = types.includes(t.incident_type);
@@ -678,7 +678,7 @@ export default function AdvancedHeatmapPanel({
               {/* Digital time display */}
               <div
                 className="flex items-center justify-center py-2 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #282828' }}
               >
                 <span className="text-[18px] font-mono font-bold" style={{ color: '#f97316' }}>
                   {formatHourCompact(temporalHour)}
@@ -795,7 +795,7 @@ export default function AdvancedHeatmapPanel({
               {/* Color legend */}
               <div
                 className="flex items-center justify-between px-3 py-2 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #282828' }}
               >
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} />
@@ -852,7 +852,7 @@ export default function AdvancedHeatmapPanel({
               {/* Total incidents */}
               <div
                 className="flex items-center justify-between px-3 py-2.5 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                style={{ background: '#050505', border: '1px solid #282828' }}
               >
                 <span className="text-[8px] uppercase tracking-wider text-rmpg-500 font-semibold">
                   Total Incidents

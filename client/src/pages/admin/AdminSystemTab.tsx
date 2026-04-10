@@ -155,7 +155,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
   accent_color: '#d4a017',
-  header_bg_color: '#1a1a2e',
+  header_bg_color: '#1c1c1c',
 };
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {

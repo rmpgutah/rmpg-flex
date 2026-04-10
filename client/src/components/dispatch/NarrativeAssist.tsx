@@ -65,7 +65,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
         disabled={isLoading || aiUnavailable || !notes?.trim()}
         className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors"
         style={aiUnavailable
-          ? { background: '#1a1a2e', borderColor: '#2a2a2a', color: '#555', cursor: 'not-allowed' }
+          ? { background: '#1c1c1c', borderColor: '#2a2a2a', color: '#555', cursor: 'not-allowed' }
           : { background: '#7c3aed15', borderColor: '#7c3aed40', color: '#a78bfa', cursor: isLoading ? 'wait' : 'pointer' }
         }
         title={aiUnavailable ? 'AI service is unavailable' : !notes?.trim() ? 'Enter notes first' : 'Generate narrative from notes using AI'}
@@ -81,7 +81,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
 
       {/* Preview box */}
       {preview && (
-        <div className="mt-2 rounded-sm border p-2" style={{ background: '#0d0d1a', borderColor: '#7c3aed30' }}>
+        <div className="mt-2 rounded-sm border p-2" style={{ background: '#0e0e0e', borderColor: '#7c3aed30' }}>
           <label className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-purple-400 mb-1">
             <Brain className="w-2.5 h-2.5" /> AI Draft — Review Before Accepting
           </label>

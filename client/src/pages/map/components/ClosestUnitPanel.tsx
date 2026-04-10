@@ -148,7 +148,7 @@ export default function ClosestUnitPanel({
                 className="px-3 py-2 hover:bg-[#181818]/30 transition-colors duration-100"
                 style={{
                   borderBottom: idx < results.length - 1 ? '1px solid #2b2b2b20' : undefined,
-                  background: idx % 2 === 0 ? '#050505' : '#111b28',
+                  background: idx % 2 === 0 ? '#050505' : '#191919',
                 }}
               >
                 <div className="flex items-center gap-2">

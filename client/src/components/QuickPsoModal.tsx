@@ -120,7 +120,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
         {/* Header — purple PSO theme */}
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-purple-700/50"
-          style={{ background: 'linear-gradient(180deg, #2d1b69 0%, #1a1525 100%)' }}
+          style={{ background: 'linear-gradient(180deg, #292929 0%, #181818 100%)' }}
         >
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-purple-300" />
@@ -379,8 +379,8 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 style={{
                   background: isSubmitting ? '#4a4a4a' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
                   borderColor: '#7c3aed',
-                  borderBottomColor: '#3b0764',
-                  borderRightColor: '#3b0764',
+                  borderBottomColor: '#212121',
+                  borderRightColor: '#212121',
                   color: '#ffffff',
                   opacity: !formData.location ? 0.5 : 1,
                 }}

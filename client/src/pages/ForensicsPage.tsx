@@ -26,7 +26,7 @@ const NODE_PALETTE: Record<string, { primary: string; glow: string; dark: string
   vehicle:  { primary: '#ffb74d', glow: '#ff9800', dark: '#6e4a1a' },
   property: { primary: '#4dd0a0', glow: '#00c853', dark: '#1a6e4a' },
   case:     { primary: '#ff6b6b', glow: '#ff1744', dark: '#6e1a1a' },
-  incident: { primary: '#ce93d8', glow: '#aa00ff', dark: '#4a1a6e' },
+  incident: { primary: '#ce93d8', glow: '#aa00ff', dark: '#323232' },
   evidence: { primary: '#999999', glow: '#666666', dark: '#2a2a2a' },
 };
 

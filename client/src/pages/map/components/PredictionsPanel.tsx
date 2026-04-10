@@ -43,7 +43,7 @@ export default function PredictionsPanel({
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-purple-400" />
@@ -116,10 +116,10 @@ export default function PredictionsPanel({
                 return (
                   <div
                     key={`${hs.latitude}-${hs.longitude}-${idx}`}
-                    className="rounded-sm overflow-hidden transition-all duration-150 hover:bg-[#0f1926]"
+                    className="rounded-sm overflow-hidden transition-all duration-150 hover:bg-[#171717]"
                     style={{
                       background: '#050505',
-                      border: '1px solid #1e2a3a',
+                      border: '1px solid #282828',
                       borderLeft: `3px solid ${color}`,
                     }}
                   >
@@ -197,7 +197,7 @@ export default function PredictionsPanel({
       {hotspots.length > 0 && (
         <div
           className="px-3 py-1.5 flex items-center justify-between"
-          style={{ borderTop: '1px solid #1e2a3a', background: '#050505' }}
+          style={{ borderTop: '1px solid #282828', background: '#050505' }}
         >
           <div className="flex items-center gap-1">
             <TrendingUp size={10} className="text-purple-400" />

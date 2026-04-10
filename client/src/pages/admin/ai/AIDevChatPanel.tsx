@@ -432,12 +432,12 @@ export default function AIDevChatPanel() {
         return (
           <div key={i} className="my-2">
             {lang && (
-              <div className="text-[10px] text-gray-500 bg-[#0c0c0c] border border-[#1a3550] border-b-0 rounded-t px-2 py-0.5 font-mono">
+              <div className="text-[10px] text-gray-500 bg-[#0c0c0c] border border-[#303030] border-b-0 rounded-t px-2 py-0.5 font-mono">
                 {lang}
               </div>
             )}
             <pre
-              className={`bg-[#0c0c0c] border border-[#1a3550] text-green-400 font-mono text-xs p-3 overflow-x-auto ${
+              className={`bg-[#0c0c0c] border border-[#303030] text-green-400 font-mono text-xs p-3 overflow-x-auto ${
                 lang ? 'rounded-b' : 'rounded'
               }`}
             >
@@ -479,10 +479,10 @@ export default function AIDevChatPanel() {
     <style>{`
       @keyframes shimmer { 0% { transform: translateX(-200%); } 100% { transform: translateX(400%); } }
     `}</style>
-    <div className="flex h-[calc(100dvh-280px)] min-h-[500px] bg-[#0c0c0c] rounded border border-[#1a3550] overflow-hidden">
+    <div className="flex h-[calc(100dvh-280px)] min-h-[500px] bg-[#0c0c0c] rounded border border-[#303030] overflow-hidden">
       {/* Session Sidebar */}
-      <div className="w-60 flex-shrink-0 bg-[#0c0c0c] border-r border-[#1a3550] flex flex-col">
-        <div className="p-3 border-b border-[#1a3550]">
+      <div className="w-60 flex-shrink-0 bg-[#0c0c0c] border-r border-[#303030] flex flex-col">
+        <div className="p-3 border-b border-[#303030]">
           <button
             onClick={createNewSession}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] text-white text-xs font-medium rounded transition-colors"
@@ -496,8 +496,8 @@ export default function AIDevChatPanel() {
             <div
               key={s.session_id}
               onClick={() => loadSession(s.session_id)}
-              className={`group flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-[#1a3550]/50 transition-colors ${
-                activeSession === s.session_id ? 'bg-[#1a3550]/50' : 'hover:bg-[#141414]'
+              className={`group flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-[#303030]/50 transition-colors ${
+                activeSession === s.session_id ? 'bg-[#303030]/50' : 'hover:bg-[#141414]'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
@@ -522,7 +522,7 @@ export default function AIDevChatPanel() {
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* AI Status Bar */}
-        <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#1a3550] bg-[#141414]">
+        <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#303030] bg-[#141414]">
           <div className="flex items-center gap-2">
             {aiStatus === 'checking' && <Loader2 className="w-3 h-3 text-yellow-500 animate-spin" />}
             {aiStatus === 'online' && <Circle className="w-2.5 h-2.5 text-green-500 fill-green-500" />}
@@ -563,7 +563,7 @@ export default function AIDevChatPanel() {
                       setInput(suggestion);
                       inputRef.current?.focus();
                     }}
-                    className="text-left text-[11px] text-gray-500 hover:text-gray-300 bg-[#141414] hover:bg-[#181818] border border-[#1a3550] rounded p-2 transition-colors"
+                    className="text-left text-[11px] text-gray-500 hover:text-gray-300 bg-[#141414] hover:bg-[#181818] border border-[#303030] rounded p-2 transition-colors"
                   >
                     {suggestion}
                   </button>
@@ -583,7 +583,7 @@ export default function AIDevChatPanel() {
                 className={`max-w-[80%] ${
                   msg.role === 'user'
                     ? 'bg-[#888888] text-white rounded-sm px-3 py-2'
-                    : 'bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-[#1a3550]'
+                    : 'bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-[#303030]'
                 }`}
               >
                 <div className="text-sm whitespace-pre-wrap leading-relaxed">
@@ -647,7 +647,7 @@ export default function AIDevChatPanel() {
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0a0f18] rounded p-3 border border-[#1a2a3a] shadow-inner transition-all duration-300 ${
+                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0f0f0f] rounded p-3 border border-[#272727] shadow-inner transition-all duration-300 ${
                         streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
                       }`}
                         style={{ scrollBehavior: 'smooth' }}
@@ -679,7 +679,7 @@ export default function AIDevChatPanel() {
                 {/* Response content — streams alongside reasoning */}
                 {streamingContent ? (
                   <div className="bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-blue-500/30">
-                    <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a3550]">
+                    <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#303030]">
                       <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
                       <span className="text-[10px] text-blue-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
                       <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
@@ -717,14 +717,14 @@ export default function AIDevChatPanel() {
 
         {/* File context bar */}
         {showFileInput && (
-          <div className="px-4 py-2 border-t border-[#1a3550] bg-[#141414] flex items-center gap-2">
+          <div className="px-4 py-2 border-t border-[#303030] bg-[#141414] flex items-center gap-2">
             <FileCode className="w-4 h-4 text-gray-500" />
             <input
               type="text"
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
-              className="flex-1 bg-[#0c0c0c] border border-[#1a3550] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-blue-500"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-blue-500"
             />
             <button
               onClick={() => {
@@ -739,7 +739,7 @@ export default function AIDevChatPanel() {
         )}
 
         {/* Input area */}
-        <div className="p-3 border-t border-[#1a3550] bg-[#141414]">
+        <div className="p-3 border-t border-[#303030] bg-[#141414]">
           <div className="flex items-end gap-2">
             <button
               onClick={() => setShowFileInput(!showFileInput)}
@@ -757,7 +757,7 @@ export default function AIDevChatPanel() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about the codebase, request changes, debug issues..."
               rows={1}
-              className="flex-1 bg-[#0c0c0c] border border-[#1a3550] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-blue-500 max-h-32"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-blue-500 max-h-32"
               style={{ minHeight: '36px' }}
               onInput={(e) => {
                 const el = e.currentTarget;

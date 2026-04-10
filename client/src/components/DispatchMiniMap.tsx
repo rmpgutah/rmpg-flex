@@ -57,7 +57,7 @@ function buildUnitMarker(callSign: string): HTMLElement {
   /* #55: Unit marker with shadow */
   el.style.cssText =
     'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #1e3a5f;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
+    "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
   el.textContent = callSign;
   return el;
 }
@@ -348,7 +348,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // ── Auth error (config problem, not connectivity) ──
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060c14' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0b' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
@@ -411,7 +411,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#060c14',
+          background: '#0b0b0b',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>

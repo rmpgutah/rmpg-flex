@@ -512,7 +512,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         className="relative w-[520px] max-w-[95vw] max-h-[80vh] flex flex-col"
         style={{
           background: '#0a0a0a',
-          border: '1px solid #3a5070',
+          border: '1px solid #4d4d4d',
           borderTopColor: '#383838',
           borderLeftColor: '#383838',
           borderBottomColor: '#181818',
@@ -674,7 +674,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         style={{
                           background: 'linear-gradient(135deg, #333333, #888888)',
                           color: '#fff',
-                          border: '2px solid #2a4a6e',
+                          border: '2px solid #454545',
                           borderRadius: 2,
                         }}
                       >

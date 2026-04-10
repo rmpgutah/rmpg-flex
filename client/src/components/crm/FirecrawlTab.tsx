@@ -10297,7 +10297,7 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
+          className="flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white placeholder-[#525252] font-mono focus:outline-none focus:border-[#888888]"
         />
         <button
           type="button"
