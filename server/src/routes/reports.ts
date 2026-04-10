@@ -2020,8 +2020,10 @@ router.get('/daily-briefing', (req: Request, res: Response) => {
     `).all();
 
     const activeWarrants = db.prepare(`
-      SELECT id, warrant_number, type, charge_description, offense_level, bail_amount, subject_name
-      FROM warrants WHERE status = 'active' ORDER BY offense_level DESC, created_at DESC LIMIT 10
+      SELECT w.id, w.warrant_number, w.type, w.charge_description, w.offense_level, w.bail_amount,
+        COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name
+      FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active' ORDER BY w.offense_level DESC, w.created_at DESC LIMIT 10
     `).all();
 
     const recentIncidents = db.prepare(`

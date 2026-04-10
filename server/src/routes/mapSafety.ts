@@ -278,12 +278,13 @@ router.get(
 
       // --- Active warrants nearby ---
       const warrants = db.prepare(`
-        SELECT id, subject_name FROM warrants
-        WHERE status = 'active'
-          AND latitude IS NOT NULL AND longitude IS NOT NULL
-          AND latitude BETWEEN ? AND ?
-          AND longitude BETWEEN ? AND ?
-      
+        SELECT w.id, COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name
+        FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+        WHERE w.status = 'active'
+          AND w.latitude IS NOT NULL AND w.longitude IS NOT NULL
+          AND w.latitude BETWEEN ? AND ?
+          AND w.longitude BETWEEN ? AND ?
+
         LIMIT 1000
       `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
