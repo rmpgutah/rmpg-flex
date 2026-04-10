@@ -172,7 +172,92 @@ router.delete('/geography/sections/:id', requireRole('admin'), (req: Request, re
 });
 
 // ════════════════════════════════════════════════════════════
-// ZONES — Third-level divisions within sections
+// SECTORS — Alias of SECTIONS (new nomenclature: Area=state, Sector=county)
+// Routes accept sector_code/sector_name in body, map to section_code/section_name
+// GET returns rows with both naming conventions for transition compatibility
+// ════════════════════════════════════════════════════════════
+
+router.get('/geography/sectors', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const areaId = req.query.area_id ? parseInt(req.query.area_id as string, 10) : null;
+    let query = `
+      SELECT s.*,
+        s.section_code AS sector_code, s.section_name AS sector_name,
+        a.area_name, a.area_code,
+        (SELECT COUNT(*) FROM dispatch_zones WHERE section_id = s.id) as zone_count
+      FROM dispatch_sections s
+      LEFT JOIN dispatch_areas a ON a.id = s.area_id
+    `;
+    const params: any[] = [];
+    if (areaId) { query += ' WHERE s.area_id = ?'; params.push(areaId); }
+    query += ' ORDER BY s.sort_order, s.section_name';
+    const sectors = db.prepare(query).all(...params);
+    setCacheHeaders(res, 30);
+    res.json(sectors);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load sectors' });
+  }
+});
+
+router.post('/geography/sectors', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sector_code = req.body.sector_code || req.body.section_code;
+    const sector_name = req.body.sector_name || req.body.section_name;
+    const { area_id, color, description, supervisor, radio_channel, notes, sort_order } = req.body;
+    if (!sector_code || !sector_name) { res.status(400).json({ error: 'sector_code and sector_name required' }); return; }
+    const result = db.prepare(`
+      INSERT INTO dispatch_sections (section_code, section_name, area_id, color, description, supervisor, radio_channel, notes, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(sector_code, sector_name, area_id || null, color || '#888888', description, supervisor, radio_channel, notes, sort_order || 0);
+    auditLog(req, 'CREATE', 'dispatch_sectors', result.lastInsertRowid as number, JSON.stringify(req.body));
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) {
+    if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Sector code already exists' }); return; }
+    res.status(500).json({ error: 'Failed to create sector' });
+  }
+});
+
+router.put('/geography/sectors/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    const old = db.prepare('SELECT * FROM dispatch_sections WHERE id = ?').get(id);
+    if (!old) { res.status(404).json({ error: 'Sector not found' }); return; }
+    // Accept both sector_* and section_* field names
+    const body = { ...req.body };
+    if (body.sector_code !== undefined) body.section_code = body.sector_code;
+    if (body.sector_name !== undefined) body.section_name = body.sector_name;
+    const fields = ['section_code', 'section_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); }
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    updates.push('updated_at = ?'); values.push(now());
+    values.push(id);
+    db.prepare(`UPDATE dispatch_sections SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    auditLog(req, 'UPDATE', 'dispatch_sectors', id, JSON.stringify(req.body));
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to update sector' }); }
+});
+
+router.delete('/geography/sectors/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    db.prepare('UPDATE dispatch_zones SET section_id = NULL WHERE section_id = ?').run(id);
+    db.prepare('DELETE FROM dispatch_sections WHERE id = ?').run(id);
+    auditLog(req, 'DELETE', 'dispatch_sectors', id, '');
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete sector' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// ZONES — Third-level divisions within sectors
 // ════════════════════════════════════════════════════════════
 
 router.get('/geography/zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {

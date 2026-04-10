@@ -52,7 +52,7 @@ import {
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
-import { apiFetch, OfflineUnauthorizedError } from '../hooks/useApi';
+import { apiFetch, OfflineUnauthorizedError, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
@@ -993,7 +993,7 @@ export default function Layout() {
                 {/* 7: Avatar with smooth ring transition on hover */}
                 {user?.profile_image ? (
                   <img
-                    src={user.profile_image}
+                    src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
                     style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none' }}
