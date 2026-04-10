@@ -3377,13 +3377,22 @@ function migrateSchema(): void {
     addCol(tbl, 'pso_billing_code', 'TEXT');
     addCol(tbl, 'pso_authorization', 'TEXT');        // auth/PO number from client
   }
-  // Process service specific
-  addCol('calls_for_service', 'process_service_type', 'TEXT'); // subpoena, summons, complaint, eviction, restraining_order, other
-  addCol('calls_for_service', 'process_served_to', 'TEXT');
-  addCol('calls_for_service', 'process_served_address', 'TEXT');
-  addCol('calls_for_service', 'process_attempts', 'INTEGER DEFAULT 0');
-  addCol('calls_for_service', 'process_served_at', 'TEXT');
-  addCol('calls_for_service', 'process_service_result', 'TEXT'); // served, unable_to_serve, refused, substitute_service
+  // Process service specific — must exist on BOTH calls_for_service AND incidents
+  // Bug: incidents POST route INSERTs these columns but they were only added to
+  // calls_for_service, causing every incident create to fail with SQLITE_ERROR.
+  for (const tbl of flagTables) {
+    addCol(tbl, 'pso_attempt_number', 'INTEGER DEFAULT 1');
+    addCol(tbl, 'process_service_type', 'TEXT'); // subpoena, summons, complaint, eviction, restraining_order, other
+    addCol(tbl, 'process_served_to', 'TEXT');
+    addCol(tbl, 'process_served_address', 'TEXT');
+    addCol(tbl, 'process_attempts', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'process_served_at', 'TEXT');
+    addCol(tbl, 'process_service_result', 'TEXT'); // served, unable_to_serve, refused, substitute_service
+    // LE notification + reporting flags also missing from incidents
+    addCol(tbl, 'le_notified', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'supervisor_notified', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'injuries_reported', 'INTEGER DEFAULT 0');
+  }
 
   // ── Backfill dispatch district names on existing calls ──────────
   try {
@@ -5163,6 +5172,13 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'premise_history_count', 'INTEGER DEFAULT 0');
   addCol('calls_for_service', 'eta_seconds', 'INTEGER');
   addCol('calls_for_service', 'call_stack_position', 'INTEGER');
+
+  // ── Calls: overdue notification tracking (prevent duplicate alerts) ──
+  // Used by callAgingMonitor to track which aging thresholds (30m/60m/72h) have
+  // already been notified. Cleared when call transitions to cleared/closed/cancelled.
+  // Bug: This column was referenced in callActions.ts clear-status path but never
+  // added to the schema — every call-clear threw "no such column" 500 errors.
+  addCol('calls_for_service', 'overdue_notified', 'TEXT');
 
   // ── Persons: FI tracking + merge ────────────────────────────
   addCol('persons', 'fi_count', 'INTEGER DEFAULT 0');
