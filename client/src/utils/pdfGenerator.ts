@@ -509,7 +509,7 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 2.5;        // Height reserved for label above value
+  const labelH = 2.0;        // Height reserved for label above value
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
@@ -526,7 +526,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
-  const baseBoxH = useReadableText ? 3.6 : 3;
+  const baseBoxH = useReadableText ? 3.2 : 2.6;
   const displayText = isEmpty ? 'N/A' : useReadableText ? sanitized : sanitized.toUpperCase();
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -561,7 +561,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 0.5; // label + box + small gap
+  return y + labelH + boxH + 0.2; // label + box + small gap
 }
 
 /**
@@ -1550,9 +1550,9 @@ export function addTableWithShading(
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
-  const minRowH = 6;
-  const cellLineH = 3.8;      // Line height within table cells
-  const cellPad = 2;           // Padding inside cells
+  const minRowH = 5.5;
+  const cellLineH = 3.4;      // Line height within table cells
+  const cellPad = 1.5;        // Padding inside cells
   const maxCellLines = 50;    // Show full note text without truncation
 
   // Pre-compute column widths from position deltas
