@@ -28,7 +28,6 @@ import {
   Plug,
   ClipboardList,
   Brain,
-  FileText,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -59,6 +58,7 @@ import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
+import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
@@ -67,7 +67,6 @@ import AdminEmailTab from './admin/AdminEmailTab';
 import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
-import AdminPdfEngineTab from './admin/AdminPdfEngineTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -232,7 +231,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'pdf_engine';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -246,7 +245,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'pdf_engine'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -664,10 +663,10 @@ export default function AdminPage() {
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
+        { id: 'warrant_scrapers', label: 'Warrant Scrapers', icon: Shield },
         { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
-        { id: 'pdf_engine', label: 'PDF Engine', icon: FileText },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
     },
@@ -709,11 +708,11 @@ export default function AdminPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #9ca4ad 30%, #9ca4ad 70%, #1a1a1a)' }} aria-hidden="true" />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} aria-hidden="true" />
             <RmpgLogo height={64} />
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0', letterSpacing: '0.12em' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide mt-0.5" style={{ color: '#6f747b' }}>Rocky Mountain Protective Group, LLC</p>
+              <p className="text-[9px] tracking-wide mt-0.5" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -729,7 +728,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark"
-          style={{ background: '#050505', borderBottom: '1px solid #242424' }}
+          style={{ background: '#050505', borderBottom: '1px solid #181818' }}
           role="tablist"
           aria-label="Admin sections"
         >
@@ -746,7 +745,7 @@ export default function AdminPage() {
                 style={{
                   color: isActive ? '#ffffff' : '#888888',
                   background: isActive ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(167, 177, 188, 0.26)' : '1px solid transparent',
+                  border: isActive ? '1px solid rgba(136,136,136,0.4)' : '1px solid transparent',
                   borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                 }}
               >
@@ -767,7 +766,7 @@ export default function AdminPage() {
             style={{
               width: 200,
               background: '#050505',
-              borderRight: '1px solid #242424',
+              borderRight: '1px solid #181818',
             }}
             aria-label="Admin navigation"
             role="tablist"
@@ -775,8 +774,8 @@ export default function AdminPage() {
             {tabGroups.map((group, gi) => (
               <div key={group.category} className={gi > 0 ? 'mt-2' : ''}>
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#242424]/60 mb-0.5"
-                  style={{ color: '#737b84' }}
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#181818]/60 mb-0.5"
+                  style={{ color: '#505050' }}
                   aria-hidden="true"
                 >
                   {group.category}
@@ -792,7 +791,7 @@ export default function AdminPage() {
                       id={`admin-tab-${tab.id}`}
                       aria-controls={`admin-tabpanel-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(167,177,188,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(136,136,136,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                       style={{
                         color: isActive ? '#ffffff' : '#888888',
                         background: isActive ? 'rgba(136, 136, 136, 0.14)' : undefined,
@@ -933,6 +932,14 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'warrant_scrapers' && (
+          <AdminWarrantScrapersTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'iped' && (
           <AdminIPEDTab
             LoadingSpinner={LoadingSpinner}
@@ -1007,14 +1014,6 @@ export default function AdminPage() {
 
         {activeTab === 'integrations' && (
           <AdminIntegrationsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'pdf_engine' && (
-          <AdminPdfEngineTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
