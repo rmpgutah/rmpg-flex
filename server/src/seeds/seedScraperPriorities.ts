@@ -10,8 +10,11 @@
 // ============================================================
 
 import Database from 'better-sqlite3';
+import { fileURLToPath } from 'node:url';
+import { argv } from 'node:process';
 import { getDb } from '../models/database';
 
+// both legacy and current keys for FBI
 const TIER_1_SOURCES = new Set<string>([
   'federal_fbi_wanted',
   'fed_fbi_wanted',
@@ -47,6 +50,8 @@ function determineTier(sourceKey: string, state: string | null): number | null {
   if (TIER_1_SOURCES.has(sourceKey)) {
     return 1;
   }
+  // Order matters: SLC metro (ut_slc_metro_warrants) is caught by TIER_1_SOURCES above
+  // before falling into this ut_ prefix check, so it stays tier 1.
   if (TIER_2_EXPLICIT_SOURCES.has(sourceKey) || sourceKey.startsWith('ut_')) {
     return 2;
   }
@@ -85,7 +90,10 @@ export function seedScraperPriorities(
 }
 
 // Allow running as a script: `npx tsx src/seeds/seedScraperPriorities.ts`
-if (require.main === module) {
+// Run as CLI when invoked directly (ESM equivalent of require.main === module)
+const isMain = fileURLToPath(import.meta.url) === argv[1];
+if (isMain) {
   const result = seedScraperPriorities();
-  console.log(`Seeded scraper priorities: ${result.updated} row(s) updated.`);
+  console.log(`[Scraper Priority Seed] Updated ${result.updated} sources`);
+  process.exit(0);
 }
