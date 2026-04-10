@@ -1,9 +1,23 @@
 name: "Deploy to Production"
 
+# ─── Manual-only trigger ─────────────────────────────────────────
+# This workflow is intentionally NOT auto-triggered on push to main.
+#
+# The canonical deploy path is the local script `bash deploy/deploy.sh`
+# (see CLAUDE.md), which uses the developer's SSH key directly against
+# the VPS. The GitHub Actions deploy requires a valid `VPS_SSH_KEY`
+# secret to be configured in repo settings — as of now, the secret is
+# either missing or malformed, which caused every push to main to
+# produce a red-X deploy failure and drown real issues in noise.
+#
+# To re-enable auto-deploy:
+#   1. On the VPS, run: ssh-keygen -t ed25519 -f rmpg_deploy -N ''
+#   2. Append rmpg_deploy.pub to /root/.ssh/authorized_keys on the VPS
+#   3. Paste the PRIVATE key (rmpg_deploy file content) into the
+#      VPS_SSH_KEY repository secret at Settings → Secrets and variables
+#   4. Add `push: { branches: [main] }` back to the `on:` section below
+# ──────────────────────────────────────────────────────────────────
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       include_installers:

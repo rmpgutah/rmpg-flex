@@ -95,3 +95,8 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    ignore:
+      # fetch-metadata v3 requires Node 24 runtime; ubuntu-latest ships
+      # Node 20 until 2026-06-02. Stay on v2 until then.
+      - dependency-name: "dependabot/fetch-metadata"
+        update-types: ["version-update:semver-major"]
