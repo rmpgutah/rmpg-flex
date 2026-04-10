@@ -23,6 +23,18 @@ import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { startRun, completeRun, failRun } from './scraperRunner';
 import { Semaphore } from './semaphore';
+import { broadcast } from './websocket';
+
+// Phase 4: emit scraper lifecycle events on the 'scraper_events' WS channel
+// so the Phase 5 Scrapers tab can show a live feed. All calls wrapped in
+// try/catch at the call site so a WS failure can never disrupt a scrape.
+function emitScraperEvent(type: string, data: Record<string, unknown>): void {
+  try {
+    broadcast('scraper_events', type, data);
+  } catch (e) {
+    console.warn(`[Warrant Scraper] WS broadcast failed for ${type}:`, (e as Error).message);
+  }
+}
 
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
@@ -1750,6 +1762,13 @@ export async function syncSource(sourceKey: string): Promise<void> {
     console.warn(`[Warrant Scraper] Failed to start run for ${sourceKey}:`, (e as Error).message);
   }
 
+  emitScraperEvent('run_started', {
+    source_key: sourceKey,
+    display_name: config.display_name,
+    priority: config.priority ?? 3,
+    started_at: localNow(),
+  });
+
   try {
     console.log(`[Warrant Scraper] ── ${config.display_name} ──`);
     await fetchSemaphore.acquire();
@@ -1831,6 +1850,17 @@ export async function syncSource(sourceKey: string): Promise<void> {
       console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
     }
 
+    emitScraperEvent('run_completed', {
+      source_key: sourceKey,
+      display_name: config.display_name,
+      http_status: result.status ?? 200,
+      parsed: result.records_found,
+      inserted: result.inserted,
+      updated: result.updated,
+      unchanged: result.unchanged === true || result.status === 304,
+      parser_used: result.parserUsed ?? (WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic'),
+    });
+
   } catch (err) {
     if (runId !== null) {
       try {
@@ -1839,6 +1869,12 @@ export async function syncSource(sourceKey: string): Promise<void> {
         console.warn(`[Warrant Scraper] Failed to record failed run for ${sourceKey}:`, (e as Error).message);
       }
     }
+
+    emitScraperEvent('run_failed', {
+      source_key: sourceKey,
+      display_name: config.display_name,
+      error: (err as Error).message,
+    });
     const errMsg = (err as Error).message || 'unknown error';
 
     // Permanent errors (404 = page gone) — disable source, don't circuit break
@@ -1879,8 +1915,20 @@ export async function syncSource(sourceKey: string): Promise<void> {
 
       console.log(`[Warrant Scraper] Recovery for ${config.display_name} in ${backoffHours}h`);
 
+      emitScraperEvent('circuit_broken', {
+        source_key: sourceKey,
+        display_name: config.display_name,
+        consecutive_errors: errorCount,
+        recovery_at: new Date(Date.now() + backoffMs).toISOString(),
+        backoff_hours: Number(backoffHours),
+      });
+
       const recoveryTimeout = setTimeout(() => {
         db.prepare('UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key = ?').run(sourceKey);
+        emitScraperEvent('circuit_restored', {
+          source_key: sourceKey,
+          display_name: config.display_name,
+        });
         scheduleSource(sourceKey);
       }, backoffMs);
 
