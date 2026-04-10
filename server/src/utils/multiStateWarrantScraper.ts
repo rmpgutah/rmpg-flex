@@ -20,6 +20,7 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
+import { startRun, completeRun, failRun } from './scraperRunner';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -1489,7 +1490,16 @@ async function scrapeSource(sourceKey: string): Promise<{
 async function syncSource(sourceKey: string): Promise<void> {
   const db = getDb();
   const config = getSourceConfig(sourceKey);
-  if (!config || !config.enabled) return;
+  if (!config || !config.enabled || config.circuit_broken) {
+    // Record skipped runs for circuit-broken sources so metrics show them
+    if (config && config.circuit_broken) {
+      const skipRunId = startRun({ source_key: sourceKey });
+      completeRun(skipRunId, { skipped_reason: 'circuit_broken' });
+    }
+    return;
+  }
+
+  const runId = startRun({ source_key: sourceKey, priority: (config as any).priority });
 
   try {
     console.log(`[Warrant Scraper] ── ${config.display_name} ──`);
@@ -1504,9 +1514,18 @@ async function syncSource(sourceKey: string): Promise<void> {
 
     backoffAttempts.delete(sourceKey);
 
+    completeRun(runId, {
+      http_status: 200,
+      parsed_count: result.records_found,
+      inserted_count: result.inserted,
+      updated_count: result.updated,
+      parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+    });
+
     console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
 
   } catch (err) {
+    failRun(runId, { error_message: (err as Error).message });
     const errMsg = (err as Error).message || 'unknown error';
 
     // Permanent errors (404 = page gone) — disable source, don't circuit break
