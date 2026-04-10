@@ -8,6 +8,7 @@
 import { getDb } from '../models/database';
 import { pruneRuns } from './scraperRunner';
 import { getSourceMetrics, getHealthSummary } from './scraperMetrics';
+import { checkMassFailure } from './scraperAlerts';
 
 export function runScraperNightly(): void {
   try {
@@ -67,6 +68,10 @@ export function runScraperNightly(): void {
     } catch (e) {
       console.warn('[Scraper Nightly] Health summary failed:', (e as Error).message);
     }
+
+    // 4. Check mass-failure condition (>30% sources in D/F grade).
+    // Rate limited to 1/hour via module-level state in scraperAlerts.
+    checkMassFailure();
   } catch (err) {
     console.error('[Scraper Nightly] Error:', (err as Error).message);
   }
