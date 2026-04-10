@@ -54,10 +54,21 @@ jobs:
         run: npx vite build
 
       - name: Set up SSH key
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          # Strip CRLF (Windows line endings) and ensure trailing newline —
+          # common cause of "Load key: error in libcrypto" on GitHub Actions
+          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          # Sanity check: verify the key is parseable before attempting to use it
+          if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
+            echo "::error::VPS_SSH_KEY secret is not a valid OpenSSH private key."
+            echo "::error::Regenerate: ssh-keygen -t ed25519 -f rmpg_deploy -N ''"
+            echo "::error::Paste the PRIVATE key (rmpg_deploy file) into the VPS_SSH_KEY secret."
+            exit 1
+          fi
           ssh-keyscan -H 194.113.64.90 >> ~/.ssh/known_hosts
 
       - name: Rsync code to Hostinger VPS
