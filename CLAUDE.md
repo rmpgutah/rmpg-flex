@@ -72,6 +72,11 @@ deploy/           Deployment scripts (deploy.sh, deploy-all.sh)
 
 ## Code Patterns
 
+### Express Route Ordering
+- Parameterized routes (`/:id`) MUST be defined AFTER all specific string routes (`/national-coverage`, `/dashboard/stats`, etc.)
+- Express matches top-to-bottom and stops at first match — `/:id` is greedy and catches everything
+- Check `warrants.ts`, `dispatch/calls.ts` — both have this pattern and are sensitive to ordering
+
 ### Express Route Pattern
 ```typescript
 import { Router, Request, Response } from 'express';
@@ -125,16 +130,18 @@ export default function SomePage() {
 
 ### Design System (Spillman Flex / Motorola Solutions — Pure Black Theme)
 ```
-Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken), #000000 (deep)
-Brand gold:    #d4a017    Neutral gray: #888888 (replaced all blue)
-Border:        #222222 (default), #1a1a1a (subtle), #2e2e2e (strong)
+Surface colors: #141e2b (base), #1a2636 (raised), #0d1520 (sunken)
+Brand blue:    #1a5a9e    Brand gold: #d4a017
+Border:        #1e3048 (default), #2a3e58 (strong)
 All radius:    2px (sharp CAD console corners — never rounded-lg)
 Shadows:       Subtle only — depth via 3D beveled borders, not drop shadows
 Panel headers: Gold text + dark chrome gradient (#1a1a1a → #242424)
 LED indicators: Green/red/amber dots with box-shadow glow
-Fonts:         System sans-serif for UI, monospace for data/readouts
-Table headers: font-semibold 9px, py-[3px] — thin spreadsheet style
-Table rows:    py-[2px], 11px — compact, no pill badges (plain colored text)
+Fonts:         System sans-serif for UI, JetBrains Mono for data/readouts
+CSS variables: --surface-base, --surface-raised, --brand-blue, --border-default
+Tailwind tokens: bg-surface-base, bg-surface-raised, bg-surface-sunken (use these, not hardcoded hex)
+CSS utility classes: .panel-base, .panel-raised, .panel-sunken (map to CSS vars)
+Input classes: .input-dark, .select-dark, .textarea-dark (blocky Motorola-style)
 ```
 
 ### WebSocket Broadcasts
@@ -189,16 +196,26 @@ grep CACHE_NAME client/public/sw.js  # Local SW version
 ### Google Maps API Key
 Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 
+### Worktree Merge Safety
+- After any merge from worktree to main, check for lost files: `diff <(find client/src server/src -name '*.ts' -o -name '*.tsx' | sort) <(find .claude/worktrees/*/client/src .claude/worktrees/*/server/src -name '*.ts' -o -name '*.tsx' | sed 's|.*/client/|client/|;s|.*/server/|server/|' | sort) | grep '^<'`
+- Key files that repeatedly get lost: PDF generators, statusLabels.ts, map hooks, fleet tabs
+- Always deploy from main (which has all accumulated fixes), not from worktree directly
+
 ## Key Systems
 
-### Dispatch Geography (4-tier Miller drilldown)
-- `dispatch_areas` → `dispatch_sectors` → `dispatch_zones` → `dispatch_beats` (renamed from `dispatch_sections` in 2026-04-11 rebuild)
-- `dispatch_codes` — 68 pre-seeded 10-codes + signal codes
-- `premise_alerts` — persistent location-based warnings
-- GeoJSON beat polygons with sector-colored labels on map
-- API: `server/src/routes/dispatch/geography.ts` — CRUD for all 4 tiers + `/tree` (nested) + `/identify?lat&lng` (point lookup)
-- UI: `client/src/pages/GeographyPage.tsx` — 4-column Miller drilldown (Areas 180px → Sectors 200px → Zones 240px → Beats 240px → Detail pane)
-- Production runs legacy 5/46/166/427 classification; fresh DBs get the full 6/29/288/719 Utah GeoJSON seed (see Gotcha #41)
+### National Warrant System
+- `scraped_warrants` stores ALL warrants nationally (not just matched persons)
+- `person_id` is set when a warrant matches a local person (for alerts)
+- `warrant_scraper_config` has 173 sources across 50 states — auto-disables on 404
+- Paginated sources (e.g., Flathead MT A-Z) use `PAGINATED_SOURCES` map in multiStateWarrantScraper.ts
+- FBI API uses `api.fbi.gov` JSON endpoint (not HTML scraping) — needs `Accept: application/json`
+
+### Dispatch Geography (3-tier)
+- `dispatch_districts` table — stores section_id, zone_id, beat_id, dispatch_code, names
+- Geofence: `server/src/utils/geofence.ts` — point-in-polygon beat identification from GPS
+- `findNearestBeat()` fallback within 1.25 miles when exact polygon miss
+- GeoJSON beat polygons (719 features) with section-colored labels on map
+- API: `/api/dispatch/districts` (list), `/api/dispatch/districts/identify?lat=&lng=` (GPS lookup)
 
 ### Incident RMS (Spillman Flex)
 - `incident_offenses` — UCR/NIBRS codes, statute linkage, suspect/victim mapping
