@@ -287,6 +287,23 @@ function stripHtml(html: string): string {
 // Most sheriff warrant pages list wanted persons in HTML tables
 // or card-style divs. This generic parser handles common patterns.
 
+// ── Phase 3: WAF / block page detection ────────────────────
+// Distinguish "site is blocking us" from "parser broken" so the
+// dashboard can classify failures accurately. Small bodies are
+// treated as suspicious because real warrant pages are never tiny.
+
+function detectBlockPage(html: string): string | null {
+  if (!html || html.length < 200) return 'response_too_small';
+  if (/Just a moment\.\.\.|Attention Required|cf-browser-verification|cf-chl-bypass/i.test(html)) {
+    return 'cloudflare_challenge';
+  }
+  if (/Access Denied|You don['’]t have permission|Request blocked/i.test(html)) {
+    return 'access_denied';
+  }
+  if (/<title>403/i.test(html)) return 'http_403_wrapper';
+  return null;
+}
+
 // ── Phase 3: Parser fallback cascade ────────────────────────
 // When a registered custom parser returns 0 results or throws,
 // fall back to the generic parser; if that also fails, a last-
@@ -1669,6 +1686,13 @@ async function scrapeSource(sourceKey: string): Promise<{
       etag: fetchResult.etag,
       lastModified: fetchResult.lastModified,
     };
+  }
+
+  // Phase 3: detect WAF / block pages BEFORE parsing so failure reasons
+  // are classified accurately (dashboard distinguishes "blocked" from "parser broken").
+  const blockReason = detectBlockPage(fetchResult.body);
+  if (blockReason) {
+    throw new Error(`BLOCKED:${blockReason}`);
   }
 
   // Phase 3: parser fallback cascade (custom → generic → all-caps)
