@@ -1352,15 +1352,20 @@ export default function DispatchPage() {
 
   // ── Admin timeline edit handler ──
   const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
-    if (!selectedCall || !isAdminOrManager) return;
+    if (!selectedCall || !isAdminOrManager) {
+      console.warn('[TimelineEdit] blocked: no call selected or not admin/manager', {
+        hasCall: !!selectedCall, isAdminOrManager,
+      });
+      return;
+    }
 
     // Validate the payload before the request: if the caller asked to SET a
-    // value (not clear it), make sure it's a non-empty string that parses as
-    // a real date. This prevents invalid-input crashes like the datetime-local
-    // widget passing through an unparseable value, and gives a clearer error
-    // than the generic "Failed to update timeline" toast.
-    if (value !== null) {
-      if (typeof value !== 'string' || value.length < 10) {
+    // value (not clear it), make sure it parses as a real date. Empty string
+    // is treated as a clear (matches server's "set to NULL" semantics).
+    // This prevents crashes from `new Date("").toISOString()` in handlers.
+    let payloadValue: string | null = value;
+    if (value !== null && value !== '') {
+      if (typeof value !== 'string') {
         addToast('Invalid timestamp format', 'error');
         setEditingTimestamp(null);
         return;
@@ -1371,19 +1376,32 @@ export default function DispatchPage() {
         setEditingTimestamp(null);
         return;
       }
+    } else if (value === '') {
+      // Empty string from the input — treat as clear (null)
+      payloadValue = null;
     }
+
+    // Diagnostic: log exactly what we're sending so the user can open DevTools
+    // and share the console line if this fails. Remove after this bug is closed.
+    console.log('[TimelineEdit] sending', {
+      field,
+      originalValue: value,
+      payloadValue,
+      callId: selectedCall.id,
+      url: `/dispatch/calls/${selectedCall.id}`,
+    });
 
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: value }),
+        body: JSON.stringify({ [field]: payloadValue }),
       });
       const updated = mapDbCall(result);
       setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
       setSelectedCall(updated);
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
-      console.error('Failed to update timeline:', err);
+      console.error('[TimelineEdit] failed', err);
       // Surface the ACTUAL server error instead of a generic message so users
       // and support can diagnose. Fall back to the generic string only if the
       // error has no useful message.
