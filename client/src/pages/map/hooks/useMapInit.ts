@@ -263,7 +263,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
 
     if (mapStyle === 'dark') {
       map.setMapTypeId('roadmap');
-      map.setOptions({ styles: DARK_MAP_STYLE });
+      map.setOptions({ styles: DARK_MAP_STYLE, backgroundColor: '#000000' });
       updateMapStyles(map, DARK_MAP_STYLE);
     } else if (mapStyle === 'night_nav') {
       map.setMapTypeId('roadmap');

@@ -138,7 +138,7 @@ export const config = {
   // Session
   session: {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),
-    enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING', true),
+    enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING',false),
     ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'warn') as 'invalidate' | 'reauth' | 'warn',
   },
 

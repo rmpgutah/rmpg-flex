@@ -409,7 +409,7 @@ export default function DashCamDetailPage() {
       disableDefaultUI: true,
       zoomControl: true,
       styles: mapId ? undefined : DARK_MAP_STYLE,
-      backgroundColor: '#171717',
+      backgroundColor: '#000000',
     };
     if (mapId) (mapOptions as any).mapId = mapId;
     const map = new google.maps.Map(mapContainerRef.current, mapOptions);

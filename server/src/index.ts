@@ -118,7 +118,7 @@ const app = express();
 
 // Production commonly runs behind nginx on a single hop, so trust that proxy
 // unless explicitly overridden via TRUST_PROXY.
-app.set('trust proxy', config.trustProxy);
+app.set('trust proxy', 1);
 
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
