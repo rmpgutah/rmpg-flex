@@ -102,6 +102,15 @@ import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
 
+// ─── Trust Proxy ─────────────────────────────────────
+// Production runs behind nginx on localhost (browser → nginx:443 → Express:3001).
+// Nginx sets X-Forwarded-For / X-Forwarded-Proto headers. Without trust proxy,
+// express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every request
+// because it can't identify the real client. Value `1` = trust exactly one hop
+// (nginx), which is correct for this topology. `true` would be insecure (accepts
+// any number of hops, which allows X-Forwarded-For header spoofing).
+app.set('trust proxy', 1);
+
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
 if (config.isProduction || config.ssl.enabled) {

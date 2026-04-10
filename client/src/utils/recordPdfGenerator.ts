@@ -35,7 +35,6 @@ import {
   formSectionPageBreak,
   sanitizePdfText,
   displayStatus,
-  addNarrativeField,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale } from './pdfGenerator';
