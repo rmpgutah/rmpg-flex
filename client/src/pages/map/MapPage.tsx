@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage } from '../../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, resolveGoogleMapsApiKey, resolveGoogleMapsMapId } from '../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -757,12 +757,8 @@ export default function MapPage() {
       return;
     }
 
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-    if (!apiKey) {
-      setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
-      setMapLoaded(false);
-      return;
-    }
+    let resolvedApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+    let resolvedMapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
 
     // Register Google's official auth-failure callback BEFORE loading the script.
     // Google calls window.gm_authFailure() when the API key is invalid, billing
@@ -811,19 +807,18 @@ export default function MapPage() {
         if (sz) savedZoom = parseInt(sz, 10) || 12;
       } catch { /* use defaults */ }
 
-      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
       const mapOptions: google.maps.MapOptions = {
         center: savedCenter,
         zoom: savedZoom,
         disableDefaultUI: true,
         zoomControl: false,
-        styles: mapId ? undefined : DARK_MAP_STYLE,
+        styles: resolvedMapId ? undefined : DARK_MAP_STYLE,
         backgroundColor: '#171717',
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
       };
-      if (mapId) (mapOptions as any).mapId = mapId;
+      if (resolvedMapId) (mapOptions as any).mapId = resolvedMapId;
       const map = new google.maps.Map(mapRef.current, mapOptions);
 
       mapInstanceRef.current = map;
@@ -881,7 +876,7 @@ export default function MapPage() {
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
       // When mapId is configured, enable AdvancedMarkerElement for modern marker support.
       // Without mapId, fall back to OverlayView-based markers which work on all map types.
-      if (mapId && google.maps.marker?.AdvancedMarkerElement) {
+      if (resolvedMapId && google.maps.marker?.AdvancedMarkerElement) {
         useAdvancedMarkersRef.current = true;
         devLog('[MapPage] Using AdvancedMarkerElement (mapId configured)');
       } else {
@@ -925,7 +920,7 @@ export default function MapPage() {
         return;
       }
 
-      loadGoogleMaps(apiKey)
+      loadGoogleMaps(resolvedApiKey)
         .then(() => initMap())
         .catch((err: any) => {
           if (cancelled) return;
@@ -948,21 +943,39 @@ export default function MapPage() {
         });
     }
 
-    attemptLoad(0);
-
-    // Auto-retry when device comes back online (covers the case where all retries
-    // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) {
-        devLog('[MapPage] Online auto-retry triggered — reinitializing map');
-        setMapError(null);
-        initMap();
+    // Resolve API key from server (admin-managed) before falling back to env vars
+    let unsubOnline: (() => void) | null = null;
+    (async () => {
+      try {
+        const serverKey = await resolveGoogleMapsApiKey();
+        if (serverKey) resolvedApiKey = serverKey;
+        const serverMapId = await resolveGoogleMapsMapId();
+        if (serverMapId) resolvedMapId = serverMapId;
+      } catch (err) {
+        devWarn('[MapPage] Server config fetch failed, using env var fallback:', err);
       }
-    });
+      if (cancelled) return;
+      if (!resolvedApiKey) {
+        setMapError('Google Maps API key not configured. Set it via Admin → Integrations or add VITE_GOOGLE_MAPS_API_KEY to client/.env');
+        setMapLoaded(false);
+        return;
+      }
+      attemptLoad(0);
+
+      // Auto-retry when device comes back online (covers the case where all retries
+      // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
+      unsubOnline = onOnlineRetryMaps(resolvedApiKey, () => {
+        if (!cancelled && !mapInstanceRef.current) {
+          devLog('[MapPage] Online auto-retry triggered — reinitializing map');
+          setMapError(null);
+          initMap();
+        }
+      });
+    })();
 
     return () => {
       cancelled = true; // Stop any pending retries
-      unsubOnline();
+      if (unsubOnline) unsubOnline();
       if (dismissTimer) clearTimeout(dismissTimer);
       if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
@@ -2193,7 +2206,7 @@ export default function MapPage() {
                   3. Enable <span className="text-amber-400">Places API (New)</span><br/>
                   4. Go to <span className="text-gray-400">Billing</span> → ensure billing is active<br/>
                   5. Go to <span className="text-gray-400">Credentials</span> → check key restrictions<br/>
-                  6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
+                  6. Add key via <span className="text-brand-400">Admin → Integrations</span> or <span className="text-brand-400">client/.env</span>:<br/>
                   <span className="text-green-400 ml-2">VITE_GOOGLE_MAPS_API_KEY=your_key</span><br/>
                   7. Restart the dev server
                 </p>

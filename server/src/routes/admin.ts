@@ -1792,17 +1792,46 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'lead_gen_rapidapi_key',
   'dl_ocr_rapidapi_key',
   'plate_check_rapidapi_key',
+  'google_maps_api_key',
+  'google_maps_map_id',
 ];
 
-function encryptValue(plaintext: string): string {
-  const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
-}
+import { encryptConfigValue, decryptConfigValue } from '../utils/configEncryption';
+
+// GET /api/admin/google-maps-config — return decrypted Google Maps keys for authenticated users
+// This is NOT restricted to admin — any authenticated user needs the Maps API key for the client
+router.get('/google-maps-config', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result: Record<string, string> = {};
+
+    for (const configKey of ['google_maps_api_key', 'google_maps_map_id']) {
+      const row = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1"
+      ).get(configKey) as { config_value: string } | undefined;
+      if (row?.config_value) {
+        try {
+          result[configKey] = decryptConfigValue(row.config_value);
+        } catch {
+          // Decryption failed — value may be plain text or corrupted
+        }
+      }
+    }
+
+    // Fall back to env vars if not set in system_config
+    if (!result.google_maps_api_key && process.env.GOOGLE_MAPS_API_KEY) {
+      result.google_maps_api_key = process.env.GOOGLE_MAPS_API_KEY;
+    }
+    if (!result.google_maps_map_id && process.env.GOOGLE_MAPS_MAP_ID) {
+      result.google_maps_map_id = process.env.GOOGLE_MAPS_MAP_ID;
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('[Admin] Google Maps config error:', err);
+    res.status(500).json({ error: 'Failed to get Google Maps config' });
+  }
+});
 
 // GET /api/admin/third-party-keys — list which keys are configured
 router.get('/third-party-keys', requireRole('admin'), (_req: Request, res: Response) => {
@@ -1850,7 +1879,7 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
     }
 
     const db = getDb();
-    const encrypted = encryptValue(value.trim());
+    const encrypted = encryptConfigValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
