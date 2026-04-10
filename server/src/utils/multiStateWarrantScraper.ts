@@ -26,6 +26,15 @@ import { Semaphore } from './semaphore';
 import { broadcast } from './websocket';
 import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
 
+// Safe human-readable label for a source — falls back to source_key when the
+// display_name column is NULL or empty. Prevents "[Warrant Scraper] null: fetch
+// failed" log spam from rows that predate the display_name backfill.
+function displayNameOf(config: Pick<WarrantSourceConfig, 'source_key' | 'display_name'>): string {
+  return config.display_name && config.display_name.trim().length > 0
+    ? config.display_name
+    : config.source_key;
+}
+
 // Phase 4: emit scraper lifecycle events on the 'scraper_events' WS channel
 // so the Phase 5 Scrapers tab can show a live feed. All events share a single
 // WSMessageType ('scraper_event') with the specific event name embedded in
@@ -120,7 +129,7 @@ interface WarrantParser {
 interface WarrantSourceConfig {
   id: number;
   source_key: string;
-  display_name: string;
+  display_name: string | null;
   source_url: string | null;
   source_type: string;
   state: string;
@@ -1767,13 +1776,13 @@ export async function syncSource(sourceKey: string): Promise<void> {
 
   emitScraperEvent('run_started', {
     source_key: sourceKey,
-    display_name: config.display_name,
+    display_name: displayNameOf(config),
     priority: config.priority ?? 3,
     started_at: localNow(),
   });
 
   try {
-    console.log(`[Warrant Scraper] ── ${config.display_name} ──`);
+    console.log(`[Warrant Scraper] ── ${displayNameOf(config)} ──`);
     await fetchSemaphore.acquire();
     let result;
     try {
@@ -1846,16 +1855,16 @@ export async function syncSource(sourceKey: string): Promise<void> {
     }
 
     if (result.status === 304) {
-      console.log(`[Warrant Scraper] ${config.display_name}: 304 Not Modified — skipped parse`);
+      console.log(`[Warrant Scraper] ${displayNameOf(config)}: 304 Not Modified — skipped parse`);
     } else if (result.unchanged) {
-      console.log(`[Warrant Scraper] ${config.display_name}: content unchanged (hash match) — skipped parse`);
+      console.log(`[Warrant Scraper] ${displayNameOf(config)}: content unchanged (hash match) — skipped parse`);
     } else {
-      console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
+      console.log(`[Warrant Scraper] ${displayNameOf(config)}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
     }
 
     emitScraperEvent('run_completed', {
       source_key: sourceKey,
-      display_name: config.display_name,
+      display_name: displayNameOf(config),
       http_status: result.status ?? 200,
       parsed: result.records_found,
       inserted: result.inserted,
@@ -1874,7 +1883,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
       result.status !== 304 &&
       (result.status ?? 200) === 200
     ) {
-      checkParserDrift(sourceKey, config.display_name);
+      checkParserDrift(sourceKey, displayNameOf(config));
     }
 
   } catch (err) {
@@ -1888,14 +1897,14 @@ export async function syncSource(sourceKey: string): Promise<void> {
 
     emitScraperEvent('run_failed', {
       source_key: sourceKey,
-      display_name: config.display_name,
+      display_name: displayNameOf(config),
       error: (err as Error).message,
     });
     const errMsg = (err as Error).message || 'unknown error';
 
     // Permanent errors (404 = page gone) — disable source, don't circuit break
     if (errMsg === 'HTTP_PERMANENT_404') {
-      console.warn(`[Warrant Scraper] ${config.display_name}: page not found (404) — disabling source`);
+      console.warn(`[Warrant Scraper] ${displayNameOf(config)}: page not found (404) — disabling source`);
       db.prepare('UPDATE warrant_scraper_config SET enabled = 0, last_error = ? WHERE source_key = ?').run('Page not found (404)', sourceKey);
       const interval = sourceIntervals.get(sourceKey);
       if (interval) { clearInterval(interval); sourceIntervals.delete(sourceKey); }
@@ -1904,7 +1913,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
 
     // Transient errors — increment counter
     const shortErr = errMsg.replace(/https?:\/\/[^\s]+/g, '...').substring(0, 100);
-    console.error(`[Warrant Scraper] ${config.display_name}: ${shortErr}`);
+    console.error(`[Warrant Scraper] ${displayNameOf(config)}: ${shortErr}`);
 
     db.prepare(`
       UPDATE warrant_scraper_config
@@ -1916,12 +1925,12 @@ export async function syncSource(sourceKey: string): Promise<void> {
     const errorCount = errResult?.consecutive_errors ?? 1;
 
     if (errorCount >= CIRCUIT_BREAKER_THRESHOLD) {
-      console.warn(`[Warrant Scraper] CIRCUIT BREAKER: ${config.display_name} (${errorCount} errors)`);
+      console.warn(`[Warrant Scraper] CIRCUIT BREAKER: ${displayNameOf(config)} (${errorCount} errors)`);
 
       db.prepare('UPDATE warrant_scraper_config SET circuit_broken = 1 WHERE source_key = ?').run(sourceKey);
 
       // Phase 4: notify admins when a source trips the breaker
-      alertCircuitBroken(sourceKey, config.display_name);
+      alertCircuitBroken(sourceKey, displayNameOf(config));
 
       const interval = sourceIntervals.get(sourceKey);
       if (interval) { clearInterval(interval); sourceIntervals.delete(sourceKey); }
@@ -1932,11 +1941,11 @@ export async function syncSource(sourceKey: string): Promise<void> {
       const backoffMs = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt - 1), BACKOFF_MAX_MS);
       const backoffHours = (backoffMs / 3_600_000).toFixed(1);
 
-      console.log(`[Warrant Scraper] Recovery for ${config.display_name} in ${backoffHours}h`);
+      console.log(`[Warrant Scraper] Recovery for ${displayNameOf(config)} in ${backoffHours}h`);
 
       emitScraperEvent('circuit_broken', {
         source_key: sourceKey,
-        display_name: config.display_name,
+        display_name: displayNameOf(config),
         consecutive_errors: errorCount,
         recovery_at: new Date(Date.now() + backoffMs).toISOString(),
         backoff_hours: Number(backoffHours),
@@ -1946,7 +1955,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
         db.prepare('UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key = ?').run(sourceKey);
         emitScraperEvent('circuit_restored', {
           source_key: sourceKey,
-          display_name: config.display_name,
+          display_name: displayNameOf(config),
         });
         scheduleSource(sourceKey);
       }, backoffMs);
@@ -2012,7 +2021,7 @@ export function scheduleWarrantScraper(): void {
         backoffAttempts.set(config.source_key, attempt);
         const backoffMs = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt - 1), BACKOFF_MAX_MS);
 
-        console.log(`[Warrant Scraper] ${config.display_name} circuit-broken — recovery in ${(backoffMs / 3_600_000).toFixed(1)}h`);
+        console.log(`[Warrant Scraper] ${displayNameOf(config)} circuit-broken — recovery in ${(backoffMs / 3_600_000).toFixed(1)}h`);
 
         const timeout = setTimeout(() => {
           const db = getDb();
