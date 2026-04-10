@@ -985,6 +985,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       plate_number: v => v ?? null, plate_state: v => v ?? null,
       status: v => v ?? null, current_mileage: v => v ?? null,
       next_service_mileage: v => v ?? null,
+      last_service_date: v => v ?? null, next_service_due: v => v ?? null,
       insurance_expiry: v => v ?? null, registration_expiry: v => v ?? null,
       notes: v => v ?? null,
     };

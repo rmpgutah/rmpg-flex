@@ -1557,8 +1557,7 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'vehicle_description', 'TEXT');
   addCol('calls_for_service', 'direction_of_travel', 'TEXT');
   addCol('calls_for_service', 'archived_at', 'TEXT');
-  addCol('calls_for_service', 'caller_address', "TEXT DEFAULT ''");
-  addCol('calls_for_service', 'zone_beat', "TEXT DEFAULT ''");
+  // NOTE: caller_address and zone_beat already added above (lines 1544-1545); duplicates removed
   addCol('calls_for_service', 'responding_officer', 'TEXT');
   addCol('calls_for_service', 'secondary_type', 'TEXT');
   addCol('calls_for_service', 'contact_method', 'TEXT');
@@ -4518,6 +4517,15 @@ function migrateSchema(): void {
   addCol('forensic_cases', 'lab_number', 'TEXT');
   addCol('forensic_cases', 'lead_examiner_id', 'INTEGER');
   addCol('forensic_cases', 'linked_case_id', 'INTEGER');
+
+  // Field interviews — columns from Phase 2 schema missing in Phase 1 CREATE TABLE
+  addCol('field_interviews', 'date', 'TEXT');
+  addCol('field_interviews', 'time', 'TEXT');
+  addCol('field_interviews', 'gang_affiliation', 'TEXT');
+  addCol('field_interviews', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
+
+  // Court events — defendant DOB for data entry
+  addCol('court_events', 'defendant_dob', 'TEXT');
 
   // Dashcam videos — incident linkage
   addCol('dashcam_videos', 'incident_id', 'INTEGER');
