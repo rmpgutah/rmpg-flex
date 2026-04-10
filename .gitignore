@@ -67,3 +67,12 @@ firebase-debug.log
 !.github/ISSUE_TEMPLATE/
 !.github/workflows/
 .firecrawl/
+
+# ─── Visual Studio IDE state (should never be committed) ─────
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+RMPG Flare/
+

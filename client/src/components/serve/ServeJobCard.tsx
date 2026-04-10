@@ -34,7 +34,7 @@ interface ServeJobCardProps {
 }
 
 const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
-  pending: { bg: 'bg-blue-500', glow: 'shadow-[0_0_6px_rgba(59,130,246,0.5)]' },
+  pending: { bg: 'bg-blue-500', glow: 'shadow-[0_0_6px_rgba(136, 136, 136,0.5)]' },
   in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]' },
   served: { bg: 'bg-green-500', glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]' },
   failed: { bg: 'bg-red-500', glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]' },
@@ -124,7 +124,7 @@ export default React.memo(function ServeJobCard({
       aria-label={`Serve job: ${job.recipient_name}`}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand?.(); } }}
       className={`
-        panel-beveled rounded-[2px] transition-all duration-150 hover:bg-[#1e2d3f] hover:shadow-md
+        panel-beveled rounded-[2px] transition-all duration-150 hover:bg-[#1a1a1a] hover:shadow-md
         ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
         ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
       `}

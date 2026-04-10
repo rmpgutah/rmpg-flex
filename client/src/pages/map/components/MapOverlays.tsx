@@ -103,14 +103,14 @@ export default function MapOverlays({
         >
           <div className="flex items-center gap-0.5 px-1.5 py-1">
             {/* #9: Connection status LED with glow effect */}
-            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b313a' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b2b2b' }}>
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} style={{ boxShadow: isConnected ? '0 0 6px #22c55e80' : '0 0 6px #ef444480' }} />
               <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
                 {isConnected ? 'LIVE' : 'DISC'}
               </span>
             </div>
 
-            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b313a' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b2b2b' }}>
               <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
               {/* #10: Tabular-nums for monospaced number alignment in stats bar */}
               <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
@@ -156,7 +156,7 @@ export default function MapOverlays({
               ? { top: 56, left: 8, right: 8 }
               : { bottom: 48, left: 16, minWidth: 200 }),
             background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(59,130,246,0.3)' : '1px solid #3b82f650',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
             padding: '8px 14px',
             fontFamily: "'JetBrains Mono', 'Courier New', monospace",
             borderRadius: 2,
@@ -169,7 +169,7 @@ export default function MapOverlays({
             </span>
             <button type="button"
               onClick={clearRoute}
-              className="hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97] rounded-sm"
+              className="hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
               style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
               aria-label="Clear route"
               title="Clear route"
@@ -201,7 +201,7 @@ export default function MapOverlays({
             style={{
               borderRadius: 2,
               background: 'rgba(13, 21, 32, 0.9)',
-              border: '1px solid #2b313a',
+              border: '1px solid #2b2b2b',
             }}
           >
             <button type="button"
@@ -210,7 +210,7 @@ export default function MapOverlays({
                 if (map) map.setZoom((map.getZoom() || 12) + 1);
               }}
               className="flex items-center justify-center transition-all duration-150 hover:bg-white/10 active:bg-white/20 active:scale-[0.97]"
-              style={{ width: 48, height: 48, borderBottom: '1px solid #2b313a' }}
+              style={{ width: 48, height: 48, borderBottom: '1px solid #2b2b2b' }}
               aria-label="Zoom in"
               title="Zoom in"
             >
@@ -266,7 +266,7 @@ export default function MapOverlays({
           }}
           className={`backdrop-blur-md shadow-xl transition-colors ${
             isLightMapStyle(mapStyle)
-              ? 'bg-white/90 border border-gray-300 hover:bg-[#1b2128]'
+              ? 'bg-white/90 border border-gray-300 hover:bg-[#181818]'
               : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
           }`}
           style={isMobile

@@ -40,7 +40,7 @@ const GRADE_COLORS: Record<string, string> = {
 const METRIC_CONFIG: { key: keyof ScorecardData['metrics']; label: string; icon: React.ElementType; color: string }[] = [
   { key: 'response_time', label: 'Response Time', icon: Activity, color: '#888888' },
   { key: 'call_volume', label: 'Call Volume', icon: BarChart3, color: '#8b5cf6' },
-  { key: 'patrol_coverage', label: 'Patrol Coverage', icon: Target, color: '#06b6d4' },
+  { key: 'patrol_coverage', label: 'Patrol Coverage', icon: Target, color: '#888888' },
   { key: 'report_completion', label: 'Reports', icon: Award, color: '#d4a017' },
   { key: 'proactive_activity', label: 'Proactive', icon: TrendingUp, color: '#22c55e' },
   { key: 'safety', label: 'Safety', icon: Shield, color: '#f97316' },

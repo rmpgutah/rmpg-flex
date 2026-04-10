@@ -117,7 +117,7 @@ function Section({
       {/* #29: Section toggle with smooth chevron rotation */}
       <button type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 w-full text-left py-1 transition-all duration-150 active:scale-[0.97] hover:bg-[#1b2128]/30 rounded-sm"
+        className="flex items-center gap-1 w-full text-left py-1 transition-all duration-150 active:scale-[0.97] hover:bg-[#181818]/30 rounded-sm"
         aria-expanded={open}
       >
         <ChevronRight size={10} className="text-rmpg-500 transition-transform duration-200" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
@@ -171,14 +171,14 @@ export default function SafetyDashboardPanel({
             Safety Dashboard
           </span>
         </div>
-        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1b2128] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close safety dashboard">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#181818] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close safety dashboard">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent"
+        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Section 1: Shift Risk Score ──────────────────── */}
@@ -434,7 +434,7 @@ export default function SafetyDashboardPanel({
         {shiftRisk && shiftRisk.alerts.length > 0 && (
           <Section title="Alerts History" defaultOpen={false}>
             <div
-              className="space-y-0.5 max-h-[120px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent"
+              className="space-y-0.5 max-h-[120px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
               style={{ scrollbarWidth: 'thin' }}
             >
               {shiftRisk.alerts.map((alert, i) => (
