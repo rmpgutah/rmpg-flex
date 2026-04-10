@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "5.5.0",
+  "version": "5.7.0",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -96,7 +96,11 @@
     "electron-updater": "^6.8.3"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron": "^40.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "overrides": {
+    "lodash": ">=4.18.0",
+    "tar": ">=6.2.1"
   }
 }

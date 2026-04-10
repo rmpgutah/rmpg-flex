@@ -6,8 +6,8 @@ import config from '../config';
 
 const ALGORITHM = 'aes-256-gcm';
 
-// Safe accessors with fallbacks in case config.twoFactor is undefined
-const twoFactorConfig = () => config.twoFactor || {} as Record<string, any>;
+// Safe accessors — TOTP settings live under config.totp
+const twoFactorConfig = () => config.totp as { encryptionKey: string; issuer: string; requiredRoles: string[]; backupCodeCount: number; trustedDeviceDays: number };
 
 // ─── TOTP Secret Generation ──────────────────────────
 
@@ -99,13 +99,40 @@ export function isTotpCodeUsed(userId: number, code: string): boolean {
   return (Date.now() - ts) < REPLAY_WINDOW_MS;
 }
 
+/**
+ * Atomically check AND mark a TOTP code as used — prevents race conditions
+ * where two concurrent requests could both pass isTotpCodeUsed() before either
+ * calls markTotpCodeUsed(). Returns true if code was already used (reject).
+ */
+export function checkAndMarkTotpCode(userId: number, code: string): boolean {
+  const key = `${userId}:${code}`;
+  const ts = usedCodes.get(key);
+  const now = Date.now();
+  if (ts && (now - ts) < REPLAY_WINDOW_MS) {
+    return true; // Already used — reject
+  }
+  // Mark immediately before returning — atomic in single-threaded Node.js
+  usedCodes.set(key, now);
+  return false; // Not used — proceed
+}
+
 /** Mark a TOTP code as used for this user. */
 export function markTotpCodeUsed(userId: number, code: string): void {
   // Enforce size cap — evict oldest entries if at limit
   if (usedCodes.size >= MAX_REPLAY_ENTRIES) {
-    const oldest = [...usedCodes.entries()].sort((a, b) => a[1] - b[1]);
-    for (let i = 0; i < Math.ceil(MAX_REPLAY_ENTRIES / 4); i++) {
-      usedCodes.delete(oldest[i][0]);
+    // O(n) single-pass eviction: find the cutoff timestamp for oldest 25%
+    const evictCount = Math.ceil(MAX_REPLAY_ENTRIES / 4);
+    // Collect timestamps to find the Nth smallest without full sort
+    const timestamps: number[] = [];
+    for (const ts of usedCodes.values()) timestamps.push(ts);
+    timestamps.sort((a, b) => a - b); // sort only timestamps (small array of numbers)
+    const cutoff = timestamps[evictCount - 1];
+    let deleted = 0;
+    for (const [k, ts] of usedCodes) {
+      if (ts <= cutoff && deleted < evictCount) {
+        usedCodes.delete(k);
+        deleted++;
+      }
     }
   }
   usedCodes.set(`${userId}:${code}`, Date.now());

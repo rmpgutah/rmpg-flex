@@ -8,8 +8,9 @@
 
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
-import { fetchPdfBranding, DEFAULT_PDF_BRANDING } from './pdfGenerator';
+import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark } from './pdfGenerator';
 import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
+import { localToday } from './dateUtils';
 
 // ── Types matching the server patrol-tracking response ──────
 
@@ -86,7 +87,7 @@ export interface PatrolTrackingReportData {
 
 function formatDateTime(isoStr: string): string {
   try {
-    const d = new Date(isoStr);
+    const d = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' '
       + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch { return isoStr; }
@@ -94,14 +95,14 @@ function formatDateTime(isoStr: string): string {
 
 function formatTime(isoStr: string): string {
   try {
-    return new Date(isoStr).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch { return isoStr; }
 }
 
 function formatDate(isoStr: string | null): string {
-  if (!isoStr) return '-';
+  if (!isoStr) return 'N/A';
   try {
-    return new Date(isoStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return isoStr; }
 }
 
@@ -138,10 +139,18 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const pageH = doc.internal.pageSize.getHeight();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - margin * 2;
-  const reportDate = new Date().toLocaleString('en-US');
+  const reportDate = new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
   const formNum = FORM_NUMBERS['patrol_tracking'] || 'FORM PS-210';
 
   let yPos: number = margin;
+
+  // Add watermark to the first page (newPage() handles subsequent pages)
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState — safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
 
   // ── Utility: add header/footer to each page ──────────
   // Page 1 = cover (no top header bar — it has its own centered layout)
@@ -150,7 +159,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     // Only draw the top header bar on pages 2+
     if (pageNum > 1) {
       // Dark gray header bar
-      doc.setFillColor(55, 60, 72);
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
       doc.rect(0, 0, pageW, 14, 'F');
 
       // Logo in header
@@ -161,14 +170,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       }
 
       const textX = logoB64 ? margin + 14 : margin;
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
       doc.setFont('helvetica', 'bold');
-      doc.text(branding.report_header_text, textX, 6);
-      doc.setFontSize(6.5);
+      doc.text(sanitizePdfText(branding.report_header_text).toUpperCase(), textX, 6);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'normal');
       doc.text('PATROL DIVISION', textX, 10);
-      doc.setFontSize(7);
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
 
       // Accent strip
@@ -179,61 +188,68 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     }
 
     // Footer on ALL pages
-    doc.setFillColor(240, 240, 245);
-    doc.rect(0, pageH - 8, pageW, 8, 'F');
+    const footerH = 8;
+    const footerY = pageH - footerH;
+    doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
+    doc.rect(0, footerY, pageW, footerH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(0.2);
-    doc.line(0, pageH - 8, pageW, pageH - 8);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.line(0, footerY, pageW, footerY);
     doc.setTextColor(...COLOR.TEXT_MUTED);
-    doc.setFontSize(5.5);
-    doc.text(`Generated: ${reportDate}  |  ${formNum}  |  CONFIDENTIAL — INTERNAL USE ONLY`, margin, pageH - 3.5);
-    doc.text(`Page ${pageNum} of ${totalPages}`, pageW - margin, pageH - 3.5, { align: 'right' });
+    doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(sanitizePdfText(`${formNum}  |  INTERNAL USE ONLY  |  Page ${pageNum} of ${totalPages}`), margin, footerY + footerH / 2 + 0.5);
+    doc.text(sanitizePdfText(`GENERATED: ${reportDate.toUpperCase()}`), pageW - margin, footerY + footerH / 2 + 0.5, { align: 'right' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
   }
 
   // ── Utility: draw a section header bar (dark gray bg + white text) ──
   function drawSectionHeader(title: string) {
-    const barH = 7;
-    doc.setFillColor(55, 60, 72);
+    const barH = SPACING.SECTION_HEADER_H;
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(margin, yPos, contentW, barH, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + 1.2);
-    doc.setFont('helvetica', 'normal');
+    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + FONT.SIZE_SECTION_TITLE * 0.14);
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    yPos += barH + 3;
+    yPos += barH + SPACING.LG;
   }
 
   // ── Utility: draw table column headers ──────────────
   function drawColumnHeaders(cols: { label: string; w: number }[]) {
+    const hdrH = 5;
     doc.setFillColor(...COLOR.BG_TABLE_HDR);
-    doc.rect(margin, yPos, contentW, 5, 'F');
+    doc.rect(margin, yPos, contentW, hdrH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
-    doc.line(margin, yPos + 5, margin + contentW, yPos + 5);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(6);
+    doc.line(margin, yPos + hdrH, margin + contentW, yPos + hdrH);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
     for (const col of cols) {
-      doc.text(col.label, xOff + 1, yPos + 3.5);
+      doc.text(col.label.toUpperCase(), xOff + 1, yPos + 3.5);
       xOff += col.w;
     }
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    yPos += 6;
+    yPos += hdrH + 1;
   }
 
   // ── Utility: new page with proper yPos ──────────────
   function newPage() {
     doc.addPage();
+    addConfidentialWatermark(doc);
+    // @ts-expect-error jsPDF GState — safety reset after watermark
+    doc.setGState(new doc.GState({ opacity: 1.0 }));
     yPos = margin + 18; // after header + accent strip
   }
 
   // ── Utility: check space and maybe new page ────────
   function ensureSpace(needed: number) {
-    if (yPos + needed > pageH - 12) {
+    if (yPos + needed > pageH - LAYOUT.FOOTER_HEIGHT - 5) {
       newPage();
     }
   }
@@ -262,12 +278,12 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text(branding.report_header_text, pageW / 2, titleY, { align: 'center' });
+  doc.text(sanitizePdfText(branding.report_header_text), pageW / 2, titleY, { align: 'center' });
 
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(branding.report_subheader_text, pageW / 2, titleY + 6, { align: 'center' });
+  doc.text(sanitizePdfText(branding.report_subheader_text), pageW / 2, titleY + 6, { align: 'center' });
 
   // Bold report title
   doc.setFontSize(14);
@@ -276,7 +292,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...COLOR.TEXT_MUTED);
   doc.text(`${formNum}  |  ${FORM_REVISION}`, pageW / 2, titleY + 19, { align: 'center' });
 
@@ -294,29 +310,33 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
   // Report metadata
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setFont('courier', 'normal');
 
   const startLabel = data.query.startDate
     ? formatDate(data.query.startDate)
-    : `Last ${data.query.hours} hours`;
+    : `LAST ${data.query.hours} HOURS`;
   const endLabel = data.query.endDate
     ? formatDate(data.query.endDate)
-    : 'Now';
+    : 'NOW';
 
   const metaLines = [
-    ['Report Period:', `${startLabel} — ${endLabel}`],
-    ['Units Tracked:', String(data.total_units)],
-    ['Total Breadcrumbs:', String(data.total_points)],
-    ['Generated:', reportDate],
+    ['REPORT PERIOD:', `${startLabel.toUpperCase()} -- ${endLabel.toUpperCase()}`],
+    ['UNITS TRACKED:', String(data.total_units)],
+    ['TOTAL BREADCRUMBS:', String(data.total_points)],
+    ['GENERATED:', reportDate.toUpperCase()],
   ];
 
   for (const [label, value] of metaLines) {
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, margin + 4, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text(value, margin + 42, yPos);
-    yPos += 5;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(sanitizePdfText(value), margin + 42, yPos);
+    yPos += SPACING.FIELD_ROW_ADVANCE;
   }
   yPos += 6;
 
@@ -337,13 +357,13 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge: ${trail.badge_number || 'N/A'})`, margin + 5, yPos + 4.2);
+    doc.text(sanitizePdfText(`${trail.call_sign}  --  ${trail.officer_name}  (BADGE: ${trail.badge_number || 'N/A'})`).toUpperCase(), margin + 5, yPos + 4.2);
     yPos += 8;
 
     // Stats grid
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT.SIZE_TABLE_BODY);
+    doc.setFont('courier', 'normal');
 
     const stats = trail.stats;
     const zonesCount = trail.zone_coverage ? Object.keys(trail.zone_coverage).length : 0;
@@ -352,15 +372,15 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
       : '';
     const statItems = [
-      `Distance: ${stats.total_distance_miles} mi`,
-      `Duration: ${stats.duration_minutes} min`,
-      `Points: ${stats.total_points}`,
-      `Moving: ${stats.moving_points} (${movingPct}%)`,
-      `Max Speed: ${stats.max_speed_mph} mph`,
-      `Avg Speed: ${stats.avg_speed_mph} mph`,
-      `Calls: ${trail.response_segments.length}`,
-      `Zones: ${zonesCount}`,
-      ...(sourceStr ? [`Sources: ${sourceStr}`] : []),
+      `DISTANCE: ${stats.total_distance_miles} MI`,
+      `DURATION: ${stats.duration_minutes} MIN`,
+      `POINTS: ${stats.total_points}`,
+      `MOVING: ${stats.moving_points} (${movingPct}%)`,
+      `MAX SPEED: ${stats.max_speed_mph} MPH`,
+      `AVG SPEED: ${stats.avg_speed_mph} MPH`,
+      `CALLS: ${trail.response_segments.length}`,
+      `ZONES: ${zonesCount}`,
+      ...(sourceStr ? [`SOURCES: ${sourceStr}`] : []),
     ];
 
     // 4 items per row
@@ -369,7 +389,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     for (let i = 0; i < statItems.length; i++) {
       const col = i % 4;
       const row = Math.floor(i / 4);
-      doc.text(statItems[i], margin + 4 + col * colW, yPos + row * 4.5);
+      doc.text(sanitizePdfText(statItems[i]), margin + 4 + col * colW, yPos + row * 4.5);
     }
     yPos += rowCount * 4.5 + 3;
   }
@@ -382,7 +402,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     newPage();
 
     // Section header — light bg
-    drawSectionHeader(`${trail.call_sign}  —  ${trail.officer_name}  |  Breadcrumb Detail`);
+    drawSectionHeader(sanitizePdfText(`${trail.call_sign}  --  ${trail.officer_name}  |  Breadcrumb Detail`));
 
     // Table headers — expanded with Date/Time, Beat, Sector, Zone, Call Type, Source
     const cols = [
@@ -415,7 +435,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     // Table rows
     doc.setFontSize(5.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
 
     // Sample points for readability — if > 300 points, sample every Nth
     const maxRows = 300;
@@ -441,30 +461,30 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       let xOff = margin;
 
       // Extract beat code and sector from zone string (e.g., "Riverton D2" → sector "D", beat "2")
-      const beatCode = pt.beat_code || '-';
-      const zoneParts = pt.zone || '-';
+      const beatCode = pt.beat_code || 'N/A';
+      const zoneParts = pt.zone || 'N/A';
       // beat_code is the full identifier; zone is the area label
-      const sector = beatCode !== '-' ? beatCode.replace(/[0-9]/g, '') : '-';
+      const sector = beatCode !== 'N/A' ? beatCode.replace(/[0-9]/g, '') : 'N/A';
 
       const rowData = [
-        formatDateTime(pt.time),                                        // Date/Time
-        beatCode,                                                       // Beat
-        sector,                                                         // Sector
-        zoneParts,                                                      // Zone
-        pt.road_name || '-',                                            // Road
-        pt.nearest_intersection || '-',                                 // Cross St
-        pt.speed_mph != null ? `${pt.speed_mph}` : '-',                // Speed
-        pt.heading_cardinal || '-',                                     // Heading
+        formatDateTime(pt.time).toUpperCase(),                           // Date/Time
+        beatCode.toUpperCase(),                                          // Beat
+        sector.toUpperCase(),                                            // Sector
+        (typeof zoneParts === 'string' ? zoneParts : String(zoneParts)).toUpperCase(), // Zone
+        (pt.road_name || 'N/A').toUpperCase(),                             // Road
+        (pt.nearest_intersection || 'N/A').toUpperCase(),                  // Cross St
+        pt.speed_mph != null ? `${pt.speed_mph}` : 'N/A',                // Speed
+        (pt.heading_cardinal || 'N/A').toUpperCase(),                      // Heading
         (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
-        (pt.status || '-').replace(/_/g, ' '),                          // Status
-        pt.current_call_number || '-',                                  // Call #
-        (pt.current_call_type || '-').replace(/_/g, ' '),              // Call Type
-        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',  // Dist
-        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : '-',  // Lat/Lng
+        (pt.status || 'N/A').replace(/_/g, ' ').toUpperCase(),            // Status
+        (pt.current_call_number || 'N/A').toUpperCase(),                   // Call #
+        (pt.current_call_type || 'N/A').replace(/_/g, ' ').toUpperCase(), // Call Type
+        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : 'N/A',  // Dist
+        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : 'N/A',  // Lat/Lng
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
-        doc.text(rowData[ci], xOff + 0.8, yPos + 3, { maxWidth: cols[ci].w - 1.5 });
+        doc.text(sanitizePdfText(rowData[ci]), xOff + 0.8, yPos + 3, { maxWidth: cols[ci].w - 1.5 });
         xOff += cols[ci].w;
       }
 
@@ -501,7 +521,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(rCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       for (let si = 0; si < trail.response_segments.length; si++) {
@@ -515,18 +535,18 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let rxOff = margin;
         const rRowData = [
-          seg.call_number || '-',
-          (seg.incident_type || '-').replace(/_/g, ' '),
-          `P${seg.priority}`,
-          seg.dispatched_at ? formatDateTime(seg.dispatched_at) : '-',
-          seg.onscene_at ? formatDateTime(seg.onscene_at) : '-',
-          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds) : '-',
-          seg.response_distance_miles != null ? `${seg.response_distance_miles} mi` : '-',
+          (seg.call_number || 'N/A').toUpperCase(),
+          (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
+          `P${seg.priority}`.toUpperCase(),
+          seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
+          seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
+          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',
+          seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : 'N/A',
           String(seg.breadcrumb_count || 0),
         ];
 
         for (let ci = 0; ci < rCols.length; ci++) {
-          doc.text(rRowData[ci], rxOff + 1, yPos + 3, { maxWidth: rCols[ci].w - 1.5 });
+          doc.text(sanitizePdfText(rRowData[ci]), rxOff + 1, yPos + 3, { maxWidth: rCols[ci].w - 1.5 });
           rxOff += rCols[ci].w;
         }
         yPos += 4.5;
@@ -553,7 +573,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(zCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       // Sort by time spent descending
@@ -570,22 +590,28 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let zxOff = margin;
         const zRowData = [
-          beatId || '-',
-          zone.beat_code || '-',
-          zone.city || '-',
+          (beatId || 'N/A').toUpperCase(),
+          (zone.beat_code || 'N/A').toUpperCase(),
+          (zone.city || 'N/A').toUpperCase(),
           String(zone.point_count || 0),
-          formatDuration(zone.time_seconds || 0),
+          formatDuration(zone.time_seconds || 0).toUpperCase(),
           `${zone.percentage || 0}%`,
         ];
 
         for (let ci = 0; ci < zCols.length; ci++) {
-          doc.text(zRowData[ci], zxOff + 1, yPos + 3, { maxWidth: zCols[ci].w - 1.5 });
+          doc.text(sanitizePdfText(zRowData[ci]), zxOff + 1, yPos + 3, { maxWidth: zCols[ci].w - 1.5 });
           zxOff += zCols[ci].w;
         }
         yPos += 4.5;
       }
     }
   }
+
+  // ── Signature Block ──────────────────────────────────
+  yPos = checkPageBreak(doc, yPos, 30);
+  yPos += 3;
+  const cw = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN * 2;
+  yPos = addSignatureBlock(doc, 'Reporting Officer', LAYOUT.PAGE_MARGIN, yPos, cw);
 
   // ── Apply headers/footers to all pages ───────────────
   const totalPages = doc.internal.pages.length - 1;
@@ -595,7 +621,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   }
 
   // ── Save the PDF ─────────────────────────────────────
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const dateStr = localToday().replace(/-/g, '');
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);

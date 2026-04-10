@@ -52,9 +52,17 @@ const PULL_INTERVALS: Record<string, number> = {
   time_entries:       120_000,  // 2 min
   persons:            600_000,  // 10 min
   vehicles_records:   600_000,  // 10 min
+  citations:          120_000,  // 2 min
+  field_interviews:   120_000,  // 2 min
+  evidence:           300_000,  // 5 min
+  criminal_history:   120_000,  // 2 min
+  patrol_scans:       300_000,  // 5 min
+  patrol_checkpoints: 300_000,  // 5 min (reference data)
+  trespass_orders:    300_000,  // 5 min
+  warrants:           600_000,  // 10 min (read-only cache)
 };
 
-const REFERENCE_TABLES = ['users', 'clients', 'properties'];
+const REFERENCE_TABLES = ['users', 'clients', 'properties', 'patrol_checkpoints'];
 
 // ─── Event System ───────────────────────────────────────────
 
@@ -97,10 +105,10 @@ export function startSyncSchedule(url: string, token?: string): void {
   console.log('[SYNC] Starting pull schedule');
 
   // Do an initial full pull
-  pullAll().catch(err => console.error('[SYNC] Initial pull failed:', err.message));
+  pullAll().catch(err => console.error('[SYNC] Initial pull failed:', err?.message || err));
 
   // Also pull offline secrets for PIN system
-  pullSecrets().catch(err => console.error('[SYNC] Secrets pull failed:', err.message));
+  pullSecrets().catch(err => console.error('[SYNC] Secrets pull failed:', err?.message || err));
 
   // Set up recurring timers per table
   for (const [table, interval] of Object.entries(PULL_INTERVALS)) {
@@ -109,7 +117,7 @@ export function startSyncSchedule(url: string, token?: string): void {
       // Skipping when offline prevents wasted fetch attempts on metered connections
       if (document.visibilityState === 'visible' && navigator.onLine) {
         pullTable(table).catch(err => {
-          console.error(`[SYNC] Pull ${table} failed:`, err.message);
+          console.error(`[SYNC] Pull ${table} failed:`, err?.message || err);
         });
       }
     }, interval);
@@ -117,7 +125,7 @@ export function startSyncSchedule(url: string, token?: string): void {
 
   // Pull secrets every 10 minutes
   pullTimers._secrets = setInterval(() => {
-    pullSecrets().catch(err => console.error('[SYNC] Secrets pull failed:', err.message));
+    pullSecrets().catch(err => console.error('[SYNC] Secrets pull failed:', err?.message || err));
   }, 600_000);
 
   // When tab becomes visible, do a quick refresh
@@ -228,9 +236,9 @@ export async function pushAll(): Promise<void> {
           }
         }
       } catch (err: any) {
-        console.error('[SYNC] Batch push failed:', err.message);
+        console.error('[SYNC] Batch push failed:', err?.message || err);
         for (const item of batch) {
-          await markQueueItem(item.id!, 'pending', null, err.message);
+          await markQueueItem(item.id!, 'pending', null, err?.message || 'Sync failed');
         }
         errors += batch.length;
       }
@@ -266,7 +274,7 @@ export function getSyncState() {
 function handleVisibilityChange(): void {
   if (document.visibilityState === 'visible' && navigator.onLine) {
     // Tab became visible and online — catch up on missed data
-    pullAll().catch(err => console.warn('[SYNC] Visibility pull failed:', err.message));
+    pullAll().catch(err => console.warn('[SYNC] Visibility pull failed:', err?.message || err));
   }
 }
 
@@ -298,7 +306,7 @@ async function pullTable(table: string): Promise<void> {
     console.log(`[SYNC] Pulled ${response.rows.length} rows for ${table}`);
   } catch (err: any) {
     // Silently fail — will retry on next interval
-    console.warn(`[SYNC] Pull ${table} failed:`, err.message);
+    console.warn(`[SYNC] Pull ${table} failed:`, err?.message || err);
   }
 }
 
@@ -326,7 +334,7 @@ async function pullSecrets(): Promise<void> {
 
     console.log('[SYNC] Offline secrets updated');
   } catch (err: any) {
-    console.warn('[SYNC] Secrets pull failed:', err.message);
+    console.warn('[SYNC] Secrets pull failed:', err?.message || err);
   }
 }
 
@@ -365,7 +373,7 @@ async function pushGpsBreadcrumbs(): Promise<void> {
       console.log(`[SYNC] Pushed ${batch.length} GPS breadcrumbs`);
     }
   } catch (err: any) {
-    console.warn('[SYNC] GPS push failed:', err.message);
+    console.warn('[SYNC] GPS push failed:', err?.message || err);
   }
 }
 
@@ -400,7 +408,14 @@ async function serverFetch(endpoint: string, options: RequestInit = {}): Promise
       return refreshAndRetry(endpoint, options);
     }
 
-    const data = await response.json();
+    // Parse JSON safely — non-2xx responses may not have valid JSON bodies
+    let data: any;
+    try {
+      data = await response.json();
+    } catch {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      throw new Error('Invalid JSON response');
+    }
 
     if (response.ok) {
       return data;
@@ -425,7 +440,7 @@ async function refreshAndRetry(endpoint: string, options: RequestInit): Promise<
 
   const refreshResponse = await fetch(`${serverUrl}/api/auth/refresh`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     body: JSON.stringify({ refreshToken }),
   });
 

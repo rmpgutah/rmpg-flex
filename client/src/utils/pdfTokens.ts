@@ -13,22 +13,22 @@ export type RGBColor = readonly [number, number, number];
 export const COLOR = {
   // Text hierarchy
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
-  TEXT_SECONDARY:  [50, 50, 50]     as const,  // Helvetica labels (darker)
+  TEXT_SECONDARY:  [74, 85, 104]    as const,  // Helvetica labels (#4a5568)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
-  // Borders — clean, professional lines
-  BORDER_FIELD:    [160, 160, 165]  as const,  // Field box borders
-  BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
-  BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
-  BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
-  BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
+  // Borders — thin, clean lines
+  BORDER_FIELD:    [190, 190, 190]  as const,  // Field box borders (light gray)
+  BORDER_TABLE:    [200, 200, 200]  as const,  // Row separator lines (very light)
+  BORDER_COLUMN:   [200, 200, 200]  as const,  // Vertical column separators
+  BORDER_OUTER:    [180, 180, 180]  as const,  // Table outer border
+  BORDER_SECTION:  [100, 100, 100]  as const,  // Section outline
 
-  // Backgrounds — lighter, modern government-form style
-  BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [55, 60, 72]     as const,  // Section header bar (dark slate, not black)
-  BG_TABLE_HDR:    [70, 75, 88]     as const,  // Table column header (slate)
+  // Backgrounds
+  BG_ZEBRA:        [245, 245, 245]  as const,  // Even-row shading (very light gray)
+  BG_SECTION_HDR:  [60, 60, 60]     as const,  // Section header bar (dark gray)
+  BG_TABLE_HDR:    [100, 100, 100]   as const,  // Table column header (medium gray)
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -36,6 +36,17 @@ export const COLOR = {
 
   // Watermark
   WATERMARK:       [120, 120, 120]  as const,
+
+  // Caution / Warning
+  CAUTION_BG:      [255, 248, 230]  as const,  // Amber background
+  CAUTION_ACCENT:  [200, 80, 10]    as const,  // Amber accent bar
+  CAUTION_TEXT:    [180, 60, 0]     as const,  // Warning text
+  FLAG_ARMED:      [180, 20, 20]    as const,  // ARMED & DANGEROUS
+  FLAG_WARRANT:    [200, 60, 0]     as const,  // Active warrant
+  FLAG_GANG:       [120, 40, 140]   as const,  // Gang affiliation
+  FLAG_MENTAL:     [40, 90, 170]    as const,  // Mental health
+  FLAG_MEDICAL:    [0, 130, 80]     as const,  // Medical condition
+  FLAG_DEFAULT:    [80, 80, 90]     as const,  // Generic flag
 
   // NIBRS Grid Form — sidebar tabs + dense cells
   BG_SIDEBAR_TAB:      [25, 25, 30]     as const,  // Dark sidebar tab background
@@ -49,14 +60,14 @@ export const COLOR = {
 
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
-  SIZE_SECTION_TITLE:     8,     // Section header bar text (all-caps)
-  SIZE_FIELD_VALUE:       8.5,   // Courier values inside field boxes
-  SIZE_FIELD_LABEL:       6,     // Helvetica labels above field boxes
-  SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
+  SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
+  SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
+  SIZE_FIELD_LABEL:       5.5,   // Helvetica Bold labels above field boxes
+  SIZE_TABLE_HEADER:      8,     // Helvetica column headers (bold, readable)
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
-  SIZE_FOOTER_PRIMARY:    5,     // Footer form #, page #
-  SIZE_FOOTER_SECONDARY:  4.5,   // Footer secondary info
-  SIZE_SMALL_META:        5,     // Form revision, report date
+  SIZE_FOOTER_PRIMARY:    6,     // Footer form #, page #
+  SIZE_FOOTER_SECONDARY:  5,     // Footer secondary info
+  SIZE_SMALL_META:        5.5,   // Form revision, report date
   SIZE_CHECKBOX_LABEL:    6.5,   // Checkbox labels
   SIZE_BANNER:            14,    // Large notice banners
   SIZE_BANNER_SMALL:      8,     // Mandatory report banner
@@ -79,7 +90,7 @@ export const FONT = {
 
 export const BORDER = {
   SECTION_OUTER:    0.5,   // Border around sections (clean)
-  FIELD:            0.25,  // Field box borders (subtle grid)
+  FIELD:            0.3,   // Field box borders (0.3pt, clean grid)
   TABLE_OUTER:      0.5,   // Outer border of tables
   TABLE_ROW:        0.15,  // Row separators (subtle)
   TABLE_COLUMN:     0.15,  // Column separators (subtle)
@@ -99,42 +110,42 @@ export const BORDER = {
 // ── Spacing Tokens (tighter throughout) ──────────────────────
 
 export const SPACING = {
-  XS:                 0.2,   // Micro padding
-  SM:                 0.8,   // Small gap
-  MD:                 1.5,   // Base unit
-  LG:                 3,     // Line height
-  XL:                 3.5,   // Generous gap
+  XS:                 0.1,   // Micro padding
+  SM:                 0.5,   // Small gap
+  MD:                 1,     // Base unit
+  LG:                 2,     // Line height
+  XL:                 2.5,   // Generous gap
 
-  CONTENT_INSET:      1.5,   // Left/right padding inside sections
-  SECTION_HEADER_H:   5,     // Section header bar height
-  SECTION_GAP:        2,     // Gap between sections
-  SECTION_CONTENT_PAD: 2,    // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  2,    // Padding inside section before bottom border
+  CONTENT_INSET:      1,     // Left/right padding inside sections
+  SECTION_HEADER_H:   3.8,   // Section header bar height (compact)
+  SECTION_GAP:        0.5,   // Gap between sections
+  SECTION_CONTENT_PAD: 1.5,  // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  0.3,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   8,     // Height of field box
-  FIELD_ROW_ADVANCE:  8.5,   // Y-advance after field row
+  FIELD_ROW_HEIGHT:   2.8,   // Value area height (no box, just label+value)
+  FIELD_ROW_ADVANCE:  2.8,   // Y-advance after field row (tight)
 
-  SIGNATURE_BOX_H:    28,    // Signature block total height
-  SIGNATURE_ROLE_H:   4.5,   // Role label header bar height
-  SIGNATURE_SUB_GAP:  5,     // Gap between sig line and sub-fields
+  SIGNATURE_BOX_H:    20,    // Signature block total height (compact)
+  SIGNATURE_ROLE_H:   4,     // Role label header bar height
+  SIGNATURE_SUB_GAP:  4,     // Gap between sig line and sub-fields
 
-  FORM_CELL_PAD:      1,     // Padding inside form cells
-  FORM_CELL_LABEL_H:  3.5,   // Form cell label height
-  FORM_CELL_H:        7,     // Form cell total height
+  FORM_CELL_PAD:      0.5,   // Padding inside form cells (tight)
+  FORM_CELL_LABEL_H:  2,     // Form cell label strip height (compact)
+  FORM_CELL_H:        7,     // Form cell total height (compact)
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
 
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
-  HEADER_HEIGHT:     19,     // Compact header bar
-  FOOTER_HEIGHT:     5.5,    // Slim footer
+  HEADER_HEIGHT:     16,     // Header bar
+  FOOTER_HEIGHT:     7,      // Footer (compact, closer to content)
   HEADER_TOP:        5,      // Y-start of header bar
   CLASSIF_BAR_H:     4.5,    // Classification bar height
   SEAL_SIZE:         13,     // Compact logo
   ACCENT_STRIP_H:    0.8,   // Thin accent strip below header
   CASE_BOX_W:        42,     // Case number box width
-  LINE_HEIGHT:       3.2,    // Base line height for wrapped text
+  LINE_HEIGHT:       2.8,    // Base line height for wrapped text (compact)
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
 } as const;
@@ -203,6 +214,16 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
     x += (r / totalRatio) * availW;
   }
   return positions;
+}
+
+/** Get the line height for a given font size */
+export function getLineHeight(fontSize: number): number {
+  return fontSize * 0.3528 * 1.3;
+}
+
+/** Get the cap height for a given font size */
+export function getCapHeight(fontSize: number): number {
+  return fontSize * 0.3528 * 0.7;
 }
 
 // ── NIBRS Grid Layout Helpers ─────────────────────────────────

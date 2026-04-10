@@ -51,88 +51,91 @@ export default function MobileHeader({
         height: 48,
         paddingLeft: 8,
         paddingRight: 8,
-        background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-        borderBottom: '1px solid #1e3048',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
+        borderBottom: '1px solid #222222',
         flexShrink: 0,
+        WebkitBackdropFilter: 'blur(8px)',
+        backdropFilter: 'blur(8px)',
       }}
     >
       {/* Blue accent at very top */}
       <div
         className="absolute top-0 left-0 right-0 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)',
+          background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)',
           zIndex: 1,
         }}
       />
 
       {/* Left — Hamburger + Logo + Title */}
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-1 min-w-0">
         {/* Hamburger */}
-        <button
+        <button type="button"
           onClick={onMenuOpen}
-          className="flex items-center justify-center w-10 h-10"
-          style={{ color: '#b0bcc8' }}
+          className="flex items-center justify-center w-11 h-11"
+          style={{ color: '#aaaaaa' }}
           aria-label="Open navigation"
         >
-          <Menu style={{ width: 22, height: 22 }} />
+          <Menu style={{ width: 20, height: 20 }} />
         </button>
 
-        {/* Back / Forward */}
-        <button
+        {/* Back / Forward — tighter on mobile */}
+        <button type="button"
           onClick={onNavBack}
           disabled={!canGoBack}
-          className="flex items-center justify-center w-8 h-8"
-          style={{ color: canGoBack ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
+          className="flex items-center justify-center w-9 h-11"
+          style={{ color: canGoBack ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
           aria-label="Go back"
         >
-          <ChevronLeft style={{ width: 18, height: 18 }} />
+          <ChevronLeft style={{ width: 16, height: 16 }} />
         </button>
-        <button
+        <button type="button"
           onClick={onNavForward}
           disabled={!canGoForward}
-          className="flex items-center justify-center w-8 h-8"
-          style={{ color: canGoForward ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
+          className="flex items-center justify-center w-9 h-11"
+          style={{ color: canGoForward ? '#aaaaaa' : '#3a3a3a', transition: 'color 0.15s' }}
           aria-label="Go forward"
         >
-          <ChevronRight style={{ width: 18, height: 18 }} />
+          <ChevronRight style={{ width: 16, height: 16 }} />
         </button>
 
-        {/* Logo */}
-        <RmpgLogo height={32} iconOnly />
+        {/* Logo — slightly smaller on mobile */}
+        <RmpgLogo height={28} iconOnly />
 
         {/* Page title */}
-        <div className="w-px h-5 mx-1" style={{ background: '#2a3e58' }} />
+        <div className="w-px h-4 mx-0.5" style={{ background: '#2e2e2e' }} />
         <span
-          className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400 truncate"
+          className="text-[10px] sm:text-[11px] font-mono font-bold tracking-wider text-rmpg-400 truncate"
         >
           {pageTitle.toUpperCase()}
         </span>
       </div>
 
       {/* Right — PANIC + Profile */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-1 flex-shrink-0">
         {/* PANIC Button */}
         <PanicButton latitude={gpsLatitude} longitude={gpsLongitude} />
 
         {/* Profile Avatar */}
-        <button
+        <button type="button"
           onClick={onProfileTap}
-          className="flex items-center justify-center w-9 h-9"
+          className="flex items-center justify-center w-11 h-11"
         >
           {user?.profile_image ? (
             <img
               src={user.profile_image}
               alt={user.first_name}
-              className="w-8 h-8 object-cover"
-              style={{ border: '2px solid #3a5070' }}
+              className="w-7 h-7 sm:w-8 sm:h-8 object-cover"
+              style={{ border: '2px solid #383838' }}
             />
           ) : (
             <div
-              className="w-8 h-8 flex items-center justify-center text-[10px] font-bold"
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[10px] font-bold"
               style={{
-                background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                background: 'linear-gradient(135deg, #333333, #888888)',
                 color: '#fff',
-                border: '2px solid #3b8ad4',
+                border: '2px solid #aaaaaa',
               }}
             >
               {initials}

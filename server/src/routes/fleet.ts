@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -8,14 +8,28 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastFleetUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
-import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
 
 const execFileAsync = promisify(execFile);
+
+/** Extract video duration using ffprobe. */
+async function extractVideoDuration(filePath: string): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
+      { timeout: 30000 }
+    );
+    const seconds = parseFloat(stdout.trim());
+    return isFinite(seconds) ? Math.round(seconds) : null;
+  } catch {
+    return null;
+  }
+}
+
 const __filename_f = fileURLToPath(import.meta.url);
 const __dirname_f = path.dirname(__filename_f);
-
-// ── Dash camera video storage ───────────────────────────────
 const DASHCAM_DIR = process.env.RMPG_UPLOADS_DIR
   ? path.join(process.env.RMPG_UPLOADS_DIR, 'dashcam')
   : path.resolve(__dirname_f, '../../uploads/dashcam');
@@ -24,7 +38,7 @@ if (!fs.existsSync(DASHCAM_DIR)) {
   fs.mkdirSync(DASHCAM_DIR, { recursive: true });
 }
 
-const DASHCAM_MIME_TYPES = new Set([
+const VIDEO_MIME_TYPES = new Set([
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
 ]);
 
@@ -43,8 +57,9 @@ const dashcamStorage = multer.diskStorage({
 
 const dashcamUpload = multer({
   storage: dashcamStorage,
+  limits: { fileSize: 10 * 1024 * 1024 * 1024, files: 1, fields: 20, parts: 25, fieldSize: 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (DASHCAM_MIME_TYPES.has(file.mimetype)) {
+    if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
@@ -52,30 +67,7 @@ const dashcamUpload = multer({
   },
 });
 
-/** Extract video duration using ffprobe */
-async function extractDashcamDuration(filePath: string): Promise<number | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      'ffprobe',
-      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
-      { timeout: 30000 },
-    );
-    const seconds = parseFloat(stdout.trim());
-    return isFinite(seconds) ? Math.round(seconds) : null;
-  } catch {
-    return null;
-  }
-}
-
 const router = Router();
-
-// Promote query-string token to Authorization header for <video> streaming only
-router.use((req: Request, _res: Response, next: NextFunction) => {
-  if (!req.headers['authorization'] && req.query.token && /\/(stream|download|thumbnail)/.test(req.path)) {
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
-  }
-  next();
-});
 
 // All fleet routes require authentication
 router.use(authenticateToken);
@@ -149,7 +141,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching fleet vehicles:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet vehicles' });
+    res.status(500).json({ error: 'Failed to fetch fleet vehicles', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
@@ -169,6 +161,8 @@ router.get('/analytics', (req: Request, res: Response) => {
       case 'all': dateCutoff = '2000-01-01'; break;
       default: dateCutoff = new Date(now.getTime() - 90 * 86400000).toISOString();
     }
+
+    res.set('Cache-Control', 'private, max-age=120');
 
     // Maintenance cost trend (monthly)
     const maintenanceCostTrend = db.prepare(`
@@ -224,6 +218,8 @@ router.get('/analytics', (req: Request, res: Response) => {
       FROM fleet_fuel_logs
       WHERE fuel_date >= ? AND odometer_reading IS NOT NULL
       ORDER BY vehicle_id, fuel_date
+    
+      LIMIT 1000
     `).all(dateCutoff) as any[];
 
     // Group by vehicle, compute per-interval MPG
@@ -262,43 +258,558 @@ router.get('/analytics', (req: Request, res: Response) => {
       SELECT COUNT(*) AS count FROM fleet_inspections WHERE overall_result = 'fail' AND inspection_date >= ?
     `).get(dateCutoff) as any;
 
+    // ── Enhanced analytics: cost_per_mile_ranking ──
+    const costPerMileRanking = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage,
+        COALESCE(m.maint_cost, 0) AS maintenance_cost,
+        COALESCE(f.fuel_cost, 0) AS fuel_cost,
+        (COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) AS total_cost,
+        CASE WHEN fv.current_mileage > 0
+          THEN ROUND((COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) * 1.0 / fv.current_mileage, 4)
+          ELSE NULL END AS cost_per_mile
+      FROM fleet_vehicles fv
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS maint_cost FROM fleet_maintenance WHERE cost IS NOT NULL GROUP BY vehicle_id) m ON m.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS fuel_cost FROM fleet_fuel_logs WHERE total_cost IS NOT NULL GROUP BY vehicle_id) f ON f.vehicle_id = fv.id
+      WHERE fv.current_mileage > 0
+      ORDER BY cost_per_mile DESC
+      LIMIT 10
+    `).all() as any[];
+
+    // ── Enhanced analytics: service_compliance ──
+    const nowISO = localNow();
+    const serviceCompliant = db.prepare(`
+      SELECT COUNT(*) AS count FROM fleet_vehicles
+      WHERE status != 'retired' AND (next_service_due IS NULL OR next_service_due > ?)
+    `).get(nowISO) as any;
+    const serviceOverdue = db.prepare(`
+      SELECT COUNT(*) AS count FROM fleet_vehicles
+      WHERE status != 'retired' AND next_service_due IS NOT NULL AND next_service_due <= ?
+    `).get(nowISO) as any;
+    const serviceTotal = (serviceCompliant.count || 0) + (serviceOverdue.count || 0);
+    const serviceCompliance = {
+      compliant: serviceCompliant.count || 0,
+      overdue: serviceOverdue.count || 0,
+      rate: serviceTotal > 0 ? Math.round(((serviceCompliant.count || 0) / serviceTotal) * 1000) / 10 : 100,
+    };
+
+    // ── Enhanced analytics: inspection_pass_rate ──
+    const inspTotal = db.prepare(`
+      SELECT COUNT(*) AS total,
+        SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) AS passed,
+        SUM(CASE WHEN overall_result = 'fail' THEN 1 ELSE 0 END) AS failed
+      FROM fleet_inspections WHERE inspection_date >= ?
+    `).get(dateCutoff) as any;
+    const inspectionPassRate = {
+      total: inspTotal.total || 0,
+      passed: inspTotal.passed || 0,
+      failed: inspTotal.failed || 0,
+      rate: (inspTotal.total || 0) > 0 ? Math.round(((inspTotal.passed || 0) / inspTotal.total) * 1000) / 10 : 100,
+    };
+
+    // ── Enhanced analytics: fuel_economy_ranking (top 10 by avg MPG) ──
+    const fuelEconomyRanking = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year,
+        ROUND(SUM(COALESCE(fl.distance, 0)) * 1.0 / NULLIF(SUM(fl.gallons), 0), 1) AS avg_mpg,
+        SUM(fl.gallons) AS total_gallons, SUM(COALESCE(fl.distance, 0)) AS total_miles
+      FROM fleet_vehicles fv
+      INNER JOIN fleet_fuel_logs fl ON fl.vehicle_id = fv.id
+      WHERE fl.gallons > 0 AND fl.archived_at IS NULL
+      GROUP BY fv.id
+      HAVING total_gallons > 0 AND avg_mpg IS NOT NULL
+      ORDER BY avg_mpg DESC
+      LIMIT 10
+    `).all() as any[];
+
+    // ── Enhanced analytics: utilization ──
+    const assignedCount = db.prepare(`SELECT COUNT(*) AS count FROM fleet_vehicles WHERE assigned_unit_id IS NOT NULL AND status != 'retired'`).get() as any;
+    const unassignedCount = db.prepare(`SELECT COUNT(*) AS count FROM fleet_vehicles WHERE assigned_unit_id IS NULL AND status != 'retired'`).get() as any;
+    const utilizationTotal = (assignedCount.count || 0) + (unassignedCount.count || 0);
+    const utilization = {
+      assigned: assignedCount.count || 0,
+      unassigned: unassignedCount.count || 0,
+      rate: utilizationTotal > 0 ? Math.round(((assignedCount.count || 0) / utilizationTotal) * 1000) / 10 : 0,
+    };
+
+    // ── Compute fleet-wide average MPG ──
+    const allMpg = Object.values(mpgByMonth);
+    const fleetTotalMiles = allMpg.reduce((s, m) => s + m.total_miles, 0);
+    const fleetTotalGallons = allMpg.reduce((s, m) => s + m.total_gallons, 0);
+    const avgMpg = fleetTotalGallons > 0 ? Math.round((fleetTotalMiles / fleetTotalGallons) * 10) / 10 : null;
+
+    // ── Daily fleet usage from GPS breadcrumbs (last 30 days) ──
+    let dailyUsage: any[] = [];
+    try {
+      dailyUsage = db.prepare(`
+        SELECT DATE(recorded_at) as date, COUNT(DISTINCT call_sign) as active_vehicles,
+               COUNT(*) as total_pings,
+               SUM(CASE WHEN speed > 0 THEN 1 ELSE 0 END) as moving_pings
+        FROM gps_breadcrumbs
+        WHERE recorded_at >= datetime('now', '-30 days')
+        GROUP BY DATE(recorded_at) ORDER BY date
+      `).all() as any[];
+    } catch { /* gps_breadcrumbs table may not exist */ }
+
+    // ── Maintenance forecast: top 5 vehicles closest to needing service ──
+    let maintenanceForecast: any[] = [];
+    try {
+      const forecastRows = db.prepare(`
+        SELECT v.id, v.vehicle_number, v.current_mileage, v.next_service_due, v.next_service_mileage,
+          CASE WHEN julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)) > 0
+            THEN (MAX(f.odometer_reading) - MIN(f.odometer_reading)) / (julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)))
+            ELSE 0 END as avg_daily_miles
+        FROM fleet_vehicles v LEFT JOIN fleet_fuel_logs f ON v.id = f.vehicle_id
+        WHERE v.status != 'retired'
+        GROUP BY v.id
+      `).all() as any[];
+
+      maintenanceForecast = forecastRows
+        .filter((r: any) => (r.next_service_mileage != null || r.next_service_due != null) && r.current_mileage != null)
+        .map((r: any) => {
+          // Calculate by mileage if threshold exists, otherwise by date
+          let estDays: number | null = null;
+          let milesUntilService: number | null = null;
+          if (r.next_service_mileage != null && r.current_mileage != null) {
+            milesUntilService = r.next_service_mileage - r.current_mileage;
+            estDays = r.avg_daily_miles > 0 ? Math.round(milesUntilService / r.avg_daily_miles) : null;
+          } else if (r.next_service_due) {
+            const dueDate = new Date(r.next_service_due);
+            const now = new Date();
+            estDays = Math.round((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          }
+          return { ...r, miles_until_service: milesUntilService, est_days_until_service: estDays };
+        })
+        .sort((a: any, b: any) => {
+          const aDays = a.est_days_until_service ?? 9999;
+          const bDays = b.est_days_until_service ?? 9999;
+          return aDays - bDays;
+        })
+        .slice(0, 5);
+    } catch { /* graceful fallback */ }
+
+    // ── Oldest vehicle year ──
+    const oldestVehicle = db.prepare(`
+      SELECT MIN(year) as oldest_year FROM fleet_vehicles WHERE status != 'retired' AND year IS NOT NULL
+    `).get() as any;
+
+    // ── Average daily miles from fuel logs ──
+    const avgDailyMilesRow = db.prepare(`
+      SELECT CASE WHEN julianday(MAX(fuel_date)) - julianday(MIN(fuel_date)) > 0
+        THEN ROUND((MAX(odometer_reading) - MIN(odometer_reading)) * 1.0 / (julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))), 1)
+        ELSE 0 END as avg_daily_miles
+      FROM fleet_fuel_logs WHERE odometer_reading IS NOT NULL
+    `).get() as any;
+
+    // ── Top 5 most common maintenance issues ──
+    const topIssues = db.prepare(`
+      SELECT type, COUNT(*) as count, SUM(cost) as total_cost
+      FROM fleet_maintenance WHERE archived_at IS NULL AND type IS NOT NULL
+      GROUP BY type ORDER BY count DESC LIMIT 5
+    `).all() as any[];
+
     res.json({
       maintenance_cost_trend: maintenanceCostTrend,
       mileage_distribution: mileageBuckets.map(b => ({ range: b.range, count: b.count })),
       status_breakdown: statusWithColors,
       fuel_economy_trend: fuelEconomyTrend,
       fleet_summary: {
-        total_vehicles: totalVehicles?.count || 0,
-        avg_mileage: Math.round(avgMileage?.avg || 0),
-        total_maintenance_cost: totalMaintCost?.total || 0,
-        total_fuel_cost: totalFuelCost?.total || 0,
-        vehicles_needing_service: vehiclesNeedingService?.count || 0,
-        inspections_failing: inspectionsFailing?.count || 0,
+        total_vehicles: totalVehicles.count,
+        avg_mileage: Math.round(avgMileage.avg || 0),
+        avg_mpg: avgMpg,
+        total_maintenance_cost: totalMaintCost.total || 0,
+        total_fuel_cost: totalFuelCost.total || 0,
+        vehicles_needing_service: vehiclesNeedingService.count,
+        inspections_failing: inspectionsFailing.count,
       },
+      cost_per_mile_ranking: costPerMileRanking,
+      service_compliance: serviceCompliance,
+      inspection_pass_rate: inspectionPassRate,
+      fuel_economy_ranking: fuelEconomyRanking,
+      utilization,
+      daily_usage: dailyUsage,
+      maintenance_forecast: maintenanceForecast,
+      oldest_vehicle_year: oldestVehicle?.oldest_year || null,
+      avg_daily_miles: avgDailyMilesRow?.avg_daily_miles || 0,
+      top_issues: topIssues,
     });
   } catch (error: any) {
     console.error('Error fetching fleet analytics:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet analytics' });
+    res.status(500).json({ error: 'Failed to fetch fleet analytics', code: 'FAILED_TO_FETCH_FLEET' });
+  }
+});
+
+// ─── GET /api/fleet/vehicle-comparison ─ Compare 2-5 vehicles side by side ────
+router.get('/vehicle-comparison', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const idsParam = req.query.ids as string;
+    if (!idsParam) { res.status(400).json({ error: 'ids query parameter required' }); return; }
+
+    const ids = idsParam.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+    if (ids.length < 2 || ids.length > 5) {
+      res.status(400).json({ error: 'Provide 2-5 vehicle IDs' }); return;
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage, fv.status,
+        COALESCE(m.total_maintenance_cost, 0) AS total_maintenance_cost,
+        COALESCE(f.total_fuel_cost, 0) AS total_fuel_cost,
+        (COALESCE(m.total_maintenance_cost, 0) + COALESCE(f.total_fuel_cost, 0)) AS total_cost,
+        CASE WHEN fv.current_mileage > 0
+          THEN ROUND((COALESCE(m.total_maintenance_cost, 0) + COALESCE(f.total_fuel_cost, 0)) * 1.0 / fv.current_mileage, 4)
+          ELSE NULL END AS cost_per_mile,
+        f.avg_mpg,
+        COALESCE(insp.inspection_count, 0) AS inspection_count,
+        CASE WHEN COALESCE(insp.inspection_count, 0) > 0
+          THEN ROUND(COALESCE(insp.passed_count, 0) * 100.0 / insp.inspection_count, 1)
+          ELSE NULL END AS inspection_pass_rate,
+        m.last_service_date,
+        CASE WHEN m.last_service_date IS NOT NULL
+          THEN CAST(julianday('now') - julianday(m.last_service_date) AS INTEGER)
+          ELSE NULL END AS days_since_last_service,
+        COALESCE(a.assignment_count, 0) AS assignment_count
+      FROM fleet_vehicles fv
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(cost) AS total_maintenance_cost, MAX(performed_at) AS last_service_date
+        FROM fleet_maintenance WHERE archived_at IS NULL AND cost IS NOT NULL
+        GROUP BY vehicle_id
+      ) m ON m.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(total_cost) AS total_fuel_cost,
+          ROUND(SUM(COALESCE(distance, 0)) * 1.0 / NULLIF(SUM(gallons), 0), 1) AS avg_mpg
+        FROM fleet_fuel_logs WHERE archived_at IS NULL AND gallons > 0
+        GROUP BY vehicle_id
+      ) f ON f.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT vehicle_id, COUNT(*) AS inspection_count,
+          SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) AS passed_count
+        FROM fleet_inspections GROUP BY vehicle_id
+      ) insp ON insp.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT assigned_unit_id, COUNT(*) AS assignment_count
+        FROM fleet_vehicles WHERE assigned_unit_id IS NOT NULL
+        GROUP BY assigned_unit_id
+      ) a ON a.assigned_unit_id = fv.assigned_unit_id
+      WHERE fv.id IN (${placeholders})
+    `).all(...ids) as any[];
+
+    res.json({ vehicles });
+  } catch (error: any) {
+    console.error('Error fetching vehicle comparison:', error);
+    res.status(500).json({ error: 'Failed to fetch vehicle comparison', code: 'VEHICLE_COMPARISON_ERROR' });
+  }
+});
+
+// ─── GET /api/fleet/cost-trends ─ Monthly cost breakdown (last 12 months) ────
+router.get('/cost-trends', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cutoff = new Date(Date.now() - 365 * 86400000).toISOString();
+
+    const maintByMonth = db.prepare(`
+      SELECT strftime('%Y-%m', performed_at) AS month, SUM(cost) AS maintenance_cost
+      FROM fleet_maintenance
+      WHERE performed_at >= ? AND cost IS NOT NULL AND archived_at IS NULL
+      GROUP BY month
+    `).all(cutoff) as any[];
+
+    const fuelByMonth = db.prepare(`
+      SELECT strftime('%Y-%m', fuel_date) AS month, SUM(total_cost) AS fuel_cost
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= ? AND total_cost IS NOT NULL AND archived_at IS NULL
+      GROUP BY month
+    `).all(cutoff) as any[];
+
+    const vehicleCount = (db.prepare(`SELECT COUNT(*) AS count FROM fleet_vehicles WHERE status != 'retired'`).get() as any).count;
+
+    // Merge into monthly totals
+    const monthMap: Record<string, { month: string; maintenance_cost: number; fuel_cost: number; total_cost: number; vehicle_count: number }> = {};
+    for (const r of maintByMonth) {
+      if (!monthMap[r.month]) monthMap[r.month] = { month: r.month, maintenance_cost: 0, fuel_cost: 0, total_cost: 0, vehicle_count: vehicleCount };
+      monthMap[r.month].maintenance_cost = r.maintenance_cost || 0;
+    }
+    for (const r of fuelByMonth) {
+      if (!monthMap[r.month]) monthMap[r.month] = { month: r.month, maintenance_cost: 0, fuel_cost: 0, total_cost: 0, vehicle_count: vehicleCount };
+      monthMap[r.month].fuel_cost = r.fuel_cost || 0;
+    }
+    for (const key of Object.keys(monthMap)) {
+      monthMap[key].total_cost = monthMap[key].maintenance_cost + monthMap[key].fuel_cost;
+    }
+
+    const trends = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
+    res.json({ cost_trends: trends });
+  } catch (error: any) {
+    console.error('Error fetching cost trends:', error);
+    res.status(500).json({ error: 'Failed to fetch cost trends', code: 'COST_TRENDS_ERROR' });
+  }
+});
+
+// ─── GET /api/fleet/vehicle-lifecycle ─ Vehicle lifecycle analysis ────
+router.get('/vehicle-lifecycle', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const currentYear = new Date().getFullYear();
+
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.year, fv.current_mileage, fv.status,
+        COALESCE(m.total_cost, 0) + COALESCE(f.total_cost, 0) AS total_lifetime_cost
+      FROM fleet_vehicles fv
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(cost) AS total_cost
+        FROM fleet_maintenance WHERE archived_at IS NULL AND cost IS NOT NULL
+        GROUP BY vehicle_id
+      ) m ON m.vehicle_id = fv.id
+      LEFT JOIN (
+        SELECT vehicle_id, SUM(total_cost) AS total_cost
+        FROM fleet_fuel_logs WHERE archived_at IS NULL AND total_cost IS NOT NULL
+        GROUP BY vehicle_id
+      ) f ON f.vehicle_id = fv.id
+      WHERE fv.status != 'retired' AND fv.year IS NOT NULL
+    `).all() as any[];
+
+    const lifecycle = vehicles.map((v: any) => {
+      const ageYears = Math.max(currentYear - v.year, 1);
+      const currentMileage = v.current_mileage || 0;
+      const avgAnnualMileage = Math.round(currentMileage / ageYears);
+      const costPerYear = Math.round((v.total_lifetime_cost || 0) / ageYears);
+      const milesRemaining = Math.max(150000 - currentMileage, 0);
+      const estimatedRemainingLifeYears = avgAnnualMileage > 0
+        ? Math.round((milesRemaining / avgAnnualMileage) * 10) / 10
+        : null;
+      return {
+        id: v.id,
+        vehicle_number: v.vehicle_number,
+        year: v.year,
+        status: v.status,
+        age_years: ageYears,
+        current_mileage: currentMileage,
+        avg_annual_mileage: avgAnnualMileage,
+        total_lifetime_cost: v.total_lifetime_cost || 0,
+        cost_per_year: costPerYear,
+        estimated_remaining_life_years: estimatedRemainingLifeYears,
+      };
+    });
+
+    res.json({ lifecycle });
+  } catch (error: any) {
+    console.error('Error fetching vehicle lifecycle:', error);
+    res.status(500).json({ error: 'Failed to fetch vehicle lifecycle', code: 'VEHICLE_LIFECYCLE_ERROR' });
+  }
+});
+
+// ─── GET /api/fleet/daily-costs ─ Daily cost breakdown (maintenance + fuel) ────
+router.get('/daily-costs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { period = '90d' } = req.query;
+
+    let days = 90;
+    switch (period) {
+      case '30d': days = 30; break;
+      case '90d': days = 90; break;
+      case '1y': days = 365; break;
+      case 'all': days = 3650; break;
+    }
+
+    const maintCosts = db.prepare(`
+      SELECT DATE(performed_at) as date, SUM(cost) as cost, 'maintenance' as type
+      FROM fleet_maintenance
+      WHERE performed_at >= date('now', '-' || ? || ' days') AND cost IS NOT NULL
+      GROUP BY DATE(performed_at)
+    `).all(days) as any[];
+
+    const fuelCosts = db.prepare(`
+      SELECT DATE(fuel_date) as date, SUM(total_cost) as cost, 'fuel' as type
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= date('now', '-' || ? || ' days') AND total_cost IS NOT NULL
+      GROUP BY DATE(fuel_date)
+    `).all(days) as any[];
+
+    // Merge into daily totals
+    const dailyMap: Record<string, { date: string; maintenance_cost: number; fuel_cost: number }> = {};
+    for (const r of maintCosts) {
+      if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, maintenance_cost: 0, fuel_cost: 0 };
+      dailyMap[r.date].maintenance_cost += r.cost || 0;
+    }
+    for (const r of fuelCosts) {
+      if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, maintenance_cost: 0, fuel_cost: 0 };
+      dailyMap[r.date].fuel_cost += r.cost || 0;
+    }
+
+    const dailyCosts = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    res.set('Cache-Control', 'private, max-age=300');
+    res.json({ daily_costs: dailyCosts });
+  } catch (error: any) {
+    console.error('Error fetching daily costs:', error);
+    res.status(500).json({ error: 'Failed to fetch daily costs', code: 'DAILY_COSTS_ERROR' });
+  }
+});
+
+// ─── GET /api/fleet/service-alerts ─ Service & compliance alerts ────
+router.get('/service-alerts', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const nowISO = localNow();
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 86400000).toISOString();
+
+    // Overdue service
+    const overdueService = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, next_service_due AS due_date
+      FROM fleet_vehicles
+      WHERE next_service_due IS NOT NULL AND next_service_due < ? AND status != 'retired'
+      ORDER BY next_service_due ASC
+    `).all(nowISO).map((v: any) => ({ ...v, issue: 'Overdue service', severity: 'critical' }));
+
+    // Upcoming service (within 30 days)
+    const upcomingService = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, next_service_due AS due_date
+      FROM fleet_vehicles
+      WHERE next_service_due IS NOT NULL AND next_service_due >= ? AND next_service_due <= ? AND status != 'retired'
+      ORDER BY next_service_due ASC
+    `).all(nowISO, thirtyDaysFromNow).map((v: any) => ({ ...v, issue: 'Service due soon', severity: 'warning' }));
+
+    // Expired registration
+    const expiredRegistration = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, registration_expiry AS due_date
+      FROM fleet_vehicles
+      WHERE registration_expiry IS NOT NULL AND registration_expiry < ? AND status != 'retired'
+      ORDER BY registration_expiry ASC
+    `).all(nowISO).map((v: any) => ({ ...v, issue: 'Expired registration', severity: 'critical' }));
+
+    // Expired insurance
+    const expiredInsurance = db.prepare(`
+      SELECT id AS vehicle_id, vehicle_number, make, model, year, insurance_expiry AS due_date
+      FROM fleet_vehicles
+      WHERE insurance_expiry IS NOT NULL AND insurance_expiry < ? AND status != 'retired'
+      ORDER BY insurance_expiry ASC
+    `).all(nowISO).map((v: any) => ({ ...v, issue: 'Expired insurance', severity: 'critical' }));
+
+    // Failed inspections (most recent inspection per vehicle = fail)
+    const failedInspections = db.prepare(`
+      SELECT fv.id AS vehicle_id, fv.vehicle_number, fv.make, fv.model, fv.year,
+        fi.inspection_date AS due_date
+      FROM fleet_vehicles fv
+      INNER JOIN fleet_inspections fi ON fi.vehicle_id = fv.id
+      WHERE fi.id = (
+        SELECT fi2.id FROM fleet_inspections fi2
+        WHERE fi2.vehicle_id = fv.id ORDER BY fi2.inspection_date DESC LIMIT 1
+      ) AND fi.overall_result = 'fail' AND fv.status != 'retired'
+      ORDER BY fi.inspection_date DESC
+    `).all().map((v: any) => ({ ...v, issue: 'Failed inspection', severity: 'critical' }));
+
+    res.json({
+      overdue_service: overdueService,
+      upcoming_service: upcomingService,
+      expired_registration: expiredRegistration,
+      expired_insurance: expiredInsurance,
+      failed_inspections: failedInspections,
+      all_alerts: [...overdueService, ...expiredRegistration, ...expiredInsurance, ...failedInspections, ...upcomingService],
+    });
+  } catch (error: any) {
+    console.error('Error fetching service alerts:', error);
+    res.status(500).json({ error: 'Failed to fetch service alerts' });
+  }
+});
+
+// ─── GET /api/fleet/cost-breakdown ─ Per-vehicle cost breakdown ────
+router.get('/cost-breakdown', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const costBreakdown = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage,
+        COALESCE(m.maint_cost, 0) AS maintenance_cost,
+        COALESCE(f.fuel_cost, 0) AS fuel_cost,
+        (COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) AS total_cost,
+        CASE WHEN fv.current_mileage > 0
+          THEN ROUND((COALESCE(m.maint_cost, 0) + COALESCE(f.fuel_cost, 0)) * 1.0 / fv.current_mileage, 4)
+          ELSE NULL END AS cost_per_mile
+      FROM fleet_vehicles fv
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS maint_cost FROM fleet_maintenance WHERE cost IS NOT NULL GROUP BY vehicle_id) m ON m.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS fuel_cost FROM fleet_fuel_logs WHERE total_cost IS NOT NULL GROUP BY vehicle_id) f ON f.vehicle_id = fv.id
+      WHERE fv.status != 'retired'
+      ORDER BY total_cost DESC
+    `).all();
+
+    res.json({ vehicles: costBreakdown });
+  } catch (error: any) {
+    console.error('Error fetching cost breakdown:', error);
+    res.status(500).json({ error: 'Failed to fetch cost breakdown' });
+  }
+});
+
+// ─── GET /api/fleet/map ─ Fleet vehicles with GPS for map overlay ──
+router.get('/map', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Check if cpgps_vehicles table exists for GPS data
+    let hasCpgps = false;
+    try {
+      db.prepare("SELECT 1 FROM cpgps_vehicles LIMIT 0").run();
+      hasCpgps = true;
+    } catch {
+      // Table doesn't exist — return vehicles without GPS
+    }
+
+    let rows: any[];
+
+    if (hasCpgps) {
+      rows = db.prepare(`
+        SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.plate_number,
+               fv.status, fv.current_mileage, fv.next_service_due, fv.assigned_unit_id,
+               u.call_sign AS assigned_call_sign,
+               cv.last_lat AS gps_lat, cv.last_lon AS gps_lon,
+               cv.last_speed AS gps_speed, cv.last_heading AS gps_heading,
+               cv.last_reported_at AS gps_reported_at
+        FROM fleet_vehicles fv
+        LEFT JOIN units u ON u.id = fv.assigned_unit_id
+        LEFT JOIN cpgps_vehicles cv ON cv.vehicle_id = fv.id
+        WHERE fv.status != 'retired'
+        ORDER BY fv.vehicle_number
+      
+        LIMIT 1000
+      `).all();
+    } else {
+      rows = db.prepare(`
+        SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.plate_number,
+               fv.status, fv.current_mileage, fv.next_service_due, fv.assigned_unit_id,
+               u.call_sign AS assigned_call_sign,
+               NULL AS gps_lat, NULL AS gps_lon,
+               NULL AS gps_speed, NULL AS gps_heading,
+               NULL AS gps_reported_at
+        FROM fleet_vehicles fv
+        LEFT JOIN units u ON u.id = fv.assigned_unit_id
+        WHERE fv.status != 'retired'
+        ORDER BY fv.vehicle_number
+      
+        LIMIT 1000
+      `).all();
+    }
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching fleet map data:', error);
+    res.status(500).json({ error: 'Failed to fetch fleet map data', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
 // ─── GET /api/fleet/:id ─ Get single fleet vehicle ────────────────
-router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
-    if (['maintenance', 'analytics', 'dashcam-videos'].includes(req.params.id as string)) {
-      res.status(404).json({ error: 'Not found' });
-      return;
-    }
-
-    // Fleet IDs are numeric — reject non-numeric to prevent route collisions
-    if (!/^\d+$/.test(req.params.id as string)) {
-      res.status(404).json({ error: 'Not found' });
+    if (['maintenance', 'analytics', 'map'].includes(req.params.id as string)) {
+      res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' });
       return;
     }
 
     const db = getDb();
-    const { id } = req.params;
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id) || id < 1) {
+      res.status(400).json({ error: 'Invalid vehicle ID', code: 'INVALID_VEHICLE_ID' });
+      return;
+    }
 
     const vehicle = db.prepare(`
       SELECT
@@ -313,7 +824,7 @@ router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
     `).get(id) as any;
 
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -332,7 +843,7 @@ router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
     });
   } catch (error: any) {
     console.error('Error fetching fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet vehicle' });
+    res.status(500).json({ error: 'Failed to fetch fleet vehicle', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
@@ -350,6 +861,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       plate_number,
       plate_state,
       current_mileage,
+      next_service_mileage,
       insurance_expiry,
       registration_expiry,
       equipment,
@@ -357,14 +869,14 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     } = req.body;
 
     if (!vehicle_number) {
-      res.status(400).json({ error: 'vehicle_number is required' });
+      res.status(400).json({ error: 'vehicle_number is required', code: 'VEHICLENUMBER_IS_REQUIRED' });
       return;
     }
 
     // Check for duplicate vehicle_number
     const existing = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number);
     if (existing) {
-      res.status(409).json({ error: 'A vehicle with this vehicle_number already exists' });
+      res.status(409).json({ error: 'A vehicle with this vehicle_number already exists', code: 'A_VEHICLE_WITH_THIS' });
       return;
     }
 
@@ -373,20 +885,21 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     const result = db.prepare(`
       INSERT INTO fleet_vehicles (
         vehicle_number, make, model, year, color, vin,
-        plate_number, plate_state, current_mileage,
+        plate_number, plate_state, current_mileage, next_service_mileage,
         insurance_expiry, registration_expiry, equipment, notes,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       vehicle_number,
       make || null,
       model || null,
-      year ?? null,
+      year || null,
       color || null,
       vin || null,
       plate_number || null,
       plate_state || null,
-      current_mileage ?? null,
+      current_mileage || null,
+      next_service_mileage || null,
       insurance_expiry || null,
       registration_expiry || null,
       equipmentJson,
@@ -400,7 +913,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       FROM fleet_vehicles fv
       LEFT JOIN units u ON fv.assigned_unit_id = u.id
       WHERE fv.id = ?
-    `).get(result.lastInsertRowid) as any || { id: result.lastInsertRowid };
+    `).get(result.lastInsertRowid) as any;
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -419,7 +932,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     });
   } catch (error: any) {
     console.error('Error creating fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to create fleet vehicle' });
+    res.status(500).json({ error: 'Failed to create fleet vehicle', code: 'FAILED_TO_CREATE_FLEET' });
   }
 });
 
@@ -431,7 +944,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     const existing = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -456,7 +969,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     if (vehicle_number && vehicle_number !== existing.vehicle_number) {
       const duplicate = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ? AND id != ?').get(vehicle_number, id);
       if (duplicate) {
-        res.status(409).json({ error: 'A vehicle with this vehicle_number already exists' });
+        res.status(409).json({ error: 'A vehicle with this vehicle_number already exists', code: 'A_VEHICLE_WITH_THIS' });
         return;
       }
     }
@@ -471,6 +984,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       year: v => v ?? null, color: v => v ?? null, vin: v => v ?? null,
       plate_number: v => v ?? null, plate_state: v => v ?? null,
       status: v => v ?? null, current_mileage: v => v ?? null,
+      next_service_mileage: v => v ?? null,
       insurance_expiry: v => v ?? null, registration_expiry: v => v ?? null,
       notes: v => v ?? null,
     };
@@ -485,6 +999,11 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       fFields.push('equipment = ?');
       const equipmentJson = Array.isArray(equipment) ? JSON.stringify(equipment) : (equipment ?? null);
       fValues.push(equipmentJson);
+    }
+
+    // God Mode: admin can override odometer readings (including lowering)
+    if (req.user?.role === 'admin' && current_mileage !== undefined && existing.current_mileage && current_mileage < existing.current_mileage) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', parseInt(id as string), `Admin God Mode: overriding odometer on ${existing.vehicle_number} (${existing.current_mileage} → ${current_mileage})`);
     }
 
     if (fFields.length > 0) {
@@ -518,7 +1037,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     });
   } catch (error: any) {
     console.error('Error updating fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to update fleet vehicle' });
+    res.status(500).json({ error: 'Failed to update fleet vehicle', code: 'FAILED_TO_UPDATE_FLEET' });
   }
 });
 
@@ -531,7 +1050,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -539,7 +1058,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
     if (unit_id !== null && unit_id !== undefined) {
       const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
       if (!unit) {
-        res.status(404).json({ error: 'Unit not found' });
+        res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
         return;
       }
 
@@ -612,7 +1131,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
     });
   } catch (error: any) {
     console.error('Error assigning fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to assign fleet vehicle' });
+    res.status(500).json({ error: 'Failed to assign fleet vehicle', code: 'FAILED_TO_ASSIGN_FLEET' });
   }
 });
 
@@ -621,12 +1140,17 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
-    if (vehicle.status !== 'retired') {
-      res.status(400).json({ error: 'Only retired vehicles can be deleted' }); return;
-    }
-    if (vehicle.assigned_unit_id) {
-      res.status(400).json({ error: 'Unassign vehicle from unit before deleting' }); return;
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' }); return; }
+    // God Mode: admin can delete vehicles regardless of status
+    if (req.user?.role !== 'admin') {
+      if (vehicle.status !== 'retired') {
+        res.status(400).json({ error: 'Only retired vehicles can be deleted', code: 'ONLY_RETIRED_VEHICLES_CAN' }); return;
+      }
+      if (vehicle.assigned_unit_id) {
+        res.status(400).json({ error: 'Unassign vehicle from unit before deleting', code: 'UNASSIGN_VEHICLE_FROM_UNIT' }); return;
+      }
+    } else if (vehicle.status !== 'retired' || vehicle.assigned_unit_id) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'fleet_vehicle', vehicle.id, `Admin God Mode: deleting vehicle ${vehicle.vehicle_number} (status=${vehicle.status}, assigned=${!!vehicle.assigned_unit_id})`);
     }
 
     const delTx = db.transaction(() => {
@@ -644,7 +1168,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete fleet vehicle', code: 'DELETE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -653,8 +1177,8 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
-    if (vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is already archived' }); return; }
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' }); return; }
+    if (vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is already archived', code: 'VEHICLE_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
     db.prepare('UPDATE fleet_vehicles SET archived_at = ? WHERE id = ?').run(now, vehicle.id);
@@ -664,11 +1188,10 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
       req.user!.userId, vehicle.id, `Archived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Archive fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive fleet vehicle', code: 'ARCHIVE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -677,8 +1200,8 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
-    if (!vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is not archived' }); return; }
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' }); return; }
+    if (!vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is not archived', code: 'VEHICLE_IS_NOT_ARCHIVED' }); return; }
 
     db.prepare('UPDATE fleet_vehicles SET archived_at = NULL WHERE id = ?').run(vehicle.id);
 
@@ -687,11 +1210,10 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
       req.user!.userId, vehicle.id, `Unarchived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Unarchive fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive fleet vehicle', code: 'UNARCHIVE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -705,7 +1227,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
     // Verify vehicle exists
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -735,7 +1257,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching maintenance history:', error);
-    res.status(500).json({ error: 'Failed to fetch maintenance history' });
+    res.status(500).json({ error: 'Failed to fetch maintenance history', code: 'FAILED_TO_FETCH_MAINTENANCE' });
   }
 });
 
@@ -747,7 +1269,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -764,7 +1286,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     } = req.body;
 
     if (!description) {
-      res.status(400).json({ error: 'description is required' });
+      res.status(400).json({ error: 'description is required', code: 'DESCRIPTION_IS_REQUIRED' });
       return;
     }
 
@@ -778,8 +1300,8 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
       id,
       type || null,
       description,
-      mileage_at_service ?? null,
-      cost ?? null,
+      mileage_at_service || null,
+      cost || null,
       vendor || null,
       performed_by || null,
       performed_at || localNow(),
@@ -801,12 +1323,12 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     }
     if (mileage_at_service !== undefined) {
       fleetSetClauses.push(`current_mileage = ?`);
-      fleetSetValues.push(mileage_at_service ?? null);
+      fleetSetValues.push(mileage_at_service || null);
     }
     fleetSetValues.push(id);
     db.prepare(`UPDATE fleet_vehicles SET ${fleetSetClauses.join(', ')} WHERE id = ?`).run(...fleetSetValues);
 
-    const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -822,7 +1344,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Error logging maintenance record:', error);
-    res.status(500).json({ error: 'Failed to log maintenance record' });
+    res.status(500).json({ error: 'Failed to log maintenance record', code: 'FAILED_TO_LOG_MAINTENANCE' });
   }
 });
 
@@ -831,7 +1353,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
 
     const mFields: string[] = [];
     const mValues: any[] = [];
@@ -853,7 +1375,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
     res.json(updated);
   } catch (error: any) {
     console.error('Update maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update maintenance', code: 'UPDATE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -862,7 +1384,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM fleet_maintenance WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'fleet_maintenance_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
@@ -870,7 +1392,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete maintenance', code: 'DELETE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -879,15 +1401,15 @@ router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: R
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
-    if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
+    if (record.archived_at) { res.status(400).json({ error: 'Already archived', code: 'ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_maintenance SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Archive maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive maintenance', code: 'ARCHIVE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -896,18 +1418,18 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
-    if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
+    if (!record.archived_at) { res.status(400).json({ error: 'Not archived', code: 'NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE fleet_maintenance SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive maintenance', code: 'UNARCHIVE_MAINTENANCE_ERROR' });
   }
 });
 
-// ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary ─────────────
+// ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary + efficiency ─────────────
 router.get('/:id/fuel', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -916,7 +1438,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -939,35 +1461,111 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
         COALESCE(SUM(gallons), 0) AS total_gallons,
         COALESCE(SUM(total_cost), 0) AS total_cost,
         AVG(cost_per_gallon) AS avg_cost_per_gallon,
-        COUNT(*) AS log_count
+        COUNT(*) AS log_count,
+        MIN(fuel_date) AS first_date,
+        MAX(fuel_date) AS last_date
       FROM fleet_fuel_logs WHERE vehicle_id = ?
     `).get(id) as any;
 
-    // Compute average MPG from consecutive odometer readings
-    const odoLogs = db.prepare(`
-      SELECT gallons, odometer_reading FROM fleet_fuel_logs
-      WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
+    // Fetch ALL fuel logs in chronological order for efficiency calculations
+    const allLogs = db.prepare(`
+      SELECT id, fuel_date, gallons, odometer_reading, total_cost, distance
+      FROM fleet_fuel_logs
+      WHERE vehicle_id = ?
       ORDER BY fuel_date ASC, id ASC
+      LIMIT 5000
     `).all(id) as any[];
 
-    let totalMiles = 0;
-    let totalGallonsForMpg = 0;
-    for (let i = 1; i < odoLogs.length; i++) {
-      if (odoLogs[i].odometer_reading > odoLogs[i - 1].odometer_reading) {
-        totalMiles += odoLogs[i].odometer_reading - odoLogs[i - 1].odometer_reading;
-        totalGallonsForMpg += odoLogs[i].gallons;
+    // Compute per-entry efficiency: mpg, distance, cost_per_mile, running_avg_mpg
+    const efficiencyMap: Record<number, { mpg: number | null; distance: number | null; cost_per_mile: number | null; running_avg_mpg: number | null }> = {};
+    let cumulativeMiles = 0;
+    let cumulativeGallons = 0;
+    let bestMpg: number | null = null;
+    let worstMpg: number | null = null;
+    let totalDistance = 0;
+
+    for (let i = 0; i < allLogs.length; i++) {
+      const curr = allLogs[i];
+      let dist: number | null = null;
+      let mpg: number | null = null;
+      let costPerMile: number | null = null;
+
+      // Use distance column if available, otherwise compute from consecutive odometer readings
+      if (curr.distance != null && curr.distance > 0) {
+        dist = curr.distance;
+      } else if (i > 0 && curr.odometer_reading != null) {
+        // Find previous log with odometer
+        for (let j = i - 1; j >= 0; j--) {
+          if (allLogs[j].odometer_reading != null && curr.odometer_reading > allLogs[j].odometer_reading) {
+            dist = curr.odometer_reading - allLogs[j].odometer_reading;
+            break;
+          }
+        }
       }
+
+      if (dist != null && dist > 0 && curr.gallons > 0) {
+        mpg = Math.round((dist / curr.gallons) * 10) / 10;
+        cumulativeMiles += dist;
+        cumulativeGallons += curr.gallons;
+        totalDistance += dist;
+
+        if (bestMpg === null || mpg > bestMpg) bestMpg = mpg;
+        if (worstMpg === null || mpg < worstMpg) worstMpg = mpg;
+      }
+
+      if (dist != null && dist > 0 && curr.total_cost != null && curr.total_cost > 0) {
+        costPerMile = Math.round((curr.total_cost / dist) * 1000) / 1000;
+      }
+
+      const runningAvgMpg = cumulativeGallons > 0
+        ? Math.round((cumulativeMiles / cumulativeGallons) * 10) / 10
+        : null;
+
+      efficiencyMap[curr.id] = { mpg, distance: dist, cost_per_mile: costPerMile, running_avg_mpg: runningAvgMpg };
     }
-    const avgMpg = totalGallonsForMpg > 0 ? Math.round((totalMiles / totalGallonsForMpg) * 10) / 10 : null;
+
+    // Compute average MPG from cumulative
+    const avgMpg = cumulativeGallons > 0 ? Math.round((cumulativeMiles / cumulativeGallons) * 10) / 10 : null;
+
+    // Cost per mile overall
+    const overallCostPerMile = totalDistance > 0 && summaryRow.total_cost > 0
+      ? Math.round((summaryRow.total_cost / totalDistance) * 1000) / 1000
+      : null;
+
+    // Fuel cost per day
+    let fuelCostPerDay: number | null = null;
+    if (summaryRow.first_date && summaryRow.last_date && summaryRow.total_cost > 0) {
+      const firstMs = new Date(summaryRow.first_date).getTime();
+      const lastMs = new Date(summaryRow.last_date).getTime();
+      const days = Math.max(1, (lastMs - firstMs) / (1000 * 60 * 60 * 24));
+      fuelCostPerDay = Math.round((summaryRow.total_cost / days) * 100) / 100;
+    }
+
+    // Attach efficiency data to paginated logs
+    const enrichedLogs = logs.map((log: any) => {
+      const eff = efficiencyMap[log.id];
+      return {
+        ...log,
+        mpg: eff?.mpg ?? null,
+        calc_distance: eff?.distance ?? null,
+        cost_per_mile: eff?.cost_per_mile ?? null,
+        running_avg_mpg: eff?.running_avg_mpg ?? null,
+      };
+    });
 
     res.json({
-      data: logs,
+      data: enrichedLogs,
       summary: {
         total_gallons: summaryRow.total_gallons,
         total_cost: summaryRow.total_cost,
         avg_mpg: avgMpg,
         avg_cost_per_gallon: summaryRow.avg_cost_per_gallon ? Math.round(summaryRow.avg_cost_per_gallon * 1000) / 1000 : 0,
         log_count: summaryRow.log_count,
+        best_mpg: bestMpg,
+        worst_mpg: worstMpg,
+        total_distance: totalDistance > 0 ? Math.round(totalDistance * 10) / 10 : null,
+        cost_per_mile: overallCostPerMile,
+        fuel_cost_per_day: fuelCostPerDay,
       },
       pagination: {
         page: pageNum,
@@ -978,7 +1576,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching fuel logs:', error);
-    res.status(500).json({ error: 'Failed to fetch fuel logs' });
+    res.status(500).json({ error: 'Failed to fetch fuel logs', code: 'FAILED_TO_FETCH_FUEL' });
   }
 });
 
@@ -990,14 +1588,14 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
     const { fuel_date, gallons, cost_per_gallon, total_cost, odometer_reading, fuel_type, station, notes } = req.body;
 
     if (!fuel_date || !gallons) {
-      res.status(400).json({ error: 'fuel_date and gallons are required' });
+      res.status(400).json({ error: 'fuel_date and gallons are required', code: 'FUELDATE_AND_GALLONS_ARE' });
       return;
     }
 
@@ -1012,9 +1610,9 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       id,
       fuel_date,
       gallons,
-      cost_per_gallon ?? null,
+      cost_per_gallon || null,
       computedTotal,
-      odometer_reading ?? null,
+      odometer_reading || null,
       fuel_type || 'regular',
       station || null,
       notes || null,
@@ -1029,7 +1627,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       `).run(odometer_reading, localNow(), id);
     }
 
-    const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1045,7 +1643,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Error logging fuel entry:', error);
-    res.status(500).json({ error: 'Failed to log fuel entry' });
+    res.status(500).json({ error: 'Failed to log fuel entry', code: 'FAILED_TO_LOG_FUEL' });
   }
 });
 
@@ -1054,7 +1652,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
 
     const fFields: string[] = [];
     const fValues: any[] = [];
@@ -1076,7 +1674,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     res.json(updated);
   } catch (error: any) {
     console.error('Update fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update fuel log', code: 'UPDATE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1085,7 +1683,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM fleet_fuel_logs WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'fleet_fuel_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
@@ -1093,7 +1691,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete fuel log', code: 'DELETE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1102,15 +1700,15 @@ router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request,
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
-    if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
+    if (record.archived_at) { res.status(400).json({ error: 'Already archived', code: 'ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Archive fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive fuel log', code: 'ARCHIVE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1119,14 +1717,14 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
-    if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
+    if (!record.archived_at) { res.status(400).json({ error: 'Not archived', code: 'NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive fuel log', code: 'UNARCHIVE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1139,7 +1737,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1180,7 +1778,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching inspections:', error);
-    res.status(500).json({ error: 'Failed to fetch inspections' });
+    res.status(500).json({ error: 'Failed to fetch inspections', code: 'FAILED_TO_FETCH_INSPECTIONS' });
   }
 });
 
@@ -1192,19 +1790,19 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
     const { inspection_type, inspector_name, inspection_date, overall_result, mileage, items, notes } = req.body;
 
     if (!inspection_type || !inspector_name || !inspection_date || !overall_result) {
-      res.status(400).json({ error: 'inspection_type, inspector_name, inspection_date, and overall_result are required' });
+      res.status(400).json({ error: 'inspection_type, inspector_name, inspection_date, and overall_result are required', code: 'INSPECTIONTYPE_INSPECTORNAME_INSPECTIONDATE_AND' });
       return;
     }
 
     if (!Array.isArray(items)) {
-      res.status(400).json({ error: 'items must be an array' });
+      res.status(400).json({ error: 'items must be an array', code: 'ITEMS_MUST_BE_AN' });
       return;
     }
 
@@ -1235,7 +1833,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
       `).run(mileage, localNow(), id);
     }
 
-    const record = (db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
+    const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(result.lastInsertRowid) as any;
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1254,7 +1852,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
     });
   } catch (error: any) {
     console.error('Error creating inspection:', error);
-    res.status(500).json({ error: 'Failed to create inspection' });
+    res.status(500).json({ error: 'Failed to create inspection', code: 'FAILED_TO_CREATE_INSPECTION' });
   }
 });
 
@@ -1263,7 +1861,7 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
 
     const iFields: string[] = [];
     const iValues: any[] = [];
@@ -1285,11 +1883,10 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
     }
 
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Update inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update inspection', code: 'UPDATE_INSPECTION_ERROR' });
   }
 });
 
@@ -1298,7 +1895,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM fleet_inspections WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'fleet_inspection_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
@@ -1306,7 +1903,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete inspection', code: 'DELETE_INSPECTION_ERROR' });
   }
 });
 
@@ -1315,16 +1912,15 @@ router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: R
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
-    if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
+    if (record.archived_at) { res.status(400).json({ error: 'Already archived', code: 'ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_inspections SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Archive inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive inspection', code: 'ARCHIVE_INSPECTION_ERROR' });
   }
 });
 
@@ -1333,15 +1929,14 @@ router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req:
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
-    if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
+    if (!record.archived_at) { res.status(400).json({ error: 'Not archived', code: 'NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE fleet_inspections SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Unarchive inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive inspection', code: 'UNARCHIVE_INSPECTION_ERROR' });
   }
 });
 
@@ -1354,7 +1949,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1382,19 +1977,19 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching assignment history:', error);
-    res.status(500).json({ error: 'Failed to fetch assignment history' });
+    res.status(500).json({ error: 'Failed to fetch assignment history', code: 'FAILED_TO_FETCH_ASSIGNMENT' });
   }
 });
 
 // ─── GET /api/fleet/:id/personnel ─ Aggregated officer data ───────
-router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/:id/personnel', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
 
     const vehicle = db.prepare('SELECT id, assigned_unit_id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1417,7 +2012,8 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
         // Full officer profile
         officer = db.prepare(`
           SELECT id, username, full_name, first_name, last_name, middle_name, email, role, badge_number, phone, status,
-            rank, department, hire_date, shift_preference,
+            rank, department, address, city, state, zip, date_of_birth, hire_date, termination_date,
+            shift_preference, dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
             emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
             created_at, updated_at
           FROM users WHERE id = ?
@@ -1430,6 +2026,8 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
           LEFT JOIN users u ON c.officer_id = u.id
           WHERE c.officer_id = ?
           ORDER BY c.expiry_date ASC
+        
+          LIMIT 1000
         `).all(unit.officer_id);
 
         // Today's schedule
@@ -1439,6 +2037,8 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
           FROM schedules s
           LEFT JOIN properties p ON s.property_id = p.id
           WHERE s.officer_id = ? AND s.shift_date = ?
+        
+          LIMIT 1000
         `).all(unit.officer_id, today);
 
         // Active time entry
@@ -1455,6 +2055,8 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
       SELECT * FROM fleet_personnel_notes
       WHERE vehicle_id = ?
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(id);
 
     res.json({
@@ -1467,25 +2069,25 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
     });
   } catch (error: any) {
     console.error('Error fetching fleet personnel:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet personnel data' });
+    res.status(500).json({ error: 'Failed to fetch fleet personnel data', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
 // ─── POST /api/fleet/:id/personnel-notes ─ Add note ──────────────
-router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/personnel-notes', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
     const { note, officer_id, officer_name } = req.body;
 
     if (!note || !note.trim()) {
-      res.status(400).json({ error: 'Note text is required' });
+      res.status(400).json({ error: 'Note text is required', code: 'NOTE_TEXT_IS_REQUIRED' });
       return;
     }
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1497,24 +2099,24 @@ router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, officer_id || null, officer_name || null, note.trim(), req.user!.userId, creator?.full_name || 'Unknown', localNow());
 
-    const created = (db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
+    const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(result.lastInsertRowid) as any;
 
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Error creating personnel note:', error);
-    res.status(500).json({ error: 'Failed to create personnel note' });
+    res.status(500).json({ error: 'Failed to create personnel note', code: 'FAILED_TO_CREATE_PERSONNEL' });
   }
 });
 
 // ─── DELETE /api/fleet/:id/personnel-notes/:noteId ─ Delete note ──
-router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/personnel-notes/:noteId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id, noteId } = req.params;
 
     const note = db.prepare('SELECT id FROM fleet_personnel_notes WHERE id = ? AND vehicle_id = ?').get(noteId, id) as any;
     if (!note) {
-      res.status(404).json({ error: 'Note not found' });
+      res.status(404).json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' });
       return;
     }
 
@@ -1522,7 +2124,7 @@ router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting personnel note:', error);
-    res.status(500).json({ error: 'Failed to delete personnel note' });
+    res.status(500).json({ error: 'Failed to delete personnel note', code: 'FAILED_TO_DELETE_PERSONNEL' });
   }
 });
 
@@ -1533,7 +2135,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
     const { fillups, services, vehicle_number } = req.body;
 
     if (!vehicle_number) {
-      res.status(400).json({ error: 'vehicle_number is required to match import data' });
+      res.status(400).json({ error: 'vehicle_number is required to match import data', code: 'VEHICLENUMBER_IS_REQUIRED_TO' });
       return;
     }
 
@@ -1594,9 +2196,9 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
           insertFuel.run(
             vehicle.id,
             f.date,
-            f.quantity ?? f.gallons ?? null,
-            f.total_cost ?? null,
-            f.odometer ?? null,
+            f.quantity || f.gallons || null,
+            f.total_cost || null,
+            f.odometer || null,
             f.station || null,
             f.notes || null,
             f.distance || null,
@@ -1627,10 +2229,10 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
             s.date,
             mapServiceType(taskDesc),
             taskDesc,
-            s.total_cost ?? null,
-            s.odometer ?? null,
+            s.total_cost || null,
+            s.odometer || null,
             s.station || s.vendor || null,
-            s.labor_cost ?? null,
+            s.labor_cost || null,
             s.service_task ? JSON.stringify([s.service_task]) : null,
             now,
           );
@@ -1666,411 +2268,326 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
     });
   } catch (error: any) {
     console.error('Simply Fleet import error:', error);
-    res.status(500).json({ error: 'Failed to import Simply Fleet data' });
+    res.status(500).json({ error: 'Failed to import Simply Fleet data', code: 'FAILED_TO_IMPORT_SIMPLY' });
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// DASH CAMERA VIDEO MANAGEMENT
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// DASH CAMERAS
+// ═══════════════════════════════════════════════════════════════════
 
-// ── GET /api/fleet/dashcam-videos — List all dash cam videos ──
+// GET /api/fleet/dash-cameras — List all dash cameras
+router.get('/dash-cameras', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cameras = db.prepare(`
+      SELECT dc.*,
+        fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model,
+        fv.year AS vehicle_year
+      FROM dash_cameras dc
+      LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id
+      ORDER BY dc.created_at DESC
+    
+      LIMIT 1000
+    `).all();
+    res.json(cameras);
+  } catch (error: any) {
+    console.error('List dash cameras error:', error);
+    res.status(500).json({ error: 'Failed to list dash cameras', code: 'LIST_DASH_CAMERAS_ERROR' });
+  }
+});
+
+// POST /api/fleet/dash-cameras — Create
+router.post('/dash-cameras', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, camera_id, make, model, firmware_version, storage_capacity_gb, channel_count, status, condition, installed_at, removed_at, notes } = req.body;
+    if (!vehicle_id || !camera_id) {
+      res.status(400).json({ error: 'vehicle_id and camera_id are required', code: 'VEHICLEID_AND_CAMERAID_ARE' });
+      return;
+    }
+    const result = db.prepare(`
+      INSERT INTO dash_cameras (vehicle_id, camera_id, make, model, firmware_version, storage_capacity_gb, channel_count, status, condition, installed_at, removed_at, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      vehicle_id, camera_id, make || null, model || null, firmware_version || null,
+      storage_capacity_gb || 32, channel_count || 2,
+      status || 'available', condition || 'good',
+      installed_at || null, removed_at || null, notes || null, String(req.user!.userId)
+    );
+    const cam = db.prepare(`
+      SELECT dc.*, fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model, fv.year AS vehicle_year
+      FROM dash_cameras dc LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id WHERE dc.id = ?
+    `).get(result.lastInsertRowid);
+    res.status(201).json(cam);
+  } catch (error: any) {
+    if (error?.message?.includes('UNIQUE')) {
+      res.status(409).json({ error: 'Camera ID already exists', code: 'CAMERA_ID_ALREADY_EXISTS' });
+      return;
+    }
+    console.error('Create dash camera error:', error);
+    res.status(500).json({ error: 'Failed to create dash camera', code: 'CREATE_DASH_CAMERA_ERROR' });
+  }
+});
+
+// PUT /api/fleet/dash-cameras/:id — Update
+router.put('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found', code: 'DASH_CAMERA_NOT_FOUND' }); return; }
+    const fields = ['vehicle_id', 'camera_id', 'make', 'model', 'firmware_version', 'storage_capacity_gb', 'channel_count', 'status', 'condition', 'installed_at', 'removed_at', 'notes'];
+    const setClauses: string[] = [];
+    const vals: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) {
+        setClauses.push(`${f} = ?`);
+        vals.push(req.body[f] === '' ? null : req.body[f]);
+      }
+    }
+    if (setClauses.length > 0) {
+      setClauses.push('updated_at = ?');
+      vals.push(localNow());
+      vals.push(req.params.id);
+      db.prepare(`UPDATE dash_cameras SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
+    }
+    const cam = db.prepare(`
+      SELECT dc.*, fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model, fv.year AS vehicle_year
+      FROM dash_cameras dc LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id WHERE dc.id = ?
+    `).get(req.params.id);
+    res.json(cam);
+  } catch (error: any) {
+    console.error('Update dash camera error:', error);
+    res.status(500).json({ error: 'Failed to update dash camera', code: 'UPDATE_DASH_CAMERA_ERROR' });
+  }
+});
+
+// DELETE /api/fleet/dash-cameras/:id — Delete
+router.delete('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found', code: 'DASH_CAMERA_NOT_FOUND' }); return; }
+    db.prepare('DELETE FROM dashcam_videos WHERE camera_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM dash_cameras WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Dash camera deleted' });
+  } catch (error: any) {
+    console.error('Delete dash camera error:', error);
+    res.status(500).json({ error: 'Failed to delete dash camera', code: 'DELETE_DASH_CAMERA_ERROR' });
+  }
+});
+
+// DELETE /api/fleet/dash-cameras/bulk — Bulk delete
+router.delete('/dash-cameras/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { cameraIds } = req.body;
+    if (!Array.isArray(cameraIds) || cameraIds.length === 0) {
+      res.status(400).json({ error: 'cameraIds array required', code: 'CAMERAIDS_ARRAY_REQUIRED' });
+      return;
+    }
+    const placeholders = cameraIds.map(() => '?').join(',');
+    db.prepare(`DELETE FROM dashcam_videos WHERE camera_id IN (${placeholders})`).run(...cameraIds);
+    const result = db.prepare(`DELETE FROM dash_cameras WHERE id IN (${placeholders})`).run(...cameraIds);
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Bulk delete dash cameras error:', error);
+    res.status(500).json({ error: 'Failed to bulk delete dash cameras', code: 'BULK_DELETE_DASH_CAMERAS' });
+  }
+});
+
+// ─── Dash Camera Videos ────────────────────────────────────────────
+
+// GET /api/fleet/dashcam-videos — List all videos
 router.get('/dashcam-videos', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { vehicle_id, unit_id, classification } = req.query;
-
-    let where = 'WHERE 1=1';
-    const params: any[] = [];
-
-    if (vehicle_id) { where += ' AND v.vehicle_id = ?'; params.push(vehicle_id); }
-    if (unit_id) { where += ' AND v.unit_id = ?'; params.push(unit_id); }
-    if (classification) { where += ' AND v.classification = ?'; params.push(classification); }
-
     const videos = db.prepare(`
-      SELECT v.*, fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model, fv.year as vehicle_year,
-             un.call_sign as unit_call_sign
+      SELECT v.*, dc.camera_id AS camera_serial, fv.vehicle_number
       FROM dashcam_videos v
+      LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      ${where}
-      ORDER BY v.recorded_at DESC, v.created_at DESC
-      LIMIT 200
-    `).all(...params);
-
+      ORDER BY v.created_at DESC
+    
+      LIMIT 1000
+    `).all();
     res.json(videos);
   } catch (error: any) {
-    console.error('Get dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('List dashcam videos error:', error);
+    res.status(500).json({ error: 'Failed to list dashcam videos', code: 'LIST_DASHCAM_VIDEOS_ERROR' });
   }
 });
 
-// ── GET /api/fleet/:vehicleId/dashcam-videos — Videos for a vehicle ──
-router.get('/:vehicleId/dashcam-videos', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const videos = db.prepare(`
-      SELECT v.*, fv.vehicle_number, un.call_sign as unit_call_sign
-      FROM dashcam_videos v
-      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      WHERE v.vehicle_id = ?
-      ORDER BY v.recorded_at DESC
-    `).all(req.params.vehicleId);
-
-    res.json(videos);
-  } catch (error: any) {
-    console.error('Get vehicle dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /api/fleet/dashcam-videos — Upload dash cam video ──
-router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+// POST /api/fleet/dashcam-videos — Upload video
+router.post('/dashcam-videos', requireRole('admin'), (req: Request, res: Response) => {
   req.setTimeout(600000);
   res.setTimeout(600000);
-
   try {
     if (!fs.existsSync(DASHCAM_DIR)) fs.mkdirSync(DASHCAM_DIR, { recursive: true });
     fs.accessSync(DASHCAM_DIR, fs.constants.W_OK);
   } catch (dirErr: any) {
-    res.status(503).json({ error: `Upload storage unavailable: ${dirErr.message}` });
+    res.status(503).json({ error: `Upload storage is unavailable: ${dirErr.message}` });
     return;
   }
-
   try {
     dashcamUpload.single('video')(req, res, (multerErr: any) => {
       if (multerErr) {
         res.status(400).json({ error: multerErr.message || 'Upload failed' });
         return;
       }
-
       try {
         const db = getDb();
         const file = req.file;
-        if (!file) {
-          res.status(400).json({ error: 'No video file provided' });
-          return;
-        }
-
-        const { vehicle_id, unit_id, title, duration_seconds, recorded_at,
-                speed_mph, latitude, longitude, address,
-                case_number, classification, notes } = req.body;
-
-        if (!title) {
+        if (!file) { res.status(400).json({ error: 'No video file provided', code: 'NO_VIDEO_FILE_PROVIDED' }); return; }
+        const { camera_id, vehicle_id, title, duration_seconds, recorded_at, case_number, classification, gps_lat, gps_lon, notes } = req.body;
+        if (!camera_id || !vehicle_id || !title) {
           if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-          res.status(400).json({ error: 'title is required' });
+          res.status(400).json({ error: 'camera_id, vehicle_id, and title are required', code: 'CAMERAID_VEHICLEID_AND_TITLE' });
           return;
         }
-
         const diskStat = fs.statSync(file.path);
         const verifiedSize = diskStat.size;
         const relativePath = path.relative(DASHCAM_DIR, file.path);
-
-        // Auto-populate speed/lat/lon/address from nearest ClearPathGPS event
-        let resolvedSpeed = speed_mph ? parseFloat(speed_mph) : null;
-        let resolvedLat = latitude ? parseFloat(latitude) : null;
-        let resolvedLon = longitude ? parseFloat(longitude) : null;
-        let resolvedAddr = address || null;
-
-        if (unit_id && recorded_at && (resolvedSpeed == null || resolvedLat == null)) {
-          try {
-            const nearestEvent = db.prepare(`
-              SELECT speed_mph, latitude, longitude, address
-              FROM dashcam_events
-              WHERE unit_id = ?
-              AND ABS(julianday(event_timestamp) - julianday(?)) < 0.007
-              ORDER BY ABS(julianday(event_timestamp) - julianday(?))
-              LIMIT 1
-            `).get(unit_id, recorded_at, recorded_at) as any;
-
-            if (nearestEvent) {
-              if (resolvedSpeed == null && nearestEvent.speed_mph != null) resolvedSpeed = nearestEvent.speed_mph;
-              if (resolvedLat == null && nearestEvent.latitude != null) resolvedLat = nearestEvent.latitude;
-              if (resolvedLon == null && nearestEvent.longitude != null) resolvedLon = nearestEvent.longitude;
-              if (!resolvedAddr && nearestEvent.address) resolvedAddr = nearestEvent.address;
-            }
-          } catch { /* ClearPathGPS lookup failed — use manual values */ }
-        }
-
         const result = db.prepare(`
-          INSERT INTO dashcam_videos (vehicle_id, unit_id, title, file_path, file_size, duration_seconds,
-            mime_type, recorded_at, speed_mph, latitude, longitude, address,
-            case_number, classification, notes, uploaded_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO dashcam_videos (camera_id, vehicle_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, gps_lat, gps_lon, notes, uploaded_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          vehicle_id || null, unit_id || null, title, relativePath, verifiedSize,
+          camera_id, vehicle_id, title, relativePath, verifiedSize,
           duration_seconds || null, file.mimetype,
-          recorded_at || localNow(),
-          resolvedSpeed, resolvedLat, resolvedLon, resolvedAddr,
-          case_number || null, classification || 'routine',
-          notes || null, String(req.user!.userId),
+          recorded_at || localNow(), case_number || null,
+          classification || 'routine', gps_lat || null, gps_lon || null,
+          notes || null, String(req.user!.userId)
         );
-
-        const videoId = result.lastInsertRowid;
-
         const video = db.prepare(`
-          SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,
-                 un.call_sign as unit_call_sign
+          SELECT v.*, dc.camera_id AS camera_serial, fv.vehicle_number
           FROM dashcam_videos v
+          LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
           LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-          LEFT JOIN units un ON v.unit_id = un.id
           WHERE v.id = ?
-        `).get(videoId) as any;
-
-        // Fire-and-forget: extract duration
+        `).get(result.lastInsertRowid);
+        // Fire-and-forget: extract duration with ffprobe
         const fullFilePath = path.resolve(DASHCAM_DIR, relativePath);
-        extractDashcamDuration(fullFilePath).then((dur) => {
-          if (dur != null) {
+        extractVideoDuration(fullFilePath).then((probedDuration) => {
+          if (probedDuration != null) {
             try {
               getDb().prepare('UPDATE dashcam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
-                .run(dur, localNow(), videoId);
-            } catch { /* ignore */ }
+                .run(probedDuration, localNow(), result.lastInsertRowid);
+            } catch { /* ffprobe update failed */ }
           }
-        }).catch((err) => { console.error('[Fleet] Background operation failed:', err.message || err); });
-
-        // Fire-and-forget: queue overlay burn
-        const vehDesc = [video?.vehicle_year, video?.vehicle_make, video?.vehicle_model].filter(Boolean).join(' ');
-        const overlayConfig: DashCamOverlayConfig = {
-          type: 'dashcam',
-          unitCallSign: video?.unit_call_sign || '',
-          vehicleDescription: vehDesc,
-          recordedAtUnix: Math.floor(new Date(recorded_at || Date.now()).getTime() / 1000),
-          speedMph: resolvedSpeed,
-          latitude: resolvedLat,
-          longitude: resolvedLon,
-          address: resolvedAddr || '',
-        };
-        queueOverlayProcessing(videoId, 'dashcam', fullFilePath, overlayConfig);
-
+        }).catch(() => {});
         res.status(201).json(video);
       } catch (error: any) {
-        console.error('Dashcam upload DB error:', error?.message, error?.stack);
+        console.error('Upload dashcam video DB error:', error);
         res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
       }
     });
   } catch (outerErr: any) {
-    console.error('Dashcam upload error:', outerErr?.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
-    }
+    if (!res.headersSent) res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
   }
 });
 
-// ── GET /api/fleet/dashcam-videos/:id/stream — Stream with overlay ──
-router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
+// GET /api/fleet/dashcam-videos/:id/stream — Stream with Range support
+router.get('/dashcam-videos/:id/stream', (req: Request, res: Response, next) => {
+  if (!req.headers['authorization'] && req.query.token) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    // Serve processed (overlaid) file if available
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(DASHCAM_DIR, video.processed_file_path)
-      : path.resolve(DASHCAM_DIR, video.file_path);
-
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
-
+    if (!video) { res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' }); return; }
+    const filePath = path.resolve(DASHCAM_DIR, video.file_path);
     if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
+      res.status(404).json({ error: 'Video file not found on disk', code: 'VIDEO_FILE_NOT_FOUND' });
       return;
     }
-
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
-    const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
     const range = req.headers.range;
-
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
-        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
-        res.end();
-        return;
-      }
-
       const chunkSize = end - start + 1;
-
       res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
-        'Content-Type': mimeType,
+        'Content-Type': video.mime_type || 'video/mp4',
       });
       fs.createReadStream(filePath, { start, end }).pipe(res);
     } else {
-      res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType });
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
       fs.createReadStream(filePath).pipe(res);
     }
   } catch (error: any) {
     console.error('Stream dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stream dashcam video', code: 'STREAM_DASHCAM_VIDEO_ERROR' });
   }
 });
 
-// ── GET /api/fleet/dashcam-videos/:id/download — Force-download with overlay ──
-router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(DASHCAM_DIR, video.processed_file_path)
-      : path.resolve(DASHCAM_DIR, video.file_path);
-
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
-
-    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
-      return;
-    }
-
-    const stat = fs.statSync(filePath);
-    const safeTitle = (video.title || `dashcam_${video.id}`).replace(/[^a-zA-Z0-9_\-. ]/g, '_');
-    res.writeHead(200, {
-      'Content-Type': 'video/mp4',
-      'Content-Length': stat.size,
-      'Content-Disposition': `attachment; filename="MVR_${safeTitle}.mp4"`,
-    });
-    fs.createReadStream(filePath).pipe(res);
-  } catch (error: any) {
-    console.error('Download dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── PUT /api/fleet/dashcam-videos/:id — Update metadata ──
-router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    const { title, classification, case_number, notes, speed_mph, latitude, longitude, address } = req.body;
-    const setClauses: string[] = [];
-    const vals: any[] = [];
-
-    if (title !== undefined) { setClauses.push('title = ?'); vals.push(title); }
-    if (classification !== undefined) { setClauses.push('classification = ?'); vals.push(classification); }
-    if (case_number !== undefined) { setClauses.push('case_number = ?'); vals.push(case_number || null); }
-    if (notes !== undefined) { setClauses.push('notes = ?'); vals.push(notes || null); }
-    if (speed_mph !== undefined) { setClauses.push('speed_mph = ?'); vals.push(speed_mph != null ? parseFloat(speed_mph) : null); }
-    if (latitude !== undefined) { setClauses.push('latitude = ?'); vals.push(latitude != null ? parseFloat(latitude) : null); }
-    if (longitude !== undefined) { setClauses.push('longitude = ?'); vals.push(longitude != null ? parseFloat(longitude) : null); }
-    if (address !== undefined) { setClauses.push('address = ?'); vals.push(address || null); }
-
-    if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
-      return;
-    }
-
-    setClauses.push('updated_at = ?');
-    vals.push(localNow());
-    vals.push(req.params.id);
-
-    db.prepare(`UPDATE dashcam_videos SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
-
-    const updated = db.prepare(`
-      SELECT v.*, fv.vehicle_number, un.call_sign as unit_call_sign
-      FROM dashcam_videos v
-      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      WHERE v.id = ?
-    `).get(req.params.id);
-
-    res.json(updated);
-  } catch (error: any) {
-    console.error('Update dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── DELETE /api/fleet/dashcam-videos/:id — Delete video + files ──
+// DELETE /api/fleet/dashcam-videos/:id — Delete video + file
 router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    // Delete original file
+    if (!existing) { res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' }); return; }
     const filePath = path.resolve(DASHCAM_DIR, existing.file_path);
     if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
-    // Delete processed overlay file
-    if (existing.processed_file_path) {
-      const processedPath = path.resolve(DASHCAM_DIR, existing.processed_file_path);
-      if (processedPath.startsWith(DASHCAM_DIR) && fs.existsSync(processedPath)) {
-        fs.unlinkSync(processedPath);
-      }
-    }
-
     db.prepare('DELETE FROM dashcam_videos WHERE id = ?').run(req.params.id);
-    res.json({ message: 'Dash cam video deleted' });
+    res.json({ message: 'Video deleted' });
   } catch (error: any) {
     console.error('Delete dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete dashcam video', code: 'DELETE_DASHCAM_VIDEO_ERROR' });
   }
 });
 
-// ── POST /api/fleet/dashcam-videos/:id/reprocess — Re-queue overlay ──
-router.post('/dashcam-videos/:id/reprocess', requireRole('admin'), (req: Request, res: Response) => {
+// PUT /api/fleet/dashcam-videos/bulk — Bulk classify
+router.put('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const video = db.prepare(`
-      SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,
-             un.call_sign as unit_call_sign
-      FROM dashcam_videos v
-      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      LEFT JOIN units un ON v.unit_id = un.id
-      WHERE v.id = ?
-    `).get(req.params.id) as any;
-
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+    const { videoIds, classification } = req.body;
+    if (!Array.isArray(videoIds) || videoIds.length === 0 || !classification) {
+      res.status(400).json({ error: 'videoIds array and classification required', code: 'VIDEOIDS_ARRAY_AND_CLASSIFICATION' });
       return;
     }
-
-    const inputPath = path.resolve(DASHCAM_DIR, video.file_path);
-    if (!fs.existsSync(inputPath)) {
-      res.status(404).json({ error: 'Original video file not found' });
-      return;
-    }
-
-    const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
-    const recordedAt = video.recorded_at ? new Date(video.recorded_at) : new Date();
-    const config: DashCamOverlayConfig = {
-      type: 'dashcam',
-      unitCallSign: video.unit_call_sign || '',
-      vehicleDescription: vehDesc,
-      recordedAtUnix: Math.floor(recordedAt.getTime() / 1000),
-      speedMph: video.speed_mph,
-      latitude: video.latitude,
-      longitude: video.longitude,
-      address: video.address || '',
-    };
-
-    queueOverlayProcessing(video.id, 'dashcam', inputPath, config);
-    res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
+    const placeholders = videoIds.map(() => '?').join(',');
+    db.prepare(`UPDATE dashcam_videos SET classification = ?, updated_at = ? WHERE id IN (${placeholders})`)
+      .run(classification, localNow(), ...videoIds);
+    res.json({ updated: videoIds.length });
   } catch (error: any) {
-    console.error('Reprocess dashcam overlay error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Bulk classify dashcam videos error:', error);
+    res.status(500).json({ error: 'Failed to bulk classify dashcam videos', code: 'BULK_CLASSIFY_DASHCAM_VIDEOS' });
+  }
+});
+
+// DELETE /api/fleet/dashcam-videos/bulk — Bulk delete
+router.delete('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { videoIds } = req.body;
+    if (!Array.isArray(videoIds) || videoIds.length === 0) {
+      res.status(400).json({ error: 'videoIds array required', code: 'VIDEOIDS_ARRAY_REQUIRED' });
+      return;
+    }
+    // Delete files from disk
+    const placeholders = videoIds.map(() => '?').join(',');
+    const videos = db.prepare(`SELECT * FROM dashcam_videos WHERE id IN (${placeholders})`).all(...videoIds) as any[];
+    for (const v of videos) {
+      const fp = path.resolve(DASHCAM_DIR, v.file_path);
+      if (fp.startsWith(DASHCAM_DIR) && fs.existsSync(fp)) fs.unlinkSync(fp);
+    }
+    const result = db.prepare(`DELETE FROM dashcam_videos WHERE id IN (${placeholders})`).run(...videoIds);
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Bulk delete dashcam videos error:', error);
+    res.status(500).json({ error: 'Failed to bulk delete dashcam videos', code: 'BULK_DELETE_DASHCAM_VIDEOS' });
   }
 });
 
@@ -2084,5 +2601,1319 @@ function safeParseJson(value: string | null | undefined, fallback: any): any {
     return fallback;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLEET FEATURES (31-40)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 31. Vehicle Assignment History ──────────────────────────────────────────
+router.get('/:id/assignment-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const rows = db.prepare(`
+      SELECT fa.*, u.full_name as officer_name_lookup
+      FROM fleet_assignments fa
+      LEFT JOIN units un ON un.id = fa.unit_id
+      LEFT JOIN users u ON u.id = un.officer_id
+      WHERE fa.vehicle_id = ?
+      ORDER BY fa.assigned_at DESC
+    
+      LIMIT 1000
+    `).all(id);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Assignment history error:', error);
+    res.status(500).json({ error: 'Failed to load assignment history', code: 'FAILED_TO_LOAD_ASSIGNMENT' });
+  }
+});
+
+// ─── 32. Fuel Efficiency Tracking ────────────────────────────────────────────
+router.get('/:id/fuel-efficiency', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
+
+    const fuelLogs = db.prepare(`
+      SELECT id, fuel_date, gallons, odometer_reading, total_cost
+      FROM fleet_fuel_logs
+      WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
+      ORDER BY fuel_date ASC, id ASC
+    
+      LIMIT 1000
+    `).all(id) as any[];
+
+    const efficiencyData: any[] = [];
+    for (let i = 1; i < fuelLogs.length; i++) {
+      const prev = fuelLogs[i - 1];
+      const curr = fuelLogs[i];
+      if (curr.odometer_reading > prev.odometer_reading && curr.gallons > 0) {
+        const miles = curr.odometer_reading - prev.odometer_reading;
+        const mpg = miles / curr.gallons;
+        const costPerMile = curr.total_cost ? curr.total_cost / miles : null;
+        efficiencyData.push({
+          date: curr.fuel_date,
+          miles_driven: miles,
+          gallons: curr.gallons,
+          mpg: Math.round(mpg * 10) / 10,
+          cost_per_mile: costPerMile ? Math.round(costPerMile * 100) / 100 : null,
+        });
+      }
+    }
+
+    const avgMpg = efficiencyData.length > 0
+      ? Math.round(efficiencyData.reduce((s, e) => s + e.mpg, 0) / efficiencyData.length * 10) / 10
+      : null;
+
+    res.json({ vehicle_id: Number(id), avg_mpg: avgMpg, data: efficiencyData });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fuel efficiency', code: 'FAILED_TO_LOAD_FUEL' });
+  }
+});
+
+// ─── 33. Vehicle Inspection Checklist ────────────────────────────────────────
+router.get('/inspection-checklist', (_req: Request, res: Response) => {
+  // Standard daily vehicle inspection checklist
+  const checklist = [
+    { category: 'Exterior', items: [
+      { id: 'body_damage', label: 'Body damage (dents, scratches)', type: 'pass_fail' },
+      { id: 'lights_front', label: 'Headlights / turn signals', type: 'pass_fail' },
+      { id: 'lights_rear', label: 'Taillights / brake lights', type: 'pass_fail' },
+      { id: 'lights_emergency', label: 'Emergency lights / lightbar', type: 'pass_fail' },
+      { id: 'windshield', label: 'Windshield condition', type: 'pass_fail' },
+      { id: 'mirrors', label: 'Mirrors', type: 'pass_fail' },
+      { id: 'tires', label: 'Tire condition / pressure', type: 'pass_fail' },
+      { id: 'antenna', label: 'Radio antenna', type: 'pass_fail' },
+    ]},
+    { category: 'Interior', items: [
+      { id: 'seatbelts', label: 'Seatbelts', type: 'pass_fail' },
+      { id: 'horn', label: 'Horn', type: 'pass_fail' },
+      { id: 'radio', label: 'Radio / communication equipment', type: 'pass_fail' },
+      { id: 'mdt', label: 'MDT / laptop', type: 'pass_fail' },
+      { id: 'dashcam', label: 'Dash camera', type: 'pass_fail' },
+      { id: 'siren', label: 'Siren', type: 'pass_fail' },
+      { id: 'ac_heat', label: 'A/C & heating', type: 'pass_fail' },
+      { id: 'cleanliness', label: 'Interior cleanliness', type: 'pass_fail' },
+    ]},
+    { category: 'Safety Equipment', items: [
+      { id: 'first_aid', label: 'First aid kit', type: 'pass_fail' },
+      { id: 'fire_extinguisher', label: 'Fire extinguisher', type: 'pass_fail' },
+      { id: 'flares', label: 'Road flares / triangles', type: 'pass_fail' },
+      { id: 'spare_tire', label: 'Spare tire / jack', type: 'pass_fail' },
+    ]},
+    { category: 'Fluids', items: [
+      { id: 'fuel_level', label: 'Fuel level (minimum 1/2 tank)', type: 'pass_fail' },
+      { id: 'oil_level', label: 'Oil level', type: 'pass_fail' },
+      { id: 'coolant', label: 'Coolant level', type: 'pass_fail' },
+      { id: 'washer_fluid', label: 'Windshield washer fluid', type: 'pass_fail' },
+    ]},
+  ];
+  res.json(checklist);
+});
+
+// ─── 34. Maintenance Cost Tracking ───────────────────────────────────────────
+router.get('/:id/maintenance-costs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
+
+    const totalCost = db.prepare(
+      `SELECT COALESCE(SUM(cost), 0) as total, COALESCE(SUM(labor_cost), 0) as labor_total,
+       COUNT(*) as record_count
+       FROM fleet_maintenance WHERE vehicle_id = ?`
+    ).get(id) as any;
+
+    const byType = db.prepare(`
+      SELECT type, COALESCE(SUM(cost), 0) as total_cost, COUNT(*) as count
+      FROM fleet_maintenance WHERE vehicle_id = ? AND cost IS NOT NULL
+      GROUP BY type ORDER BY total_cost DESC
+    `).all(id) as any[];
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', performed_at) as month,
+        COALESCE(SUM(cost), 0) as cost, COUNT(*) as count
+      FROM fleet_maintenance WHERE vehicle_id = ?
+      GROUP BY month ORDER BY month DESC LIMIT 12
+    `).all(id) as any[];
+
+    res.json({
+      vehicle_id: Number(id),
+      total_parts_cost: totalCost.total || 0,
+      total_labor_cost: totalCost.labor_total || 0,
+      total_cost: (totalCost.total || 0) + (totalCost.labor_total || 0),
+      record_count: totalCost.record_count,
+      by_type: byType,
+      monthly_trend: monthly.reverse(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load maintenance costs', code: 'FAILED_TO_LOAD_MAINTENANCE' });
+  }
+});
+
+// ─── 35. Vehicle Status Dashboard ────────────────────────────────────────────
+router.get('/status-dashboard', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status,
+        fv.current_mileage, fv.next_service_due, fv.insurance_expiry, fv.registration_expiry,
+        u.call_sign as assigned_unit
+      FROM fleet_vehicles fv
+      LEFT JOIN units u ON u.id = fv.assigned_unit_id
+      WHERE fv.archived_at IS NULL
+      ORDER BY fv.vehicle_number
+    
+      LIMIT 1000
+    `).all() as any[];
+
+    const now = localToday();
+    const statusSummary: Record<string, number> = {};
+
+    const enriched = vehicles.map((v: any) => {
+      statusSummary[v.status] = (statusSummary[v.status] || 0) + 1;
+      const alerts: string[] = [];
+      if (v.insurance_expiry && v.insurance_expiry <= now) alerts.push('insurance_expired');
+      if (v.registration_expiry && v.registration_expiry <= now) alerts.push('registration_expired');
+      if (v.next_service_due && v.next_service_due <= now) alerts.push('service_overdue');
+      return { ...v, alerts };
+    });
+
+    // Recall count
+    let openRecalls = 0;
+    try {
+      const rc = db.prepare(`SELECT COUNT(*) as cnt FROM fleet_recalls WHERE status = 'open'`).get() as any;
+      openRecalls = rc?.cnt || 0;
+    } catch { /* table may not exist */ }
+
+    res.json({ vehicles: enriched, status_summary: statusSummary, open_recalls: openRecalls });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load status dashboard', code: 'FAILED_TO_LOAD_STATUS' });
+  }
+});
+
+// ─── 36. Tire Tracking ───────────────────────────────────────────────────────
+router.get('/:id/tires', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM fleet_tires WHERE vehicle_id = ? ORDER BY position').all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load tires', code: 'FAILED_TO_LOAD_TIRES' });
+  }
+});
+
+router.post('/:id/tires', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.params.id;
+    const { position, brand, model, size, install_date, tread_depth, notes } = req.body;
+    if (!position) return res.status(400).json({ error: 'position is required', code: 'POSITION_IS_REQUIRED' });
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_tires (vehicle_id, position, brand, model, size, install_date, tread_depth, last_measured, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(vehicleId, position, brand || null, model || null, size || null,
+      install_date || null, tread_depth || null, tread_depth ? now.substring(0, 10) : null, notes || null, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to add tire', code: 'FAILED_TO_ADD_TIRE' });
+  }
+});
+
+router.put('/tires/:tireId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { tread_depth, brand, model, notes } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (tread_depth !== undefined) { sets.push('tread_depth = ?'); vals.push(tread_depth); sets.push('last_measured = ?'); vals.push(now.substring(0, 10)); }
+    if (brand !== undefined) { sets.push('brand = ?'); vals.push(brand); }
+    if (model !== undefined) { sets.push('model = ?'); vals.push(model); }
+    if (notes !== undefined) { sets.push('notes = ?'); vals.push(notes); }
+    vals.push(req.params.tireId);
+    db.prepare(`UPDATE fleet_tires SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update tire', code: 'FAILED_TO_UPDATE_TIRE' });
+  }
+});
+
+// ─── 37. Vehicle Damage Reporting ────────────────────────────────────────────
+router.get('/:id/damage-reports', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT dr.*, u.full_name as reported_by_name
+      FROM fleet_damage_reports dr
+      LEFT JOIN users u ON u.id = dr.reported_by
+      WHERE dr.vehicle_id = ? ORDER BY dr.damage_date DESC
+    
+      LIMIT 1000
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load damage reports', code: 'FAILED_TO_LOAD_DAMAGE' });
+  }
+});
+
+router.post('/:id/damage-reports', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.params.id;
+    const { damage_date, damage_type, location_on_vehicle, severity, description,
+            repair_estimate, photos, insurance_claim_number } = req.body;
+    if (!damage_date || !damage_type || !description) {
+      return res.status(400).json({ error: 'damage_date, damage_type, and description are required', code: 'DAMAGEDATE_DAMAGETYPE_AND_DESCRIPTION' });
+    }
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_damage_reports (vehicle_id, reported_by, damage_date, damage_type, location_on_vehicle,
+       severity, description, repair_estimate, photos, insurance_claim_number, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(vehicleId, req.user!.userId, damage_date, damage_type, location_on_vehicle || null,
+      severity || 'minor', description, repair_estimate || null,
+      JSON.stringify(photos || []), insurance_claim_number || null, now, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_damage_reported', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, vehicleId, `Damage reported: ${damage_type} - ${description}`, req.ip || 'unknown');
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create damage report', code: 'FAILED_TO_CREATE_DAMAGE' });
+  }
+});
+
+router.put('/damage-reports/:reportId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { repair_status, repair_cost, insurance_claim_number } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (repair_status) { sets.push('repair_status = ?'); vals.push(repair_status); }
+    if (repair_cost !== undefined) { sets.push('repair_cost = ?'); vals.push(repair_cost); }
+    if (insurance_claim_number !== undefined) { sets.push('insurance_claim_number = ?'); vals.push(insurance_claim_number); }
+    vals.push(req.params.reportId);
+    db.prepare(`UPDATE fleet_damage_reports SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update damage report', code: 'FAILED_TO_UPDATE_DAMAGE' });
+  }
+});
+
+// ─── 38. Fleet Utilization Report ────────────────────────────────────────────
+router.get('/utilization-report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const cutoff = new Date(Date.now() - Number(days) * 24 * 60 * 60 * 1000).toISOString();
+
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status
+      FROM fleet_vehicles fv WHERE fv.archived_at IS NULL
+      ORDER BY fv.vehicle_number
+    
+      LIMIT 1000
+    `).all() as any[];
+
+    const result = vehicles.map((v: any) => {
+      const fuelLogs = db.prepare(
+        `SELECT COUNT(*) as cnt FROM fleet_fuel_logs WHERE vehicle_id = ? AND fuel_date >= ?`
+      ).get(v.id, cutoff.substring(0, 10)) as any;
+
+      const assignments = db.prepare(
+        `SELECT COUNT(*) as cnt FROM fleet_assignments WHERE vehicle_id = ? AND assigned_at >= ?`
+      ).get(v.id, cutoff) as any;
+
+      const inspections = db.prepare(
+        `SELECT COUNT(*) as cnt FROM fleet_inspections WHERE vehicle_id = ? AND inspection_date >= ?`
+      ).get(v.id, cutoff.substring(0, 10)) as any;
+
+      return {
+        ...v,
+        fuel_log_count: fuelLogs?.cnt || 0,
+        assignment_count: assignments?.cnt || 0,
+        inspection_count: inspections?.cnt || 0,
+        utilization_score: (fuelLogs?.cnt || 0) + (assignments?.cnt || 0) * 2,
+      };
+    });
+
+    result.sort((a: any, b: any) => b.utilization_score - a.utilization_score);
+    const avgScore = result.length > 0
+      ? Math.round(result.reduce((s: number, v: any) => s + v.utilization_score, 0) / result.length)
+      : 0;
+
+    res.json({
+      period_days: Number(days),
+      vehicles: result,
+      most_used: result[0] || null,
+      least_used: result[result.length - 1] || null,
+      avg_utilization_score: avgScore,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate utilization report', code: 'FAILED_TO_GENERATE_UTILIZATION' });
+  }
+});
+
+// ─── 39. Vehicle Recall Alerts ───────────────────────────────────────────────
+router.get('/recalls', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, status } = req.query;
+    let sql = `SELECT r.*, fv.vehicle_number, fv.make, fv.model, fv.year, fv.vin
+               FROM fleet_recalls r
+               JOIN fleet_vehicles fv ON fv.id = r.vehicle_id WHERE 1=1`;
+    const params: any[] = [];
+    if (vehicle_id) { sql += ' AND r.vehicle_id = ?'; params.push(Number(vehicle_id)); }
+    if (status) { sql += ' AND r.status = ?'; params.push(status); }
+    sql += ' ORDER BY r.created_at DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load recalls', code: 'FAILED_TO_LOAD_RECALLS' });
+  }
+});
+
+router.post('/recalls', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, recall_number, manufacturer, description, severity, remedy } = req.body;
+    if (!vehicle_id || !recall_number || !description) {
+      return res.status(400).json({ error: 'vehicle_id, recall_number, and description are required', code: 'VEHICLEID_RECALLNUMBER_AND_DESCRIPTION' });
+    }
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_recalls (vehicle_id, recall_number, manufacturer, description, severity, remedy, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(vehicle_id, recall_number, manufacturer || null, description, severity || 'standard', remedy || null, now, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_recall_created', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, vehicle_id, `Recall: ${recall_number} - ${description}`, req.ip || 'unknown');
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create recall', code: 'FAILED_TO_CREATE_RECALL' });
+  }
+});
+
+router.put('/recalls/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { status, scheduled_date, completed_date } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (status) { sets.push('status = ?'); vals.push(status); }
+    if (scheduled_date !== undefined) { sets.push('scheduled_date = ?'); vals.push(scheduled_date); }
+    if (completed_date !== undefined) { sets.push('completed_date = ?'); vals.push(completed_date); }
+    vals.push(id);
+    db.prepare(`UPDATE fleet_recalls SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update recall', code: 'FAILED_TO_UPDATE_RECALL' });
+  }
+});
+
+// ─── 40. Fuel Card Assignment ────────────────────────────────────────────────
+router.get('/fuel-cards', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, status } = req.query;
+    let sql = `SELECT fc.*, fv.vehicle_number
+               FROM fleet_fuel_cards fc
+               LEFT JOIN fleet_vehicles fv ON fv.id = fc.vehicle_id WHERE 1=1`;
+    const params: any[] = [];
+    if (vehicle_id) { sql += ' AND fc.vehicle_id = ?'; params.push(Number(vehicle_id)); }
+    if (status) { sql += ' AND fc.status = ?'; params.push(status); }
+    sql += ' ORDER BY fc.card_number';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fuel cards', code: 'FAILED_TO_LOAD_FUEL' });
+  }
+});
+
+router.post('/fuel-cards', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { card_number, vehicle_id, provider, monthly_limit, pin_last4, expiry_date, notes } = req.body;
+    if (!card_number) return res.status(400).json({ error: 'card_number is required', code: 'CARDNUMBER_IS_REQUIRED' });
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_fuel_cards (card_number, vehicle_id, provider, monthly_limit, pin_last4, expiry_date, notes, assigned_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(card_number, vehicle_id || null, provider || null, monthly_limit || null,
+      pin_last4 || null, expiry_date || null, notes || null, vehicle_id ? now : null, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE')) return res.status(409).json({ error: 'Card number already exists', code: 'CARD_NUMBER_ALREADY_EXISTS' });
+    res.status(500).json({ error: 'Failed to create fuel card', code: 'FAILED_TO_CREATE_FUEL' });
+  }
+});
+
+router.put('/fuel-cards/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { vehicle_id, status, monthly_limit, notes } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (vehicle_id !== undefined) { sets.push('vehicle_id = ?'); vals.push(vehicle_id); sets.push('assigned_at = ?'); vals.push(vehicle_id ? now : null); }
+    if (status) { sets.push('status = ?'); vals.push(status); }
+    if (monthly_limit !== undefined) { sets.push('monthly_limit = ?'); vals.push(monthly_limit); }
+    if (notes !== undefined) { sets.push('notes = ?'); vals.push(notes); }
+    vals.push(id);
+    db.prepare(`UPDATE fleet_fuel_cards SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update fuel card', code: 'FAILED_TO_UPDATE_FUEL' });
+  }
+});
+
+// ── Feature 16: Vehicle pre-trip checklist ────────────────────────
+// POST /api/fleet/pretrip - Submit pre-trip checklist
+router.post('/pretrip', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const {
+      vehicle_id, lights_ok, brakes_ok, radio_ok, mdt_ok, camera_ok,
+      tires_ok, fluids_ok, exterior_ok, interior_ok, emergency_equipment_ok, notes,
+    } = req.body;
+
+    if (!vehicle_id) { res.status(400).json({ error: 'vehicle_id is required', code: 'VEHICLEID_IS_REQUIRED' }); return; }
+
+    const checks = [lights_ok, brakes_ok, radio_ok, mdt_ok, camera_ok, tires_ok, fluids_ok, exterior_ok, interior_ok, emergency_equipment_ok];
+    const overall_pass = checks.every(c => c) ? 1 : 0;
+    const today = localNow().split('T')[0];
+
+    const result = db.prepare(`
+      INSERT INTO fleet_pretrip_checklists (vehicle_id, officer_id, shift_date,
+        lights_ok, brakes_ok, radio_ok, mdt_ok, camera_ok, tires_ok, fluids_ok,
+        exterior_ok, interior_ok, emergency_equipment_ok, notes, overall_pass, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(vehicle_id, req.user!.userId, today,
+      lights_ok ? 1 : 0, brakes_ok ? 1 : 0, radio_ok ? 1 : 0, mdt_ok ? 1 : 0,
+      camera_ok ? 1 : 0, tires_ok ? 1 : 0, fluids_ok ? 1 : 0, exterior_ok ? 1 : 0,
+      interior_ok ? 1 : 0, emergency_equipment_ok ? 1 : 0, notes || null, overall_pass, localNow());
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid), overall_pass: !!overall_pass });
+  } catch (error: any) {
+    console.error('Pre-trip checklist error:', error);
+    res.status(500).json({ error: 'Failed to save pre-trip checklist', code: 'FAILED_TO_SAVE_PRETRIP' });
+  }
+});
+
+// GET /api/fleet/pretrip/:vehicleId - Get pre-trip history for a vehicle
+router.get('/pretrip/:vehicleId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const checklists = db.prepare(`
+      SELECT fpc.*, u.full_name as officer_name
+      FROM fleet_pretrip_checklists fpc
+      LEFT JOIN users u ON fpc.officer_id = u.id
+      WHERE fpc.vehicle_id = ?
+      ORDER BY fpc.completed_at DESC
+      LIMIT 50
+    `).all(req.params.vehicleId);
+    res.json(checklists);
+  } catch (error: any) {
+    console.error('Get pre-trip checklists error:', error);
+    res.status(500).json({ error: 'Failed to get pre-trip checklists', code: 'GET_PRETRIP_CHECKLISTS_ERROR' });
+  }
+});
+
+// ── Feature 17: Vehicle mileage tracking from GPS breadcrumbs ─────
+// GET /api/fleet/daily-mileage/:vehicleId - Get daily mileage from GPS
+router.get('/daily-mileage/:vehicleId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const dayCount = parseInt(days as string, 10) || 30;
+
+    // Get the unit assigned to this vehicle
+    const unit = db.prepare('SELECT id FROM units WHERE vehicle_id = ?').get(req.params.vehicleId) as any;
+    if (!unit) { res.json([]); return; }
+
+    const breadcrumbs = db.prepare(`
+      SELECT DATE(recorded_at) as day, latitude, longitude, recorded_at
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= datetime('now', '-${dayCount} days', 'localtime')
+      ORDER BY recorded_at ASC
+    
+      LIMIT 1000
+    `).all(unit.id) as any[];
+
+    // Group by day and calculate distance
+    const byDay: Record<string, { points: any[] }> = {};
+    for (const bc of breadcrumbs) {
+      if (!byDay[bc.day]) byDay[bc.day] = { points: [] };
+      byDay[bc.day].points.push(bc);
+    }
+
+    const dailyMileage = Object.entries(byDay).map(([day, data]) => {
+      let miles = 0;
+      for (let i = 1; i < data.points.length; i++) {
+        const prev = data.points[i - 1];
+        const curr = data.points[i];
+        const R = 3959;
+        const dLat = (curr.latitude - prev.latitude) * Math.PI / 180;
+        const dLon = (curr.longitude - prev.longitude) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.latitude * Math.PI / 180) * Math.cos(curr.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        miles += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+      return { date: day, miles: Math.round(miles * 10) / 10, breadcrumb_count: data.points.length };
+    });
+
+    res.json(dailyMileage);
+  } catch (error: any) {
+    console.error('Daily mileage error:', error);
+    res.status(500).json({ error: 'Failed to daily mileage', code: 'DAILY_MILEAGE_ERROR' });
+  }
+});
+
+// ── Feature 18: Fleet maintenance calendar ────────────────────────
+// GET /api/fleet/maintenance-calendar - Calendar view of upcoming maintenance
+router.get('/maintenance-calendar', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { start, end } = req.query;
+    const now = localNow();
+    const startDate = start || now.split('T')[0];
+    const endDate = end || new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+
+    // Upcoming scheduled maintenance
+    const scheduled = db.prepare(`
+      SELECT fm.id, fm.vehicle_id, fm.maintenance_type, fm.description, fm.scheduled_date,
+        fm.cost, fm.status, fv.vehicle_number, fv.make, fv.model, fv.year
+      FROM fleet_maintenance fm
+      JOIN fleet_vehicles fv ON fm.vehicle_id = fv.id
+      WHERE fm.scheduled_date BETWEEN ? AND ?
+      ORDER BY fm.scheduled_date ASC
+    
+      LIMIT 1000
+    `).all(startDate, endDate) as any[];
+
+    // Vehicles with next_service_due
+    const dueSoon = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, next_service_due, next_service_type, current_mileage
+      FROM fleet_vehicles
+      WHERE next_service_due IS NOT NULL AND next_service_due BETWEEN ? AND ?
+      ORDER BY next_service_due ASC
+    
+      LIMIT 1000
+    `).all(startDate, endDate) as any[];
+
+    res.json({
+      scheduled_maintenance: scheduled,
+      vehicles_due_for_service: dueSoon,
+    });
+  } catch (error: any) {
+    console.error('Maintenance calendar error:', error);
+    res.status(500).json({ error: 'Failed to maintenance calendar', code: 'MAINTENANCE_CALENDAR_ERROR' });
+  }
+});
+
+// ── Feature 19: Vehicle swap logging ──────────────────────────────
+// POST /api/fleet/vehicle-swap - Log a vehicle swap
+router.post('/vehicle-swap', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { from_vehicle_id, to_vehicle_id, reason } = req.body;
+    if (!to_vehicle_id) { res.status(400).json({ error: 'to_vehicle_id is required', code: 'TOVEHICLEID_IS_REQUIRED' }); return; }
+
+    const result = db.prepare(`
+      INSERT INTO fleet_vehicle_swaps (officer_id, from_vehicle_id, to_vehicle_id, reason, swapped_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(req.user!.userId, from_vehicle_id || null, to_vehicle_id, reason || null, localNow());
+
+    // Update the unit's vehicle_id if they have one
+    try {
+      db.prepare('UPDATE units SET vehicle_id = ? WHERE officer_id = ?').run(to_vehicle_id, req.user!.userId);
+    } catch { /* unit may not exist */ }
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    console.error('Vehicle swap error:', error);
+    res.status(500).json({ error: 'Failed to vehicle swap', code: 'VEHICLE_SWAP_ERROR' });
+  }
+});
+
+// GET /api/fleet/vehicle-swaps - Get swap history
+router.get('/vehicle-swaps', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date, officer_id, limit = '50' } = req.query;
+    const limitNum = parseInt(limit as string, 10) || 50;
+
+    let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (date) { whereClause += ' AND DATE(vs.swapped_at) = ?'; params.push(date); }
+    if (officer_id) { whereClause += ' AND vs.officer_id = ?'; params.push(officer_id); }
+
+    const swaps = db.prepare(`
+      SELECT vs.*, u.full_name as officer_name,
+        fv1.vehicle_number as from_vehicle_number,
+        fv2.vehicle_number as to_vehicle_number
+      FROM fleet_vehicle_swaps vs
+      LEFT JOIN users u ON vs.officer_id = u.id
+      LEFT JOIN fleet_vehicles fv1 ON vs.from_vehicle_id = fv1.id
+      LEFT JOIN fleet_vehicles fv2 ON vs.to_vehicle_id = fv2.id
+      ${whereClause}
+      ORDER BY vs.swapped_at DESC
+      LIMIT ?
+    `).all(...params, limitNum);
+
+    res.json(swaps);
+  } catch (error: any) {
+    console.error('Get vehicle swaps error:', error);
+    res.status(500).json({ error: 'Failed to get vehicle swaps', code: 'GET_VEHICLE_SWAPS_ERROR' });
+  }
+});
+
+// ── Feature 20: Fleet cost-per-mile ───────────────────────────────
+// GET /api/fleet/cost-per-mile/:vehicleId - Calculate cost per mile
+router.get('/cost-per-mile/:vehicleId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.params.vehicleId;
+
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(vehicleId) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
+
+    // Total fuel cost
+    const fuelCost = db.prepare(
+      'SELECT COALESCE(SUM(total_cost), 0) as total FROM fleet_fuel_logs WHERE vehicle_id = ?'
+    ).get(vehicleId) as any;
+
+    // Total maintenance cost
+    const maintCost = db.prepare(
+      'SELECT COALESCE(SUM(cost), 0) as total FROM fleet_maintenance WHERE vehicle_id = ? AND cost IS NOT NULL'
+    ).get(vehicleId) as any;
+
+    const totalCost = (fuelCost.total || 0) + (maintCost.total || 0);
+    const mileage = vehicle.current_mileage || 0;
+
+    res.json({
+      vehicle_id: vehicleId,
+      vehicle_number: vehicle.vehicle_number,
+      total_fuel_cost: Math.round((fuelCost.total || 0) * 100) / 100,
+      total_maintenance_cost: Math.round((maintCost.total || 0) * 100) / 100,
+      total_cost: Math.round(totalCost * 100) / 100,
+      current_mileage: mileage,
+      cost_per_mile: mileage > 0 ? Math.round((totalCost / mileage) * 100) / 100 : null,
+      fuel_cost_per_mile: mileage > 0 ? Math.round(((fuelCost.total || 0) / mileage) * 100) / 100 : null,
+      maintenance_cost_per_mile: mileage > 0 ? Math.round(((maintCost.total || 0) / mileage) * 100) / 100 : null,
+    });
+  } catch (error: any) {
+    console.error('Cost per mile error:', error);
+    res.status(500).json({ error: 'Failed to cost per mile', code: 'COST_PER_MILE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UPGRADE BATCH — Fleet Management Enhancements
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── U1: Service Interval Alerts — vehicles approaching or past service ──
+router.get('/service-interval-alerts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const vehicles = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, current_mileage,
+        next_service_due, next_service_type, next_service_mileage, status
+      FROM fleet_vehicles
+      WHERE archived_at IS NULL AND next_service_due IS NOT NULL
+      ORDER BY next_service_due ASC
+      LIMIT 500
+    `).all() as any[];
+
+    const alerts: any[] = [];
+    for (const v of vehicles) {
+      const dueDate = v.next_service_due;
+      const daysUntil = Math.floor((new Date(dueDate).getTime() - new Date(today).getTime()) / 86400000);
+      let severity: 'overdue' | 'critical' | 'warning' | 'upcoming' = 'upcoming';
+      if (daysUntil < 0) severity = 'overdue';
+      else if (daysUntil <= 7) severity = 'critical';
+      else if (daysUntil <= 30) severity = 'warning';
+      else continue;
+
+      let mileageAlert = false;
+      if (v.next_service_mileage && v.current_mileage) {
+        const milesUntil = v.next_service_mileage - v.current_mileage;
+        if (milesUntil <= 500) mileageAlert = true;
+      }
+
+      alerts.push({
+        vehicle_id: v.id, vehicle_number: v.vehicle_number,
+        make: v.make, model: v.model, year: v.year,
+        service_type: v.next_service_type || 'General Service',
+        due_date: dueDate, days_until: daysUntil, severity,
+        mileage_alert: mileageAlert, current_mileage: v.current_mileage,
+        service_mileage: v.next_service_mileage,
+      });
+    }
+
+    res.json({ alerts, total: alerts.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load service interval alerts', code: 'SERVICE_INTERVAL_ALERTS_ERROR' });
+  }
+});
+
+// ── U2: Mileage Tracking Summary ────────────────────────────────────
+router.get('/mileage-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicles = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, current_mileage, status, next_service_mileage
+      FROM fleet_vehicles WHERE archived_at IS NULL AND current_mileage IS NOT NULL
+      ORDER BY current_mileage DESC LIMIT 500
+    `).all() as any[];
+
+    const totalMileage = vehicles.reduce((s: number, v: any) => s + (v.current_mileage || 0), 0);
+    const avgMileage = vehicles.length > 0 ? Math.round(totalMileage / vehicles.length) : 0;
+    const highMileage = vehicles.filter((v: any) => v.current_mileage >= 100000);
+    const needsServiceSoon = vehicles.filter((v: any) =>
+      v.next_service_mileage && v.current_mileage && (v.next_service_mileage - v.current_mileage) <= 1000
+    );
+
+    res.json({
+      total_vehicles: vehicles.length, total_fleet_mileage: totalMileage,
+      average_mileage: avgMileage, highest_mileage: vehicles[0] || null,
+      high_mileage_count: highMileage.length,
+      needs_service_by_mileage: needsServiceSoon.length, vehicles,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load mileage summary', code: 'MILEAGE_SUMMARY_ERROR' });
+  }
+});
+
+// ── U3: Fleet-Wide Assignment History ───────────────────────────────
+router.get('/assignment-history-all', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '90' } = req.query;
+    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 86400000).toISOString();
+    const rows = db.prepare(`
+      SELECT fa.*, fv.vehicle_number, fv.make, fv.model,
+        u.full_name as officer_name, un.call_sign
+      FROM fleet_assignments fa
+      JOIN fleet_vehicles fv ON fv.id = fa.vehicle_id
+      LEFT JOIN units un ON un.id = fa.unit_id
+      LEFT JOIN users u ON u.id = un.officer_id
+      WHERE fa.assigned_at >= ?
+      ORDER BY fa.assigned_at DESC LIMIT 1000
+    `).all(cutoff);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load assignment history', code: 'ASSIGNMENT_HISTORY_ALL_ERROR' });
+  }
+});
+
+// ── U4: Fleet-Wide Maintenance Cost Summary ─────────────────────────
+router.get('/maintenance-cost-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const yearFilter = req.query.year ? String(req.query.year) : new Date().getFullYear().toString();
+
+    const perVehicle = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year,
+        COALESCE(SUM(fm.cost), 0) as parts_cost, COALESCE(SUM(fm.labor_cost), 0) as labor_cost,
+        COUNT(fm.id) as work_order_count
+      FROM fleet_vehicles fv
+      LEFT JOIN fleet_maintenance fm ON fm.vehicle_id = fv.id AND strftime('%Y', fm.performed_at) = ?
+      WHERE fv.archived_at IS NULL GROUP BY fv.id
+      ORDER BY (COALESCE(SUM(fm.cost), 0) + COALESCE(SUM(fm.labor_cost), 0)) DESC LIMIT 500
+    `).all(yearFilter) as any[];
+
+    const totalParts = perVehicle.reduce((s: number, v: any) => s + v.parts_cost, 0);
+    const totalLabor = perVehicle.reduce((s: number, v: any) => s + v.labor_cost, 0);
+
+    const byType = db.prepare(`
+      SELECT maintenance_type as type, COALESCE(SUM(cost), 0) as cost, COUNT(*) as count
+      FROM fleet_maintenance WHERE strftime('%Y', performed_at) = ? AND cost IS NOT NULL
+      GROUP BY maintenance_type ORDER BY cost DESC
+    `).all(yearFilter) as any[];
+
+    res.json({
+      year: yearFilter,
+      total_parts_cost: Math.round(totalParts * 100) / 100,
+      total_labor_cost: Math.round(totalLabor * 100) / 100,
+      total_cost: Math.round((totalParts + totalLabor) * 100) / 100,
+      per_vehicle: perVehicle.map((v: any) => ({ ...v, total_cost: Math.round((v.parts_cost + v.labor_cost) * 100) / 100 })),
+      by_type: byType,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load maintenance cost summary', code: 'MAINTENANCE_COST_SUMMARY_ERROR' });
+  }
+});
+
+// ── U5: Inspection Pass/Fail Stats ──────────────────────────────────
+router.get('/inspection-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cutoff = new Date(Date.now() - parseInt(req.query.days as string || '90', 10) * 86400000).toISOString().split('T')[0];
+
+    const stats = db.prepare(`SELECT overall_result, COUNT(*) as count FROM fleet_inspections WHERE inspection_date >= ? GROUP BY overall_result`).all(cutoff) as any[];
+    const byVehicle = db.prepare(`
+      SELECT fv.vehicle_number, fv.id as vehicle_id, COUNT(*) as total_inspections,
+        SUM(CASE WHEN fi.overall_result = 'pass' THEN 1 ELSE 0 END) as pass_count,
+        SUM(CASE WHEN fi.overall_result = 'fail' THEN 1 ELSE 0 END) as fail_count,
+        MAX(fi.inspection_date) as last_inspection
+      FROM fleet_inspections fi JOIN fleet_vehicles fv ON fv.id = fi.vehicle_id
+      WHERE fi.inspection_date >= ? GROUP BY fi.vehicle_id ORDER BY fail_count DESC LIMIT 200
+    `).all(cutoff) as any[];
+
+    const total = stats.reduce((s: number, r: any) => s + r.count, 0);
+    const passCount = stats.find((s: any) => s.overall_result === 'pass')?.count || 0;
+    const failCount = stats.find((s: any) => s.overall_result === 'fail')?.count || 0;
+
+    res.json({
+      total_inspections: total, pass_count: passCount, fail_count: failCount,
+      pass_rate: total > 0 ? Math.round((passCount / total) * 1000) / 10 : 0,
+      by_vehicle: byVehicle.map((v: any) => ({ ...v, pass_rate: v.total_inspections > 0 ? Math.round((v.pass_count / v.total_inspections) * 1000) / 10 : 0 })),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load inspection stats', code: 'INSPECTION_STATS_ERROR' });
+  }
+});
+
+// ── U6: Overdue Inspection Alerts ───────────────────────────────────
+router.get('/overdue-inspections', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status,
+        MAX(fi.inspection_date) as last_inspection_date, fi.overall_result as last_result
+      FROM fleet_vehicles fv LEFT JOIN fleet_inspections fi ON fi.vehicle_id = fv.id
+      WHERE fv.archived_at IS NULL AND fv.status = 'in_service'
+      GROUP BY fv.id HAVING last_inspection_date IS NULL OR last_inspection_date < date(?, '-30 days')
+      ORDER BY last_inspection_date ASC LIMIT 200
+    `).all(today) as any[];
+
+    const alerts = vehicles.map((v: any) => {
+      const daysSince = v.last_inspection_date ? Math.floor((new Date(today).getTime() - new Date(v.last_inspection_date).getTime()) / 86400000) : null;
+      return { ...v, days_since_inspection: daysSince, severity: daysSince === null ? 'never_inspected' : daysSince > 60 ? 'critical' : 'warning' };
+    });
+    res.json({ alerts, total: alerts.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load overdue inspections', code: 'OVERDUE_INSPECTIONS_ERROR' });
+  }
+});
+
+// ── U7: Inspection Checklist Templates CRUD ─────────────────────────
+router.get('/inspection-templates', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_inspection_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
+      vehicle_type TEXT DEFAULT 'all', items TEXT NOT NULL DEFAULT '[]',
+      is_default INTEGER DEFAULT 0, created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    )`);
+    res.json(db.prepare('SELECT * FROM fleet_inspection_templates ORDER BY is_default DESC, name ASC').all());
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load inspection templates', code: 'INSPECTION_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/inspection-templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_inspection_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
+      vehicle_type TEXT DEFAULT 'all', items TEXT NOT NULL DEFAULT '[]',
+      is_default INTEGER DEFAULT 0, created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    )`);
+    const { name, description, vehicle_type, items, is_default } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required', code: 'NAME_REQUIRED' });
+    const now = localNow();
+    const result = db.prepare(`INSERT INTO fleet_inspection_templates (name, description, vehicle_type, items, is_default, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(name, description || null, vehicle_type || 'all', JSON.stringify(items || []), is_default ? 1 : 0, req.user!.userId, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create inspection template', code: 'CREATE_INSPECTION_TEMPLATE_ERROR' });
+  }
+});
+
+router.put('/inspection-templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, description, vehicle_type, items, is_default } = req.body;
+    const sets: string[] = []; const vals: any[] = [];
+    if (name !== undefined) { sets.push('name = ?'); vals.push(name); }
+    if (description !== undefined) { sets.push('description = ?'); vals.push(description); }
+    if (vehicle_type !== undefined) { sets.push('vehicle_type = ?'); vals.push(vehicle_type); }
+    if (items !== undefined) { sets.push('items = ?'); vals.push(JSON.stringify(items)); }
+    if (is_default !== undefined) { sets.push('is_default = ?'); vals.push(is_default ? 1 : 0); }
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields', code: 'NO_FIELDS' });
+    sets.push('updated_at = ?'); vals.push(localNow()); vals.push(req.params.id);
+    db.prepare(`UPDATE fleet_inspection_templates SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update inspection template', code: 'UPDATE_INSPECTION_TEMPLATE_ERROR' });
+  }
+});
+
+// ── U8: Fleet Cost Per Mile Analytics ───────────────────────────────
+router.get('/fleet-cost-analytics', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage,
+        COALESCE((SELECT SUM(total_cost) FROM fleet_fuel_logs WHERE vehicle_id = fv.id), 0) as fuel_cost,
+        COALESCE((SELECT SUM(cost) FROM fleet_maintenance WHERE vehicle_id = fv.id), 0) as maint_cost
+      FROM fleet_vehicles fv WHERE fv.archived_at IS NULL AND fv.current_mileage > 0
+      ORDER BY fv.vehicle_number LIMIT 500
+    `).all() as any[];
+
+    const result = vehicles.map((v: any) => {
+      const totalCost = (v.fuel_cost || 0) + (v.maint_cost || 0);
+      return { ...v, total_cost: Math.round(totalCost * 100) / 100,
+        cost_per_mile: v.current_mileage > 0 ? Math.round((totalCost / v.current_mileage) * 100) / 100 : null,
+        fuel_cost_per_mile: v.current_mileage > 0 ? Math.round((v.fuel_cost / v.current_mileage) * 100) / 100 : null,
+        maint_cost_per_mile: v.current_mileage > 0 ? Math.round((v.maint_cost / v.current_mileage) * 100) / 100 : null,
+      };
+    });
+    const totalFleetCost = result.reduce((s: number, v: any) => s + v.total_cost, 0);
+    const totalFleetMiles = result.reduce((s: number, v: any) => s + (v.current_mileage || 0), 0);
+
+    res.json({ vehicles: result, fleet_total_cost: Math.round(totalFleetCost * 100) / 100,
+      fleet_total_miles: totalFleetMiles,
+      fleet_avg_cost_per_mile: totalFleetMiles > 0 ? Math.round((totalFleetCost / totalFleetMiles) * 100) / 100 : null });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fleet cost analytics', code: 'FLEET_COST_ANALYTICS_ERROR' });
+  }
+});
+
+// ── U9: Update vehicle mileage ──────────────────────────────────────
+router.put('/:id/mileage', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { mileage } = req.body;
+    if (mileage === undefined || mileage === null) return res.status(400).json({ error: 'mileage is required', code: 'MILEAGE_REQUIRED' });
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
+
+    const now = localNow();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_mileage_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER NOT NULL,
+      previous_mileage INTEGER, new_mileage INTEGER NOT NULL,
+      recorded_by INTEGER, recorded_at TEXT NOT NULL
+    )`);
+    db.prepare(`INSERT INTO fleet_mileage_log (vehicle_id, previous_mileage, new_mileage, recorded_by, recorded_at) VALUES (?, ?, ?, ?, ?)`).run(req.params.id, vehicle.current_mileage, mileage, req.user!.userId, now);
+    db.prepare('UPDATE fleet_vehicles SET current_mileage = ?, updated_at = ? WHERE id = ?').run(mileage, now, req.params.id);
+
+    let serviceDue = false;
+    if (vehicle.next_service_mileage && mileage >= vehicle.next_service_mileage) serviceDue = true;
+    broadcastFleetUpdate({ type: 'mileage_updated', vehicle_id: Number(req.params.id), mileage });
+    res.json({ success: true, service_due: serviceDue });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update mileage', code: 'UPDATE_MILEAGE_ERROR' });
+  }
+});
+
+// ── U10: Vehicle mileage history ────────────────────────────────────
+router.get('/:id/mileage-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_mileage_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER NOT NULL,
+      previous_mileage INTEGER, new_mileage INTEGER NOT NULL,
+      recorded_by INTEGER, recorded_at TEXT NOT NULL
+    )`);
+    const rows = db.prepare(`SELECT fml.*, u.full_name as recorded_by_name FROM fleet_mileage_log fml LEFT JOIN users u ON u.id = fml.recorded_by WHERE fml.vehicle_id = ? ORDER BY fml.recorded_at DESC LIMIT 200`).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load mileage history', code: 'MILEAGE_HISTORY_ERROR' });
+  }
+});
+
+// ── Health Scores: 0-100 composite score per vehicle ────────────────
+router.get('/health-scores', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const nowISO = localNow();
+
+    const vehicles = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, current_mileage, status,
+             next_service_due, last_service_date
+      FROM fleet_vehicles
+      WHERE status != 'retired' AND archived_at IS NULL
+    `).all() as any[];
+
+    // Batch-load cost per mile
+    const costRows = db.prepare(`
+      SELECT fv.id,
+        (COALESCE(m.mc, 0) + COALESCE(f.fc, 0)) AS total_cost,
+        fv.current_mileage
+      FROM fleet_vehicles fv
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS mc FROM fleet_maintenance WHERE cost IS NOT NULL GROUP BY vehicle_id) m ON m.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS fc FROM fleet_fuel_logs WHERE total_cost IS NOT NULL GROUP BY vehicle_id) f ON f.vehicle_id = fv.id
+      WHERE fv.status != 'retired' AND fv.archived_at IS NULL
+    `).all() as any[];
+    const costMap: Record<number, number> = {};
+    for (const r of costRows) {
+      costMap[r.id] = r.current_mileage > 0 ? r.total_cost / r.current_mileage : 0;
+    }
+
+    // Batch-load latest inspection result per vehicle
+    const inspRows = db.prepare(`
+      SELECT vehicle_id, overall_result FROM fleet_inspections
+      WHERE id IN (
+        SELECT MAX(id) FROM fleet_inspections GROUP BY vehicle_id
+      )
+    `).all() as any[];
+    const inspMap: Record<number, string> = {};
+    for (const r of inspRows) {
+      inspMap[r.vehicle_id] = r.overall_result;
+    }
+
+    const currentYear = new Date().getFullYear();
+    const nowDate = new Date(nowISO);
+
+    const results = vehicles.map((v: any) => {
+      const age = v.year ? currentYear - v.year : 5;
+      const ageFactor = Math.max(0, Math.min(100, 100 - Math.max(0, age - 2) * 10));
+
+      const miles = v.current_mileage || 0;
+      let mileageFactor = 100;
+      if (miles >= 200000) mileageFactor = 0;
+      else if (miles > 25000) mileageFactor = Math.round(100 - ((miles - 25000) / (200000 - 25000)) * 100);
+
+      let serviceFactor = 100;
+      if (v.next_service_due) {
+        const dueDate = new Date(v.next_service_due);
+        const daysOverdue = Math.floor((nowDate.getTime() - dueDate.getTime()) / 86400000);
+        if (daysOverdue > 0) {
+          serviceFactor = Math.max(0, Math.round(100 - (daysOverdue / 90) * 100));
+        }
+      }
+
+      const inspResult = inspMap[v.id];
+      let inspectionFactor = 100;
+      if (inspResult === 'pass') inspectionFactor = 100;
+      else if (inspResult === 'needs_attention') inspectionFactor = 50;
+      else if (inspResult === 'fail') inspectionFactor = 0;
+
+      const cpm = costMap[v.id] || 0;
+      let costFactor = 100;
+      if (cpm >= 0.50) costFactor = 0;
+      else if (cpm > 0.10) costFactor = Math.round(100 - ((cpm - 0.10) / (0.50 - 0.10)) * 100);
+
+      const healthScore = Math.round(
+        ageFactor * 0.20 + mileageFactor * 0.20 + serviceFactor * 0.25 + inspectionFactor * 0.20 + costFactor * 0.15
+      );
+
+      let statusLabel: string;
+      if (healthScore >= 80) statusLabel = 'Excellent';
+      else if (healthScore >= 60) statusLabel = 'Good';
+      else if (healthScore >= 40) statusLabel = 'Fair';
+      else if (healthScore >= 20) statusLabel = 'Poor';
+      else statusLabel = 'Critical';
+
+      return {
+        vehicle_id: v.id, vehicle_number: v.vehicle_number, make: v.make, model: v.model, year: v.year,
+        health_score: healthScore,
+        factors: { age: ageFactor, mileage: mileageFactor, service: serviceFactor, inspection: inspectionFactor, cost: costFactor },
+        status_label: statusLabel,
+      };
+    });
+
+    res.json({ health_scores: results });
+  } catch (error: any) {
+    console.error('Error computing health scores:', error);
+    res.status(500).json({ error: 'Failed to compute health scores', code: 'HEALTH_SCORES_ERROR' });
+  }
+});
+
+// ── Maintenance Schedule: upcoming maintenance for all vehicles ─────
+router.get('/maintenance-schedule', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const nowDate = new Date(today);
+
+    const vehicles = db.prepare(`
+      SELECT v.id, v.vehicle_number, v.current_mileage,
+             v.next_service_due, v.next_service_mileage, v.next_service_type,
+             CASE WHEN julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)) > 0
+               THEN (MAX(f.odometer_reading) - MIN(f.odometer_reading)) / (julianday(MAX(f.fuel_date)) - julianday(MIN(f.fuel_date)))
+               ELSE 0 END as avg_daily_miles
+      FROM fleet_vehicles v
+      LEFT JOIN fleet_fuel_logs f ON v.id = f.vehicle_id AND f.odometer_reading IS NOT NULL
+      WHERE v.status != 'retired' AND v.archived_at IS NULL
+        AND (v.next_service_due IS NOT NULL OR v.next_service_mileage IS NOT NULL)
+      GROUP BY v.id
+    `).all() as any[];
+
+    const schedule = vehicles.map((v: any) => {
+      let daysUntil: number | null = null;
+      let milesUntil: number | null = null;
+      if (v.next_service_due) { daysUntil = Math.floor((new Date(v.next_service_due).getTime() - nowDate.getTime()) / 86400000); }
+      if (v.next_service_mileage && v.current_mileage) { milesUntil = v.next_service_mileage - v.current_mileage; }
+      let urgency: string = 'ok';
+      const effectiveDays = daysUntil ?? 9999;
+      const effectiveMiles = milesUntil ?? 999999;
+      if (effectiveDays < 0 || effectiveMiles < 0) urgency = 'overdue';
+      else if (effectiveDays <= 7 || effectiveMiles <= 500) urgency = 'critical';
+      else if (effectiveDays <= 30 || effectiveMiles <= 2000) urgency = 'upcoming';
+      return { vehicle_id: v.id, vehicle_number: v.vehicle_number, service_type: v.next_service_type || 'Scheduled Service', due_date: v.next_service_due || null, due_mileage: v.next_service_mileage || null, days_until: daysUntil, miles_until: milesUntil, urgency };
+    }).sort((a: any, b: any) => {
+      const urgencyOrder: Record<string, number> = { overdue: 0, critical: 1, upcoming: 2, ok: 3 };
+      return (urgencyOrder[a.urgency] ?? 4) - (urgencyOrder[b.urgency] ?? 4);
+    });
+
+    res.json({ schedule });
+  } catch (error: any) {
+    console.error('Error fetching maintenance schedule:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance schedule', code: 'MAINT_SCHEDULE_ERROR' });
+  }
+});
+
+// ── Maintenance Templates ───────────────────────────────────────────
+router.post('/maintenance-templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS fleet_maintenance_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, service_type TEXT NOT NULL, interval_months INTEGER, interval_miles INTEGER, estimated_cost REAL, checklist TEXT DEFAULT '[]', is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')))`).run();
+    const { name, service_type, interval_months, interval_miles, estimated_cost, checklist } = req.body;
+    if (!name || !service_type) { return res.status(400).json({ error: 'name and service_type are required' }); }
+    const result = db.prepare(`INSERT INTO fleet_maintenance_templates (name, service_type, interval_months, interval_miles, estimated_cost, checklist) VALUES (?, ?, ?, ?, ?, ?)`).run(name, service_type, interval_months || null, interval_miles || null, estimated_cost || null, JSON.stringify(checklist || []));
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Error creating maintenance template:', error);
+    res.status(500).json({ error: 'Failed to create maintenance template', code: 'MAINT_TEMPLATE_ERROR' });
+  }
+});
+
+router.get('/maintenance-templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare(`CREATE TABLE IF NOT EXISTS fleet_maintenance_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, service_type TEXT NOT NULL, interval_months INTEGER, interval_miles INTEGER, estimated_cost REAL, checklist TEXT DEFAULT '[]', is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')))`).run();
+    const templates = db.prepare('SELECT * FROM fleet_maintenance_templates WHERE is_active = 1 ORDER BY name').all() as any[];
+    const parsed = templates.map((t: any) => ({ ...t, checklist: safeParseJson(t.checklist, []) }));
+    res.json({ templates: parsed });
+  } catch (error: any) {
+    console.error('Error fetching maintenance templates:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance templates', code: 'MAINT_TEMPLATES_ERROR' });
+  }
+});
+
+// ── Driver / Officer Performance (last 30 days) ────────────────────
+router.get('/driver-performance', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let gpsStats: any[] = [];
+    try { gpsStats = db.prepare(`SELECT call_sign, officer_name, COUNT(*) AS total_pings, SUM(CASE WHEN speed > 0 THEN 1 ELSE 0 END) AS moving_pings, AVG(CASE WHEN speed > 0 THEN speed ELSE NULL END) AS avg_speed, MAX(speed) AS max_speed, MIN(recorded_at) AS first_ping, MAX(recorded_at) AS last_ping FROM gps_breadcrumbs WHERE recorded_at >= datetime('now', 'localtime', '-30 days') AND call_sign IS NOT NULL AND call_sign != '' GROUP BY call_sign`).all() as any[]; } catch { /* table may not exist */ }
+    if (gpsStats.length === 0) { return res.json({ drivers: [] }); }
+    const fuelByUnit: Record<string, { totalMiles: number; totalGallons: number }> = {};
+    try { const fuelRows = db.prepare(`SELECT u.call_sign, SUM(COALESCE(fl.distance, 0)) AS total_miles, SUM(fl.gallons) AS total_gallons FROM fleet_fuel_logs fl JOIN fleet_vehicles fv ON fl.vehicle_id = fv.id JOIN units u ON fv.assigned_unit_id = u.id WHERE fl.fuel_date >= date('now', 'localtime', '-30 days') AND fl.gallons > 0 GROUP BY u.call_sign`).all() as any[]; for (const r of fuelRows) { fuelByUnit[r.call_sign] = { totalMiles: r.total_miles || 0, totalGallons: r.total_gallons || 0 }; } } catch { /* graceful */ }
+    const inspByOfficer: Record<string, { total: number; passed: number }> = {};
+    try { const inspRows = db.prepare(`SELECT inspector_name, COUNT(*) AS total, SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) AS passed FROM fleet_inspections WHERE inspection_date >= date('now', 'localtime', '-30 days') GROUP BY inspector_name`).all() as any[]; for (const r of inspRows) { inspByOfficer[r.inspector_name] = { total: r.total, passed: r.passed }; } } catch { /* graceful */ }
+    const damageByUnit: Record<string, number> = {};
+    try { const dmgRows = db.prepare(`SELECT u.call_sign, COUNT(*) AS damage_count FROM fleet_damage_reports dr JOIN fleet_vehicles fv ON dr.vehicle_id = fv.id JOIN units u ON fv.assigned_unit_id = u.id WHERE dr.damage_date >= date('now', 'localtime', '-30 days') GROUP BY u.call_sign`).all() as any[]; for (const r of dmgRows) { damageByUnit[r.call_sign] = r.damage_count; } } catch { /* graceful */ }
+    const drivers = gpsStats.map((g: any) => {
+      const totalPings = g.total_pings || 1;
+      const movingPings = g.moving_pings || 0;
+      const idlePct = Math.round(((totalPings - movingPings) / totalPings) * 100);
+      let totalHours = 0;
+      if (g.first_ping && g.last_ping) { totalHours = Math.round((new Date(g.last_ping).getTime() - new Date(g.first_ping).getTime()) / 3600000); }
+      const movingHours = totalHours * (movingPings / totalPings);
+      const totalMiles = Math.round((g.avg_speed || 0) * movingHours);
+      const fuel = fuelByUnit[g.call_sign];
+      const avgMpg = fuel && fuel.totalGallons > 0 ? Math.round((fuel.totalMiles / fuel.totalGallons) * 10) / 10 : null;
+      const insp = inspByOfficer[g.officer_name || ''];
+      const inspectionScore = insp && insp.total > 0 ? Math.round((insp.passed / insp.total) * 100) : 100;
+      const damageCount = damageByUnit[g.call_sign] || 0;
+      const fuelScore = avgMpg != null ? Math.min(100, Math.round((avgMpg / 25) * 100)) : 50;
+      const idleScore = Math.max(0, 100 - idlePct);
+      const speedScore = (g.max_speed || 0) <= 80 ? 100 : Math.max(0, 100 - ((g.max_speed - 80) * 5));
+      const damageScore = damageCount === 0 ? 100 : Math.max(0, 100 - damageCount * 25);
+      const overallScore = Math.round(fuelScore * 0.30 + idleScore * 0.20 + speedScore * 0.20 + inspectionScore * 0.20 + damageScore * 0.10);
+      return { officer_name: g.officer_name || g.call_sign, call_sign: g.call_sign, total_miles: totalMiles, total_hours: totalHours, idle_pct: idlePct, avg_speed: Math.round((g.avg_speed || 0) * 10) / 10, max_speed: Math.round((g.max_speed || 0) * 10) / 10, avg_mpg: avgMpg, inspection_score: inspectionScore, damage_count: damageCount, overall_score: overallScore };
+    }).sort((a: any, b: any) => b.overall_score - a.overall_score);
+    res.json({ drivers });
+  } catch (error: any) {
+    console.error('Error computing driver performance:', error);
+    res.status(500).json({ error: 'Failed to compute driver performance', code: 'DRIVER_PERF_ERROR' });
+  }
+});
+
+// ── U11: Fleet Notifications ────────────────────────────────────────
+router.get('/notifications', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const notifications: any[] = [];
+
+    const serviceDue = db.prepare(`SELECT id, vehicle_number, next_service_due, next_service_type FROM fleet_vehicles WHERE archived_at IS NULL AND next_service_due IS NOT NULL AND next_service_due <= date(?, '+7 days')`).all(today) as any[];
+    for (const v of serviceDue) {
+      const daysUntil = Math.floor((new Date(v.next_service_due).getTime() - new Date(today).getTime()) / 86400000);
+      notifications.push({ type: 'service_due', severity: daysUntil < 0 ? 'critical' : 'warning',
+        message: `${v.vehicle_number}: ${v.next_service_type || 'Service'} ${daysUntil < 0 ? 'overdue by ' + Math.abs(daysUntil) + ' days' : 'due in ' + daysUntil + ' days'}`,
+        vehicle_id: v.id, date: v.next_service_due });
+    }
+
+    const expiring = db.prepare(`SELECT id, vehicle_number, insurance_expiry, registration_expiry FROM fleet_vehicles WHERE archived_at IS NULL AND ((insurance_expiry IS NOT NULL AND insurance_expiry <= date(?, '+30 days')) OR (registration_expiry IS NOT NULL AND registration_expiry <= date(?, '+30 days')))`).all(today, today) as any[];
+    for (const v of expiring) {
+      if (v.insurance_expiry) notifications.push({ type: 'insurance_expiring', severity: v.insurance_expiry <= today ? 'critical' : 'warning', message: `${v.vehicle_number}: Insurance ${v.insurance_expiry <= today ? 'expired' : 'expiring'} ${v.insurance_expiry}`, vehicle_id: v.id, date: v.insurance_expiry });
+      if (v.registration_expiry) notifications.push({ type: 'registration_expiring', severity: v.registration_expiry <= today ? 'critical' : 'warning', message: `${v.vehicle_number}: Registration ${v.registration_expiry <= today ? 'expired' : 'expiring'} ${v.registration_expiry}`, vehicle_id: v.id, date: v.registration_expiry });
+    }
+
+    notifications.sort((a, b) => ({ critical: 0, warning: 1, info: 2 }[a.severity as string] || 9) - ({ critical: 0, warning: 1, info: 2 }[b.severity as string] || 9));
+    res.json({ notifications, total: notifications.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fleet notifications', code: 'FLEET_NOTIFICATIONS_ERROR' });
+  }
+});
+
+// ── Fleet CSV Export ─────────────────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fv.vehicle_number, fv.make, fv.model, fv.year, fv.color, fv.vin,
+             fv.license_plate, fv.status, fv.assigned_officer_name,
+             fv.current_mileage, fv.next_service_due, fv.insurance_expiry,
+             fv.registration_expiry, fv.purchase_date, fv.purchase_price,
+             fv.fuel_type, fv.notes, fv.created_at
+      FROM fleet_vehicles fv
+      WHERE fv.archived_at IS NULL
+      ORDER BY fv.vehicle_number
+      LIMIT 10000
+    `).all() as any[];
+    const headers = ['Vehicle #', 'Make', 'Model', 'Year', 'Color', 'VIN', 'License Plate', 'Status', 'Assigned Officer', 'Mileage', 'Next Service', 'Insurance Expiry', 'Registration Expiry', 'Purchase Date', 'Purchase Price', 'Fuel Type', 'Notes', 'Created'];
+    const csv = [
+      headers.join(','),
+      ...rows.map((r: any) => [
+        r.vehicle_number, r.make, r.model, r.year, r.color,
+        (r.vin || '').replace(/"/g, '""'), r.license_plate, r.status,
+        (r.assigned_officer_name || '').replace(/"/g, '""'),
+        r.current_mileage, r.next_service_due, r.insurance_expiry,
+        r.registration_expiry, r.purchase_date, r.purchase_price,
+        r.fuel_type, (r.notes || '').replace(/"/g, '""'), r.created_at
+      ].map(v => `"${v || ''}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="fleet_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Fleet CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export fleet data', code: 'FLEET_EXPORT_ERROR' });
+  }
+});
 
 export default router;

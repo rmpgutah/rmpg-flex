@@ -104,41 +104,24 @@ export type AuditAction =
   | 'invoice_created'
   | 'invoice_updated'
   | 'payment_recorded'
-  // Arrests & Jail
+  // Integrations
+  | 'api_key_created'
+  | 'api_key_revoked'
+  | 'api_key_activated'
+  | 'api_key_deleted'
+  // Arrests
   | 'arrest_created'
   | 'arrest_updated'
   | 'arrest_deleted'
   | 'arrest_imported'
   | 'arrest_linked'
   | 'arrest_unlinked'
-  | 'jail_roster_config_updated'
-  | 'jail_roster_sync_triggered'
-  | 'jail_roster_errors_reset'
-  // DL Records
-  | 'dl_record_created'
-  | 'dl_record_deleted'
-  // Skip Tracer
-  | 'skiptracer_search'
-  | 'skiptracer_config_updated'
-  | 'skiptracer_config_cleared'
-  // IPED Digital Forensics
-  | 'iped_job_created'
-  | 'iped_job_cancelled'
-  | 'iped_config_updated'
-  | 'iped_config_cleared'
-  | 'iped_hash_computed'
-  | 'iped_hashset_imported'
-  | 'iped_hashset_removed'
-  // ClearPathGPS
-  | 'clearpathgps_credentials_updated'
-  | 'clearpathgps_credentials_cleared'
-  | 'clearpathgps_toggled'
-  | 'clearpathgps_mapping_created'
-  | 'clearpathgps_mapping_removed'
-  | 'clearpathgps_settings_updated'
-  | 'clearpathgps_media_settings_updated'
-  | 'clearpathgps_media_sync_triggered'
-  // Dash Camera Videos
+  // CRM
+  | 'crm_task_created'
+  | 'crm_task_updated'
+  | 'crm_task_deleted'
+  | 'crm_activity_logged'
+  // Dashcam
   | 'dashcam_uploaded'
   | 'dashcam_updated'
   | 'dashcam_deleted'
@@ -149,21 +132,32 @@ export type AuditAction =
   | 'REPLY_EMAIL'
   | 'REPLY_ALL_EMAIL'
   | 'FORWARD_EMAIL'
+  | 'SCHEDULE_EMAIL'
   | 'DELETE_EMAIL'
   | 'BATCH_EMAIL'
   | 'MARK_ALL_READ'
   | 'OAUTH_INITIATE'
-  | 'SCHEDULE_EMAIL'
-  // CRM
-  | 'crm_task_created'
-  | 'crm_task_updated'
-  | 'crm_task_deleted'
-  | 'crm_activity_logged'
-  // Generic CRUD (used by newer routes)
+  // Search / CRUD
+  | 'SEARCH'
   | 'CREATE'
   | 'UPDATE'
   | 'DELETE'
-  | 'SEARCH';
+  | 'EXPORT'
+  // Skip Tracker
+  | 'skiptracer_search'
+  | 'skiptracer_config_updated'
+  | 'skiptracer_config_cleared'
+  // Jail Roster
+  | 'jail_roster_sync_triggered'
+  | 'jail_roster_config_updated'
+  | 'jail_roster_errors_reset'
+  // Preferences
+  | 'preferences_updated'
+  | 'preferences_reset'
+  // Safety
+  | 'safety_alert_broadcast'
+  // Extensible: allow any string for new features
+  | (string & {});
 
 export type AuditEntityType =
   | 'user'
@@ -195,30 +189,22 @@ export type AuditEntityType =
   | 'patrol_scan'
   | 'invoice'
   | 'payment'
-  | 'arrest_record'
-  | 'serve_queue'
-  | 'dl_record'
-  | 'skiptracer'
-  | 'iped_job'
-  | 'iped_hashset'
-  | 'jail_roster'
-  | 'integration'
-  | 'dashcam_video'
-  | 'dashcam_video_link'
+  | 'api_key'
+  | 'arrest'
+  | 'dashcam'
   | 'email'
-  | 'email_folder'
-  | 'email_template'
-  | 'email_link'
-  | 'email_schedule'
-  | 'system_config'
-  | 'colorado_doc_offenders'
   | 'crm_task'
-  | 'crm_activity'
-  | 'crm_leads'
-  | 'crm_lead_activity'
-  | 'crm_proposals'
-  | 'crm_proposal_templates'
-  | 'lead_scrape_sources';
+  | 'crm_lead'
+  | 'crm_proposal'
+  | 'crm_competitor'
+  | 'service_request'
+  | 'skiptracer'
+  | 'jail_roster'
+  | 'preferences'
+  | 'safety_alert'
+  | 'firecrawl'
+  | 'geofence'
+  | (string & {});
 
 /**
  * Log an action to the activity_log table.
@@ -229,6 +215,9 @@ export type AuditEntityType =
  * @param entityId   The ID of the affected entity
  * @param details    Human-readable description of the action
  */
+// [FIX 48] Max detail string length to prevent oversized audit entries
+const MAX_DETAILS_LENGTH = 4000;
+
 export function auditLog(
   req: Request,
   action: AuditAction,
@@ -239,12 +228,20 @@ export function auditLog(
   try {
     const db = getDb();
     const userId = req.user?.userId ?? null;
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+    // [FIX 49] Truncate details to prevent oversized DB rows
+    const truncatedDetails = details && details.length > MAX_DETAILS_LENGTH
+      ? details.substring(0, MAX_DETAILS_LENGTH) + '... [truncated]'
+      : details;
+
+    // [FIX 50] Sanitize entityId to string safely (handle undefined/null)
+    const safeEntityId = entityId != null ? String(entityId) : '';
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, action, entityType, String(entityId), details, ip, localNow());
+    `).run(userId, action, entityType, safeEntityId, truncatedDetails || '', ip, localNow());
   } catch (err) {
     // Never let audit logging break the actual operation
     console.error('[AUDIT] Failed to log:', action, entityType, entityId, err);
@@ -262,10 +259,16 @@ export function auditLogSystem(
 ): void {
   try {
     const db = getDb();
+    // [FIX 51] Truncate system audit details too
+    const truncatedDetails = details && details.length > MAX_DETAILS_LENGTH
+      ? details.substring(0, MAX_DETAILS_LENGTH) + '... [truncated]'
+      : details;
+    const safeEntityId = entityId != null ? String(entityId) : '';
+
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (NULL, ?, ?, ?, ?, 'system', ?)
-    `).run(action, entityType, String(entityId), details, localNow());
+    `).run(action, entityType, safeEntityId, truncatedDetails || '', localNow());
   } catch (err) {
     console.error('[AUDIT] Failed to log system action:', action, entityType, entityId, err);
   }
@@ -295,9 +298,17 @@ export function auditLogBatch(
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
+    // [FIX 52] Limit batch size to prevent extremely large transactions
+    const MAX_BATCH = 500;
+    const limitedEntries = entries.slice(0, MAX_BATCH);
+
     const batchInsert = db.transaction(() => {
-      for (const entry of entries) {
-        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId), entry.details, ip, now);
+      for (const entry of limitedEntries) {
+        // [FIX 53] Truncate batch entry details
+        const truncated = entry.details && entry.details.length > MAX_DETAILS_LENGTH
+          ? entry.details.substring(0, MAX_DETAILS_LENGTH) + '... [truncated]'
+          : entry.details;
+        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId ?? ''), truncated || '', ip, now);
       }
     });
 

@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Training & Qualifications Tab
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
+import React, {useState, useMemo, useEffect} from 'react';
 import {
   GraduationCap, Plus, CheckCircle, AlertTriangle, Clock, BookOpen,
   Loader2,
@@ -53,7 +53,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
         );
       case 'in_progress':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50">
             <Clock className="w-2.5 h-2.5" />
             In Progress
           </span>
@@ -78,10 +78,14 @@ export default function TrainingTab({ training, requirements, officers, loading,
     }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Training \u2014 RMPG Flex'; }, []);
+
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading training records...</span>
       </div>
     );
@@ -90,24 +94,24 @@ export default function TrainingTab({ training, requirements, officers, loading,
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2" role="group" aria-label="Training summary">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-rmpg-100">{training.length}</p>
           <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Records</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a1a0a] border-t-2 border-t-green-500">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-green-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500">
-          <p className="text-lg font-bold font-mono text-blue-400">{inProgress}</p>
-          <p className="text-[8px] uppercase text-blue-400/70 font-bold tracking-wider">In Progress</p>
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-blue-500 transition-colors duration-200 hover:brightness-110">
+          <p className="text-lg font-bold font-mono text-gray-400">{inProgress}</p>
+          <p className="text-[8px] uppercase text-gray-400/70 font-bold tracking-wider">In Progress</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-amber-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-amber-400">{scheduled}</p>
           <p className="text-[8px] uppercase text-amber-400/70 font-bold tracking-wider">Scheduled</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a0a0a] border-t-2 border-t-red-500">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-red-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-red-400">{overdue}</p>
           <p className="text-[8px] uppercase text-red-400/70 font-bold tracking-wider">Overdue</p>
         </div>
@@ -116,7 +120,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
       {/* Header & Filters */}
       <div className="flex items-center justify-between">
         <div className="panel-inset p-2 flex items-center gap-1.5 flex-wrap">
-          <button
+          <button type="button"
             onClick={() => setCategoryFilter('all')}
             className={`text-[10px] px-2.5 py-1 ${
               categoryFilter === 'all' ? 'toolbar-btn-primary' : 'toolbar-btn'
@@ -125,7 +129,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             All
           </button>
           {CATEGORIES.map((cat) => (
-            <button
+            <button type="button"
               key={cat}
               onClick={() => setCategoryFilter(cat)}
               className={`text-[10px] px-2.5 py-1 capitalize ${
@@ -136,7 +140,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             </button>
           ))}
         </div>
-        <button onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button type="button" onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
           <Plus className="w-3 h-3" />
           Add Training
         </button>
@@ -144,12 +148,12 @@ export default function TrainingTab({ training, requirements, officers, loading,
 
       {/* Table */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-            <GraduationCap className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-16" role="status">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <GraduationCap className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No training records found.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Add training records or adjust the category filter.</p>
+          <p className="text-sm text-rmpg-400 font-medium">No training records found</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Add training records or adjust the category filter</p>
         </div>
       ) : (
         <div className="panel-beveled overflow-x-auto">
@@ -168,7 +172,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             </thead>
             <tbody>
               {filtered.map((record) => (
-                <tr key={record.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={record.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">

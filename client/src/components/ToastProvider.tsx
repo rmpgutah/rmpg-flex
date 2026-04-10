@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
@@ -28,32 +28,37 @@ export const useToast = () => {
 
 const TOAST_CONFIG = {
   success: {
-    bgClass: 'bg-green-900/80',
+    bgClass: 'bg-green-900/85',
     borderClass: 'border-green-600',
     textClass: 'text-green-300',
+    progressClass: 'bg-green-500',
     icon: CheckCircle,
   },
   error: {
-    bgClass: 'bg-red-900/80',
+    bgClass: 'bg-red-900/85',
     borderClass: 'border-red-600',
     textClass: 'text-red-300',
+    progressClass: 'bg-red-500',
     icon: XCircle,
   },
   warning: {
-    bgClass: 'bg-amber-900/80',
+    bgClass: 'bg-amber-900/85',
     borderClass: 'border-amber-600',
     textClass: 'text-amber-300',
+    progressClass: 'bg-amber-500',
     icon: AlertTriangle,
   },
   info: {
-    bgClass: 'bg-brand-900/80',
+    bgClass: 'bg-brand-900/85',
     borderClass: 'border-brand-600',
     textClass: 'text-brand-300',
+    progressClass: 'bg-brand-500',
     icon: Info,
   },
 };
 
-const MAX_TOASTS = 5;
+// Feature 16: Toast notification improvements — Max 3 visible, auto-dismiss 5s, stack from bottom
+const MAX_TOASTS = 3;
 const DEFAULT_DURATION = 5000;
 
 interface ToastItemProps {
@@ -64,12 +69,20 @@ interface ToastItemProps {
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
   const [progress, setProgress] = useState(100);
   const [isExiting, setIsExiting] = useState(false);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const config = TOAST_CONFIG[toast.type];
   const Icon = config.icon;
 
+  const handleDismiss = useCallback(() => {
+    setIsExiting(true);
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => {
+      onDismiss(toast.id);
+    }, 300);
+  }, [onDismiss, toast.id]);
+
   useEffect(() => {
-    const startTime = Date.now();
     const endTime = toast.createdAt + toast.duration;
 
     const updateProgress = () => {
@@ -86,15 +99,11 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
 
     const interval = setInterval(updateProgress, 50);
 
-    return () => clearInterval(interval);
-  }, [toast]);
-
-  const handleDismiss = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      onDismiss(toast.id);
-    }, 300);
-  };
+    return () => {
+      clearInterval(interval);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, [toast, handleDismiss]);
 
   return (
     <div
@@ -109,20 +118,19 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
         animation: isExiting ? 'none' : 'slideIn 0.3s ease-out',
       }}
     >
-      <div className="flex items-start gap-3 p-4">
-        <Icon className="w-5 h-5 flex-shrink-0 mt-0.5" />
-        <p className="flex-1 text-sm leading-relaxed">{toast.message}</p>
-        <button
+      <div className="flex items-start gap-3 p-3">
+        <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <p className="flex-1 text-xs leading-relaxed font-medium">{toast.message}</p>
+        <button type="button"
           onClick={handleDismiss}
           className="flex-shrink-0 hover:opacity-70 transition-opacity"
-          aria-label="Dismiss"
-        >
+          aria-label="Dismiss">
           <X className="w-4 h-4" />
         </button>
       </div>
-      <div className="h-1 bg-black/30">
+      <div className="h-0.5 bg-black/30">
         <div
-          className={`h-full ${config.bgClass} transition-all duration-100 ease-linear`}
+          className={`h-full ${config.progressClass} transition-all duration-100 ease-linear opacity-80`}
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -135,7 +143,7 @@ const ToastContainer: React.FC<{ toasts: Toast[]; onDismiss: (id: string) => voi
   onDismiss,
 }) => {
   return createPortal(
-    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-[130px] right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
       <style>{`
         @keyframes slideIn {
           from {

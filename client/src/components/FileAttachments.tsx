@@ -14,7 +14,9 @@ import {
   Eye,
   ZoomIn,
 } from 'lucide-react';
-import { apiUploadFiles, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
+import { apiUploadFilesWithProgress, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
+import type { UploadProgress } from '../hooks/useApi';
+import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
 
 interface Attachment {
@@ -94,7 +96,7 @@ function getFileIcon(mime: string) {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('en-US', {
+  return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -116,13 +118,17 @@ export default function FileAttachments({
   const [dragOver, setDragOver] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [totalUploadFiles, setTotalUploadFiles] = useState(0);
+  const [currentFileName, setCurrentFileName] = useState<string | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = useCallback(async () => {
     try {
       setError(null);
       const data = await apiFetchAttachments(entityType, entityId);
-      setAttachments(data);
+      setAttachments(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load attachments');
     } finally {
@@ -140,13 +146,30 @@ export default function FileAttachments({
 
     setUploading(true);
     setError(null);
+    setTotalUploadFiles(fileArray.length);
+    setCurrentFileIndex(0);
+    setCurrentFileName(fileArray[0]?.name);
+    setUploadProgress(null);
+
     try {
-      await apiUploadFiles(fileArray, entityType, entityId);
+      await apiUploadFilesWithProgress(
+        fileArray,
+        entityType,
+        entityId,
+        (progress, fileIndex, totalFiles) => {
+          setUploadProgress(progress);
+          setCurrentFileIndex(fileIndex);
+          setTotalUploadFiles(totalFiles);
+          setCurrentFileName(fileArray[fileIndex]?.name);
+        },
+      );
       await fetchFiles();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
+      setCurrentFileName(undefined);
     }
   };
 
@@ -188,7 +211,7 @@ export default function FileAttachments({
       setPreviewAttachment(attachment);
     } else {
       // Direct download for non-previewable files
-      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank');
+      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -207,10 +230,11 @@ export default function FileAttachments({
         Attachments ({attachments.length})
       </label>
 
+      {/* 51: Error banner with role="alert" for screen readers; 52: Animate error in */}
       {error && (
-        <div className="px-2 py-1 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
-          {error}
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+        <div className="px-2 py-1.5 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between animate-fade-in" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 hover:bg-red-900/40 p-0.5 transition-colors rounded-sm ml-2" aria-label="Dismiss error">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -240,9 +264,13 @@ export default function FileAttachments({
             accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.mp4,.mov,.avi,.mp3,.wav,.ogg"
           />
           {uploading ? (
-            <div className="flex items-center justify-center gap-2 text-brand-400 text-xs">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
+            <div className="py-1">
+              <UploadProgressBar
+                progress={uploadProgress}
+                fileName={currentFileName}
+                fileCount={currentFileIndex + 1}
+                totalFiles={totalUploadFiles}
+              />
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2 text-rmpg-300 text-xs">
@@ -306,7 +334,7 @@ export default function FileAttachments({
                   </div>
                   {/* Delete button */}
                   {!readOnly && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: att.file_id, name: att.original_name }); }}
                       className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                       title="Delete"
@@ -332,7 +360,7 @@ export default function FileAttachments({
                   >
                     <Icon className="w-4 h-4 flex-shrink-0 text-brand-400" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-gray-200 truncate">{att.original_name}</p>
+                      <p className="text-xs text-rmpg-200 truncate">{att.original_name}</p>
                       <p className="text-[10px] text-rmpg-400">
                         {formatFileSize(att.file_size)}
                         {att.uploader_name && <> &middot; {att.uploader_name}</>}
@@ -341,7 +369,7 @@ export default function FileAttachments({
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {att.mime_type === 'application/pdf' && (
-                        <button
+                        <button type="button"
                           onClick={() => openPreview(att)}
                           className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400 transition-colors"
                           title="Preview"
@@ -360,7 +388,7 @@ export default function FileAttachments({
                         <Download className="w-3.5 h-3.5" />
                       </a>
                       {!readOnly && (
-                        <button
+                        <button type="button"
                           onClick={() => setDeleteTarget({ id: att.file_id, name: att.original_name })}
                           className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400 transition-colors"
                           title="Delete"
@@ -376,16 +404,24 @@ export default function FileAttachments({
           )}
         </div>
       ) : (
+        /* 55: Empty state with icon and larger padding; 56: File icon for empty state */
         !readOnly && (
-          <p className="text-[10px] text-rmpg-500 text-center py-1">No files attached</p>
+          <div className="flex flex-col items-center gap-1 py-3 text-rmpg-500">
+            <Paperclip className="w-4 h-4 opacity-40" aria-hidden="true" />
+            <p className="text-[10px]">No files attached</p>
+          </div>
         )
       )}
 
-      {/* Preview Modal */}
+      {/* 53: Preview modal with backdrop-blur; 54: Animate modal entrance */}
       {previewAttachment && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview: ${previewAttachment.original_name}`}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-fade-in"
           onClick={() => setPreviewAttachment(null)}
+          style={{ touchAction: 'manipulation' }}
         >
           <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>
             <div className="absolute -top-8 left-0 right-0 flex items-center justify-between">
@@ -400,11 +436,13 @@ export default function FileAttachments({
                 >
                   <Download className="w-4 h-4" />
                 </a>
-                <button
+                <button type="button"
                   onClick={() => setPreviewAttachment(null)}
-                  className="p-1 hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
+                  className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
+                  style={{ touchAction: 'manipulation' }}
+                  aria-label="Close"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5 sm:w-4 sm:h-4" />
                 </button>
               </div>
             </div>

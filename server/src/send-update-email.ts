@@ -29,43 +29,49 @@ const HTML_BODY = `
         The following improvements have been applied to RMPG Flex:
       </p>
 
-      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">1. Health Endpoint — Database Connectivity Check</h2>
+      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">1. IPED Forensics — Audit Trail Coverage</h2>
       <p style="color:#8899aa; font-size:13px; line-height:1.5; margin:0 0 16px;">
-        <strong style="color:#e2e8f0;">File:</strong> server/src/index.ts<br>
-        The <code style="color:#d4a017;">/api/health</code> endpoint now verifies database connectivity
-        by running a <code style="color:#d4a017;">SELECT 1</code> test query. If the database is unreachable,
-        it returns HTTP 503 with status &quot;degraded&quot; instead of falsely reporting &quot;ok&quot;.
-        Also now exposes server uptime and active WebSocket connection count.
+        <strong style="color:#e2e8f0;">File:</strong> server/src/routes/iped.ts<br>
+        All IPED configuration changes (save, clear), job creation, job cancellation,
+        hash set imports, and hash set removals now write to the audit/activity log.
+        Previously these sensitive forensic operations had no audit trail, creating
+        a compliance gap for digital evidence handling.
       </p>
 
-      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">2. Audit Log — Pagination Bounds &amp; Export Limits</h2>
+      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">2. Forensic Lab — Audit Trail Coverage</h2>
       <p style="color:#8899aa; font-size:13px; line-height:1.5; margin:0 0 16px;">
-        <strong style="color:#e2e8f0;">File:</strong> server/src/routes/audit.ts<br>
-        Pagination is now clamped to 1–500 rows per page (prevents memory exhaustion via
-        malicious <code style="color:#d4a017;">?limit=999999</code> requests). CSV export queries are
-        capped at 50,000 rows maximum.
+        <strong style="color:#e2e8f0;">Files:</strong> server/src/routes/forensics.ts, server/src/utils/auditLogger.ts<br>
+        Forensic case creation, updates, and deletions now write to the activity log
+        with details including the lab case number and status changes. New audit action
+        types (<code style="color:#d4a017;">forensic_case_created</code>,
+        <code style="color:#d4a017;">forensic_case_updated</code>,
+        <code style="color:#d4a017;">forensic_case_deleted</code>) and entity type
+        (<code style="color:#d4a017;">forensic_case</code>) were added to the audit
+        logger type system.
       </p>
 
-      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">3. File Uploads — Audit Trail for Link Operations</h2>
+      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">3. NCIC Terminal — Input Length Validation</h2>
       <p style="color:#8899aa; font-size:13px; line-height:1.5; margin:0 0 16px;">
-        <strong style="color:#e2e8f0;">File:</strong> server/src/routes/uploads.ts<br>
-        The <code style="color:#d4a017;">PUT /api/uploads/:fileId/link</code> route now writes to
-        the activity log when a file is linked to an entity. Previously this operation
-        had no audit trail, creating a compliance gap.
+        <strong style="color:#e2e8f0;">File:</strong> client/src/components/NcicQueryPanel.tsx<br>
+        NCIC query input is now limited to 200 characters. Queries exceeding this limit
+        display an error message and play the error tone. Both the embedded and slide-out
+        panel inputs enforce a <code style="color:#d4a017;">maxLength</code> of 210
+        characters at the HTML level as an additional safeguard.
       </p>
 
-      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">4. GPS Tracking — Audit Trail for Auto-Created Units</h2>
+      <h2 style="margin:0 0 8px; font-size:14px; color:#4a9eff; font-weight:600;">4. Dispatch Notes — Length Validation</h2>
       <p style="color:#8899aa; font-size:13px; line-height:1.5; margin:0 0 16px;">
-        <strong style="color:#e2e8f0;">File:</strong> server/src/routes/dispatch/gps.ts<br>
-        When the GPS endpoint auto-creates a unit for a user, it now logs the event
-        to the activity log. Admins can now see which units were auto-provisioned
-        and by whom.
+        <strong style="color:#e2e8f0;">File:</strong> client/src/pages/dispatch/DispatchPage.tsx<br>
+        Dispatch call notes are now validated before submission: minimum 2 characters,
+        maximum 2,000 characters. Both the mobile input and desktop textarea enforce
+        <code style="color:#d4a017;">maxLength=2000</code> at the HTML level. Users
+        receive toast notifications if validation fails.
       </p>
 
       <div style="border-top:1px solid #1e3048; margin-top:24px; padding-top:16px;">
         <p style="margin:0; color:#556677; font-size:11px;">
           All changes verified: TypeScript compilation (0 errors), Vite build (success).<br>
-          Branch: claude/eloquent-swartz | Commit: 8fe57f4<br>
+          Branch: main<br>
           This is an automated notification from RMPG Flex CAD/RMS.
         </p>
       </div>

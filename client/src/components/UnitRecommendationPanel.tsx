@@ -23,7 +23,7 @@ interface UnitRecommendationPanelProps {
 const STATUS_COLORS: Record<string, string> = {
   available: '#22c55e',
   dispatched: '#f59e0b',
-  enroute: '#3b82f6',
+  enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
 };
@@ -49,7 +49,7 @@ export default function UnitRecommendationPanel({
           <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">No Units Available</span>
         </div>
         {onCreateUnit && (
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); onCreateUnit(); }}
             className="flex items-center gap-1 px-3 py-2 text-[10px] text-brand-400 hover:text-brand-300 font-bold w-full"
           >
@@ -77,7 +77,7 @@ export default function UnitRecommendationPanel({
       <div className="unit-rec-list">
         {ranked.map((item: RankedUnit) => {
           const isTopPick = item.rank === 1 && item.unit.status === 'available';
-          const statusColor = STATUS_COLORS[item.unit.status] || '#8a9aaa';
+          const statusColor = STATUS_COLORS[item.unit.status] || '#888888';
 
           return (
             <div
@@ -85,7 +85,7 @@ export default function UnitRecommendationPanel({
               className={`unit-rec-item ${isTopPick ? 'unit-rec-top-pick' : ''}`}
             >
               {/* Rank badge */}
-              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : '#6b7280' }}>
+              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : '#666666' }}>
                 {isTopPick ? (
                   <Star style={{ width: 10, height: 10, fill: '#4ade80' }} />
                 ) : (
@@ -124,7 +124,7 @@ export default function UnitRecommendationPanel({
                 <div className="flex flex-col items-end flex-shrink-0 mr-2">
                   <div className="flex items-center gap-1 text-[10px] text-rmpg-300">
                     <MapPin style={{ width: 8, height: 8 }} />
-                    <span className="font-mono">{item.distance.toFixed(1)} mi</span>
+                    <span className="font-mono">{(Number(item.distance) || 0).toFixed(1)} mi</span>
                   </div>
                   <div className="flex items-center gap-1 text-[9px] text-rmpg-500">
                     <Clock style={{ width: 7, height: 7 }} />
@@ -134,7 +134,7 @@ export default function UnitRecommendationPanel({
               )}
 
               {/* Assign button */}
-              <button
+              <button type="button"
                 onClick={(e) => { e.stopPropagation(); onAssign(item.unit.id); }}
                 className={`unit-rec-assign-btn ${isTopPick ? 'unit-rec-assign-top' : ''}`}
                 title={`Assign ${item.unit.call_sign}`}
@@ -150,7 +150,7 @@ export default function UnitRecommendationPanel({
       {/* Footer */}
       {onCreateUnit && (
         <div className="unit-rec-footer">
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); onCreateUnit(); }}
             className="flex items-center gap-1 text-[10px] text-amber-500 hover:text-amber-400 font-bold"
           >

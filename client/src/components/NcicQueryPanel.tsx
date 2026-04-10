@@ -61,7 +61,7 @@ interface QueryEntry {
   hasHit: boolean;
 }
 
-let queryIdCounter = 0;
+// queryIdCounter moved to useRef inside component to avoid shared state across instances
 
 /** Render NCIC response text with per-line semantic coloring and inline field-label highlighting */
 function renderColorizedResponse(text: string): React.ReactNode {
@@ -104,6 +104,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryIdCounterRef = useRef(0);
 
   // Auto-focus input when panel opens
   useEffect(() => {
@@ -116,7 +117,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   useEffect(() => {
     if (initialQuery && isOpen) {
       const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO' };
-      const cmd = `${cmdMap[initialQuery.type]} ${initialQuery.query}`;
+      const cmd = `${cmdMap[initialQuery.type] || 'QH'} ${initialQuery.query}`;
       runQuery(cmd);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,6 +136,17 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
     const queryText = parts.slice(1).join(' ');
 
     if (!queryText) return;
+
+    // Input validation: enforce length limits
+    if (queryText.length > 200) {
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      setEntries(prev => [...prev, {
+        id: ++queryIdCounterRef.current, timestamp: ts, command,
+        response: 'ERROR: QUERY TOO LONG — MAXIMUM 200 CHARACTERS', hasHit: false,
+      }]);
+      playTone('error');
+      return;
+    }
 
     setLoading(true);
     const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -157,7 +169,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=person&query=${encodeURIComponent(queryText)}`);
 
-          if (data.results.length === 0) {
+          if (!data.results || data.results.length === 0) {
             response = formatNoRecord('PERSON', queryText);
           } else {
             response = data.results
@@ -166,7 +178,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             hasHit = true;
 
             // Check for warrants — play warning tone
-            const hasWarrants = data.results.some(r => r.warrants.length > 0);
+            const hasWarrants = data.results.some(r => r.warrants?.length > 0);
             if (hasWarrants) {
               playTone('warning');
             } else {
@@ -184,7 +196,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=vehicle&query=${encodeURIComponent(queryText)}`);
 
-          if (data.results.length === 0) {
+          if (!data.results || data.results.length === 0) {
             response = formatNoRecord('VEHICLE', queryText);
           } else {
             response = data.results.map(v => formatVehicleResponse(v)).join('\n\n');
@@ -214,8 +226,8 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=warrant&query=${encodeURIComponent(queryText)}`);
 
-          response = formatWarrantResponse(data.results, queryText, data.utahResults);
-          hasHit = data.results.length > 0 || (data.utahResults || []).length > 0;
+          response = formatWarrantResponse(data.results || [], queryText, data.utahResults);
+          hasHit = (data.results || []).length > 0 || (data.utahResults || []).length > 0;
           if (hasHit) playTone('warning');
           break;
         }
@@ -258,22 +270,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             body.lastName = dlParts[0];
           }
 
-          const dlData = await apiFetch<{
-            hit: boolean;
-            source: string;
-            subjects: NcicDlSubject[];
-            resultCount: number;
-          }>('/microbilt/dl/search', {
-            method: 'POST',
-            body: JSON.stringify(body),
-          });
+          try {
+            const dlData = await apiFetch<{
+              hit: boolean;
+              source: string;
+              subjects: NcicDlSubject[];
+              resultCount: number;
+            }>('/microbilt/dl/search', {
+              method: 'POST',
+              body: JSON.stringify(body),
+            });
 
-          if (!dlData.hit || dlData.subjects.length === 0) {
-            response = formatNoRecord('DL SEARCH', queryText);
-          } else {
-            response = formatDlResponse(dlData.subjects, queryText);
-            hasHit = true;
-            playTone('info');
+            if (!dlData.hit || !dlData.subjects || dlData.subjects.length === 0) {
+              response = formatNoRecord('DL SEARCH', queryText);
+            } else {
+              response = formatDlResponse(dlData.subjects, queryText);
+              hasHit = true;
+              playTone('info');
+            }
+          } catch {
+            response = '*** DL SEARCH UNAVAILABLE ***\n\n  MicroBilt DL Search service is currently offline.\n  Try again later or use Records > DL Search.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
@@ -283,29 +300,34 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           // Parse: QO AL QAIDA  |  QO SMITH, JOHN
           const ofacBody: any = {};
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             ofacBody.lastName = last;
             ofacBody.firstName = first;
           } else {
             ofacBody.fullName = queryText;
           }
 
-          const ofacData = await apiFetch<{
-            hit: boolean;
-            sources: string[];
-            subjects: NcicOfacSubject[];
-            resultCount: number;
-          }>('/microbilt/ofac/search', {
-            method: 'POST',
-            body: JSON.stringify(ofacBody),
-          });
+          try {
+            const ofacData = await apiFetch<{
+              hit: boolean;
+              sources: string[];
+              subjects: NcicOfacSubject[];
+              resultCount: number;
+            }>('/microbilt/ofac/search', {
+              method: 'POST',
+              body: JSON.stringify(ofacBody),
+            });
 
-          if (!ofacData.hit || ofacData.subjects.length === 0) {
-            response = formatNoRecord('OFAC WATCHLIST', queryText);
-          } else {
-            response = formatOfacResponse(ofacData.subjects, queryText);
-            hasHit = true;
-            playTone('warning');
+            if (!ofacData.hit || ofacData.subjects.length === 0) {
+              response = formatNoRecord('OFAC WATCHLIST', queryText);
+            } else {
+              response = formatOfacResponse(ofacData.subjects, queryText);
+              hasHit = true;
+              playTone('warning');
+            }
+          } catch {
+            response = '*** OFAC SEARCH UNAVAILABLE ***\n\n  OFAC/SDN Watchlist service is currently offline.\n  Try again later.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
@@ -315,7 +337,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           // Parse name: "LAST, FIRST" or "LAST FIRST" or just "LAST"
           const xrefBody: any = {};
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             xrefBody.lastName = last;
             xrefBody.firstName = first;
           } else {
@@ -325,27 +347,30 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           }
 
           // Fire all queries in parallel — allSettled so one failure doesn't block others
+          // Wrap each in a 15-second timeout to prevent infinite hang
+          const withTimeout = <T,>(p: Promise<T>, label: string): Promise<T> =>
+            Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout`)), 15000))]);
           const [personResult, warrantResult, dlResult, ofacResult, arrestResult, skipResult] = await Promise.allSettled([
-            apiFetch<{ results: Array<{ person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }> }>(
+            withTimeout(apiFetch<{ results: Array<{ person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }> }>(
               `/records/ncic-query?type=person&query=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ results: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[] }>(
+            ), 'PERSON'),
+            withTimeout(apiFetch<{ results: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[] }>(
               `/records/ncic-query?type=warrant&query=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ hit: boolean; subjects: NcicDlSubject[] }>(
+            ), 'WARRANT'),
+            withTimeout(apiFetch<{ hit: boolean; subjects: NcicDlSubject[] }>(
               '/microbilt/dl/search',
               { method: 'POST', body: JSON.stringify(xrefBody) }
-            ),
-            apiFetch<{ hit: boolean; subjects: NcicOfacSubject[] }>(
+            ), 'DL'),
+            withTimeout(apiFetch<{ hit: boolean; subjects: NcicOfacSubject[] }>(
               '/microbilt/ofac/search',
               { method: 'POST', body: JSON.stringify(xrefBody.firstName ? { lastName: xrefBody.lastName, firstName: xrefBody.firstName } : { fullName: queryText }) }
-            ),
-            apiFetch<{ hit: boolean; records: NcicArrestRecord[] }>(
+            ), 'OFAC'),
+            withTimeout(apiFetch<{ hit: boolean; records: NcicArrestRecord[] }>(
               `/arrests/search?name=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ PeopleDetails?: SkipTracerPerson[]; Records?: number }>(
+            ), 'ARREST'),
+            withTimeout(apiFetch<{ PeopleDetails?: SkipTracerPerson[]; Records?: number }>(
               `/skiptracer/search/byname?name=${encodeURIComponent(queryText)}&page=1`
-            ),
+            ), 'SKIP'),
           ]);
 
           // Collect results, track errors
@@ -392,7 +417,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (skipResult.status === 'fulfilled') {
             xref.skipTracerPeople = skipResult.value.PeopleDetails || [];
           } else {
-            xref.errors.push('SKIP TRACER QUERY FAILED');
+            xref.errors.push('SKIP TRACKER QUERY FAILED');
           }
 
           // ── Cross-load: enrich empty sections from person records ──
@@ -469,7 +494,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=phone&query=${encodeURIComponent(queryText)}`);
 
-          if (phoneData.results.length === 0) {
+          if (!phoneData.results || phoneData.results.length === 0) {
             response = formatNoRecord('PHONE', queryText);
           } else {
             response = phoneData.results
@@ -477,7 +502,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
               .join('\n\n');
             hasHit = true;
 
-            const hasWarrants = phoneData.results.some(r => r.warrants.length > 0);
+            const hasWarrants = phoneData.results.some(r => r.warrants?.length > 0);
             if (hasWarrants) {
               playTone('warning');
             } else {
@@ -492,7 +517,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           const courtBase = 'https://www.utcourts.gov/xchange/CaseSearch';
           const courtParams = new URLSearchParams();
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             courtParams.set('lastName', last);
             if (first) courtParams.set('firstName', first);
           } else {
@@ -564,7 +589,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
           // Parse: QB FIRST LAST  |  QB LAST,FIRST  |  QB FIRST LAST MM/DD/YYYY
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             bgBody.lastName = last;
             bgBody.firstName = first;
           } else {
@@ -625,32 +650,37 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           // Arrest record query — JailBase county arrest records
           let arName = queryText;
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             arName = `${first} ${last}`;
           }
 
-          const arData = await apiFetch<{
-            hit: boolean;
-            records: NcicArrestRecord[];
-            resultCount: number;
-            cached: boolean;
-          }>(`/arrests/search?name=${encodeURIComponent(arName)}`);
+          try {
+            const arData = await apiFetch<{
+              hit: boolean;
+              records: NcicArrestRecord[];
+              resultCount: number;
+              cached: boolean;
+            }>(`/arrests/search?name=${encodeURIComponent(arName)}`);
 
-          if (!arData.hit || !arData.records?.length) {
-            response = formatNoRecord('ARREST RECORDS', queryText);
-          } else {
-            response = formatArrestResponse(arData.records, queryText);
-            hasHit = true;
+            if (!arData.hit || !arData.records?.length) {
+              response = formatNoRecord('ARREST RECORDS', queryText);
+            } else {
+              response = formatArrestResponse(arData.records, queryText);
+              hasHit = true;
 
-            const hasActive = arData.records.some(r => r.status === 'active');
-            const hasLinkedWarrants = arData.records.some(r => (r.cross_links?.warrants?.length || 0) > 0);
-            playTone(hasActive || hasLinkedWarrants ? 'warning' : 'info');
+              const hasActive = arData.records.some(r => r.status === 'active');
+              const hasLinkedWarrants = arData.records.some(r => (r.cross_links?.warrants?.length || 0) > 0);
+              playTone(hasActive || hasLinkedWarrants ? 'warning' : 'info');
+            }
+          } catch {
+            response = '*** ARREST RECORDS UNAVAILABLE ***\n\n  JailBase arrest search service timed out.\n  Cached local records may still be available in Records.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
 
         case 'QS': {
-          // Skip Tracer — RapidAPI skip tracing lookup
+          // Skip Tracker — RapidAPI skip tracing lookup
           // Supports: QS NAME  |  QS ADDR:123 Main St  |  QS PHONE:8015551234  |  QS EMAIL:john@example.com
           let stPath = '/skiptracer/search/byname';
           let stParams: Record<string, string> = {};
@@ -682,7 +712,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           const stPeople = stData.PeopleDetails || [];
 
           if (stPeople.length === 0) {
-            response = formatNoRecord('SKIP TRACER', queryText);
+            response = formatNoRecord('SKIP TRACKER', queryText);
           } else {
             response = formatSkipTracerResponse(stPeople, queryText, stData.Records, stType);
             hasHit = true;
@@ -696,7 +726,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       }
 
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter,
+        id: ++queryIdCounterRef.current,
         timestamp,
         command,
         response,
@@ -704,7 +734,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       }]);
     } catch (err: any) {
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter,
+        id: ++queryIdCounterRef.current,
         timestamp,
         command,
         response: `ERROR: ${err.message || 'Query failed'}`,
@@ -757,7 +787,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QA <address>  Query Address / Premise   ║
 ║  QO <name>     Query OFAC Watchlist      ║
 ║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracer         ║
+║  QS <name>     Query Skip Tracker        ║
 ║  QB <name>     Query Background Check    ║
 ║  QC <name>     Query Utah Courts (web)   ║
 ╚══════════════════════════════════════════╝`}</pre>
@@ -792,6 +822,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
             placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QR NAME | QB NAME"
+            maxLength={210}
             spellCheck={false}
             autoComplete="off"
             disabled={loading}
@@ -808,11 +839,12 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         <div className="ncic-header">
           <div className="flex items-center gap-2">
             <Terminal style={{ width: 14, height: 14, color: '#d4a017' }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>
               NCIC / NLETS Terminal
             </span>
+            <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: 'rgba(212,160,23,0.1)', color: '#8a6a2a', border: '1px solid rgba(212,160,23,0.2)' }}>SECURE</span>
           </div>
-          <button onClick={onClose} className="ncic-close-btn">
+          <button type="button" onClick={onClose} className="ncic-close-btn" aria-label="Close terminal" title="Close terminal">
             <X style={{ width: 14, height: 14 }} />
           </button>
         </div>
@@ -835,7 +867,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QA <address>  Query Address / Premise   ║
 ║  QO <name>     Query OFAC Watchlist      ║
 ║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracer         ║
+║  QS <name>     Query Skip Tracker        ║
 ║  QB <name>     Query Background Check    ║
 ║  QC <name>     Query Utah Courts (web)   ║
 ╚══════════════════════════════════════════╝`}</pre>
@@ -873,6 +905,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
             placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QV PLATE | QB NAME"
+            maxLength={210}
             spellCheck={false}
             autoComplete="off"
             disabled={loading}

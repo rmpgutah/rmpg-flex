@@ -4,6 +4,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 interface VehicleFormModalProps {
   isOpen: boolean;
@@ -49,6 +50,23 @@ export interface VehicleFormData {
   stolen_date: string;
   recovery_date: string;
   notes: string;
+  title_status: string;
+  exterior_condition: string;
+  interior_condition: string;
+  estimated_value: string;
+  window_tint: string;
+  modifications: string;
+  equipment_notes: string;
+  owner_name: string;
+  registered_owner: string;
+  registration_state: string;
+  insurance_expiry: string;
+  owner_dob: string;
+  owner_dl_number: string;
+  tow_location: string;
+  ncic_entry_number: string;
+  primary_driver_name: string;
+  vehicle_use: string;
 }
 
 const EMPTY_FORM: VehicleFormData = {
@@ -86,6 +104,23 @@ const EMPTY_FORM: VehicleFormData = {
   stolen_date: '',
   recovery_date: '',
   notes: '',
+  title_status: '',
+  exterior_condition: '',
+  interior_condition: '',
+  estimated_value: '',
+  window_tint: '',
+  modifications: '',
+  equipment_notes: '',
+  owner_name: '',
+  registered_owner: '',
+  registration_state: '',
+  insurance_expiry: '',
+  owner_dob: '',
+  owner_dl_number: '',
+  tow_location: '',
+  ncic_entry_number: '',
+  primary_driver_name: '',
+  vehicle_use: '',
 };
 
 const BODY_STYLES = [
@@ -118,6 +153,11 @@ const DRIVE_OPTIONS = ['FWD', 'RWD', 'AWD', '4WD'];
 const TOW_STATUS_OPTIONS = ['None', 'Towed', 'Impounded', 'Released'];
 const PLATE_TYPE_OPTIONS = ['Regular', 'Temporary', 'Dealer', 'Government', 'Military', 'Disabled', 'Other'];
 const STOLEN_STATUS_OPTIONS = ['None', 'Stolen', 'Recovered', 'Attempt'];
+const TITLE_STATUS_OPTIONS = ['Clean', 'Salvage', 'Rebuilt', 'Flood', 'Lemon', 'Bonded', 'Junk', 'Unknown'];
+const CONDITION_OPTIONS = ['Excellent', 'Good', 'Fair', 'Poor', 'Totaled', 'Unknown'];
+const WINDOW_TINT_OPTIONS = ['None', 'Factory', 'Light (50%+)', 'Medium (35-50%)', 'Dark (20-35%)', 'Limo (5-20%)', 'Illegal (<5%)', 'Unknown'];
+
+const VEHICLE_USE_OPTIONS = ['Personal', 'Commercial', 'Government', 'Law Enforcement', 'Emergency Services', 'Rental', 'Leased', 'Fleet', 'Other'];
 
 export default function VehicleFormModal({
   isOpen,
@@ -170,6 +210,23 @@ export default function VehicleFormModal({
           stolen_date: editingVehicle.stolen_date || '',
           recovery_date: editingVehicle.recovery_date || '',
           notes: editingVehicle.notes || '',
+          title_status: editingVehicle.title_status || '',
+          exterior_condition: editingVehicle.exterior_condition || '',
+          interior_condition: editingVehicle.interior_condition || '',
+          estimated_value: editingVehicle.estimated_value || '',
+          window_tint: editingVehicle.window_tint || '',
+          modifications: editingVehicle.modifications || '',
+          equipment_notes: editingVehicle.equipment_notes || '',
+          owner_name: editingVehicle.owner_name || '',
+          registered_owner: editingVehicle.registered_owner || '',
+          registration_state: editingVehicle.registration_state || '',
+          insurance_expiry: (editingVehicle as any).insurance_expiry || '',
+          owner_dob: (editingVehicle as any).owner_dob || '',
+          owner_dl_number: (editingVehicle as any).owner_dl_number || '',
+          tow_location: (editingVehicle as any).tow_location || '',
+          ncic_entry_number: (editingVehicle as any).ncic_entry_number || '',
+          primary_driver_name: (editingVehicle as any).primary_driver_name || '',
+          vehicle_use: (editingVehicle as any).vehicle_use || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -178,7 +235,7 @@ export default function VehicleFormModal({
         snapshot(EMPTY_FORM);
       }
     }
-  }, [isOpen, editingVehicle]);
+  }, [isOpen, editingVehicle, snapshot]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -191,6 +248,13 @@ export default function VehicleFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate year if provided
+    if (form.year) {
+      const yearNum = parseInt(form.year, 10);
+      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) return;
+    }
+    // Validate VIN length if provided
+    if (form.vin && form.vin.length !== 17) return;
     onSubmit(form);
   };
 
@@ -309,7 +373,7 @@ export default function VehicleFormModal({
           {/* VIN */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">VIN</label>
-            <input name="vin" type="text" maxLength={17} className="input-dark mt-1 font-mono" placeholder="17-character VIN" value={form.vin} onChange={handleChange} />
+            <input name="vin" type="text" maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
           </div>
         </>
       )}
@@ -379,6 +443,27 @@ export default function VehicleFormModal({
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Title Status</label>
+              <select name="title_status" className="select-dark mt-1" value={form.title_status} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {TITLE_STATUS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Registration State</label>
+              <select name="registration_state" className="select-dark mt-1" value={form.registration_state} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Estimated Value</label>
+              <input name="estimated_value" type="text" className="input-dark mt-1" placeholder="$" value={form.estimated_value} onChange={handleChange} />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Insurance Company</label>
@@ -390,9 +475,44 @@ export default function VehicleFormModal({
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Insurance Expiry</label>
+              <input name="insurance_expiry" type="date" className="input-dark mt-1" value={form.insurance_expiry} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Vehicle Use</label>
+              <select name="vehicle_use" className="select-dark mt-1" value={form.vehicle_use} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {VEHICLE_USE_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Driver</label>
+              <input name="primary_driver_name" type="text" className="input-dark mt-1" placeholder="Name of primary driver" value={form.primary_driver_name} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Entry #</label>
+              <input name="ncic_entry_number" type="text" className="input-dark mt-1" placeholder="NCIC stolen vehicle entry number" value={form.ncic_entry_number} onChange={handleChange} />
+            </div>
+          </div>
+
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Name</label>
+                <input name="owner_name" type="text" className="input-dark mt-1" placeholder="Vehicle owner name" value={form.owner_name} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Registered Owner</label>
+                <input name="registered_owner" type="text" className="input-dark mt-1" placeholder="Registered owner (if different)" value={form.registered_owner} onChange={handleChange} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Address</label>
                 <AddressAutocomplete
@@ -405,7 +525,17 @@ export default function VehicleFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Phone</label>
-                <input name="owner_phone" type="text" className="input-dark mt-1" value={form.owner_phone} onChange={handleChange} />
+                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Date of Birth</label>
+                <input name="owner_dob" type="date" className="input-dark mt-1" value={form.owner_dob} onChange={handleChange} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner DL #</label>
+                <input name="owner_dl_number" type="text" className="input-dark mt-1" placeholder="Owner's driver license number" value={form.owner_dl_number} onChange={handleChange} />
               </div>
             </div>
           </div>
@@ -447,6 +577,10 @@ export default function VehicleFormModal({
                 <input name="tow_date" type="date" className="input-dark mt-1" value={form.tow_date} onChange={handleChange} />
               </div>
             </div>
+            <div className="mt-3">
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Location / Impound Lot</label>
+              <input name="tow_location" type="text" className="input-dark mt-1" placeholder="Where vehicle was towed / impounded" value={form.tow_location} onChange={handleChange} />
+            </div>
           </div>
 
           <div className="flex items-center gap-6 py-2">
@@ -466,6 +600,31 @@ export default function VehicleFormModal({
 
       {activeSection === 'condition' && (
         <>
+          {/* Condition Dropdowns */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Exterior Condition</label>
+              <select name="exterior_condition" className="select-dark mt-1" value={form.exterior_condition} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {CONDITION_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Interior Condition</label>
+              <select name="interior_condition" className="select-dark mt-1" value={form.interior_condition} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {CONDITION_OPTIONS.map((c) => <option key={`int-${c}`} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Window Tint</label>
+              <select name="window_tint" className="select-dark mt-1" value={form.window_tint} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {WINDOW_TINT_OPTIONS.map((w) => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
+          </div>
+
           {/* Damage / Features */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Description</label>
@@ -476,10 +635,23 @@ export default function VehicleFormModal({
             <input name="distinguishing_features" type="text" className="input-dark mt-1" placeholder="Bumper stickers, custom rims, tinted windows, etc." value={form.distinguishing_features} onChange={handleChange} />
           </div>
 
+          {/* Modifications / Equipment */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications</label>
+              <textarea name="modifications" rows={2} className="input-dark mt-1" placeholder="Lift kit, exhaust, aftermarket bumper, etc." value={form.modifications} onChange={handleChange} maxLength={2000} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes</label>
+              <textarea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
+            </div>
+          </div>
+
           {/* Notes */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <textarea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
+            <textarea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
+            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>
       )}

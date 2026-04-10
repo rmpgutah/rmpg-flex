@@ -1,499 +1,696 @@
 // ============================================================
-// IPED Digital Forensics API Routes
+// RMPG Flex — IPED Digital Forensics Integration
 // ============================================================
-// Configuration, hash computation, job processing,
-// hash set management, and IPED Web API proxy.
+// Proxy layer for the IPED (Digital Evidence Processor and
+// Indexer) Web API.  IPED runs as a standalone REST server
+// (typically port 11111) alongside its case database.
+//
+// This route provides:
+//  • Encrypted credential storage (base URL + API key)
+//  • Connection testing
+//  • Case browsing — list / search IPED cases
+//  • Item search — Lucene-powered queries within IPED cases
+//  • Bookmark retrieval and posting
+//  • Findings import — pull regex hits (crypto, emails, IPs,
+//    credit cards) into forensic analysis conclusions
+//  • Timeline import — merge IPED event data into the
+//    forensic activity log
+//  • Report import — reference IPED HTML/CSV exports as
+//    forensic case report artifacts
+//  • Full audit trail of every import operation
+//
+// Pattern follows microbilt.ts: encrypted creds in
+// system_config, proxy helper, local persistence.
 // ============================================================
 
 import { Router, Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { getDb } from '../models/database';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
-import {
-  getIpedConfig,
-  setIpedConfigValues,
-  clearIpedConfig,
-  validateIpedInstallation,
-  computeFileHashes,
-  hashEvidenceAttachments,
-  runIpedProcess,
-  cancelIpedJob,
-  getJobProgress,
-  proxyIpedApi,
-  testIpedApiConnection,
-  importHashSet,
-  importToIpedHashDb,
-  getHashSetSummary,
-  removeHashSet,
-  checkAgainstHashSets,
-  getIpedUsageStats,
-} from '../utils/ipedManager';
+import config from '../config';
 
 const router = Router();
 router.use(authenticateToken);
 
-// ── GET /status — Configuration and installation status ─────
-router.get('/status', (_req: Request, res: Response) => {
+// ============================================================
+// Encryption helpers  (mirrors microbilt.ts)
+// ============================================================
+
+function deriveKey(): Buffer {
+  return crypto.createHash('sha256').update(config.jwt.secret).digest();
+}
+
+function encrypt(plaintext: string): string {
+  const key = deriveKey();
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+function decrypt(stored: string): string {
+  const key = deriveKey();
+  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+// ============================================================
+// Config helpers
+// ============================================================
+
+const IPED_KEYS = {
+  baseUrl:  'iped_base_url',
+  apiKey:   'iped_api_key',
+  enabled:  'iped_enabled',
+} as const;
+
+function getConfigValue(key: string): string | null {
   try {
-    const cfg = getIpedConfig();
-    const stats = getIpedUsageStats();
-    res.json({ ...cfg, ...stats });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
+    ).get(key) as { config_value: string } | undefined;
+    return row?.config_value || null;
+  } catch { return null; }
+}
 
-// ── PUT /config — Save IPED configuration ───────────────────
-router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
+function getDecryptedValue(key: string): string | null {
+  const val = getConfigValue(key);
+  if (!val) return null;
+  try { return decrypt(val); } catch { return null; }
+}
+
+function setConfigValue(key: string, value: string, shouldEncrypt = false): void {
+  const db = getDb();
+  const now = localNow();
+  const stored = shouldEncrypt ? encrypt(value) : value;
+  db.prepare("DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'").run(key);
+  db.prepare(
+    "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, ?, ?)"
+  ).run(key, stored, now, now);
+}
+
+function deleteConfigValue(key: string): void {
+  const db = getDb();
+  db.prepare("DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'").run(key);
+}
+
+// ============================================================
+// IPED API client
+// ============================================================
+
+async function callIpedApi(path: string, method: 'GET' | 'POST' = 'GET', body?: any): Promise<any | null> {
+  const baseUrl = getDecryptedValue(IPED_KEYS.baseUrl);
+  const apiKey = getDecryptedValue(IPED_KEYS.apiKey);
+  if (!baseUrl) return null;
+
+  const url = `${baseUrl.replace(/\/+$/, '')}${path}`;
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) headers['X-Api-Key'] = apiKey;
+
   try {
-    const { installPath, javaHome, webApiUrl, webApiPort, defaultProfile,
-            photodnaEnabled, autoHashOnUpload, hashSetsPath } = req.body;
+    const opts: RequestInit = { method, headers, signal: AbortSignal.timeout(30_000) };
+    if (body && method === 'POST') opts.body = JSON.stringify(body);
 
-    const values: Record<string, string> = {};
-    if (installPath !== undefined) values.installPath = installPath;
-    if (javaHome !== undefined) values.javaHome = javaHome;
-    if (webApiUrl !== undefined) values.webApiUrl = webApiUrl;
-    if (webApiPort !== undefined) values.webApiPort = String(webApiPort);
-    if (defaultProfile !== undefined) values.defaultProfile = defaultProfile;
-    if (photodnaEnabled !== undefined) values.photodnaEnabled = String(photodnaEnabled);
-    if (autoHashOnUpload !== undefined) values.autoHashOnUpload = String(autoHashOnUpload);
-    if (hashSetsPath !== undefined) values.hashSetsPath = hashSetsPath;
-
-    setIpedConfigValues(values);
-    res.json({ success: true, message: 'IPED configuration saved' });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── DELETE /config — Clear IPED configuration ───────────────
-router.delete('/config', requireRole('admin'), (_req: Request, res: Response) => {
-  try {
-    clearIpedConfig();
-    res.json({ success: true, message: 'IPED configuration cleared' });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /validate — Validate IPED installation ─────────────
-router.post('/validate', requireRole('admin'), (_req: Request, res: Response) => {
-  try {
-    const result = validateIpedInstallation();
-    res.json(result);
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /test-api — Test IPED Web API connectivity ─────────
-router.post('/test-api', requireRole('admin'), async (_req: Request, res: Response) => {
-  try {
-    const result = await testIpedApiConnection();
-    res.json(result);
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── GET /download/info — IPED bundle availability ───────────
-router.get('/download/info', (_req: Request, res: Response) => {
-  try {
-    const downloadsDir = path.resolve(__dirname, '../../downloads');
-    const bundles: Record<string, any> = {};
-
-    if (fs.existsSync(downloadsDir)) {
-      const files = fs.readdirSync(downloadsDir);
-      for (const file of files) {
-        if (!file.startsWith('IPED-') || !file.endsWith('.zip')) continue;
-        const versionMatch = file.match(/(\d+\.\d+\.\d+)/);
-        const version = versionMatch ? versionMatch[1] : 'unknown';
-        const stat = fs.statSync(path.join(downloadsDir, file));
-
-        if (file.includes('-mac') || file.includes('-darwin')) {
-          bundles.mac = { filename: file, version, size: stat.size };
-        } else if (file.includes('-win')) {
-          bundles.win = { filename: file, version, size: stat.size };
-        } else if (file.includes('-linux')) {
-          bundles.linux = { filename: file, version, size: stat.size };
-        }
-      }
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error(`[IPED] ${method} ${path} → ${res.status}: ${text}`);
+      return null;
     }
+    return await res.json();
+  } catch (err: any) {
+    console.error(`[IPED] ${method} ${path} error:`, err.message);
+    return null;
+  }
+}
+
+// ============================================================
+// Activity log helper  (shared with forensics.ts)
+// ============================================================
+
+function logForensicActivity(caseId: number, action: string, details: string, userId: number, userName: string, exhibitId?: number) {
+  const db = getDb();
+  const now = localNow();
+  db.prepare(`
+    INSERT INTO forensic_activity_log (forensic_case_id, exhibit_id, action, details, performed_by, performed_by_name, performed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(caseId, exhibitId || null, action, details, userId, userName, now);
+}
+
+// ============================================================
+// ─── Connection Management ─────────────────────────────────
+// ============================================================
+
+// GET /api/iped/status — connection status
+router.get('/status', async (_req: Request, res: Response) => {
+  try {
+    const baseUrl = getDecryptedValue(IPED_KEYS.baseUrl);
+    const hasApiKey = !!getConfigValue(IPED_KEYS.apiKey);
+    const enabled = getConfigValue(IPED_KEYS.enabled) === 'true';
 
     res.json({
-      available: Object.keys(bundles).length > 0,
-      bundles,
-      downloadUrl: '/downloads',
-      githubUrl: 'https://github.com/sepinf-inc/IPED/releases',
+      configured: !!baseUrl,
+      enabled,
+      baseUrl: baseUrl ? baseUrl.replace(/\/\/(.+?):(.+?)@/, '//$1:***@') : null,
+      hasApiKey,
     });
   } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /jobs — Create a processing job ────────────────────
-router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+// PUT /api/iped/credentials — save IPED server URL + optional API key
+router.put('/credentials', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { baseUrl, apiKey } = req.body;
+    if (!baseUrl) return res.status(400).json({ error: 'baseUrl is required', code: 'BASEURL_IS_REQUIRED' });
+
+    setConfigValue(IPED_KEYS.baseUrl, baseUrl.trim(), true);
+    if (apiKey) setConfigValue(IPED_KEYS.apiKey, apiKey.trim(), true);
+    else deleteConfigValue(IPED_KEYS.apiKey);
+    setConfigValue(IPED_KEYS.enabled, 'true');
+
+    res.json({ message: 'IPED credentials saved' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/iped/credentials — remove all IPED config
+router.delete('/credentials', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    Object.values(IPED_KEYS).forEach(k => deleteConfigValue(k));
+    res.json({ message: 'IPED credentials removed' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/iped/test-connection — verify IPED server is reachable
+router.post('/test-connection', async (_req: Request, res: Response) => {
+  try {
+    const baseUrl = getDecryptedValue(IPED_KEYS.baseUrl);
+    if (!baseUrl) return res.status(400).json({ error: 'IPED not configured', code: 'IPED_NOT_CONFIGURED' });
+
+    const start = Date.now();
+    const result = await callIpedApi('/api/v1/cases');
+    const latency = Date.now() - start;
+
+    if (result) {
+      res.json({ connected: true, latency, caseCount: Array.isArray(result) ? result.length : 0 });
+    } else {
+      res.json({ connected: false, latency, error: 'No response from IPED server' });
+    }
+  } catch (err: any) {
+    res.json({ connected: false, error: err.message });
+  }
+});
+
+// ============================================================
+// ─── IPED Case Browsing ────────────────────────────────────
+// ============================================================
+
+// GET /api/iped/cases — list all IPED cases
+router.get('/cases', async (_req: Request, res: Response) => {
+  try {
+    const cases = await callIpedApi('/api/v1/cases');
+    if (!cases) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+    res.json({ data: Array.isArray(cases) ? cases : [] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/iped/cases/:caseId — single IPED case info
+router.get('/cases/:caseId', async (req: Request, res: Response) => {
+  try {
+    const result = await callIpedApi(`/api/v1/cases/${encodeURIComponent(req.params.caseId as string)}`);
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+    res.json({ data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/iped/cases/:caseId/stats — item statistics for an IPED case
+router.get('/cases/:caseId/stats', async (req: Request, res: Response) => {
+  try {
+    const caseId = encodeURIComponent(req.params.caseId as string);
+    const result = await callIpedApi(`/api/v1/cases/${caseId}/statistics`);
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+    res.json({ data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// ─── Item Search ────────────────────────────────────────────
+// ============================================================
+
+// GET /api/iped/cases/:caseId/search — search items with Lucene query
+router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
+  try {
+    const caseId = encodeURIComponent(req.params.caseId as string);
+    const q = (req.query.q as string) || '*';
+    const page = parseInt((req.query.page as string) || '0', 10);
+    const pageSize = Math.min(parseInt((req.query.pageSize as string) || '50', 10), 200);
+    const category = req.query.category ? `&category=${encodeURIComponent(req.query.category as string)}` : '';
+
+    const result = await callIpedApi(
+      `/api/v1/cases/${caseId}/search?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}${category}`
+    );
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+    res.json({ data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/iped/cases/:caseId/items/:itemId — item metadata
+router.get('/cases/:caseId/items/:itemId', async (req: Request, res: Response) => {
+  try {
+    const caseId = encodeURIComponent(req.params.caseId as string);
+    const itemId = encodeURIComponent(req.params.itemId as string);
+    const result = await callIpedApi(`/api/v1/cases/${caseId}/items/${itemId}`);
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+    res.json({ data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// ─── Bookmarks ──────────────────────────────────────────────
+// ============================================================
+
+// GET /api/iped/cases/:caseId/bookmarks — list bookmarks
+router.get('/cases/:caseId/bookmarks', async (req: Request, res: Response) => {
+  try {
+    const caseId = encodeURIComponent(req.params.caseId as string);
+    const result = await callIpedApi(`/api/v1/cases/${caseId}/bookmarks`);
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+    res.json({ data: Array.isArray(result) ? result : [] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/iped/cases/:caseId/bookmarks — create bookmark in IPED
+router.post('/cases/:caseId/bookmarks', async (req: Request, res: Response) => {
+  try {
+    const caseId = encodeURIComponent(req.params.caseId as string);
+    const result = await callIpedApi(`/api/v1/cases/${caseId}/bookmarks`, 'POST', req.body);
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+    res.json({ data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// ─── Regex / PII Findings ───────────────────────────────────
+// ============================================================
+
+// GET /api/iped/cases/:caseId/findings — fetch IPED regex hits
+// IPED's regex engine tags items that match patterns for
+// crypto wallets, emails, IPs, credit cards, phone numbers etc.
+router.get('/cases/:caseId/findings', async (req: Request, res: Response) => {
+  try {
+    const caseId = encodeURIComponent(req.params.caseId as string);
+    const category = req.query.category || 'regex';
+
+    // IPED stores regex matches as bookmarks or categories — search for them
+    const result = await callIpedApi(
+      `/api/v1/cases/${caseId}/search?q=*&category=${encodeURIComponent(category as string)}&pageSize=200`
+    );
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+
+    // Normalize findings into structured format
+    const items = Array.isArray(result?.items || result) ? (result?.items || result) : [];
+    const findings = items.map((item: any) => ({
+      id: item.id,
+      name: item.name || item.fileName,
+      path: item.path,
+      category: item.category || category,
+      type: item.type || item.mediaType,
+      size: item.size || item.length,
+      hash: item.hash || item.md5,
+      content_preview: item.content?.substring(0, 500) || item.preview,
+      metadata: item.metadata || {},
+      bookmarked: item.bookmarked || false,
+    }));
+
+    res.json({ data: findings, total: result?.totalItems || findings.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// ─── Timeline Events ────────────────────────────────────────
+// ============================================================
+
+// GET /api/iped/cases/:caseId/timeline — fetch IPED timeline events
+router.get('/cases/:caseId/timeline', async (req: Request, res: Response) => {
+  try {
+    const caseId = encodeURIComponent(req.params.caseId as string);
+    const from = req.query.from ? `&from=${encodeURIComponent(req.query.from as string)}` : '';
+    const to = req.query.to ? `&to=${encodeURIComponent(req.query.to as string)}` : '';
+
+    const result = await callIpedApi(
+      `/api/v1/cases/${caseId}/timeline?pageSize=500${from}${to}`
+    );
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
+
+    const events = Array.isArray(result?.events || result) ? (result?.events || result) : [];
+    res.json({ data: events, total: result?.totalEvents || events.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// ─── Import Operations ─────────────────────────────────────
+// ============================================================
+
+// POST /api/iped/import/link — link an IPED case to a forensic case
+router.post('/import/link', async (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const user = (req as any).user;
+    const { forensicCaseId, ipedCaseId, ipedCaseName } = req.body;
+    if (!forensicCaseId || !ipedCaseId) return res.status(400).json({ error: 'forensicCaseId and ipedCaseId required', code: 'FORENSICCASEID_AND_IPEDCASEID_REQUIRED' });
+
     const now = localNow();
-    const { evidenceId, jobType, inputPath, outputPath, profile } = req.body;
-    const userId = (req as any).user?.id;
+    const stmt = db.prepare(`
+      INSERT INTO iped_imports (forensic_case_id, import_type, iped_case_id, iped_case_name, summary, imported_by, imported_by_name, created_at)
+      VALUES (?, 'case_link', ?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(forensicCaseId, ipedCaseId, ipedCaseName || null, `Linked IPED case: ${ipedCaseName || ipedCaseId}`, user.userId, user.fullName, now);
 
-    if (!inputPath) return res.status(400).json({ error: 'inputPath is required' });
-    if (!['hash', 'process', 'triage', 'csam_scan'].includes(jobType)) {
-      return res.status(400).json({ error: 'Invalid jobType (hash/process/triage/csam_scan)' });
+    logForensicActivity(forensicCaseId, 'iped_case_linked', `Linked to IPED case: ${ipedCaseName || ipedCaseId}`, user.userId, user.fullName);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/iped/import/findings — import regex findings into a forensic analysis
+router.post('/import/findings', async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const { forensicCaseId, ipedCaseId, ipedCaseName, findings, analysisId, category } = req.body;
+    if (!forensicCaseId || !ipedCaseId || !findings) {
+      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and findings required', code: 'FORENSICCASEID_IPEDCASEID_AND_FINDINGS' });
     }
 
-    // Validate path exists
-    if (!fs.existsSync(inputPath)) {
-      return res.status(400).json({ error: `Input path does not exist: ${inputPath}` });
-    }
+    const now = localNow();
+    const findingsArr = Array.isArray(findings) ? findings : [];
 
-    const result = db.prepare(`
-      INSERT INTO iped_jobs (evidence_id, job_type, status, profile, input_path, output_path, created_by, created_at, updated_at)
-      VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?)
-    `).run(evidenceId || null, jobType, profile || 'forensic', inputPath, outputPath || null, userId, now, now);
+    // Build structured summary of findings by type
+    const byCategory: Record<string, number> = {};
+    findingsArr.forEach((f: any) => {
+      const cat = f.category || category || 'unknown';
+      byCategory[cat] = (byCategory[cat] || 0) + 1;
+    });
+    const summaryParts = Object.entries(byCategory).map(([k, v]) => `${v} ${k}`);
+    const summary = `Imported ${findingsArr.length} findings: ${summaryParts.join(', ')}`;
 
-    const jobId = result.lastInsertRowid as number;
+    // Persist import record
+    const importStmt = db.prepare(`
+      INSERT INTO iped_imports (forensic_case_id, import_type, iped_case_id, iped_case_name, source_query, item_count, imported_data, summary, imported_by, imported_by_name, created_at)
+      VALUES (?, 'findings', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    importStmt.run(
+      forensicCaseId, ipedCaseId, ipedCaseName || null,
+      category || null, findingsArr.length,
+      JSON.stringify(findingsArr), summary,
+      user.userId, user.fullName, now,
+    );
 
-    // If it's a hash job on evidence, use Tier 1 built-in hashing
-    if (jobType === 'hash' && evidenceId) {
-      db.prepare('UPDATE iped_jobs SET status = ?, started_at = ?, updated_at = ? WHERE id = ?')
-        .run('running', now, now, jobId);
+    // If an analysisId was provided, append findings to the analysis conclusion
+    if (analysisId) {
+      const analysis = db.prepare('SELECT id, results, conclusion FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?')
+        .get(analysisId, forensicCaseId) as any;
 
-      try {
-        const hashResult = await hashEvidenceAttachments(evidenceId);
-        db.prepare(`
-          UPDATE iped_jobs SET status = 'completed', completed_at = ?, progress_percent = 100,
-            items_found = ?, items_processed = ?, result_summary = ?, updated_at = ? WHERE id = ?
-        `).run(
-          localNow(), hashResult.hashed + hashResult.errors, hashResult.hashed,
-          `Hashed: ${hashResult.hashed}, Errors: ${hashResult.errors}, Flagged: ${hashResult.flagged}`,
-          localNow(), jobId
-        );
+      if (analysis) {
+        const existingResults = analysis.results || '';
+        const findingsSummary = findingsArr.map((f: any, i: number) =>
+          `[${i + 1}] ${f.category || 'item'}: ${f.name || f.path || 'unnamed'} — ${f.content_preview || ''}`
+        ).join('\n');
 
-        // Update evidence record
-        db.prepare('UPDATE evidence SET iped_processed = 1, iped_last_job_id = ? WHERE id = ?')
-          .run(jobId, evidenceId);
+        const newResults = existingResults
+          ? `${existingResults}\n\n── IPED Import (${now}) ──\n${findingsSummary}`
+          : `── IPED Import (${now}) ──\n${findingsSummary}`;
 
-        return res.json({ success: true, jobId, completed: true, ...hashResult });
-      } catch (err: any) {
-        db.prepare("UPDATE iped_jobs SET status = 'failed', completed_at = ?, error_message = ?, updated_at = ? WHERE id = ?")
-          .run(localNow(), err.message, localNow(), jobId);
-        console.error('IPED job error:', err.message);
-        return res.status(500).json({ error: 'Processing failed', jobId });
+        db.prepare('UPDATE forensic_analyses SET results = ?, updated_at = ? WHERE id = ?')
+          .run(newResults, now, analysisId);
       }
     }
 
-    // For IPED processing jobs, launch asynchronously
-    if (jobType !== 'hash') {
-      runIpedProcess({
-        jobId,
-        evidenceId: evidenceId || undefined,
-        inputPath,
-        outputPath: outputPath || path.join(inputPath, '../iped-output'),
-        profile,
-        jobType,
-        createdBy: userId,
-      }).catch(err => {
-        console.error(`[IPED] Job ${jobId} failed:`, err.message);
-      });
-    }
+    logForensicActivity(forensicCaseId, 'iped_findings_imported', summary, user.userId, user.fullName);
 
-    res.json({ success: true, jobId, status: 'queued' });
+    res.status(201).json({ data: { imported: findingsArr.length, summary } });
   } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ── GET /jobs — List processing jobs ────────────────────────
-router.get('/jobs', (req: Request, res: Response) => {
+// POST /api/iped/import/timeline — import IPED timeline events into forensic activity log
+router.post('/import/timeline', async (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
-    const offset = (page - 1) * limit;
-    const status = (req.query.status as string || '').trim();
-
-    let where = '';
-    const params: any[] = [];
-    if (status) {
-      where = 'WHERE j.status = ?';
-      params.push(status);
+    const user = (req as any).user;
+    const { forensicCaseId, ipedCaseId, ipedCaseName, events } = req.body;
+    if (!forensicCaseId || !ipedCaseId || !events) {
+      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and events required', code: 'FORENSICCASEID_IPEDCASEID_AND_EVENTS' });
     }
 
-    const total = (db.prepare(
-      `SELECT COUNT(*) as c FROM iped_jobs j ${where}`
-    ).get(...params) as any)?.c || 0;
+    const now = localNow();
+    const eventsArr = Array.isArray(events) ? events : [];
 
-    params.push(limit, offset);
-    const jobs = db.prepare(`
-      SELECT j.*, u.full_name as created_by_name
-      FROM iped_jobs j
-      LEFT JOIN users u ON j.created_by = u.id
-      ${where}
-      ORDER BY j.created_at DESC
-      LIMIT ? OFFSET ?
-    `).all(...params) as any[];
+    // Insert each IPED timeline event as a forensic activity entry
+    const actStmt = db.prepare(`
+      INSERT INTO forensic_activity_log (forensic_case_id, action, details, performed_by, performed_by_name, performed_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
 
-    res.json({ jobs, total, page, limit, totalPages: Math.ceil(total / limit) });
+    const insertMany = db.transaction(() => {
+      for (const evt of eventsArr) {
+        const timestamp = evt.timestamp || evt.date || now;
+        const action = 'iped_timeline_event';
+        const details = `[IPED] ${evt.type || 'event'}: ${evt.description || evt.name || evt.path || 'Unknown'} (${evt.source || 'IPED'})`;
+        actStmt.run(forensicCaseId, action, details, user.userId, `IPED: ${user.fullName}`, timestamp);
+      }
+    });
+    insertMany();
+
+    // Persist import record
+    const summary = `Imported ${eventsArr.length} timeline events from IPED case ${ipedCaseName || ipedCaseId}`;
+    db.prepare(`
+      INSERT INTO iped_imports (forensic_case_id, import_type, iped_case_id, iped_case_name, item_count, imported_data, summary, imported_by, imported_by_name, created_at)
+      VALUES (?, 'timeline', ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(forensicCaseId, ipedCaseId, ipedCaseName || null, eventsArr.length, JSON.stringify(eventsArr), summary, user.userId, user.fullName, now);
+
+    logForensicActivity(forensicCaseId, 'iped_timeline_imported', summary, user.userId, user.fullName);
+
+    res.status(201).json({ data: { imported: eventsArr.length, summary } });
   } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ── GET /jobs/:id — Job details ─────────────────────────────
-router.get('/jobs/:id', (req: Request, res: Response) => {
+// POST /api/iped/import/report — attach an IPED report reference to a forensic case
+router.post('/import/report', async (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
-
-    const job = db.prepare(`
-      SELECT j.*, u.full_name as created_by_name
-      FROM iped_jobs j LEFT JOIN users u ON j.created_by = u.id
-      WHERE j.id = ?
-    `).get(id) as any;
-
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-
-    // Get associated hash results
-    const hashes = db.prepare(
-      'SELECT * FROM digital_evidence_hashes WHERE iped_job_id = ? ORDER BY created_at'
-    ).all(id) as any[];
-
-    // Get live progress if running
-    const progress = job.status === 'running' ? getJobProgress(id) : null;
-
-    res.json({ ...job, hashes, progress });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /jobs/:id/cancel — Cancel running job ──────────────
-router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
-    const cancelled = cancelIpedJob(id);
-    res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not running' });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /hash/compute — Hash a single file ─────────────────
-router.post('/hash/compute', async (req: Request, res: Response) => {
-  try {
-    const { filePath, attachmentId, evidenceId } = req.body;
-
-    if (!filePath && !attachmentId) {
-      return res.status(400).json({ error: 'filePath or attachmentId required' });
+    const user = (req as any).user;
+    const { forensicCaseId, ipedCaseId, ipedCaseName, reportName, reportType, reportUrl, itemCount } = req.body;
+    if (!forensicCaseId || !ipedCaseId) {
+      return res.status(400).json({ error: 'forensicCaseId and ipedCaseId required', code: 'FORENSICCASEID_AND_IPEDCASEID_REQUIRED' });
     }
 
-    let targetPath = filePath;
-    if (attachmentId && !filePath) {
-      const db = getDb();
-      const att = db.prepare('SELECT file_path FROM attachments WHERE id = ?').get(attachmentId) as any;
-      if (!att) return res.status(404).json({ error: 'Attachment not found' });
-      const uploadsDir = process.env.RMPG_UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
-      targetPath = path.join(uploadsDir, att.file_path);
-    }
+    const now = localNow();
+    const rName = reportName || 'IPED Report';
+    const rType = reportType || 'html';
+    const summary = `Attached ${rType.toUpperCase()} report: ${rName} (${itemCount || 0} items) from IPED case ${ipedCaseName || ipedCaseId}`;
 
-    if (!fs.existsSync(targetPath)) {
-      return res.status(404).json({ error: 'File not found' });
-    }
+    const reportData = JSON.stringify({
+      reportName: rName,
+      reportType: rType,
+      reportUrl: reportUrl || null,
+      itemCount: itemCount || 0,
+      ipedCaseName: ipedCaseName || ipedCaseId,
+      attachedAt: now,
+    });
 
-    const hashes = await computeFileHashes(targetPath);
-    const matches = checkAgainstHashSets(hashes);
+    db.prepare(`
+      INSERT INTO iped_imports (forensic_case_id, import_type, iped_case_id, iped_case_name, item_count, imported_data, summary, imported_by, imported_by_name, created_at)
+      VALUES (?, 'report', ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(forensicCaseId, ipedCaseId, ipedCaseName || null, itemCount || 0, reportData, summary, user.userId, user.fullName, now);
 
-    res.json({ ...hashes, matches, flagged: matches.length > 0 });
+    logForensicActivity(forensicCaseId, 'iped_report_attached', summary, user.userId, user.fullName);
+
+    res.status(201).json({ data: { summary } });
   } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /hash/batch — Batch hash all evidence attachments ──
-router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
-  try {
-    const { evidenceId } = req.body;
-    if (!evidenceId) return res.status(400).json({ error: 'evidenceId required' });
-
-    const result = await hashEvidenceAttachments(evidenceId);
-    res.json({ success: true, ...result });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── GET /hash/results — Query hash results ──────────────────
-router.get('/hash/results', (req: Request, res: Response) => {
+// POST /api/iped/import/items — bulk import IPED items as forensic exhibits
+router.post('/import/items', async (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const evidenceId = req.query.evidenceId ? parseInt(req.query.evidenceId as string, 10) : null;
-    const hashValue = (req.query.hash as string || '').trim();
-    const flaggedOnly = req.query.flagged === 'true';
+    const user = (req as any).user;
+    const { forensicCaseId, ipedCaseId, ipedCaseName, items } = req.body;
+    if (!forensicCaseId || !ipedCaseId || !items) {
+      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and items required', code: 'FORENSICCASEID_IPEDCASEID_AND_ITEMS' });
+    }
 
-    let where = 'WHERE 1=1';
-    const params: any[] = [];
+    const now = localNow();
+    const itemsArr = Array.isArray(items) ? items : [];
 
-    if (evidenceId) { where += ' AND h.evidence_id = ?'; params.push(evidenceId); }
-    if (hashValue) { where += ' AND (h.md5 = ? OR h.sha256 = ?)'; params.push(hashValue, hashValue); }
-    if (flaggedOnly) { where += ' AND h.flagged = 1'; }
+    // Get current max exhibit number for this case
+    const maxExhibit = db.prepare(
+      'SELECT exhibit_number FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY id DESC LIMIT 1'
+    ).get(forensicCaseId) as { exhibit_number: string } | undefined;
 
+    let nextNum = 1;
+    if (maxExhibit) {
+      const m = maxExhibit.exhibit_number.match(/EX-(\d+)/);
+      if (m) nextNum = parseInt(m[1], 10) + 1;
+    }
+
+    // Insert each IPED item as a forensic exhibit
+    const exStmt = db.prepare(`
+      INSERT INTO forensic_exhibits (forensic_case_id, exhibit_number, exhibit_type, description, hash_md5, hash_sha256, chain_of_custody, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = db.transaction(() => {
+      for (const item of itemsArr) {
+        const exhibitNum = `EX-${String(nextNum++).padStart(3, '0')}`;
+        const type = mapIpedTypeToExhibitType(item.type || item.mediaType);
+        const desc = `[IPED] ${item.name || item.fileName || 'Item'} — ${item.path || ''}`.trim();
+        const custody = JSON.stringify([{
+          action: 'imported_from_iped',
+          by: user.fullName,
+          at: now,
+          notes: `Imported from IPED case ${ipedCaseName || ipedCaseId}, item ID: ${item.id}`,
+        }]);
+        const notes = `IPED Item ID: ${item.id}\nIPED Case: ${ipedCaseName || ipedCaseId}\nSize: ${item.size || 'N/A'}\nCategory: ${item.category || 'N/A'}`;
+
+        exStmt.run(forensicCaseId, exhibitNum, type, desc, item.md5 || item.hash || null, item.sha256 || null, custody, notes, now, now);
+      }
+    });
+    insertMany();
+
+    const summary = `Imported ${itemsArr.length} items as exhibits from IPED case ${ipedCaseName || ipedCaseId}`;
+    db.prepare(`
+      INSERT INTO iped_imports (forensic_case_id, import_type, iped_case_id, iped_case_name, item_count, imported_data, summary, imported_by, imported_by_name, created_at)
+      VALUES (?, 'items', ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(forensicCaseId, ipedCaseId, ipedCaseName || null, itemsArr.length, '[]', summary, user.userId, user.fullName, now);
+
+    logForensicActivity(forensicCaseId, 'iped_items_imported', summary, user.userId, user.fullName);
+
+    res.status(201).json({ data: { imported: itemsArr.length, summary } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// ─── Import History ─────────────────────────────────────────
+// ============================================================
+
+// GET /api/iped/imports/:forensicCaseId — list imports for a forensic case
+router.get('/imports/:forensicCaseId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const caseId = parseInt(req.params.forensicCaseId as string);
+    const rows = db.prepare(`
+      SELECT * FROM iped_imports WHERE forensic_case_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
+    `).all(caseId);
+    res.json({ data: rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/iped/imports — list all imports (admin overview)
+router.get('/imports', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
+    const rows = db.prepare(`
+      SELECT i.*, fc.lab_number, fc.title as case_title
+      FROM iped_imports i
+      LEFT JOIN forensic_cases fc ON fc.id = i.forensic_case_id
+      ORDER BY i.created_at DESC
+      LIMIT ?
+    `).all(limit);
+    res.json({ data: rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// Helper: map IPED media type → forensic exhibit type
+// ============================================================
+
+function mapIpedTypeToExhibitType(ipedType: string): string {
+  if (!ipedType) return 'other';
+  const t = (ipedType || '').toLowerCase();
+  if (t.includes('image') || t.includes('photo') || t.includes('video') || t.includes('audio')) return 'digital';
+  if (t.includes('document') || t.includes('pdf') || t.includes('text') || t.includes('office')) return 'document';
+  if (t.includes('executable') || t.includes('application') || t.includes('database')) return 'digital';
+  if (t.includes('email') || t.includes('message') || t.includes('chat')) return 'digital';
+  return 'other';
+}
+
+// GET /hashes/search — Search hash results by MD5, SHA1, or SHA256
+router.get('/hashes/search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q } = req.query;
+    if (!q || String(q).trim().length < 4) {
+      return res.status(400).json({ error: 'Search query must be at least 4 characters', code: 'SEARCH_QUERY_MUST_BE' });
+    }
+
+    const searchTerm = `%${String(q).trim()}%`;
     const results = db.prepare(`
-      SELECT h.*, a.original_name as attachment_name
-      FROM digital_evidence_hashes h
-      LEFT JOIN attachments a ON h.attachment_id = a.id
-      ${where}
-      ORDER BY h.created_at DESC
-      LIMIT 100
-    `).all(...params) as any[];
+      SELECT hr.*, j.input_path, j.job_type
+      FROM hash_results hr
+      LEFT JOIN iped_jobs j ON hr.iped_job_id = j.id
+      WHERE hr.md5 LIKE ? OR hr.sha1 LIKE ? OR hr.sha256 LIKE ?
+        OR (hr.sha512 IS NOT NULL AND hr.sha512 LIKE ?)
+      ORDER BY hr.flagged DESC, hr.created_at DESC
+      LIMIT 50
+    `).all(searchTerm, searchTerm, searchTerm, searchTerm);
 
-    res.json({ results, count: results.length });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /hash/check — Check hash against loaded sets ───────
-router.post('/hash/check', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const { md5, sha256 } = req.body;
-    if (!md5 && !sha256) return res.status(400).json({ error: 'md5 or sha256 required' });
-
-    const hashes = { md5: md5 || '', sha1: '', sha256: sha256 || '', sha512: '' };
-    const matches = checkAgainstHashSets(hashes);
-
-    res.json({ matches, hit: matches.length > 0 });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── GET /hash-sets — List loaded hash sets ──────────────────
-router.get('/hash-sets', requireRole('admin'), (_req: Request, res: Response) => {
-  try {
-    res.json({ sets: getHashSetSummary() });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /hash-sets/import — Import hash set file ───────────
-router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const { filePath, setName, category, hashType } = req.body;
-    if (!filePath || !setName || !category) {
-      return res.status(400).json({ error: 'filePath, setName, and category required' });
-    }
-
-    const count = importHashSet(filePath, setName, category, hashType || 'md5');
-    res.json({ success: true, imported: count, setName, category });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── POST /hash-sets/import-iped — Import into IPED native hash DB ──
-router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request, res: Response) => {
-  try {
-    const { filePath } = req.body;
-    if (!filePath) {
-      return res.status(400).json({ error: 'filePath required' });
-    }
-    const output = await importToIpedHashDb(filePath);
-    res.json({ success: true, output });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── DELETE /hash-sets/:name — Remove hash set ───────────────
-router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const removed = removeHashSet(req.params.name as string);
-    res.json({ success: true, removed });
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── IPED Web API Proxy Routes ───────────────────────────────
-
-// List processed cases
-router.get('/cases', async (_req: Request, res: Response) => {
-  try {
-    const data = await proxyIpedApi('/cases');
-    res.json(data);
-  } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
-  }
-});
-
-// Search within a case
-router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
-  try {
-    const query = req.query.q as string || '';
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/search?q=${encodeURIComponent(query)}`);
-    res.json(data);
-  } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
-  }
-});
-
-// Get file metadata
-router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) => {
-  try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}`);
-    res.json(data);
-  } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
-  }
-});
-
-// Get file thumbnail
-router.get('/cases/:caseId/file/:fileId/thumb', async (req: Request, res: Response) => {
-  try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}/thumb`);
-    res.json(data);
-  } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
-  }
-});
-
-// ── GET /usage — Usage statistics ───────────────────────────
-router.get('/usage', (_req: Request, res: Response) => {
-  try {
-    res.json(getIpedUsageStats());
-  } catch (err: any) {
-    console.error('IPED error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json({ results, total: results.length });
+  } catch (error: any) {
+    console.error('Hash search error:', error);
+    res.status(500).json({ error: 'Failed to hash search', code: 'HASH_SEARCH_ERROR' });
   }
 });
 

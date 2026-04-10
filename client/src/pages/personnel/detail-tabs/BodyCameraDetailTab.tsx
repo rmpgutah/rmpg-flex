@@ -35,7 +35,7 @@ export default function BodyCameraDetailTab({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
+        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading body cameras...</span>
       </div>
     );
@@ -76,7 +76,7 @@ export default function BodyCameraDetailTab({
 
   const ledClass = (status: string) => {
     switch (status) {
-      case 'assigned': return 'led-dot led-blue';
+      case 'assigned': return 'led-dot led-gray';
       case 'available': return 'led-dot led-green';
       case 'maintenance': return 'led-dot led-amber';
       case 'lost': return 'led-dot led-red';
@@ -92,7 +92,7 @@ export default function BodyCameraDetailTab({
           <Camera className="w-3 h-3" />
           Assigned Cameras
         </h3>
-        <button
+        <button type="button"
           onClick={onAddCamera}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -104,7 +104,7 @@ export default function BodyCameraDetailTab({
       {/* Camera Status Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500">
-          <p className="text-lg font-bold text-blue-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
+          <p className="text-lg font-bold text-gray-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
           <p className="field-label">Assigned</p>
         </div>
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
@@ -131,10 +131,10 @@ export default function BodyCameraDetailTab({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => onEditCamera(cam)} className="toolbar-btn p-1" title="Edit camera">
+                  <button type="button" onClick={() => onEditCamera(cam)} className="toolbar-btn p-1" title="Edit camera">
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button onClick={() => onDeleteCamera(cam.id)} className="toolbar-btn toolbar-btn-danger p-1" title="Delete camera">
+                  <button type="button" onClick={() => onDeleteCamera(cam.id)} className="toolbar-btn toolbar-btn-danger p-1" title="Delete camera">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -155,8 +155,8 @@ export default function BodyCameraDetailTab({
                 </div>
                 <div>
                   <p className="field-label">Condition</p>
-                  <p className={`text-xs font-medium capitalize ${EQUIPMENT_CONDITION_COLORS[cam.condition] || 'text-rmpg-400'}`}>
-                    {cam.condition}
+                  <p className={`text-xs font-medium capitalize ${(cam.condition && EQUIPMENT_CONDITION_COLORS[cam.condition]) || 'text-rmpg-400'}`}>
+                    {cam.condition || '-'}
                   </p>
                 </div>
               </div>
@@ -196,7 +196,7 @@ export default function BodyCameraDetailTab({
           Video Footage
         </span>
         <div className="flex-1 h-px bg-rmpg-700" />
-        <button
+        <button type="button"
           onClick={onUploadVideo}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
           disabled={cameras.length === 0}
@@ -252,21 +252,21 @@ export default function BodyCameraDetailTab({
                   </td>
                   <td className="text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button
+                      <button type="button"
                         onClick={() => onPlayVideo(vid)}
                         className="toolbar-btn p-1"
                         title="Play video"
                       >
                         <Play className="w-3 h-3" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => onEditVideo(vid)}
                         className="toolbar-btn p-1"
                         title="Edit video metadata"
                       >
                         <Edit2 className="w-3 h-3" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => onDeleteVideo(vid.id)}
                         className="toolbar-btn toolbar-btn-danger p-1"
                         title="Delete video"

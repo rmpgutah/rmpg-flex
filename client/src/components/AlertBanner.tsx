@@ -23,7 +23,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
   if (!alerts || alerts.length === 0) return null;
 
   return (
-    <div className="w-full flex flex-col gap-0">
+    <div className="w-full flex flex-col gap-0" role="alert" aria-live="assertive">
       {alerts.map((alert, index) => {
         const isCritical = alert.priority === 'critical';
         const Icon = TYPE_ICONS[alert.type] || Flag;

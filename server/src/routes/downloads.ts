@@ -72,10 +72,8 @@ function getInstallerInfo(): {
   mac?: InstallerMeta;
   win?: InstallerMeta;
   android?: InstallerMeta;
-  iped_mac?: InstallerMeta;
-  iped_win?: InstallerMeta;
 } {
-  const result: { mac?: InstallerMeta; win?: InstallerMeta; android?: InstallerMeta; iped_mac?: InstallerMeta; iped_win?: InstallerMeta } = {};
+  const result: { mac?: InstallerMeta; win?: InstallerMeta; android?: InstallerMeta } = {};
 
   if (!fs.existsSync(DOWNLOADS_DIR)) return result;
 
@@ -93,22 +91,6 @@ function getInstallerInfo(): {
       bytes: stat.size,
       releaseDate: stat.mtime.toISOString(),
     };
-
-    // IPED bundles: IPED-{version}-mac.zip, IPED-{version}-win.zip
-    const ipedMatch = file.match(/^IPED-[\d.]+-(mac|win)\.zip$/i);
-    if (ipedMatch) {
-      const platform = ipedMatch[1].toLowerCase();
-      if (platform === 'mac') {
-        if (!result.iped_mac || isVersionLessThan(result.iped_mac.version, meta.version)) {
-          result.iped_mac = meta;
-        }
-      } else if (platform === 'win') {
-        if (!result.iped_win || isVersionLessThan(result.iped_win.version, meta.version)) {
-          result.iped_win = meta;
-        }
-      }
-      continue; // Don't double-match as regular installer
-    }
 
     if (file.endsWith('.dmg') && !file.includes('blockmap')) {
       if (!result.mac || isVersionLessThan(result.mac.version, meta.version)) {
@@ -137,7 +119,7 @@ router.get('/info', (_req: Request, res: Response) => {
     res.json(info);
   } catch (error: any) {
     console.error('Downloads info error:', error);
-    res.status(500).json({ error: 'Failed to read download info' });
+    res.status(500).json({ error: 'Failed to read download info', code: 'FAILED_TO_READ_DOWNLOAD' });
   }
 });
 
@@ -175,7 +157,7 @@ router.get('/check', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Update check error:', error);
-    res.status(500).json({ error: 'Failed to check for updates' });
+    res.status(500).json({ error: 'Failed to check for updates', code: 'FAILED_TO_CHECK_FOR' });
   }
 });
 
@@ -187,7 +169,7 @@ export function mountDownloadFileRoute(app: any) {
     if (fs.existsSync(htmlPath)) {
       res.sendFile(htmlPath);
     } else {
-      res.status(404).json({ error: 'Download page not found' });
+      res.status(404).json({ error: 'Download page not found', code: 'DOWNLOAD_PAGE_NOT_FOUND' });
     }
   });
 
@@ -276,12 +258,12 @@ export function mountDownloadFileRoute(app: any) {
   // electron-updater fetches files relative to the feed URL (/updates/)
   // while the download page uses /downloads/
   const serveInstallerFile = (req: Request, res: Response) => {
-    const filename = req.params.filename as string;
+    const { filename } = req.params;
 
     // Security: only allow specific file extensions
-    const ext = path.extname(filename as string).toLowerCase();
+    const ext = path.extname(filename as string || '').toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      res.status(403).json({ error: 'Forbidden file type' });
+      res.status(403).json({ error: 'Forbidden file type', code: 'FORBIDDEN_FILE_TYPE' });
       return;
     }
 
@@ -290,7 +272,7 @@ export function mountDownloadFileRoute(app: any) {
     const filePath = path.join(DOWNLOADS_DIR, safeName);
 
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
@@ -313,11 +295,6 @@ export function mountDownloadFileRoute(app: any) {
     }
 
     const stream = fs.createReadStream(filePath);
-    stream.on('error', (err) => {
-      console.error('File stream error:', err);
-      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream file' });
-      else res.destroy();
-    });
     stream.pipe(res);
   };
 

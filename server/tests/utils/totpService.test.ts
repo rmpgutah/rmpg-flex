@@ -96,10 +96,10 @@ describe('totpService.ts', () => {
       expect(codes).toHaveLength(5);
     });
 
-    it('formats codes as XXXX-XXXX (uppercase hex)', () => {
+    it('formats codes as XXXX-XXXX-XXXX (uppercase hex)', () => {
       const codes = generateBackupCodes(3);
       for (const code of codes) {
-        expect(code).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}$/);
+        expect(code).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
       }
     });
 

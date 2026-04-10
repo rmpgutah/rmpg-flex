@@ -17,9 +17,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Permissions policy (restrict browser features)
   res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
 
-  // Strict Transport Security — ONLY when SSL is actually enabled
-  // Sending HSTS without HTTPS causes browsers to refuse plain HTTP connections
-  if (config.ssl.enabled) {
+  // Strict Transport Security (when SSL is enabled or in production)
+  if (config.isProduction || config.ssl.enabled) {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
@@ -36,18 +35,34 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com",
+    "img-src 'self' data: blob: https: http:",
     "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    `connect-src 'self' wss://rmpgutah.us ${config.isProduction ? '' : 'ws://localhost:* wss://localhost:*'} https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com`.replace(/\s+/g, ' '),
+    "connect-src 'self' ws: wss: https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com",
     "frame-src 'self' blob: https://*.arcgis.com",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
+    // [FIX 17] Add base-uri to prevent <base> tag injection attacks
+    "base-uri 'self'",
+    // [FIX 18] Add form-action to restrict form submission targets
+    "form-action 'self'",
+    // [FIX 19] Add object-src to block Flash/plugin-based attacks
+    "object-src 'none'",
   ].join('; '));
 
   // Remove powered-by header
   res.removeHeader('X-Powered-By');
+
+  // [FIX 20] Add Cross-Origin headers to prevent speculative execution side-channel attacks
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
+
+  // [FIX 21] Cache-Control for API responses to prevent sensitive data caching
+  if (req.path.startsWith('/api/')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+  }
 
   next();
 }

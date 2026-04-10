@@ -87,7 +87,8 @@ export async function scrapeUtConsumerProtection(): Promise<ScrapeResult> {
   let lastError: string | undefined;
 
   const config = getSourceConfig(SOURCE_KEY);
-  const extraConfig = config?.extra_config ? JSON.parse(config.extra_config) : {};
+  let extraConfig: any = {};
+  try { if (config?.extra_config) extraConfig = JSON.parse(config.extra_config); } catch { console.warn('[ConsumerProtection] Invalid extra_config JSON, using defaults'); }
 
   try {
     const searchTerms = extraConfig.search_terms || ['debt collection', 'collection service'];

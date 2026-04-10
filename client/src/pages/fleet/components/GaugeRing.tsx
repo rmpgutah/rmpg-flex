@@ -31,7 +31,7 @@ export default function GaugeRing({ value, max, color, label, size = 80 }: Gauge
             </feMerge>
           </filter>
         </defs>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#162236" strokeWidth={strokeW} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#181818" strokeWidth={strokeW} />
         <circle
           cx={size / 2} cy={size / 2} r={radius} fill="none"
           stroke={color} strokeWidth={strokeW} strokeLinecap="round"

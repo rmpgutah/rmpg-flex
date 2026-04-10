@@ -6,6 +6,8 @@ import {
   FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
+  Handshake, Globe, GraduationCap, FlaskConical, ShieldAlert, Fingerprint,
+  Send, Truck, UserCog, Layers,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -30,6 +32,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Tactical Map' },
+      { path: '/geography', icon: Map, label: 'Geography' },
+      { path: '/geo-data', icon: Layers, label: 'Geo Data Viewer' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
@@ -41,11 +45,13 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/incidents', icon: FileText, label: 'Incidents' },
       { path: '/records', icon: Database, label: 'Records' },
+      { path: '/arrest-records', icon: Fingerprint, label: 'Arrest Records' },
       { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
       { path: '/criminal-history', icon: Search, label: 'Criminal History' },
       { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
       { path: '/evidence', icon: Package, label: 'Evidence' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
+      { path: '/use-of-force', icon: ShieldAlert, label: 'Use of Force' },
     ],
   },
   {
@@ -53,11 +59,13 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Enforcement',
     items: [
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
+      { path: '/national-warrants', icon: AlertTriangle, label: 'National Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+      { path: '/serve', icon: Send, label: 'Process Service' },
     ],
   },
   {
@@ -65,9 +73,11 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Personnel & Fleet',
     items: [
       { path: '/personnel', icon: Users, label: 'Personnel' },
+      { path: '/hr', icon: UserCog, label: 'Human Resources' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
       { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+      { path: '/training', icon: GraduationCap, label: 'Training' },
     ],
   },
   {
@@ -78,6 +88,17 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/radio', icon: Radio, label: 'Radio' },
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    ],
+  },
+  {
+    id: 'investigate',
+    label: 'Investigations',
+    items: [
+      { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
+      { path: '/microbilt', icon: Search, label: 'Skip Tracer V2' },
+      { path: '/forensic-lab', icon: FlaskConical, label: 'Forensic Lab' },
+      { path: '/web-research', icon: Globe, label: 'Web Research' },
+      { path: '/crm', icon: Handshake, label: 'CRM' },
     ],
   },
   {
@@ -98,6 +119,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
+      { path: '/security-dashboard', icon: ShieldAlert, label: 'Security', adminOnly: true },
     ],
   },
 ];
@@ -106,7 +128,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 const CONTRACT_MANAGER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/hr',
+  '/security-dashboard', '/forensic-lab', '/use-of-force',
 ]);
 
 interface SidebarProps {
@@ -150,8 +173,8 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       className="flex flex-col h-full flex-shrink-0 transition-[width] duration-200 ease-out select-none"
       style={{
         width: collapsed ? 56 : 220,
-        background: 'linear-gradient(180deg, #0f1a28 0%, #0d1520 100%)',
-        borderRight: '1px solid #1e3048',
+        background: 'linear-gradient(180deg, #080808 0%, #050505 100%)',
+        borderRight: '1px solid #222222',
       }}
     >
       {/* Scrollable nav sections */}
@@ -162,7 +185,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
             {!collapsed && (
               <div
                 className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em]"
-                style={{ color: '#5a6e80' }}
+                style={{ color: '#666666' }}
               >
                 {section.label}
               </div>
@@ -170,7 +193,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
 
             {/* Collapsed: thin separator between groups */}
             {collapsed && section.id !== 'ops' && (
-              <div className="mx-3 my-1" style={{ borderTop: '1px solid #1e3048' }} />
+              <div className="mx-3 my-1" style={{ borderTop: '1px solid #222222' }} />
             )}
 
             {section.items.map((item) => {
@@ -178,18 +201,18 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
               const active = isActive(item.path);
 
               return (
-                <button
+                <button type="button"
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   onMouseEnter={() => collapsed ? setHoveredSection(item.path) : undefined}
                   onMouseLeave={() => setHoveredSection(null)}
-                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-white/[0.03]' : ''}`}
+                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-[#141414]' : ''}`}
                   style={{
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
-                    background: active ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
-                    color: active ? '#ffffff' : '#8a9aaa',
-                    borderLeft: active ? '3px solid #1a5a9e' : '3px solid transparent',
+                    background: active ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
+                    color: active ? '#ffffff' : '#888888',
+                    borderLeft: active ? '3px solid #888888' : '3px solid transparent',
                   }}
                   title={collapsed ? item.label : undefined}
                 >
@@ -198,7 +221,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       width: 16,
                       height: 16,
                       flexShrink: 0,
-                      color: active ? '#3b8ad4' : '#5a6e80',
+                      color: active ? '#aaaaaa' : '#666666',
                       transition: 'color 0.1s',
                     }}
                   />
@@ -216,8 +239,8 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                     <div
                       className="absolute left-full ml-2 px-2.5 py-1.5 whitespace-nowrap z-50"
                       style={{
-                        background: '#1a2636',
-                        border: '1px solid #2a3e58',
+                        background: '#141414',
+                        border: '1px solid #2e2e2e',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                         top: '50%',
                         transform: 'translateY(-50%)',
@@ -234,14 +257,14 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       </div>
 
       {/* Collapse toggle at bottom */}
-      <button
+      <button type="button"
         onClick={() => setCollapsed(!collapsed)}
         className="flex items-center justify-center gap-2 py-2 transition-colors"
         style={{
           height: 36,
-          borderTop: '1px solid #1e3048',
-          background: '#0d1520',
-          color: '#5a6e80',
+          borderTop: '1px solid #222222',
+          background: '#050505',
+          color: '#666666',
         }}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
