@@ -269,7 +269,7 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
     const fields: Record<string, string> = {
       full_name: b.full_name, first_name: b.first_name, last_name: b.last_name, middle_name: b.middle_name,
       date_of_birth: b.date_of_birth, booking_date: b.booking_date, release_date: b.release_date,
-      county: b.county, status: b.status, booking_number: b.booking_number, agency: b.agency,
+      county: b.county, state: b.state, status: b.status, booking_number: b.booking_number, agency: b.agency,
       gender: b.gender, race: b.race, height: b.height, weight: b.weight,
       hair_color: b.hair_color, eye_color: b.eye_color, address: b.address,
       hold_reason: b.hold_reason, notes: b.notes,

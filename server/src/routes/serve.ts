@@ -212,9 +212,9 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
         recipient_address, recipient_city, recipient_state, recipient_zip,
         recipient_lat, recipient_lng, document_type, case_number,
         court_name, jurisdiction, client_name, attorney_name,
-        priority, deadline, max_attempts, service_instructions, notes,
+        priority, time_window, deadline, max_attempts, service_instructions, notes,
         status, attempt_count, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
     `);
 
     const imported: any[] = [];
@@ -242,7 +242,7 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
           sm.recipient_name || '', addr, city, state, zip, lat, lng,
           'civil', sm.court_case_number || '',
           '', '', sm.client_company_name || '', '',
-          sm.rush ? 'urgent' : 'normal', sm.due_date || null,
+          sm.rush ? 'urgent' : 'normal', null, sm.due_date || null,
           3, sm.service_instructions || '', sm.notes_local || '',
           now, now,
         );
