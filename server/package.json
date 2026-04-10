@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "check:routes": "node scripts/check-duplicate-routes.mjs"
   },
   "dependencies": {
     "@azure/msal-node": "^5.0.6",
