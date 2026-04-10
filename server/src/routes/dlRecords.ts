@@ -116,7 +116,23 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     let ocrData: any = {};
 
     // Try Google Vision TEXT_DETECTION first (uses same Maps API key)
-    const visionKey = process.env.GOOGLE_MAPS_API_KEY;
+    // Prefer admin-configured key from system_config, fall back to env var
+    let visionKey = process.env.GOOGLE_MAPS_API_KEY;
+    try {
+      const db = getDb();
+      const row = db.prepare(
+        "SELECT config_value FROM system_config WHERE config_key = 'google_maps_api_key' AND is_active = 1 LIMIT 1"
+      ).get() as { config_value: string } | undefined;
+      if (row?.config_value) {
+        const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
+        const [ivHex, authTagHex, ciphertext] = row.config_value.split(':');
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+        decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+        let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        visionKey = decrypted;
+      }
+    } catch { /* fall through to env var */ }
     if (visionKey) {
       try {
         const visionRes = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`, {

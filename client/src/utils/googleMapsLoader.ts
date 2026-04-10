@@ -708,3 +708,58 @@ export function restoreFromOfflineMode(map: google.maps.Map, prevMapType: string
     map.setOptions({ styles });
   } catch { /* ignore */ }
 }
+
+// ─── Server-managed Google Maps config ────────────────────
+// Fetches Google Maps API key and Map ID from the server API.
+// The server returns decrypted values from system_config (admin-managed)
+// with fallback to env vars. Client-side caches the result.
+
+let _serverConfigPromise: Promise<{ google_maps_api_key?: string; google_maps_map_id?: string }> | null = null;
+
+/**
+ * Fetch Google Maps configuration from the server.
+ * Returns { google_maps_api_key, google_maps_map_id } or empty object on failure.
+ * Caches the result for the session lifetime.
+ */
+export async function fetchGoogleMapsConfig(): Promise<{ google_maps_api_key?: string; google_maps_map_id?: string }> {
+  if (_serverConfigPromise) return _serverConfigPromise;
+
+  _serverConfigPromise = (async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return {};
+
+      const base = import.meta.env.VITE_API_BASE_URL || '';
+      const res = await fetch(`${base}/api/admin/google-maps-config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return {};
+      return await res.json();
+    } catch {
+      return {};
+    }
+  })();
+
+  return _serverConfigPromise;
+}
+
+/**
+ * Resolve the Google Maps API key: tries server config first, falls back to Vite env var.
+ */
+export async function resolveGoogleMapsApiKey(): Promise<string> {
+  const cfg = await fetchGoogleMapsConfig();
+  return cfg.google_maps_api_key || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+}
+
+/**
+ * Resolve the Google Maps Map ID: tries server config first, falls back to Vite env var.
+ */
+export async function resolveGoogleMapsMapId(): Promise<string> {
+  const cfg = await fetchGoogleMapsConfig();
+  return cfg.google_maps_map_id || import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
+}
+
+/** Clear the cached server config (e.g. after admin saves new keys). */
+export function clearGoogleMapsConfigCache(): void {
+  _serverConfigPromise = null;
+}
