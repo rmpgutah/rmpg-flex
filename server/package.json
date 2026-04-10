@@ -47,7 +47,8 @@
     "ws": "^8.18.0"
   },
   "overrides": {
-    "dompurify": "file:./stubs/dompurify"
+    "dompurify": "file:./stubs/dompurify",
+    "path-to-regexp": "0.1.13"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
