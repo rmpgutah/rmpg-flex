@@ -104,10 +104,10 @@ export default function TacticalSummaryPanel({
   return (
     <div
       className="bg-[#141414] border border-[#181818] rounded-[2px] shadow-lg max-w-[260px] font-mono transition-all duration-200 ease-out backdrop-blur-sm"
-      style={{ boxShadow: '1px 1px 0 #0c0c0c, -1px -1px 0 #1e2d3d' }}
+      style={{ boxShadow: '1px 1px 0 #0c0c0c, -1px -1px 0 #2a2a2a' }}
     >
       {/* ── Header ─────────────────────────────────── */}
-      <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #181818, #2a3f5a, #181818) 1' }}>
+      <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #181818, #3c3c3c, #181818) 1' }}>
         <div className="flex items-center gap-1.5">
           <Layers size={11} className="text-blue-400" />
           <span className="text-[10px] font-bold tracking-wider text-slate-200 uppercase">

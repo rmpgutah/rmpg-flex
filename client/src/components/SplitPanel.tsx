@@ -192,14 +192,14 @@ export default function SplitPanel({
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
             background: isDragging ? '#888888' : 'linear-gradient(90deg, #242424, #2a2a2a, #242424)',
-            borderTop: '1px solid #3a5070',
+            borderTop: '1px solid #4d4d4d',
             borderBottom: '1px solid #141414',
             transition: isDragging ? 'none' : 'background 0.15s ease',
           }}
           onMouseDown={handleMouseDown}
           onTouchStart={(e) => { e.preventDefault(); handleMouseDown(e.touches[0] as any); }}
           onMouseEnter={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a2a2a, #3a5070, #2a2a2a)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a2a2a, #4d4d4d, #2a2a2a)';
           }}
           onMouseLeave={(e) => {
             if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #242424, #2a2a2a, #242424)';

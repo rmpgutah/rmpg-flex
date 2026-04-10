@@ -62,7 +62,7 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4 transition-all duration-200 hover:border-[#414852] hover:brightness-105" role="group" aria-label={`${label} leave balance`}>
+    <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4 transition-all duration-200 hover:border-[#474747] hover:brightness-105" role="group" aria-label={`${label} leave balance`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon size={14} style={{ color }} aria-hidden="true" />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide font-medium">{label}</span>
@@ -328,7 +328,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#14181d]'}`}
+                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white"><TypePill type={req.type} /></td>
                     <td className="px-3 py-2 text-rmpg-200">
@@ -467,7 +467,7 @@ export default function LeaveTab() {
                 {balances.map((bal, i) => (
                   <tr
                     key={bal.id}
-                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#14181d]'}`}
+                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white font-medium">{bal.officer_name || `Officer #${bal.officer_id}`}</td>
                     <td className="px-3 py-2">
@@ -573,7 +573,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#14181d]'}`}
+                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white">{req.officer_name || `#${req.officer_id}`}</td>
                     <td className="px-3 py-2"><TypePill type={req.type} /></td>

@@ -2350,7 +2350,7 @@ export default function DispatchPage() {
           </div>
           <div className="flex flex-col items-center gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
-            <span className="text-[8px] font-mono text-[#4b5563]">Connecting to dispatch services...</span>
+            <span className="text-[8px] font-mono text-[#545454]">Connecting to dispatch services...</span>
           </div>
         </div>
       </div>
@@ -2578,7 +2578,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #4b5563', color: '#cccccc', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #545454', color: '#cccccc', touchAction: 'manipulation' }}
                     >
                       Close
                     </button>
@@ -2617,7 +2617,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#999999', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#40404020', border: '1px solid #54545450', color: '#999999', touchAction: 'manipulation' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
@@ -2626,7 +2626,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#999999', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: '#40404020', border: '1px solid #54545450', color: '#999999', touchAction: 'manipulation' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -3189,7 +3189,7 @@ export default function DispatchPage() {
             </button>
           )}
           <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
-            <Search className="absolute left-2 w-3 h-3 text-[#4b5563] pointer-events-none" />
+            <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
             <input
               type="text"
               placeholder="Search calls..."
@@ -3280,8 +3280,8 @@ export default function DispatchPage() {
             style={{
               background: 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
               borderColor: '#7c3aed',
-              borderBottomColor: '#3b0764',
-              borderRightColor: '#3b0764',
+              borderBottomColor: '#212121',
+              borderRightColor: '#212121',
               color: '#ffffff',
             }}
           >
@@ -3395,7 +3395,7 @@ export default function DispatchPage() {
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">No calls in this category</p>
-              <p className="text-[10px] text-[#4b5563] max-w-[200px] text-center leading-relaxed">
+              <p className="text-[10px] text-[#545454] max-w-[200px] text-center leading-relaxed">
                 {filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
@@ -4317,7 +4317,7 @@ export default function DispatchPage() {
                           </span>
                           <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
                           <span className="text-[9px] font-mono text-[#6b7280] tabular-nums">{routeInfo.distance}</span>
-                          <span className="text-[8px] font-mono text-[#4b5563] ml-auto">{routeInfo.unitCallSign}</span>
+                          <span className="text-[8px] font-mono text-[#545454] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
                     </div>
@@ -5280,7 +5280,7 @@ export default function DispatchPage() {
                             className="px-2 py-0.5 text-[9px] font-semibold rounded-sm transition-colors border"
                             style={isOn
                               ? { background: onBg, borderColor: onBorder, color: onText }
-                              : { background: 'var(--color-rmpg-700, #1a1a2e)', borderColor: 'var(--color-rmpg-600, #2a2a3e)', color: 'var(--color-rmpg-400, #888)' }
+                              : { background: 'var(--color-rmpg-700, #1c1c1c)', borderColor: 'var(--color-rmpg-600, #2c2c2c)', color: 'var(--color-rmpg-400, #888)' }
                             }
                             onClick={async () => {
                               const newVal = !isOn;
@@ -5371,12 +5371,12 @@ export default function DispatchPage() {
                       })}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center py-8 text-[#4b5563]">
+                    <div className="flex flex-col items-center py-8 text-[#545454]">
                       <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0c0c40', border: '1px solid #2b2b2b30' }}>
                         <Clock className="w-5 h-5" style={{ opacity: 0.3 }} />
                       </div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Activity Recorded</p>
-                      <p className="text-[9px] text-[#374151]">Click "Add Entry" to start the activity log</p>
+                      <p className="text-[9px] text-[#404040]">Click "Add Entry" to start the activity log</p>
                     </div>
                   )}
                 </div>
@@ -5388,12 +5388,12 @@ export default function DispatchPage() {
                   </label>
                   <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
                     {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
-                      <div className="flex flex-col items-center py-8 text-[#4b5563]">
+                      <div className="flex flex-col items-center py-8 text-[#545454]">
                         <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0c0c40', border: '1px solid #2b2b2b30' }}>
                           <MessageSquare className="w-5 h-5" style={{ opacity: 0.3 }} />
                         </div>
                         <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Notes Yet</p>
-                        <p className="text-[9px] text-[#374151]">Add a note below to get started</p>
+                        <p className="text-[9px] text-[#404040]">Add a note below to get started</p>
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
@@ -5410,7 +5410,7 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#4b5563] text-[8px] ml-1">(edited)</span>}</span>
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
                                 <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
@@ -5429,7 +5429,7 @@ export default function DispatchPage() {
                       <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
                       <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
                       <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
-                      <span className="text-[8px] text-[#4b5563] ml-2 font-mono select-none">Shift+Enter to submit</span>
+                      <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
                       <textarea
@@ -5562,8 +5562,8 @@ export default function DispatchPage() {
                   <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
                 </div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
-                <p className="text-[10px] text-[#4b5563] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
-                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#4b5563]">
+                <p className="text-[10px] text-[#545454] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
+                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#545454]">
                   <div className="flex items-center gap-1.5">
                     <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#6b7280]">N</kbd>
                     <span>New Call</span>
@@ -5613,13 +5613,13 @@ export default function DispatchPage() {
                 onRouteUpdate={setRouteInfo}
               />
             ) : (
-              <div className="flex-1 flex items-center justify-center text-[#4b5563]">
+              <div className="flex-1 flex items-center justify-center text-[#545454]">
                 <div className="text-center">
                   <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0c0c50', border: '1px dashed #2b2b2b40' }}>
                     <MapPin className="w-6 h-6" style={{ opacity: 0.25 }} />
                   </div>
                   <p className="text-[10px] font-mono font-bold uppercase tracking-widest mb-1">No Location Data</p>
-                  <p className="text-[8px] text-[#374151] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
+                  <p className="text-[8px] text-[#404040] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
                 </div>
               </div>
             )}

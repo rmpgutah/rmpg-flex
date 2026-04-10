@@ -1662,12 +1662,12 @@ export default function MapPage() {
                 ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
                 : '';
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
                   <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
                     ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
                   </div>
                   <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
-                  ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #1e2a3a">${escapeHtml(pt.road_name)}</div>` : ''}
+                  ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
                   <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
@@ -4897,7 +4897,7 @@ export default function MapPage() {
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
               <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
             </div>
             {routeLoading && (
@@ -5048,7 +5048,7 @@ export default function MapPage() {
         className="flex flex-col panel-beveled transition-all"
         style={{
           width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-          background: '#060c14',
+          background: '#0b0b0b',
           flexShrink: 0,
         }}
       >

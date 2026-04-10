@@ -502,7 +502,7 @@ export default function OfflineMapFallback({
         className: 'rmpg-prop-marker',
         html: `<div style="
           width:10px;height:10px;border-radius:50%;
-          background:radial-gradient(circle at 35% 35%, #a0a0a0, #1e3a5f);
+          background:radial-gradient(circle at 35% 35%, #a0a0a0, #363636);
           border:2px solid rgba(255,255,255,0.9);
           box-shadow:0 0 6px rgba(136, 136, 136,0.6), 0 1px 3px rgba(0,0,0,0.4);
         "></div>`,
@@ -536,7 +536,7 @@ export default function OfflineMapFallback({
   }
 
   return (
-    <div role="application" aria-label="Offline map fallback" className={`relative w-full h-full ${className}`} style={{ background: '#060c14' }}>
+    <div role="application" aria-label="Offline map fallback" className={`relative w-full h-full ${className}`} style={{ background: '#0b0b0b' }}>
       {/* Leaflet map container */}
       <div ref={containerRef} className="absolute inset-0 z-0" />
 
@@ -694,7 +694,7 @@ export default function OfflineMapFallback({
         }
         /* Match background to our theme */
         .leaflet-container {
-          background: #060c14 !important;
+          background: #0b0b0b !important;
           font-family: 'JetBrains Mono', monospace !important;
         }
         /* Touch-friendly: prevent 300ms click delay on mobile */

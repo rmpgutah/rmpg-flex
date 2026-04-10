@@ -855,7 +855,7 @@ export default function SkipTracerV2Page() {
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="Name, phone, email, or address..."
-              className="w-full pl-8 pr-24 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#888888] font-mono"
+              className="w-full pl-8 pr-24 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[12px] text-white placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
             />
             {query.trim() && (
               <>
@@ -923,7 +923,7 @@ export default function SkipTracerV2Page() {
               onChange={e => setBatchText(e.target.value)}
               placeholder={"John Smith\nJane Doe\nBob Johnson"}
               rows={5}
-              className="w-full px-2 py-1.5 bg-[#141414] border border-[#1a1a1a] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888] resize-y"
+              className="w-full px-2 py-1.5 bg-[#141414] border border-[#1a1a1a] rounded-sm text-[11px] text-white font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
             />
             <div className="flex items-center justify-between">
               <span className="text-[9px] text-[#556677] font-mono">
@@ -987,7 +987,7 @@ export default function SkipTracerV2Page() {
 
         {/* Source category filters */}
         <div className="flex items-center gap-1.5 px-0.5 flex-wrap">
-          <span className="text-[8px] text-[#445566] uppercase tracking-wider mr-0.5">Filter:</span>
+          <span className="text-[8px] text-[#525252] uppercase tracking-wider mr-0.5">Filter:</span>
           {ALL_CATEGORIES.map(cat => {
             const isActive = selectedCategories.has(cat);
             const color = categoryColor(cat);
@@ -1019,7 +1019,7 @@ export default function SkipTracerV2Page() {
         {/* Source status row */}
         {sources.length > 0 && (
           <div className="flex items-center gap-1.5 px-0.5 flex-wrap">
-            <span className="text-[8px] text-[#445566] uppercase tracking-wider">Sources:</span>
+            <span className="text-[8px] text-[#525252] uppercase tracking-wider">Sources:</span>
             {sources.map(s => (
               <span
                 key={s.name}
@@ -1068,7 +1068,7 @@ export default function SkipTracerV2Page() {
           <div className="flex flex-col items-center justify-center h-48 text-center space-y-2">
             <Search size={24} className="text-[#1a1a1a]" />
             <div className="text-[11px] text-[#556677]">No results found</div>
-            <div className="text-[9px] text-[#445566]">
+            <div className="text-[9px] text-[#525252]">
               {result.sourcesFailed && result.sourcesFailed.length > 0
                 ? `${result.sourcesFailed.length} source(s) failed — try again or check source config`
                 : 'Try a different query or use Advanced Search'}
@@ -1092,7 +1092,7 @@ export default function SkipTracerV2Page() {
               className={`w-full text-left p-2.5 border rounded-sm transition-all ${
                 isSelected
                   ? 'border-[#888888] bg-[#888888]/15 shadow-lg shadow-[#888888]/10'
-                  : 'border-[#1a1a1a] bg-[#181818] hover:bg-[#1a1a1a] hover:border-[#2a3d50]'
+                  : 'border-[#1a1a1a] bg-[#181818] hover:bg-[#1a1a1a] hover:border-[#393939]'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -1124,7 +1124,7 @@ export default function SkipTracerV2Page() {
         })}
 
         {!loading && result && result.profiles.length > 0 && (
-          <div className="text-[9px] text-[#445566] text-center pt-2 font-mono space-y-0.5">
+          <div className="text-[9px] text-[#525252] text-center pt-2 font-mono space-y-0.5">
             <div>
               {result.sourcesResponded.length}/{result.sourcesQueried.length} sources responded
               {result.totalCost > 0 && <> &middot; ${result.totalCost.toFixed(4)}</>}
@@ -1148,7 +1148,7 @@ export default function SkipTracerV2Page() {
         <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3 p-8">
           <FileText size={40} className="text-[#1a1a1a]" />
           <div className="text-[13px] text-[#556677]">Select a person from search results</div>
-          <div className="text-[10px] text-[#445566] max-w-[280px]">
+          <div className="text-[10px] text-[#525252] max-w-[280px]">
             Search for a subject and click a result to build their dossier with data from {sources.filter(s => s.healthy).length} active sources
           </div>
         </div>
@@ -1225,7 +1225,7 @@ export default function SkipTracerV2Page() {
                         value={linkValue}
                         onChange={e => setLinkValue(e.target.value)}
                         placeholder={linkType === 'incident' ? 'Incident number...' : 'Case number...'}
-                        className="w-full px-2 py-1.5 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888]"
+                        className="w-full px-2 py-1.5 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888]"
                         onKeyDown={e => e.key === 'Enter' && handleLinkDossier()}
                       />
                       <button type="button"
@@ -1256,7 +1256,7 @@ export default function SkipTracerV2Page() {
               <div className="mt-3 pt-3 border-t border-[#1a1a1a]">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[9px] font-bold text-[#556677] uppercase tracking-wider">Notes</span>
-                  <span className="text-[9px] font-mono text-[#445566]">
+                  <span className="text-[9px] font-mono text-[#525252]">
                     {notesSaveStatus === 'saving' && <span className="text-amber-500 flex items-center gap-1"><Loader2 size={9} className="animate-spin" /> Saving...</span>}
                     {notesSaveStatus === 'saved' && <span className="text-green-500 flex items-center gap-1"><CheckCircle2 size={9} /> Saved</span>}
                   </span>
@@ -1266,7 +1266,7 @@ export default function SkipTracerV2Page() {
                   onChange={e => handleNotesChange(e.target.value, activeDossierId)}
                   placeholder="Add investigative notes..."
                   rows={3}
-                  className="w-full px-2 py-1.5 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#888888] resize-y"
+                  className="w-full px-2 py-1.5 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
                 />
               </div>
             )}
@@ -1420,7 +1420,7 @@ export default function SkipTracerV2Page() {
                       <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-[#a0a0a0] hover:underline font-mono truncate">
                         {sp.username}
                       </a>
-                      <ExternalLink size={10} className="text-[#445566]" />
+                      <ExternalLink size={10} className="text-[#525252]" />
                     </div>
                   ))}
                 </div>
@@ -1436,7 +1436,7 @@ export default function SkipTracerV2Page() {
                   <tr key={`assoc-${a.name}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5">
                       <button type="button" onClick={() => searchAssociate(a.name)} className="text-[#a0a0a0] hover:underline font-mono flex items-center gap-1">
-                        {a.name} <Search size={9} className="text-[#445566]" />
+                        {a.name} <Search size={9} className="text-[#525252]" />
                       </button>
                     </td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{a.relationship || '—'}</td>
@@ -1701,7 +1701,7 @@ export default function SkipTracerV2Page() {
           onChange={e => setDossierSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && loadDossiers()}
           placeholder="Search saved dossiers..." aria-label="Search saved dossiers..."
-          className="w-full pl-8 pr-3 py-1.5 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#888888] font-mono"
+          className="w-full pl-8 pr-3 py-1.5 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[12px] text-white placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
         />
       </div>
 

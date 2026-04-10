@@ -224,7 +224,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         >
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
             {/* Center circle */}
-            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="#4b5563" strokeWidth="1" />
+            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="#545454" strokeWidth="1" />
             <text x={cx} y={cy + 3} textAnchor="middle" fill="#9ca3af" fontSize="8" fontFamily="monospace">ACTIONS</text>
             {renderSegments()}
           </svg>

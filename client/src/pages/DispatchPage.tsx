@@ -1615,7 +1615,7 @@ export default function DispatchPage() {
                   minWidth: '200px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#182840',
+                  background: '#262626',
                   border: '1px solid #484848',
                   borderRadius: 0,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',

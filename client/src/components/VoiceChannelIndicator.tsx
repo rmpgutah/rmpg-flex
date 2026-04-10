@@ -36,7 +36,7 @@ export default function VoiceChannelIndicator() {
       <div className="fixed right-4 z-[9999]" style={{ bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}>
         <button
           onClick={activateManualListen}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#181818] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#181818] border border-[#373737] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
           title="Voice channel — press V"
         >
           <MicIcon />
@@ -62,7 +62,7 @@ export default function VoiceChannelIndicator() {
       {isIdle && hasOverlay && (
         <button
           onClick={activateManualListen}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#181818] border border-[#2a3a4e] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#181818] border border-[#373737] rounded text-gray-400 hover:border-[#888888] hover:text-white transition-colors text-xs font-mono"
           title="Voice channel — press V"
         >
           <MicIcon />
@@ -72,7 +72,7 @@ export default function VoiceChannelIndicator() {
 
       {/* Transcript */}
       {transcript && (
-        <div className="bg-[#181818] border border-[#2a3a4e] rounded px-3 py-2 text-xs font-mono text-green-400 max-w-xs break-words">
+        <div className="bg-[#181818] border border-[#373737] rounded px-3 py-2 text-xs font-mono text-green-400 max-w-xs break-words">
           {transcript}
         </div>
       )}

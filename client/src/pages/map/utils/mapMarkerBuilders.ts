@@ -142,7 +142,7 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   const dot = document.createElement('div');
   dot.style.cssText =
     'width:12px;height:12px;border-radius:50%;' +
-    'background:radial-gradient(circle at 30% 30%, #bfbfbf, #1e3a5f);' +
+    'background:radial-gradient(circle at 30% 30%, #bfbfbf, #363636);' +
     'border:2px solid rgba(255,255,255,0.95);' +
     'box-shadow:0 0 8px rgba(136, 136, 136,0.7), 0 1px 4px rgba(0,0,0,0.5);' +
     'transition:transform 0.2s ease, box-shadow 0.2s ease;will-change:transform, box-shadow;';
