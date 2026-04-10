@@ -3,6 +3,9 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
+import { bootstrapThemePreference } from './utils/theme';
+
+bootstrapThemePreference();
 
 // Signals that the main entry bundle executed successfully.
 (window as any).__RMPG_BOOTSTRAPPED__ = true;

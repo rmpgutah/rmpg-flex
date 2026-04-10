@@ -675,7 +675,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
       doc.line(margin, y, margin + contentWidth, y);
       y += 5;
       doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(9);
     };
 
@@ -685,7 +685,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
       doc.setFont('helvetica', 'bold');
       doc.text(`${label}: `, margin, y);
       const labelWidth = doc.getTextWidth(`${label}: `);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       const lines = doc.splitTextToSize(value, contentWidth - labelWidth);
       doc.text(lines, margin + labelWidth, y);
       y += lines.length * 4 + 1;
@@ -694,6 +694,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
     const addListItems = (items: string[]) => {
       for (const item of items) {
         checkPage(5);
+        doc.setFont('courier', 'normal');
         const lines = doc.splitTextToSize(`  - ${item}`, contentWidth - 4);
         doc.text(lines, margin + 2, y);
         y += lines.length * 4 + 0.5;
@@ -713,7 +714,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
 
     // ── Meta info ──
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(80, 80, 80);
     doc.text(`Subject: ${dossier.subject_name}`, margin, y); y += 4;
     doc.text(`Generated: ${generatedAt}`, margin, y); y += 4;

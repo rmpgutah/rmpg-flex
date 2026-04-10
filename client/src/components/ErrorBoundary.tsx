@@ -86,7 +86,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3 border-b border-red-900/30"
-              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #0a0a0a 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #161b21 100%)' }}
             >
               <AlertTriangle className="w-5 h-5 text-red-400" />
               <h2 className="text-sm font-bold text-red-300 uppercase tracking-wider">

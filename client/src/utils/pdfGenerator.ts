@@ -125,8 +125,7 @@ export function sanitizePdfText(text: string): string {
     .replace(/\u2713/g, '[X]')   // ✓ check mark
     .replace(/\u2717/g, '[ ]')   // ✗ cross mark
     .replace(/\u26A0/g, '[!]')   // ⚠ warning
-    .replace(/[^\x00-\xFF]/g, '?') // Replace any remaining non-Latin-1 chars
-    .toUpperCase(); // All PDF output is uppercase per police report standards
+    .replace(/[^\x00-\xFF]/g, '?'); // Replace any remaining non-Latin-1 chars
 }
 
 /**
@@ -149,6 +148,16 @@ export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string
   }
   if (currentLine.trim()) lines.push(currentLine.trimEnd());
   return lines.length ? lines : [''];
+}
+
+function isNarrativeLikePdfText(text: string, width: number): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  return width > 160 || trimmed.length > 120 || /[\n.!?;:]/.test(trimmed);
+}
+
+function getPdfTextLineHeight(fontSize: number, readable = false): number {
+  return readable ? fontSize * 0.44 + 0.35 : fontSize * 0.35 + 0.2;
 }
 
 // Cached images (loaded once per session)
@@ -196,7 +205,7 @@ export function addConfidentialWatermark(doc: jsPDF) {
 
   // @ts-expect-error jsPDF GState — visible on both white and dark backgrounds
   doc.setGState(new doc.GState({ opacity: 0.06 }));
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
 
   const cx = pageWidth / 2;
@@ -225,7 +234,7 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.saveGraphicsState();
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.12 }));
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(220, 38, 38); // Red
 
   const cx = pageWidth / 2;
@@ -249,7 +258,7 @@ export function addClassificationBar(doc: jsPDF, priority: string, yStart: numbe
 
   doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, yStart, cw, LAYOUT.CLASSIF_BAR_H, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_CLASSIF_BAR);
   doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
   doc.text(prio.label, doc.internal.pageSize.getWidth() / 2, yStart + 4.2, { align: 'center' });
@@ -334,7 +343,7 @@ export function addReportHeader(
   metaParts.push(FORM_REVISION);
   metaParts.push(reportDate);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(headerMetaColor[0], headerMetaColor[1], headerMetaColor[2]);
   doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
@@ -353,7 +362,7 @@ export function addReportHeader(
     const prioLabelText = prioShortNames[prioKey]
       || (pKey === 'P1' ? 'P1 - Emergency' : pKey === 'P2' ? 'P2 - Urgent'
         : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(5);
     const prioW = doc.getTextWidth(prioLabelText) + 4;
     const prioX = textStartX;
@@ -475,11 +484,9 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 2.2;        // Height reserved for label above value (compact)
-  const baseBoxH = 2.8;      // Minimum value area height (compact)
+  const labelH = 2.5;        // Height reserved for label above value
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
-  const lineStep = FONT.SIZE_FIELD_VALUE * 0.35 + 0.2; // Y-step per extra line
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
@@ -490,13 +497,14 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x + innerPad, y + 2);
 
-  // Determine value text and line count — Courier for values
-  doc.setFont('courier', 'normal');
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
-  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
+  const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
+  const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
+  const baseBoxH = useReadableText ? 3.6 : 3;
+  const displayText = isEmpty ? 'N/A' : useReadableText ? sanitized : sanitized.toUpperCase();
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
@@ -528,7 +536,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 0.3; // label + box + minimal gap
+  return y + labelH + boxH + 0.5; // label + box + small gap
 }
 
 /**
@@ -542,7 +550,7 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
 
   if (checked) {
     // Filled dark square with white checkmark
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.setFillColor(40, 40, 40);
     doc.rect(x, y - 1.5, boxSize, boxSize, 'F');
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(BORDER.CHECK_MARK);
@@ -580,12 +588,6 @@ export function addFlagBadges(
   priority?: string,
 ): number {
   if (!flags || flags.length === 0) return y;
-  // Normalize: flags may be strings or objects with a name/label/flag property
-  const normalized: string[] = flags.map((f: any) => {
-    if (typeof f === 'string') return f;
-    if (typeof f === 'object' && f !== null) return f.name || f.label || f.flag || f.title || JSON.stringify(f);
-    return String(f);
-  }).filter(Boolean);
 
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -599,29 +601,69 @@ export function addFlagBadges(
 
   // Flag → color mapping (red for danger, amber for warnings, gray for info)
   const flagColors: Record<string, [number, number, number]> = {
+    'PRIORITY 1': [180, 20, 20],
+    'ACTIVE WARRANT': [180, 20, 20],
     'ARMED & DANGEROUS': [180, 20, 20],
     'VIOLENT': [180, 20, 20],
     'FLIGHT RISK': [180, 20, 20],
+    'STOLEN': [180, 20, 20],
     'WARRANT': [180, 20, 20],
     'SEX OFFENDER': [180, 20, 20],
     'GANG MEMBER': [180, 20, 20],
+    'WEAPONS': [180, 20, 20],
+    'EXPIRED': [180, 20, 20],
+    'USE OF FORCE': [180, 20, 20],
+    'SERVICE OVERDUE': [180, 20, 20],
+    'REGISTRATION EXPIRED': [180, 20, 20],
+    'INSURANCE EXPIRED': [180, 20, 20],
     'BOLO': [200, 80, 10],
     'CAUTION': [200, 80, 10],
     'SUICIDAL': [200, 80, 10],
     'MENTAL HEALTH': [200, 80, 10],
+    'DOMESTIC VIOLENCE': [200, 80, 10],
+    'INJURIES': [200, 80, 10],
+    'JUVENILE': [200, 80, 10],
     'DRUG USER': [200, 80, 10],
     'OFFICER SAFETY': [200, 80, 10],
+    'EMS REQUESTED': [200, 80, 10],
+    'FIRE REQUESTED': [200, 80, 10],
+    'ACCIDENT': [200, 80, 10],
+    'EXPIRING SOON': [200, 80, 10],
+    'SERVICE DUE': [200, 80, 10],
+    'REGISTRATION EXPIRING': [200, 80, 10],
+    'LICENSE EXPIRED': [200, 80, 10],
+    'LICENSE EXPIRING': [200, 80, 10],
+    'INACTIVE SITE': [200, 80, 10],
+    'K9 REQUESTED': [70, 75, 88],
+    'LE NOTIFIED': [70, 75, 88],
+    'PROCESS SERVICE': [70, 75, 88],
+    'DISPATCH LINK': [70, 75, 88],
+    'CLIENT CONTRACT': [70, 75, 88],
+    'LAB SUBMITTED': [70, 75, 88],
+    'CHAIN OF CUSTODY': [70, 75, 88],
+    'MAINTENANCE': [70, 75, 88],
+    'FUEL LOGS': [70, 75, 88],
+    'MILEAGE SUMMARY': [70, 75, 88],
+    'CONTROLLED ACCESS': [70, 75, 88],
+    'COURT DATE': [70, 75, 88],
+    'FINE ASSESSED': [70, 75, 88],
+    'PHOTO TAKEN': [70, 75, 88],
+    'DISPOSED': [70, 75, 88],
+    'VERIFIED': [70, 75, 88],
+    'SEPARATED': [70, 75, 88],
+    'ACTIVE SITE': [60, 130, 80],
+    'SERVED': [60, 130, 80],
     'RESTRICTED': [120, 80, 160],
   };
   const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(fontSize);
 
   let curX = x;
   let curY = y;
 
-  for (const flag of normalized) {
+  for (const flag of flags) {
     if (!flag) continue;
     const text = String(flag).toUpperCase();
     const tw = doc.getTextWidth(text);
@@ -683,7 +725,7 @@ export function addCautionBlock(
   const allLines = wordWrapText(doc, sanitizePdfText(cautionText), maxW - 1);
   const lines = allLines.slice(0, 6);
   if (allLines.length > 6) lines[5] = lines[5].length > 3 ? lines[5].slice(0, -3) + '...' : '...';
-  const lineH = 3.5;
+  const lineH = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, true);
   const boxH = Math.max(8, lines.length * lineH + 4);
 
   // Amber warning background
@@ -693,7 +735,7 @@ export function addCautionBlock(
   doc.setFillColor(...COLOR.CAUTION_ACCENT);
   doc.rect(x, y, 2, boxH, 'F');
   // Border
-  doc.setDrawColor(...COLOR.CAUTION_ACCENT);
+  doc.setDrawColor(200, 160, 80);
   doc.setLineWidth(0.3);
   doc.rect(x, y, width, boxH);
 
@@ -706,7 +748,7 @@ export function addCautionBlock(
   // Text content
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setTextColor(...COLOR.CAUTION_TEXT);
+  doc.setTextColor(80, 40, 0);
   let textY = y + 6;
   for (const line of lines) {
     doc.text(line, x + innerPad + 2, textY);
@@ -900,7 +942,7 @@ export function addStackedSignatures(
     }
   }
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text('COMPANY', cx, cy - 1.5, { align: 'center' });
@@ -933,7 +975,7 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const textY = barY + 5;
 
   // Left: Form # + INTERNAL USE ONLY — bold, readable
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
@@ -956,8 +998,8 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = fontSize * 0.35 + 0.05;
-  const paragraphGap = 3; // 3mm between paragraphs for readability
+  const lineH = getPdfTextLineHeight(fontSize, true);
+  const paragraphGap = SPACING.MD;
 
   const paragraphs = text.split(/\n\n+/);
 
@@ -1007,8 +1049,8 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
   const text = sanitizePdfText(rawText);
-  const lineH = fontSize * 0.35 + 0.05;
-  const paragraphGap = 3; // 3mm between paragraphs
+  const lineH = getPdfTextLineHeight(fontSize, true);
+  const paragraphGap = SPACING.MD;
   // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
   const safeMaxWidth = maxWidth - 2;
   // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
@@ -1162,7 +1204,7 @@ export function addNarrativeSection(
   priority?: string,
 ): number {
   if (!rawText) return y;
-  const text = sanitizePdfText(rawText).toUpperCase();
+  const text = sanitizePdfText(rawText);
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
   y = sec.contentY;
@@ -1171,8 +1213,8 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = fontSize * 0.35 + 0.05;
-  const paragraphGap = 3; // 3mm between paragraphs (matches other renderers)
+  const lineH = getPdfTextLineHeight(fontSize, true);
+  const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
   doc.setFont('courier', 'normal');
@@ -1202,7 +1244,7 @@ export function addNarrativeSection(
   // Draw background tint sized to actual content (subtle light gray) — first page only
   const pageH = doc.internal.pageSize.getHeight();
   const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(...COLOR.BG_ZEBRA);
+  doc.setFillColor(246, 246, 250);
   doc.rect(lx - 2, y - 2, ffw + 4, maxTintH, 'F');
 
   // Page break callback: draw section continuation sub-header + fresh tint
@@ -1224,7 +1266,7 @@ export function addNarrativeSection(
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     // Draw fresh background tint for remaining text on this page
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
-    doc.setFillColor(...COLOR.BG_ZEBRA);
+    doc.setFillColor(246, 246, 250);
     doc.rect(lx - 2, contentStartY - 2, ffw + 4, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont('courier', 'normal');
@@ -1310,43 +1352,6 @@ export interface PdfImage {
 }
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
-/**
- * Convert image to high-contrast monochrome B&W for document printing.
- * Lower threshold = more black (darker faces, bolder text).
- * Applies contrast enhancement before thresholding for detail retention.
- */
-export async function convertToGrayscale(dataUrl: string): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { resolve(dataUrl); return; }
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const d = imageData.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-        // Six-tone posterize: black → dark → mid-dark → mid → light → white
-        let val: number;
-        if (lum < 45) val = 0;           // deep shadows → black
-        else if (lum < 85) val = 50;     // dark detail → very dark gray
-        else if (lum < 125) val = 100;   // mid-shadows → dark gray
-        else if (lum < 170) val = 150;   // mid-tones → medium gray
-        else if (lum < 210) val = 200;   // light areas → light gray
-        else val = 255;                  // highlights → white
-        d[i] = d[i + 1] = d[i + 2] = val;
-      }
-      ctx.putImageData(imageData, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
-}
-
 export function addImageToPage(
   doc: jsPDF,
   image: PdfImage,
@@ -1518,10 +1523,10 @@ export function addTableWithShading(
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
-  const minRowH = 4.5;
-  const cellLineH = 3.2;      // Line height within table cells
-  const cellPad = 1.5;         // Padding inside cells
-  const maxCellLines = 1;      // No wrapping — single line, truncate if needed
+  const minRowH = 6;
+  const cellLineH = 3.8;      // Line height within table cells
+  const cellPad = 2;           // Padding inside cells
+  const maxCellLines = 50;    // Show full note text without truncation
 
   // Pre-compute column widths from position deltas
   const colWidths: number[] = [];
@@ -1533,18 +1538,25 @@ export function addTableWithShading(
   // Helper to draw header row — dark blocky style (or light field-pair style)
   // atY = top of header rect; text is vertically centered within
   const lightHdr = opts?.lightHeader === true;
-  const headerRowH = SPACING.SECTION_HEADER_H; // Match section header bar height
+  const headerRowH = 5;
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
-      doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
-      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
+      // Light header: white background, thin border, uppercase label (field-pair style)
+      doc.setFillColor(255, 255, 255);
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.setDrawColor(...COLOR.BORDER_FIELD);
+      doc.setLineWidth(BORDER.FIELD);
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Medium dark gray table header with white text
+      // Dark table header (police report style)
       doc.setFillColor(...COLOR.BG_TABLE_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.setDrawColor(...COLOR.BORDER_OUTER);
+      doc.setLineWidth(BORDER.TABLE_OUTER);
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_INVERTED);
@@ -1604,16 +1616,17 @@ export function addTableWithShading(
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
     }
 
-    // Zebra shading — first row white, second light gray, alternating
-    if (i % 2 === 1) {
+    // y = top of this data row rect
+    // Zebra shading — rect starts at y, full rowH
+    if (i % 2 === 0) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
-      doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, y, cw - 2, rowH, 'F');
     }
 
-    // Light row separator
+    // Row separator at bottom of row
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(0.15);
-    doc.line(LAYOUT.PAGE_MARGIN, y + rowH, LAYOUT.PAGE_MARGIN + cw, y + rowH);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH);
 
     // Render cell text — vertically centered within row
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1634,19 +1647,28 @@ export function addTableWithShading(
   // Update final segment bottom
   colSegments[colSegments.length - 1].bottom = y - 1;
 
-  // Draw light column dividers only (no outer border box)
+  // Draw column borders and outer border per segment (page-aware)
   const currentPage = doc.getNumberOfPages();
   for (const seg of colSegments) {
     const segH = seg.bottom - seg.top + 1;
     if (segH < 2) continue;
+
     doc.setPage(seg.page);
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(0.15);
+
+    // Vertical column dividers
+    doc.setDrawColor(...COLOR.BORDER_COLUMN);
+    doc.setLineWidth(BORDER.TABLE_COLUMN);
     for (let c = 1; c < colPositions.length; c++) {
       const sepX = colPositions[c] - 2;
       doc.line(sepX, seg.top, sepX, seg.bottom);
     }
+
+    // Outer border enclosing this segment
+    doc.setDrawColor(...COLOR.BORDER_OUTER);
+    doc.setLineWidth(BORDER.TABLE_OUTER);
+    doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, segH);
   }
+  // Restore to current (last) page
   doc.setPage(currentPage);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -1880,6 +1902,128 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
   return y;
 }
 
+type IncidentOverviewField = {
+  label: string;
+  value?: string | number | null;
+};
+
+function addIncidentOverviewSection(
+  doc: jsPDF,
+  title: string,
+  fields: IncidentOverviewField[],
+  y: number,
+  priority?: string,
+): number {
+  const presentFields = fields.filter((field) => String(field.value ?? '').trim());
+  if (presentFields.length === 0) return y;
+
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const estimatedRows = Math.ceil(presentFields.length / 4);
+  y = checkPageBreak(doc, y, 10 + estimatedRows * SPACING.FIELD_ROW_ADVANCE, priority);
+
+  const sec = openAutoSection(doc, title, y);
+  y = sec.contentY + 0.5;
+
+  for (let i = 0; i < presentFields.length; i += 4) {
+    const row = presentFields.slice(i, i + 4);
+    const colW = ffw / row.length;
+    let maxY = y + SPACING.FIELD_ROW_ADVANCE;
+    row.forEach((field, idx) => {
+      const fy = addFieldPair(doc, field.label, String(field.value ?? ''), lx + idx * colW, y, colW);
+      if (fy > maxY) maxY = fy;
+    });
+    y = maxY;
+  }
+
+  return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+}
+
+function addIncidentAlertBadges(
+  doc: jsPDF,
+  label: string,
+  flags: Array<string | undefined | null>,
+  y: number,
+  priority?: string,
+): number {
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const cleanFlags = [...new Set(
+    flags
+      .map((flag) => (flag || '').trim().toUpperCase())
+      .filter(Boolean),
+  )];
+  if (cleanFlags.length === 0) return y;
+
+  const cols = 3;
+  const rows = Math.ceil(cleanFlags.length / cols);
+  y = checkPageBreak(doc, y, 8 + rows * (SPACING.LG + 0.5), priority);
+
+  const sec = openAutoSection(doc, label, y);
+  y = sec.contentY + 1;
+
+  const colW = ffw / cols;
+  for (let idx = 0; idx < cleanFlags.length; idx += cols) {
+    const row = cleanFlags.slice(idx, idx + cols);
+    row.forEach((flag, colIdx) => {
+      addCheckboxField(doc, flag, true, lx + colIdx * colW, y);
+    });
+    y += SPACING.LG + 0.5;
+  }
+
+  return closeAutoSection(doc, sec.sectionY, y - 1.2, undefined, sec.sectionPage);
+}
+
+function hasIncidentWeaponFlag(weapons?: string | null): boolean {
+  const normalized = (weapons || '').trim().toLowerCase();
+  return !!normalized && !['0', 'none', 'no', 'n/a'].includes(normalized);
+}
+
+function buildIncidentAlertFlags(
+  data: IncidentData,
+  extraFlags: Array<string | undefined | null> = [],
+): string[] {
+  return [
+    ...extraFlags,
+    data.priority ? data.priority.toUpperCase() : '',
+    data.injuries_reported || !!data.injuries ? 'INJURIES' : '',
+    data.domestic_violence ? 'DOMESTIC VIOLENCE' : '',
+    data.mental_health_crisis ? 'MENTAL HEALTH' : '',
+    data.juvenile_involved ? 'JUVENILE' : '',
+    data.felony_in_progress ? 'FELONY IN PROGRESS' : '',
+    data.officer_safety_caution ? 'OFFICER SAFETY' : '',
+    hasIncidentWeaponFlag(data.weapons_involved) ? 'WEAPONS' : '',
+    data.vehicle_pursuit ? 'VEHICLE PURSUIT' : '',
+    data.foot_pursuit ? 'FOOT PURSUIT' : '',
+    data.k9_requested ? 'K9 REQUESTED' : '',
+    data.ems_requested || !!data.ems_transport ? 'EMS REQUESTED' : '',
+    data.fire_requested ? 'FIRE REQUESTED' : '',
+    data.hazmat ? 'HAZMAT' : '',
+    data.le_notified ? 'LE NOTIFIED' : '',
+    data.trespass_warning_issued || data.trespass_issued ? 'TRESPASS WARNING' : '',
+  ].filter(Boolean) as string[];
+}
+
+function buildIncidentCautionText(
+  data: IncidentData,
+  extraParts: Array<string | undefined | null> = [],
+): string {
+  const parts = [
+    ...extraParts,
+    data.officer_safety_caution ? 'Officer safety caution flagged for responding personnel.' : '',
+    data.scene_safety && !['standard', 'normal', 'clear', 'safe'].includes(data.scene_safety.toLowerCase())
+      ? `Scene safety notes: ${data.scene_safety}.`
+      : '',
+    hasIncidentWeaponFlag(data.weapons_involved) ? `Weapons indicated: ${data.weapons_involved}.` : '',
+    data.responding_le_agency
+      ? `External agency coordination: ${data.responding_le_agency}${data.le_case_number ? ` (${data.le_case_number})` : ''}.`
+      : '',
+    data.patient_status ? `Patient status: ${data.patient_status}.` : '',
+  ];
+
+  return parts.filter(Boolean).join(' ');
+}
+
 // ── Report Templates ─────────────────────────────────────────
 
 function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
@@ -1893,6 +2037,15 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
   const formatServiceType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
   const formatDocumentType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
+  const incidentAlertFlags = buildIncidentAlertFlags(data, [
+    data.call_number ? 'DISPATCH LINK' : '',
+    data.contract_id ? 'CLIENT CONTRACT' : '',
+    data.process_service_type ? 'PROCESS SERVICE' : '',
+  ]);
+  const incidentCautionText = buildIncidentCautionText(data, [
+    data.dispatch_code ? `Dispatch code: ${data.dispatch_code}.` : '',
+    data.property_name ? `Property: ${data.property_name}.` : '',
+  ]);
 
 
   let y = drawNibrsHeader(doc, {
@@ -1903,6 +2056,21 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     caseNumber: data.incident_number,
     reportDate: data.occurred_date || data.created_at || '',
   });
+
+  y = addIncidentOverviewSection(doc, 'Incident Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Incident Type', value: formatIncidentType(data.incident_type) },
+    { label: 'Status', value: displayStatus(data.status || '') },
+    { label: 'Priority', value: data.priority || '' },
+    { label: 'Reporting Officer', value: data.officer_name || '' },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Disposition', value: data.disposition || '' },
+    { label: 'Location', value: data.location || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'TACTICAL ALERTS', incidentAlertFlags, y, data.priority);
+  if (incidentCautionText) {
+    y = addCautionBlock(doc, incidentCautionText, lx, y, ffw);
+  }
 
   // ═══════════════════════════════════════════════════════════
   // SECTION 1 — ADMINISTRATIVE DATA
@@ -2030,7 +2198,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     if (data.call_number) classFields.push({ label: 'CFS Call #', value: data.call_number });
     if (classFields.length > 0) {
       y = checkPageBreak(doc, y, 18);
-      const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+      const sec = openAutoSection(doc, 'Case Linkage', y); y = sec.contentY;
       const colW = ffw / classFields.length;
       let maxCY = y;
       for (let i = 0; i < classFields.length; i++) {
@@ -2048,7 +2216,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   { const hasScene = data.scene_safety || data.weather_conditions || data.lighting_conditions || data.weapons_involved || data.direction_of_travel;
     if (hasScene) {
       y = checkPageBreak(doc, y, 20);
-      const sec = openAutoSection(doc, 'Scene / Conditions', y); y = sec.contentY;
+      const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
       // Row 1: Scene Safety, Weather, Lighting
       const w3 = ffw / 3;
       const fy1 = addFieldPair(doc, 'Scene Safety', data.scene_safety || 'N/A', lx, y, w3);
@@ -2086,16 +2254,17 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 42, data.priority);
   { const sec = openAutoSection(doc, 'Operational Flags', y); y = sec.contentY;
+    y += 1;
     const flagW = ffw / 6;
-    const rowStep = 3.5; // tight row spacing for checkboxes
     // Row 1
-    addCheckboxField(doc, 'Injuries', !!data.injuries_reported, lx, y);
-    addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, lx + flagW, y);
-    addCheckboxField(doc, 'Drugs', !!data.drugs_involved, lx + flagW * 2, y);
-    addCheckboxField(doc, 'DV', !!data.domestic_violence, lx + flagW * 3, y);
-    addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, lx + flagW * 4, y);
+    let fx = lx;
+    fx = addCheckboxField(doc, 'Injuries', !!data.injuries_reported, fx, y);
+    fx = lx + flagW; fx = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, fx, y);
+    fx = lx + flagW * 2; fx = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, fx, y);
+    fx = lx + flagW * 3; fx = addCheckboxField(doc, 'DV', !!data.domestic_violence, fx, y);
+    fx = lx + flagW * 4; fx = addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, fx, y);
     addCheckboxField(doc, 'Juvenile', !!data.juvenile_involved, lx + flagW * 5, y);
-    y += rowStep;
+    y += SPACING.LG;
     // Row 2
     addCheckboxField(doc, 'Felony I/P', !!data.felony_in_progress, lx, y);
     addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, lx + flagW, y);
@@ -2103,7 +2272,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     addCheckboxField(doc, 'Hazmat', !!data.hazmat, lx + flagW * 3, y);
     addCheckboxField(doc, 'Weapons', !!data.weapons_involved, lx + flagW * 4, y);
     addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, lx + flagW * 5, y);
-    y += rowStep;
+    y += SPACING.LG;
     // Row 3
     addCheckboxField(doc, 'K9 Req', !!data.k9_requested, lx, y);
     addCheckboxField(doc, 'EMS Req', !!data.ems_requested, lx + flagW, y);
@@ -2111,13 +2280,13 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, lx + flagW * 3, y);
     addCheckboxField(doc, 'Evidence', !!data.evidence_collected, lx + flagW * 4, y);
     addCheckboxField(doc, 'Photos', !!data.photos_taken, lx + flagW * 5, y);
-    y += rowStep;
+    y += SPACING.LG;
     // Row 4
     addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, lx, y);
     addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW, y);
     addCheckboxField(doc, 'Trespass', !!data.trespass_issued, lx + flagW * 2, y);
     addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, lx + flagW * 3, y);
-    y += rowStep;
+    y += SPACING.XL;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2127,17 +2296,21 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const persons = data.linked_persons || [];
   if (persons.length > 0) {
     y = checkPageBreak(doc, y, 20, data.priority);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + 3.8;
-    const personRows = persons.map((p: any) => [
-      `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || 'N/A',
-      (p.role?.replace(/_/g, ' ') || 'N/A').toUpperCase(),
-      p.dob || 'N/A',
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.contentY;
+    const colPositions = [lx, lx + ffw * 0.40, lx + ffw * 0.70];
+    const tableHeaders = [
+      { label: 'NAME', x: colPositions[0] },
+      { label: 'ROLE', x: colPositions[1] },
+      { label: 'DOB', x: colPositions[2] },
+    ];
+    const tableRows = persons.map((p) => [
+      `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '—',
+      capFirst(p.role?.replace(/_/g, ' ') || '').toUpperCase() || '—',
+      (p.dob || '—').toUpperCase(),
     ]);
-    y = addTableWithShading(doc,
-      [{ label: 'NAME', x: LAYOUT.PAGE_MARGIN + 2 }, { label: 'ROLE', x: LAYOUT.PAGE_MARGIN + ffw * 0.4 + 2 }, { label: 'DOB', x: LAYOUT.PAGE_MARGIN + ffw * 0.7 + 2 }],
-      personRows, y,
-      [LAYOUT.PAGE_MARGIN + 2, LAYOUT.PAGE_MARGIN + ffw * 0.4 + 2, LAYOUT.PAGE_MARGIN + ffw * 0.7 + 2],
-    );
+    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+    y += SPACING.MD;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2145,7 +2318,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 20, data.priority);
   const vehicles = data.linked_vehicles || [];
-  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.sectionY + 3.8;
+  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.contentY;
     if (vehicles.length > 0) {
       const colPositions = [lx, mx + 30, mx + 65, mx + 120];
       const tableHeaders = [
@@ -2173,7 +2346,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 20, data.priority);
   const evidence = data.evidence || [];
-  { const sec = openAutoSection(doc, `Evidence / Property (${evidence.length})`, y); y = sec.sectionY + 3.8;
+  { const sec = openAutoSection(doc, `Evidence / Property (${evidence.length})`, y); y = sec.contentY;
     if (evidence.length > 0) {
       const colPositions = [lx, mx + 36, mx + 60, mx + 130];
       const tableHeaders = [
@@ -2201,7 +2374,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   if (data.responding_le_agency || data.le_case_number) {
     y = checkPageBreak(doc, y, 14, data.priority);
-    const sec = openAutoSection(doc, 'External Agency', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
     const w3 = ffw / 3;
     const fy1 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx, y, w3 * 2);
     const fy2 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + w3 * 2, y, w3);
@@ -2216,7 +2389,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     y = checkPageBreak(doc, y, 22, data.priority);
     const hasDispatchFields = data.call_number || data.call_type || data.call_created_at || data.caller_name || data.caller_phone || (data.latitude != null && data.longitude != null);
     if (hasDispatchFields || data.call_notes) {
-      const sec = openAutoSection(doc, 'Dispatch Data', y); y = sec.contentY;
+      const sec = openAutoSection(doc, 'Dispatch Linkage', y); y = sec.contentY;
       // Row 1: CFS Call #, Call Type, Dispatched
       const r1Fields: { label: string; value: string }[] = [];
       if (data.call_number) r1Fields.push({ label: 'CFS Call #', value: data.call_number });
@@ -2271,7 +2444,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 25, data.priority);
   { const sec = openAutoSection(doc, 'Narrative / Service Notes', y); y = sec.contentY;
-    y += SPACING.MD;
+    y += SPACING.LG;
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -2428,6 +2601,11 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   const rx = getRightColumnX(doc);
   const gridX = getGridStartX();
   const gridW = getGridContentWidth(doc);
+  const accidentAlertFlags = buildIncidentAlertFlags(data, ['ACCIDENT']);
+  const accidentCautionText = buildIncidentCautionText(data, [
+    data.road_conditions ? `Road conditions: ${data.road_conditions}.` : '',
+    data.traffic_control ? `Traffic control: ${data.traffic_control}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2438,11 +2616,26 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Accident Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Date', value: data.occurred_date || '' },
+    { label: 'Time', value: data.occurred_time || '' },
+    { label: 'Investigating Officer', value: data.officer_name || '' },
+    { label: 'Location', value: data.location || '' },
+    { label: 'Road Conditions', value: data.road_conditions || '' },
+    { label: 'Traffic Control', value: data.traffic_control || '' },
+    { label: 'Weather / Lighting', value: [data.weather_conditions, data.lighting_conditions].filter(Boolean).join(' / ') },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'ACCIDENT ALERTS', accidentAlertFlags, y, data.priority);
+  if (accidentCautionText) {
+    y = addCautionBlock(doc, accidentCautionText, lx, y, ffw);
+  }
+
   // ═══════════════════════════════════════════════════════════
   // ADMINISTRATIVE — incident + conditions
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 25);
-  { const sec = openAutoSection(doc, 'Administrative', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
     // Row 1: Incident # (2/6), Date (1/6), Time (1/6), Investigating Officer (2/6)
     const w6 = ffw / 6;
     const fy1 = addFieldPair(doc, 'Incident #', data.incident_number || '', lx, y, w6 * 2);
@@ -2459,47 +2652,6 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     const fy7 = addFieldPair(doc, 'Weather', data.weather_conditions || '', lx + w4 * 2, y, w4);
     const fy8 = addFieldPair(doc, 'Lighting', data.lighting_conditions || '', lx + w4 * 3, y, w4);
     y = Math.max(fy5, fy6, fy7, fy8);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = addThreeColumnFields(doc, [
-      { label: 'Date', value: data.occurred_date || '' },
-      { label: 'Time', value: data.occurred_time || '' },
-      { label: 'Officer', value: data.officer_name },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Road Conditions
-  { const sec = openAutoSection(doc, 'Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Road Conditions', value: data.road_conditions || '' },
-      { label: 'Traffic Control', value: data.traffic_control || '' },
-      { label: 'Weather', value: data.weather_conditions || '' },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Flags
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2571,6 +2723,10 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
 
   const persons = data.linked_persons || [];
   const patient = persons[0] || { first_name: '', last_name: '', dob: '' };
+  const medicalAlertFlags = buildIncidentAlertFlags(data, ['MEDICAL']);
+  const medicalCautionText = buildIncidentCautionText(data, [
+    data.ems_transport ? `Transport disposition: ${data.ems_transport}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2581,8 +2737,23 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Medical Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Priority', value: data.priority || '' },
+    { label: 'Officer', value: data.officer_name || '' },
+    { label: 'Patient', value: `${patient.last_name}, ${patient.first_name}`.replace(/^,\s*/, '') },
+    { label: 'Patient Status', value: data.patient_status || '' },
+    { label: 'EMS Transport', value: data.ems_transport || '' },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Location', value: data.location || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'MEDICAL ALERTS', medicalAlertFlags, y, data.priority);
+  if (medicalCautionText) {
+    y = addCautionBlock(doc, medicalCautionText, lx, y, ffw);
+  }
+
   // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Response Overview', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Type', value: formatIncidentType(data.incident_type) },
       { label: 'Priority', value: data.priority },
@@ -2593,7 +2764,7 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Patient Information
-  { const sec = openAutoSection(doc, 'Patient Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Patient Profile', y); y = sec.contentY;
     const persons = data.linked_persons || [];
     if (persons.length > 0) {
       const patient = persons[0];
@@ -2641,6 +2812,14 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
 
   const persons = data.linked_persons || [];
   const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
+  const forceAlertFlags = buildIncidentAlertFlags(data, [
+    'USE OF FORCE',
+    data.subject_injuries ? 'INJURIES' : '',
+    data.officer_injuries ? 'OFFICER INJURIES' : '',
+  ]);
+  const forceCautionText = buildIncidentCautionText(data, [
+    data.force_type ? `Force type: ${data.force_type}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2666,8 +2845,22 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   y += 12;
 
+  y = addIncidentOverviewSection(doc, 'Force Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Priority', value: data.priority || '' },
+    { label: 'Officer', value: data.officer_name || '' },
+    { label: 'Force Type', value: data.force_type || '' },
+    { label: 'Subject', value: `${subj.last_name}, ${subj.first_name}`.replace(/^,\s*/, '') },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Location', value: data.location || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'FORCE ALERTS', forceAlertFlags, y, data.priority);
+  if (forceCautionText) {
+    y = addCautionBlock(doc, forceCautionText, lx, y, ffw);
+  }
+
   // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Incident Summary', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Type', value: formatIncidentType(data.incident_type) },
       { label: 'Date/Time', value: `${data.occurred_date || ''} ${data.occurred_time || ''}` },
@@ -2678,7 +2871,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Subject Information
-  { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Subject Profile', y); y = sec.contentY;
     const persons = data.linked_persons || [];
     if (persons.length > 0) {
       const subj = persons[0];
@@ -2744,7 +2937,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   const ffw = getFullFieldWidth(doc);
   y = checkPageBreak(doc, y, 20);
-  { const sec = openAutoSection(doc, 'Shift Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Daily Activity Overview', y); y = sec.contentY;
     // Row 1: Officer Name (2/5), Section (1/5), Zone (1/5), Beat (1/5)
     const w5 = ffw / 5;
     const fy1 = addFieldPair(doc, 'Officer Name', data.officer_name || '', lx, y, w5 * 2);
@@ -2758,17 +2951,6 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     const fy6 = addFieldPair(doc, 'Shift Start', data.occurred_time || '', lx + w3, y, w3);
     const fy7 = addFieldPair(doc, 'Shift End', data.end_time || '', lx + w3 * 2, y, w3);
     y = Math.max(fy5, fy6, fy7);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Officer / Shift Info
-  { const sec = openAutoSection(doc, 'Officer / Shift Information', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Officer', data.officer_name, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Sec/Zone/Beat', [data.section_id, data.zone_id, data.beat_id].filter(Boolean).join(' / ') || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Shift Date', data.occurred_date || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Shift Time', `${data.occurred_time || ''} -- ${data.end_time || ''}`, rx, y, hfw);
-      y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2835,6 +3017,12 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
 
   const persons = data.linked_persons || [];
   const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
+  const arrestAlertFlags = buildIncidentAlertFlags(data, [
+    data.weapons_involved ? `WEAPONS` : '',
+  ]);
+  const arrestCautionText = buildIncidentCautionText(data, [
+    data.disposition ? `Disposition: ${data.disposition}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2845,8 +3033,22 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Arrest Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
+    { label: 'Officer', value: data.officer_name || '' },
+    { label: 'Location', value: data.location || '' },
+    { label: 'Arrestee', value: `${subj.last_name}, ${subj.first_name}`.replace(/^,\s*/, '') },
+    { label: 'DOB', value: subj.dob || '' },
+    { label: 'Disposition', value: data.disposition || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'CUSTODY ALERTS', arrestAlertFlags, y, data.priority);
+  if (arrestCautionText) {
+    y = addCautionBlock(doc, arrestCautionText, lx, y, ffw);
+  }
+
   // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Custody Incident', y); y = sec.contentY;
     y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
     { const yL = addFieldPair(doc, 'Date', data.occurred_date || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Time', data.occurred_time || '', rx, y, hfw);
@@ -2855,7 +3057,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Subject Details
-  { const sec = openAutoSection(doc, 'Subject Details', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Arrestee Profile', y); y = sec.contentY;
     const persons = data.linked_persons || [];
     if (persons.length > 0) {
       const subj = persons[0];
@@ -2877,32 +3079,6 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // CHARGES — charges table
   // ═══════════════════════════════════════════════════════════
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'DV', !!data.domestic_violence, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Felony IP', !!data.felony_in_progress, flagX, y);
-    flagX = addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX + SPACING.SM, y);
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
   // Charges table
   { const sec = openAutoSection(doc, 'Charges', y); y = sec.contentY;
     const colPositions = [lx, LAYOUT.PAGE_MARGIN + 90, LAYOUT.PAGE_MARGIN + 130];
@@ -2974,10 +3150,15 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   const gridX = getGridStartX();
   const gridW = getGridContentWidth(doc);
 
-  // Safety: ensure all data fields are strings (prevents NaN in rect calculations)
-  const safeStr = (v: any): string => (v == null || v === undefined) ? '' : String(v);
-
   const serviceTypeLabel = (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() || 'GENERAL';
+  const processAlertFlags = buildIncidentAlertFlags(data, [
+    'PROCESS SERVICE',
+    data.process_service_result ? data.process_service_result.replace(/_/g, ' ').toUpperCase() : '',
+  ]);
+  const processCautionText = buildIncidentCautionText(data, [
+    data.process_served_address ? `Service address: ${data.process_served_address}.` : '',
+    data.process_served_to ? `Serve to: ${data.process_served_to}.` : '',
+  ]);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2988,15 +3169,30 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
+  y = addIncidentOverviewSection(doc, 'Process Service Overview', [
+    { label: 'Incident Number', value: data.incident_number || '' },
+    { label: 'Service Type', value: serviceTypeLabel },
+    { label: 'Status', value: displayStatus(data.status || '') },
+    { label: 'Disposition', value: data.disposition || '' },
+    { label: 'Serve To', value: data.process_served_to || '' },
+    { label: 'Attempts', value: String(data.process_attempts || 0) },
+    { label: 'Served At', value: data.process_served_at || '' },
+    { label: 'Officer', value: data.officer_name || '' },
+  ], y, data.priority);
+  y = addIncidentAlertBadges(doc, 'SERVICE ALERTS', processAlertFlags, y, data.priority);
+  if (processCautionText) {
+    y = addCautionBlock(doc, processCautionText, lx, y, ffw);
+  }
+
   // Classification
-  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Case Linkage', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
-      { label: 'Incident Number', value: safeStr(data.incident_number) },
-      { label: 'Priority', value: safeStr(data.priority) },
-      { label: 'Status', value: displayStatus(safeStr(data.status)) },
-      { label: 'Disposition', value: safeStr(data.disposition) },
+      { label: 'Incident Number', value: data.incident_number },
+      { label: 'Priority', value: data.priority },
+      { label: 'Status', value: displayStatus(data.status || '') },
+      { label: 'Disposition', value: data.disposition || '' },
       { label: 'Service Type', value: serviceTypeLabel },
-      { label: 'Contract ID', value: safeStr(data.contract_id) },
+      { label: 'Contract ID', value: data.contract_id || '' },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -3004,29 +3200,29 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   // Client / Requestor Information
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Client / Requestor Information', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Requestor Name', safeStr(data.pso_requestor_name), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Requestor Phone', safeStr(data.pso_requestor_phone), rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Requestor Email', safeStr(data.pso_requestor_email), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Billing Code', safeStr(data.pso_billing_code), rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Authorization / PO#', safeStr(data.pso_authorization), lx, y, hfw);
-      const yR = addFieldPair(doc, 'PSO Service Type', safeStr(data.pso_service_type).replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'PSO Service Type', (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // Service of Process Details
   y = checkPageBreak(doc, y, 35, data.priority);
-  { const sec = openAutoSection(doc, 'Service of Process Details', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Service Attempt Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Document Type', serviceTypeLabel, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Serve To (Name)', safeStr(data.process_served_to), rx, y, hfw);
+      const yR = addFieldPair(doc, 'Serve To (Name)', data.process_served_to || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Service Address', safeStr(data.process_served_address || data.location), lx, y, ffw);
-    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts ?? 0), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Served At', safeStr(data.process_served_at), rx, y, hfw);
+    y = addFieldPair(doc, 'Service Address', data.process_served_address || data.location || '', lx, y, ffw);
+    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts || 0), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Served At', data.process_served_at || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Service Result', safeStr(data.process_service_result).replace(/_/g, ' ').toUpperCase(), lx, y, ffw);
+    y = addFieldPair(doc, 'Service Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3034,11 +3230,11 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 18, data.priority);
   { const sec = openAutoSection(doc, 'Officer / Location', y); y = sec.contentY;
     const olFields = [
-      { label: 'Officer', value: safeStr(data.officer_name) },
-      { label: 'Location', value: safeStr(data.location) },
-      { label: 'Section ID', value: safeStr(data.section_id) },
-      { label: 'Zone ID', value: safeStr(data.zone_id) },
-      { label: 'Beat ID', value: safeStr(data.beat_id) },
+      { label: 'Officer', value: data.officer_name || '' },
+      { label: 'Location', value: data.location || '' },
+      { label: 'Section ID', value: data.section_id || '' },
+      { label: 'Zone ID', value: data.zone_id || '' },
+      { label: 'Beat ID', value: data.beat_id || '' },
     ];
     const olRatios = [2, 3, 1, 1, 1]; // Officer wider, Location widest, IDs narrow
     const olTotal = olRatios.reduce((a, b) => a + b, 0);
@@ -3056,13 +3252,13 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
   // Date / Time — all 4 fields on one row
   y = checkPageBreak(doc, y, 18, data.priority);
-  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, 'Service Timeline', y); y = sec.contentY;
     const dtW = ffw / 4;
     const dtFields = [
-      { label: 'Occurred Date', value: safeStr(data.occurred_date) },
-      { label: 'Occurred Time', value: safeStr(data.occurred_time) },
-      { label: 'End Date', value: safeStr(data.end_date) },
-      { label: 'End Time', value: safeStr(data.end_time) },
+      { label: 'Occurred Date', value: data.occurred_date || '' },
+      { label: 'Occurred Time', value: data.occurred_time || '' },
+      { label: 'End Date', value: data.end_date || '' },
+      { label: 'End Time', value: data.end_time || '' },
     ];
     let maxDTY = y + SPACING.FIELD_ROW_ADVANCE;
     for (let i = 0; i < 4; i++) {
@@ -3073,27 +3269,8 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Flags — evenly spaced across full width
-  y = checkPageBreak(doc, y, 18, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    y += 1;
-    const flagItems = [
-      { label: 'Evidence', checked: !!data.evidence_collected },
-      { label: 'BWC Active', checked: !!data.body_camera_active },
-      { label: 'Photos', checked: !!data.photos_taken },
-      { label: 'LE Notified', checked: !!data.le_notified },
-      { label: 'Supvr Notified', checked: !!data.supervisor_notified },
-    ];
-    const flagColW = ffw / flagItems.length;
-    for (let i = 0; i < flagItems.length; i++) {
-      addCheckboxField(doc, flagItems[i].label, flagItems[i].checked, lx + i * flagColW, y);
-    }
-    y += 4;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
   // Narrative
-  y = addNarrativeSection(doc, 'Narrative / Service Notes', safeStr(data.narrative), y, data.priority);
+  y = addNarrativeSection(doc, 'Narrative / Service Notes', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
   // Linked Persons

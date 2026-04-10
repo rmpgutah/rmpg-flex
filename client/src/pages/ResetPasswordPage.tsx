@@ -86,7 +86,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #050505 0%, #0a0a0a 100%)' }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #060c14 0%, #161b21 100%)' }}>
       <div className="w-full max-w-sm">
         <div
           className="panel-beveled bg-surface-base relative overflow-hidden"
@@ -102,8 +102,8 @@ export default function ResetPasswordPage() {
             <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
             <span>SET NEW PASSWORD</span>
             <div className="ml-auto flex items-center gap-1" aria-hidden="true">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>&#9633;</div>
             </div>
           </div>
 
@@ -281,7 +281,7 @@ export default function ResetPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #222222' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b313a' }}>
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"

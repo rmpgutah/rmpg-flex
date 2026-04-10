@@ -103,8 +103,8 @@ const CODE_CATEGORIES = [
 const PRIORITY_COLORS: Record<string, string> = {
   P1: 'bg-red-600 text-white',
   P2: 'bg-amber-600 text-white',
-  P3: 'bg-gray-600 text-white',
-  P4: 'bg-[#222222] text-white',
+  P3: 'bg-blue-600 text-white',
+  P4: 'bg-[#2b313a] text-white',
 };
 
 // ── Page Component ─────────────────────────────────────────
@@ -250,7 +250,7 @@ export default function GeographyPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <MapPin className="w-5 h-5 text-gray-400" />
+          <MapPin className="w-5 h-5 text-blue-400" />
           <h1 className="text-lg font-bold text-white">Dispatch Geography</h1>
           <span className="text-[10px] text-rmpg-400 font-mono bg-surface-sunken px-2 py-0.5 rounded-sm">
             {areas.length} Areas · {sections.length} Sections · {zones.length} Zones · {beats.length} Beats
@@ -269,7 +269,7 @@ export default function GeographyPage() {
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-t-sm whitespace-nowrap transition-colors ${
-              tab === t.id ? 'bg-surface-raised text-white border-b-2 border-gray-500' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-sunken'
+              tab === t.id ? 'bg-surface-raised text-white border-b-2 border-blue-500' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-sunken'
             }`}>
             {t.icon} {t.label}
           </button>
@@ -283,7 +283,7 @@ export default function GeographyPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder={tab === 'codes' ? 'Search codes...' : tab === 'premises' ? 'Search by address...' : 'Search...'}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 rounded-sm text-white placeholder-rmpg-500 focus:border-gray-500 focus:outline-none"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 rounded-sm text-white placeholder-rmpg-500 focus:border-blue-500 focus:outline-none"
             />
           </div>
           {tab === 'codes' && (
@@ -293,7 +293,7 @@ export default function GeographyPage() {
             </select>
           )}
           {['areas', 'sections', 'zones', 'beats', 'codes', 'premises'].includes(tab) && (
-            <button onClick={() => setEditModal({ type: tab.replace(/s$/, ''), item: {} })}
+            <button onClick={() => setEditModal({ type: tab.replace(/s$/, '').replace('premise', 'premise'), item: {} })}
               className="btn-sm btn-primary flex items-center gap-1">
               <Plus className="w-3.5 h-3.5" /> Add
             </button>
@@ -370,7 +370,7 @@ function TreeView({ areas, sections, zones, beats, expanded, onToggle, onExpandA
     <div className="p-3">
       <div className="flex items-center justify-between mb-3">
         <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Dispatch Geography Hierarchy</span>
-        <button onClick={onExpandAll} className="text-[10px] text-gray-400 hover:text-gray-300">Expand All</button>
+        <button onClick={onExpandAll} className="text-[10px] text-blue-400 hover:text-blue-300">Expand All</button>
       </div>
 
       {areas.map(area => {
@@ -488,13 +488,13 @@ function TreeNode({ level, color, code, name, subtitle, count, countLabel, isOpe
         <span className="w-4 h-4 mr-1" />
       )}
       <span className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: color || '#666666' }} />
-      <span className="text-[11px] font-mono text-gray-400 mr-2 min-w-[50px]">{code}</span>
+      <span className="text-[11px] font-mono text-blue-400 mr-2 min-w-[50px]">{code}</span>
       <span className="text-[11px] text-white font-medium mr-1">{name}</span>
       {subtitle && <span className="text-[10px] text-rmpg-400 mr-2">— {subtitle}</span>}
       {count !== undefined && <span className="text-[9px] text-rmpg-500 mr-2">({count} {countLabel})</span>}
       {extra}
       <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={onEdit} className="p-0.5 text-rmpg-400 hover:text-gray-400"><Pencil className="w-3 h-3" /></button>
+        <button onClick={onEdit} className="p-0.5 text-rmpg-400 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
         <button onClick={onDelete} className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
       </div>
     </div>
@@ -514,13 +514,13 @@ function AreaList({ items, onEdit, onDelete }: { items: Area[]; onEdit: (a: Area
       {items.map(a => (
         <div key={a.id} className="grid grid-cols-[40px_100px_1fr_120px_120px_80px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: a.color }} />
-          <span className="font-mono text-gray-400">{a.area_code}</span>
+          <span className="font-mono text-blue-400">{a.area_code}</span>
           <span className="text-white font-medium">{a.area_name}</span>
           <span className="text-rmpg-400 truncate">{a.commander || '—'}</span>
           <span className="text-rmpg-400 truncate">{a.description || '—'}</span>
           <span className="text-rmpg-300">{a.section_count || 0}</span>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-            <button onClick={() => onEdit(a)} className="p-0.5 text-rmpg-400 hover:text-gray-400"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => onEdit(a)} className="p-0.5 text-rmpg-400 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
             <button onClick={() => onDelete(a.id)} className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
@@ -539,14 +539,14 @@ function SectionList({ items, onEdit, onDelete }: { items: Section[]; onEdit: (s
       {items.map(s => (
         <div key={s.id} className="grid grid-cols-[40px_80px_1fr_100px_100px_80px_80px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
-          <span className="font-mono text-gray-400">{s.section_code}</span>
+          <span className="font-mono text-blue-400">{s.section_code}</span>
           <span className="text-white font-medium">{s.section_name}</span>
           <span className="text-rmpg-400 truncate">{s.area_name || '—'}</span>
           <span className="text-rmpg-400 truncate">{s.supervisor || '—'}</span>
           <span className="text-cyan-400 text-[10px]">{s.radio_channel || '—'}</span>
           <span className="text-rmpg-300">{s.zone_count || 0}</span>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-            <button onClick={() => onEdit(s)} className="p-0.5 text-rmpg-400 hover:text-gray-400"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => onEdit(s)} className="p-0.5 text-rmpg-400 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
             <button onClick={() => onDelete(s.id)} className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
@@ -565,7 +565,7 @@ function ZoneList({ items, onEdit, onDelete }: { items: Zone[]; onEdit: (z: Zone
       {items.map(z => (
         <div key={z.id} className="grid grid-cols-[40px_80px_1fr_100px_100px_80px_80px_80px_60px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: z.color || '#666666' }} />
-          <span className="font-mono text-gray-400">{z.zone_code}</span>
+          <span className="font-mono text-blue-400">{z.zone_code}</span>
           <span className="text-white font-medium">{z.zone_name}</span>
           <span className="text-rmpg-400 truncate">{z.section_name || '—'}</span>
           <span className="text-green-400 text-[10px]">{z.primary_unit || '—'}</span>
@@ -574,7 +574,7 @@ function ZoneList({ items, onEdit, onDelete }: { items: Zone[]; onEdit: (z: Zone
           <span className="text-rmpg-300">{z.beat_count || 0}</span>
           <span className={`text-[10px] ${(z.active_calls || 0) > 0 ? 'text-amber-400 font-bold' : 'text-rmpg-500'}`}>{z.active_calls || 0}</span>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-            <button onClick={() => onEdit(z)} className="p-0.5 text-rmpg-400 hover:text-gray-400"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => onEdit(z)} className="p-0.5 text-rmpg-400 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
             <button onClick={() => onDelete(z.id)} className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
@@ -593,7 +593,7 @@ function BeatList({ items, onEdit, onDelete }: { items: Beat[]; onEdit: (b: Beat
       {items.map(b => (
         <div key={b.id} className="grid grid-cols-[40px_100px_1fr_100px_100px_80px_80px_60px_60px_80px] gap-2 px-3 py-2 items-center text-xs hover:bg-surface-raised/40 group">
           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: b.color || '#666666' }} />
-          <span className="font-mono text-gray-400">{b.beat_code}</span>
+          <span className="font-mono text-blue-400">{b.beat_code}</span>
           <div>
             <span className="text-white font-medium">{b.beat_name}</span>
             {b.beat_descriptor && <span className="text-rmpg-400 text-[10px] ml-1">— {b.beat_descriptor}</span>}
@@ -607,7 +607,7 @@ function BeatList({ items, onEdit, onDelete }: { items: Beat[]; onEdit: (b: Beat
           <span className={`text-[10px] ${(b.active_calls || 0) > 0 ? 'text-amber-400 font-bold' : 'text-rmpg-500'}`}>{b.active_calls || 0}</span>
           <span>{b.hazard_notes ? <AlertTriangle className="w-3 h-3 text-red-400" /> : <span className="text-rmpg-600">—</span>}</span>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-            <button onClick={() => onEdit(b)} className="p-0.5 text-rmpg-400 hover:text-gray-400"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => onEdit(b)} className="p-0.5 text-rmpg-400 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
             <button onClick={() => onDelete(b.id)} className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
@@ -631,10 +631,10 @@ function CodeList({ items, onEdit, onDelete }: { items: DispatchCode[]; onEdit: 
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm text-center ${PRIORITY_COLORS[c.priority] || ''}`}>{c.priority}</span>
           <span className="text-center">{c.requires_backup ? <Shield className="w-3 h-3 text-amber-400 mx-auto" /> : '—'}</span>
           <span className="text-center">{c.officer_safety ? <AlertTriangle className="w-3 h-3 text-red-400 mx-auto" /> : '—'}</span>
-          <span className="text-center">{c.ems_needed ? <Zap className="w-3 h-3 text-gray-400 mx-auto" /> : '—'}</span>
+          <span className="text-center">{c.ems_needed ? <Zap className="w-3 h-3 text-blue-400 mx-auto" /> : '—'}</span>
           <span className="text-center">{c.fire_needed ? <Zap className="w-3 h-3 text-orange-400 mx-auto" /> : '—'}</span>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-            <button onClick={() => onEdit(c)} className="p-0.5 text-rmpg-400 hover:text-gray-400"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => onEdit(c)} className="p-0.5 text-rmpg-400 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
             <button onClick={() => onDelete(c.id)} className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
@@ -645,7 +645,7 @@ function CodeList({ items, onEdit, onDelete }: { items: DispatchCode[]; onEdit: 
 
 function PremiseList({ items, onEdit, onDelete }: { items: PremiseAlert[]; onEdit: (p: PremiseAlert) => void; onDelete: (id: number) => void }) {
   if (items.length === 0) return <div className="p-8 text-center text-rmpg-500 text-sm">No premise alerts. Click "Add" to flag a location.</div>;
-  const levelColors: Record<string, string> = { critical: 'text-red-400', warning: 'text-amber-400', info: 'text-gray-400' };
+  const levelColors: Record<string, string> = { critical: 'text-red-400', warning: 'text-amber-400', info: 'text-blue-400' };
   return (
     <div className="divide-y divide-rmpg-700">
       <div className="grid grid-cols-[80px_1fr_120px_80px_80px_120px_80px] gap-2 px-3 py-1.5 text-[9px] text-rmpg-500 uppercase font-bold bg-surface-sunken">
@@ -665,7 +665,7 @@ function PremiseList({ items, onEdit, onDelete }: { items: PremiseAlert[]; onEdi
           </span>
           <span className="text-[10px] text-rmpg-400">{p.expires_at || 'Never'}</span>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-            <button onClick={() => onEdit(p)} className="p-0.5 text-rmpg-400 hover:text-gray-400"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => onEdit(p)} className="p-0.5 text-rmpg-400 hover:text-blue-400"><Pencil className="w-3 h-3" /></button>
             <button onClick={() => onDelete(p.id)} className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
@@ -694,7 +694,7 @@ function StatsView({ stats }: { stats: GeoStats | null }) {
 
       {/* Section Stats */}
       <div>
-        <h3 className="text-xs font-bold text-white mb-2 flex items-center gap-2"><Grid3X3 className="w-3.5 h-3.5 text-gray-400" /> Section Activity</h3>
+        <h3 className="text-xs font-bold text-white mb-2 flex items-center gap-2"><Grid3X3 className="w-3.5 h-3.5 text-blue-400" /> Section Activity</h3>
         {stats.section_stats.length === 0 ? (
           <p className="text-[10px] text-rmpg-500">No call data by section in this period.</p>
         ) : (
@@ -720,12 +720,12 @@ function StatsView({ stats }: { stats: GeoStats | null }) {
                   </div>
                   <div>
                     <div className="text-rmpg-500">Avg Resp</div>
-                    <div className="text-gray-400 font-bold">{formatTime(s.avg_response_sec)}</div>
+                    <div className="text-blue-400 font-bold">{formatTime(s.avg_response_sec)}</div>
                   </div>
                 </div>
                 {/* Simple bar */}
                 <div className="mt-2 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gray-500 rounded-full" style={{ width: `${Math.min(100, (s.total_calls / Math.max(1, stats.section_stats[0]?.total_calls || 1)) * 100)}%` }} />
+                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, (s.total_calls / Math.max(1, stats.section_stats[0]?.total_calls || 1)) * 100)}%` }} />
                 </div>
               </div>
             ))}
@@ -755,7 +755,7 @@ function StatsView({ stats }: { stats: GeoStats | null }) {
                     <td className="py-1.5 px-2 text-white font-medium">{z.code} — {z.name}</td>
                     <td className="py-1.5 px-2 text-right text-rmpg-300">{z.total_calls}</td>
                     <td className="py-1.5 px-2 text-right"><span className={z.active_calls > 0 ? 'text-amber-400 font-bold' : 'text-rmpg-500'}>{z.active_calls}</span></td>
-                    <td className="py-1.5 px-2 text-right text-gray-400">{formatTime(z.avg_response_sec)}</td>
+                    <td className="py-1.5 px-2 text-right text-blue-400">{formatTime(z.avg_response_sec)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -773,7 +773,7 @@ function StatsView({ stats }: { stats: GeoStats | null }) {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {stats.beat_stats.slice(0, 20).map(b => (
               <div key={b.code} className="bg-surface-sunken border border-rmpg-700 rounded-sm p-2 text-center">
-                <div className="text-[10px] font-mono text-gray-400 font-bold">{b.code}</div>
+                <div className="text-[10px] font-mono text-blue-400 font-bold">{b.code}</div>
                 <div className="text-[9px] text-rmpg-400 truncate">{b.name}</div>
                 <div className="text-lg font-bold text-white mt-1">{b.total_calls}</div>
                 <div className="text-[9px] text-rmpg-500">calls</div>

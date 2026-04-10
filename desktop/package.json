@@ -57,7 +57,7 @@
       "gatekeeperAssess": false
     },
     "dmg": {
-      "backgroundColor": "#1a1a1a",
+      "backgroundColor": "#000000",
       "title": "RMPG Flex Installer"
     },
     "win": {

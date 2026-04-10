@@ -30,7 +30,19 @@ import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 import { useToast } from '../components/ToastProvider';
+
+// Add global google type for TypeScript
+declare global {
+  interface Window {
+    google: typeof google;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace google {
+    // The google.maps types are available globally when the Maps script is loaded.
+  }
+}
 
 type Checkpoint = {
   id: number;
@@ -88,49 +100,50 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
   React.useEffect(() => {
     if (!mapRef.current) return;
 
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-    if (!apiKey) return;
-
     let cancelled = false;
 
     function initPatrolMap() {
       if (cancelled || !mapRef.current || mapInstanceRef.current) return;
 
-      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-      const mapOptions: google.maps.MapOptions = {
+      const map = new google.maps.Map(mapRef.current, {
         center: { lat: 40.76, lng: -111.89 },
         zoom: 12,
-        styles: mapId ? undefined : DARK_MAP_STYLE,
+        styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         backgroundColor: '#171717',
         gestureHandling: 'greedy',
-      };
-      if (mapId) (mapOptions as any).mapId = mapId;
-      const map = new google.maps.Map(mapRef.current, mapOptions);
+      });
       mapInstanceRef.current = map;
       registerMapInstance(map);
       setMapReady(true);
     }
 
     // Retry with backoff (3 attempts) for intermittent WiFi
-    function attemptLoad(attempt: number) {
+    function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled) return;
       loadGoogleMaps(apiKey)
         .then(() => initPatrolMap())
         .catch(() => {
           if (cancelled) return;
           if (attempt < 3) {
-            setTimeout(() => attemptLoad(attempt + 1), [3000, 6000, 12000][attempt]);
+            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
           }
         });
     }
-    attemptLoad(0);
-
-    // Auto-retry when device comes back online
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) initPatrolMap();
-    });
+    let unsubOnline = () => {};
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        attemptLoad(apiKey, 0);
+        unsubOnline = onOnlineRetryMaps(apiKey, () => {
+          if (!cancelled && !mapInstanceRef.current) initPatrolMap();
+        });
+      } catch {
+        setMapReady(false);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -560,7 +573,7 @@ const PatrolPage: React.FC = () => {
       if (propertyId) params.set('property_id', propertyId);
       const data = await apiFetch<any>(`/patrol/optimize-route?${params}`);
       setOptimizedRoute(data);
-      addToast(`Route optimized: ${data.optimized_order?.length || 0} checkpoints, ${data.total_distance_mi} mi`, 'success');
+      addToast(`Route optimized: ${data.optimized_order?.length || 0} checkpoints, ${data.total_distance_km} km`, 'success');
     } catch (err: any) { addToast(err?.message || 'Failed to optimize route', 'error'); }
     setOptimizing(false);
   };
@@ -679,9 +692,9 @@ const PatrolPage: React.FC = () => {
             <span className="text-green-400 font-bold">{checkpoints.filter(c => c.is_active).length}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-gray-400" />
+            <Clock className="w-3 h-3 text-blue-400" />
             <span className="text-rmpg-400">Scans Today:</span>
-            <span className="text-gray-400 font-bold">
+            <span className="text-blue-400 font-bold">
               {scans.filter(s => {
                 const today = new Date().toDateString();
                 return new Date(s.scanned_at).toDateString() === today;
@@ -715,17 +728,17 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 1: Route Optimization Results */}
       {optimizedRoute && (
-        <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
+        <div className="mx-3 mt-2 p-2 bg-blue-900/20 border border-blue-700/50 text-xs text-blue-300">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_mi} mi total</span>
-            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300"><X className="w-3 h-3" /></button>
+            <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
+            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-blue-500 hover:text-blue-300"><X className="w-3 h-3" /></button>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
               <div key={cp.id} className="flex gap-2">
-                <span className="text-gray-500 w-4">{i + 1}.</span>
+                <span className="text-blue-500 w-4">{i + 1}.</span>
                 <span className="text-white">{cp.name}</span>
-                <span className="text-gray-500 ml-auto">{cp.distance_from_previous_mi} mi</span>
+                <span className="text-blue-500 ml-auto">{cp.distance_from_previous_km} km</span>
               </div>
             ))}
           </div>

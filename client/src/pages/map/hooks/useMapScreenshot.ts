@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { getGoogleMapsApiKey } from '../../../utils/googleMapsApiKey';
 
 /**
  * Hook providing map screenshot capabilities via Google Maps Static API.
@@ -10,7 +11,7 @@ export function useMapScreenshot(
   const busyRef = useRef(false);
 
   /** Build a Google Static Maps URL from current map state */
-  const buildStaticUrl = useCallback((width = 1280, height = 720): string | null => {
+  const buildStaticUrl = useCallback(async (width = 1280, height = 720): Promise<string | null> => {
     const map = mapInstanceRef.current;
     if (!map) return null;
 
@@ -18,7 +19,7 @@ export function useMapScreenshot(
     const zoom = map.getZoom();
     if (!center || zoom == null) return null;
 
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+    const apiKey = await getGoogleMapsApiKey().catch(() => '');
     if (!apiKey) return null;
 
     const mapType = map.getMapTypeId() || 'roadmap';
@@ -65,7 +66,7 @@ export function useMapScreenshot(
     busyRef.current = true;
 
     try {
-      const url = buildStaticUrl(1280, 720);
+      const url = await buildStaticUrl(1280, 720);
       if (!url) return null;
 
       const resp = await fetch(url);
@@ -92,7 +93,7 @@ export function useMapScreenshot(
     busyRef.current = true;
 
     try {
-      const url = buildStaticUrl(1280, 720);
+      const url = await buildStaticUrl(1280, 720);
       if (!url) return false;
 
       const resp = await fetch(url);

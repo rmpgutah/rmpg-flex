@@ -102,7 +102,7 @@ export default function FormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
-      <div className={`relative w-full ${maxWidth} mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background: '#0a0a0a' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
+      <div className={`relative w-full ${maxWidth} mx-2 sm:mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background: '#0a0a0a', maxHeight: 'calc(100dvh - 16px)' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#888888' }} />
@@ -113,29 +113,29 @@ export default function FormModal({
             )}
           </div>
           <div className="ml-auto flex items-center gap-1">
-            {/* Decorative window buttons */}
-            <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>_</button>
-            <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>□</button>
+            {/* Decorative window buttons — hidden on mobile */}
+            <button type="button" className="toolbar-btn hidden sm:inline-flex" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>_</button>
+            <button type="button" className="toolbar-btn hidden sm:inline-flex" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>□</button>
             <button type="button"
               onClick={guardedClose}
-              className="toolbar-btn min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-              style={{ padding: '1px 4px', touchAction: 'manipulation' }}
+              className="toolbar-btn flex items-center justify-center"
+              style={{ minWidth: 44, minHeight: 44, padding: '4px 8px', touchAction: 'manipulation' }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#444444'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
               aria-label="Close"
             >
-              <X className="w-4 h-4 sm:w-2.5 sm:h-2.5" />
+              <X className="w-5 h-5 sm:w-3 sm:h-3" />
             </button>
           </div>
         </div>
-        <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
+        <form onSubmit={onSubmit} noValidate className="p-4 sm:p-6 space-y-4 overflow-y-auto" style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100dvh - 120px)' }}>
           {children}
-          <div className="flex items-center justify-end gap-3 pt-4 mt-2" style={{ borderTop: '1px solid #222222' }}>
-            <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting} style={{ padding: '4px 12px' }}>
+          <div className="flex items-center justify-end gap-3 pt-4 mt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
+            <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting} style={{ padding: '8px 16px', minHeight: 44 }}>
               Cancel
             </button>
-            <button type="submit" className="toolbar-btn toolbar-btn-primary" disabled={isSubmitting} style={{ padding: '4px 12px' }}>
-              {isSubmitting && <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />}
+            <button type="submit" className="toolbar-btn toolbar-btn-primary" disabled={isSubmitting} style={{ padding: '8px 16px', minHeight: 44 }}>
+              {isSubmitting && <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />}
               {submitLabel}
             </button>
           </div>
@@ -149,7 +149,7 @@ export default function FormModal({
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)' }}
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />

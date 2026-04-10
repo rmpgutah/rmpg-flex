@@ -189,7 +189,7 @@ export default function ReportsTab() {
             <DollarSign className="w-3.5 h-3.5" /> Monthly Revenue
           </div>
           <div className="flex items-center gap-3 mb-2 text-[10px]">
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-gray-500 rounded-sm" /> Invoiced</div>
+            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-500 rounded-sm" /> Invoiced</div>
             <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Paid</div>
           </div>
           <div className="space-y-1.5">
@@ -198,7 +198,7 @@ export default function ReportsTab() {
                 <div className="w-16 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{row.month}</div>
                 <div className="flex-1 space-y-0.5">
                   <div className="flex items-center gap-1">
-                    <div className="h-3 bg-gray-500/70 rounded-sm transition-all" style={{ width: `${(row.invoiced / maxRevenue) * 100}%`, minWidth: row.invoiced > 0 ? '2px' : 0 }} />
+                    <div className="h-3 bg-blue-500/70 rounded-sm transition-all" style={{ width: `${(row.invoiced / maxRevenue) * 100}%`, minWidth: row.invoiced > 0 ? '2px' : 0 }} />
                     <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.invoiced)}</span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -271,7 +271,7 @@ export default function ReportsTab() {
             </thead>
             <tbody>
               {leadSourceROI.map(row => (
-                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-[#141414]">
+                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-[#1b2128]">
                   <td className="px-2 py-1.5 text-xs text-white">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
                   <td className="px-2 py-1.5 text-xs text-rmpg-300 text-right font-mono">{row.total}</td>
                   <td className="px-2 py-1.5 text-xs text-green-400 text-right font-mono">{row.won}</td>

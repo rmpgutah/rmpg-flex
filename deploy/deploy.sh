@@ -331,21 +331,36 @@ SVCEOF
   cd "$APP_DIR"
 
   echo ">>> Installing server dependencies..."
-  cd server && npm install --production 2>&1 | tail -3 && cd ..
+  cd server
+  if [ -f package-lock.json ]; then
+    # Production still boots via `npx tsx server/src/index.ts`, so keep tsx available.
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Installing client dependencies..."
-  cd client && npm install 2>&1 | tail -3 && cd ..
+  cd client
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Building client..."
-  cd client && npx vite build 2>&1 | tail -5 && cd ..
+  cd client && npx vite build && cd ..
 
   # ── Create .env if missing ──
   if [ ! -f server/.env ]; then
     echo ">>> Generating production .env..."
     JWT_SECRET=$(openssl rand -hex 64)
+    TOTP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 
     cat > server/.env << ENVEOF
 JWT_SECRET=${JWT_SECRET}
+TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
 NODE_ENV=production

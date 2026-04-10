@@ -63,13 +63,13 @@ export default function PerimeterToolsPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="p-0.5 rounded-sm hover:bg-[#141414] text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
+          className="p-0.5 rounded-sm hover:bg-[#1b2128] text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
           aria-label="Close perimeter tools">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div className="p-3 space-y-3 max-h-[calc(100dvh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+      <div className="p-3 space-y-3 max-h-[calc(100dvh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         {/* 1. Perimeter Check */}
         <section className="space-y-1.5">
           <div className="flex items-center gap-1.5">

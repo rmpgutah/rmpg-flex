@@ -22,28 +22,17 @@ import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
-import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { getDb } from './models/database';
-import { localNow } from './utils/timeUtils';
+import { getAppVersion } from './utils/appVersion';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Read version — prefer CHANGELOG.json (canonical), fall back to package.json
-let SERVER_VERSION = '0.0.0';
-try {
-  const changelog = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../CHANGELOG.json'), 'utf-8'));
-  SERVER_VERSION = changelog.version || '0.0.0';
-} catch {
-  try {
-    const serverPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
-    SERVER_VERSION = serverPkg.version || '0.0.0';
-  } catch { /* use default */ }
-}
+const SERVER_VERSION = getAppVersion();
 
 // Import routes
 import authRoutes from './routes/auth';
-import dispatchRoutes from './routes/dispatch/index';
+import dispatchRoutes from './routes/dispatch';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
 import personnelRoutes, { mountScheduleRoutes } from './routes/personnel';
@@ -64,11 +53,9 @@ import adminSystemsRoutes from './routes/adminSystems';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
-import serveIntakeRoutes from './routes/serveIntake';
 import microbiltRoutes from './routes/microbilt';
 import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
-import dispatchMessageRoutes from './routes/dispatchMessages';
 import trespassOrderRoutes from './routes/trespassOrders';
 import caseRoutes from './routes/cases';
 import codeEnforcementRoutes from './routes/codeEnforcement';
@@ -93,6 +80,7 @@ import crmRoutes from './routes/crm';
 import crmLeadsRoutes from './routes/crmLeads';
 import crmProposalsRoutes from './routes/crmProposals';
 import crmFirecrawlRoutes from './routes/crmFirecrawl';
+import crmCompetitorMonitorRoutes from './routes/crmCompetitorMonitor';
 import userPreferencesRoutes from './routes/userPreferences';
 import serveRoutes from './routes/serve';
 import hrRoutes from './routes/hr';
@@ -105,8 +93,6 @@ import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
 import voiceRoutes from './routes/voice';
-import dashboardStatsRoutes from './routes/dashboardStats';
-import useOfForceRoutes from './routes/useOfForce';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
@@ -115,10 +101,6 @@ import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
-
-// Production commonly runs behind nginx on a single hop, so trust that proxy
-// unless explicitly overridden via TRUST_PROXY.
-app.set('trust proxy', config.trustProxy);
 
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
@@ -358,11 +340,9 @@ app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
-app.use('/api/serve-intake', serveIntakeRoutes);
 app.use('/api/microbilt', microbiltRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
-app.use('/api/dispatch-messages', dispatchMessageRoutes);
 app.use('/api/trespass-orders', trespassOrderRoutes);
 app.use('/api/cases', caseRoutes);
 app.use('/api/code-enforcement', codeEnforcementRoutes);
@@ -387,6 +367,7 @@ app.use('/api/crm', crmRoutes);
 app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
 app.use('/api/crm', crmFirecrawlRoutes);
+app.use('/api/crm', crmCompetitorMonitorRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
 app.use('/api/hr', hrRoutes);
@@ -399,8 +380,6 @@ app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/voice', voiceRoutes);
-app.use('/api/dashboard', dashboardStatsRoutes);
-app.use('/api/use-of-force', useOfForceRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
@@ -444,31 +423,8 @@ app.use(express.static(clientDistPath, {
   maxAge: '5m',
 }));
 
-// Force-refresh page — clears SW cache and reloads the app
-const renderForceRefreshPage = (_req: express.Request, res: express.Response) => {
-  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.send(`<!DOCTYPE html><html><head><title>RMPG Flex — Refreshing...</title>
-<style>body{background:#0a0a0a;color:#d4a017;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column}
-h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head><body>
-<h1>Clearing cache...</h1><p>Please wait — the app will reload automatically.</p>
-<script>
-(async()=>{
-  if('serviceWorker' in navigator){
-    const regs=await navigator.serviceWorker.getRegistrations();
-    for(const r of regs) await r.unregister();
-  }
-  const keys=await caches.keys();
-  for(const k of keys) await caches.delete(k);
-  setTimeout(()=>{ window.location.href='/'; },1500);
-})();
-</script></body></html>`);
-};
-app.get('/force-refresh', renderForceRefreshPage);
-app.get('/clear-cache', renderForceRefreshPage);
-
-// Express 5 requires named wildcards; this variant still matches `/`.
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('{*path}', (req, res) => {
+app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {
@@ -489,32 +445,8 @@ app.get('{*path}', (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Log with request context for debugging
   const requestId = req.headers['x-request-id'] || 'unknown';
-
-  // Handle multer errors with appropriate status codes
-  if (err?.name === 'MulterError') {
-    const multerStatus: Record<string, number> = {
-      LIMIT_FILE_SIZE: 413, LIMIT_FILE_COUNT: 400, LIMIT_FIELD_KEY: 400,
-      LIMIT_FIELD_VALUE: 400, LIMIT_FIELD_COUNT: 400, LIMIT_UNEXPECTED_FILE: 400,
-      LIMIT_PART_COUNT: 400,
-    };
-    const status = multerStatus[err.code] || 400;
-    console.warn(`Multer rejection [${requestId}] ${req.method} ${req.path}: ${err.code} — ${err.message}`);
-    if (!res.headersSent) {
-      return res.status(status).json({ error: `Upload rejected: ${err.message}` });
-    }
-    return;
-  }
-
-  // Handle multer fileFilter errors (thrown as generic Error)
-  if (err?.message && /file type|not allowed|only.*files/i.test(err.message)) {
-    console.warn(`Upload filter [${requestId}] ${req.method} ${req.path}: ${err.message}`);
-    if (!res.headersSent) {
-      return res.status(415).json({ error: err.message });
-    }
-    return;
-  }
-
   console.error(`Unhandled Express error [${requestId}] ${req.method} ${req.path}:`, err?.message || err, err?.stack || '');
   if (!res.headersSent) {
     const status = err?.status || err?.statusCode || 500;
@@ -645,32 +577,16 @@ try {
     console.log('');
 
     // Start patrol monitor for missed scan alerts
-    try {
-      startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
-    } catch (err: any) {
-      console.warn('[Patrol Monitor] Failed to start scheduler:', err?.message || err);
-    }
+    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
 
     // Start midnight daily patrol report scheduler
-    try {
-      startDailyReportScheduler();
-    } catch (err: any) {
-      console.warn('[Daily Report] Failed to start scheduler:', err?.message || err);
-    }
+    startDailyReportScheduler();
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    try {
-      scheduleOfacSync();
-    } catch (err: any) {
-      console.warn('[OFAC Sync] Failed to start scheduler:', err?.message || err);
-    }
+    scheduleOfacSync();
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
-    try {
-      startHealthChecker();
-    } catch (err: any) {
-      console.warn('[Health Checker] Failed to start scheduler:', err?.message || err);
-    }
+    startHealthChecker();
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {
@@ -685,13 +601,6 @@ try {
       console.log('[Arrests] Auto-sync scheduler started');
     } catch (err: any) {
       console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
-    }
-
-    // Start multi-state warrant scraper (polls configured sources on schedule)
-    try {
-      scheduleWarrantScraper();
-    } catch (err: any) {
-      console.warn('[Warrant Scraper] Failed to start scheduler:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
@@ -719,7 +628,7 @@ try {
         if (unchecked.length > 0) {
           console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
           let matches = 0;
-          const now = localNow();
+          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
           for (const p of unchecked) {
             try {
               const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });

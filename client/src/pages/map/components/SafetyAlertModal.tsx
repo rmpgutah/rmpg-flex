@@ -82,7 +82,7 @@ const ALERT_TYPES: AlertTypeDef[] = [
     label: 'Pursuit',
     icon: <Car size={16} />,
     color: '#888888',
-    bgColor: 'rgba(136,136,136,0.15)',
+    bgColor: 'rgba(59,130,246,0.15)',
   },
   {
     type: 'hostage',
@@ -110,7 +110,7 @@ const ALERT_TYPES: AlertTypeDef[] = [
     label: 'HAZMAT',
     icon: <Biohazard size={16} />,
     color: '#888888',
-    bgColor: 'rgba(136,136,136,0.15)',
+    bgColor: 'rgba(59,130,246,0.15)',
   },
   {
     type: 'missing_officer',
@@ -197,14 +197,14 @@ export default function SafetyAlertModal({
           width: 420,
           maxWidth: '95vw',
           maxHeight: '90vh',
-          border: '1px solid #222222',
+          border: '1px solid #1e2a3a',
           borderTop: `3px solid ${selectedType ? (ALERT_TYPES.find(a => a.type === selectedType)?.color ?? '#ef4444') : '#ef4444'}`,
         }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 shrink-0"
-          style={{ background: '#050505', borderBottom: '1px solid #222222' }}
+          style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
         >
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-red-500" />
@@ -219,7 +219,7 @@ export default function SafetyAlertModal({
 
         {/* Body */}
         <div
-          className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
+          className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent"
           style={{ scrollbarWidth: 'thin' }}
         >
           {/* Alert type grid */}
@@ -272,7 +272,7 @@ export default function SafetyAlertModal({
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
                   style={{
                     background: '#050505',
-                    border: '1px solid #222222',
+                    border: '1px solid #1e2a3a',
                   }}
                   placeholder="40.7608"
                 />
@@ -290,7 +290,7 @@ export default function SafetyAlertModal({
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
                   style={{
                     background: '#050505',
-                    border: '1px solid #222222',
+                    border: '1px solid #1e2a3a',
                   }}
                   placeholder="-111.891"
                 />
@@ -311,7 +311,7 @@ export default function SafetyAlertModal({
               className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 resize-none"
               style={{
                 background: '#050505',
-                border: '1px solid #222222',
+                border: '1px solid #1e2a3a',
               }}
               placeholder="Describe the situation..."
             />
@@ -329,12 +329,12 @@ export default function SafetyAlertModal({
                   onClick={() => setRadius(r)}
                   className="flex-1 rounded-sm py-1.5 text-xs font-semibold transition-all duration-150 active:scale-[0.97]"
                   style={{
-                    background: radius === r ? 'rgba(136,136,136,0.2)' : '#050505',
+                    background: radius === r ? 'rgba(59,130,246,0.2)' : '#050505',
                     border: `1px solid ${radius === r ? '#888888' : '#1e1e1e'}`,
                     color: radius === r ? '#aaaaaa' : '#666666',
                   }}
                 >
-                  {r >= 1609 ? `${(r / 1609.34).toFixed(1)}mi` : `${r}m`}
+                  {r >= 1000 ? `${r / 1000}km` : `${r}m`}
                 </button>
               ))}
             </div>
@@ -352,7 +352,7 @@ export default function SafetyAlertModal({
         {/* Footer */}
         <div
           className="flex items-center justify-end gap-2 px-4 py-3 shrink-0"
-          style={{ borderTop: '1px solid #222222', background: '#050505' }}
+          style={{ borderTop: '1px solid #1e2a3a', background: '#050505' }}
         >
           <button type="button"
             onClick={onClose}

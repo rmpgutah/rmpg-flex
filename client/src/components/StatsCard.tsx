@@ -57,7 +57,7 @@ export default function StatsCard({
 }: StatsCardProps) {
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
 
-  const accentHex: Record<string, string> = { blue: '#888888', red: '#dc2626', green: '#22c55e', amber: '#f59e0b', purple: '#a855f7' };
+  const accentHex: Record<string, string> = { blue: '#9a9a9a', red: '#dc2626', green: '#22c55e', amber: '#f59e0b', purple: '#a855f7' };
   const glowHex = accentHex[accent] || accentHex.blue;
 
   return (
@@ -73,7 +73,7 @@ export default function StatsCard({
         ${onClick ? 'cursor-pointer hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.99]' : ''}
         ${className}
       `}
-      style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
+      style={{ background: 'linear-gradient(180deg, #090909 0%, #050505 100%)' }}
     >
       {/* Top accent glow line */}
       <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${glowHex}40, transparent)` }} />
@@ -89,14 +89,14 @@ export default function StatsCard({
               {value}
             </p>
           </div>
-          <div className="p-1.5 panel-inset" style={{ background: `${glowHex}15`, border: `1px solid ${glowHex}30` }}>
+          <div className="p-1.5 panel-inset" style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${glowHex}22` }}>
             <Icon className="w-5 h-5" style={{ color: glowHex }} aria-hidden="true" />
           </div>
         </div>
 
         {(trend != null || (trendValue != null && trendValue !== '')) && (
           <div className={`flex items-center gap-1.5 mt-2.5 pt-1.5 ${TREND_COLOR_MAP[trendColor]}`}
-            style={{ borderTop: '1px solid #22222240' }}>
+            style={{ borderTop: '1px solid rgba(74,74,74,0.35)' }}>
             <span className="text-[9px]">&mdash;</span>
             {trendValue && <span className="text-[10px] font-medium tabular-nums">{trendValue}</span>}
           </div>

@@ -207,7 +207,7 @@ function ContactAutocompleteInput({
         className="input-dark w-full text-xs min-h-[36px]"
       />
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent py-1">
           {suggestions.map((contact, idx) => (
             <button type="button"
               key={`${contact.email}-${idx}`}
@@ -284,7 +284,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
             className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
         ))}
       </div>
-      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent py-1">
         {loading ? (
           <div className="py-4 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
         ) : filtered.length === 0 ? (
@@ -641,29 +641,25 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 // ============================================================
 const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
   ({ bodyHtml, onLoad }, ref) => {
-    const srcdocHtml = React.useMemo(() => {
-      // Sanitize: strip <script> tags + inline event handlers (keep images/styles intact)
+    const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+    React.useEffect(() => {
+      // Sanitize: strip <script> tags + inline event handlers
       const sanitized = bodyHtml
-        .replace(/<script[\s\S]*?<\/script\s*>/gi, '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
         .replace(/\bon\w+\s*=/gi, 'data-blocked=');
-      return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #050505; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #999999; } img { max-width: 100%; height: auto; display: inline-block; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #222222; margin: 8px 0; padding: 4px 12px; color: #999999; }
-        pre { background: #0a0a0a; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #222222; margin: 16px 0; }
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none';"><style>
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0f13; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #3b82f6; text-decoration: underline; } a:hover { color: #60a5fa; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b313a; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
+        pre { background: #161b21; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b313a; margin: 16px 0; }
       </style></head><body>${sanitized}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+      return () => URL.revokeObjectURL(url);
     }, [bodyHtml]);
-    return (
-      <iframe
-        ref={ref}
-        srcDoc={srcdocHtml}
-        sandbox="allow-same-origin allow-popups"
-        onLoad={onLoad}
-        className="w-full border-0"
-        style={{ minHeight: 200 }}
-        title="Email body"
-      />
-    );
+    if (!blobUrl) return null;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
   }
 );
 EmailBodyFrame.displayName = 'EmailBodyFrame';
@@ -1088,13 +1084,13 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-[#0a0a0a] border border-[#222222] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#0a0a0a]' : ''}`}
+        className={`bg-[#161b21] border border-[#2b313a] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#161b21]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505] rounded-t-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b313a] bg-[#0c0f13] rounded-t-sm">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
@@ -1157,7 +1153,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </div>
         </div>
 
-        <div className="border-t border-[#222222] mx-4 my-0" />
+        <div className="border-t border-[#2b313a] mx-4 my-0" />
 
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
@@ -1188,7 +1184,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         </div>
 
         {/* Body */}
-        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
           <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
             className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
             placeholder="Write your message here...
@@ -1201,7 +1197,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
 
         {/* Reply context */}
         {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#050505] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0c0f13] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <Reply className="w-3 h-3 text-brand-400" />
               <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
@@ -1228,7 +1224,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const isPdf = ext === 'pdf';
                 const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#050505] border border-[#222222] rounded-sm text-[10px] text-rmpg-300 group">
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0c0f13] border border-[#2b313a] rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
@@ -1242,7 +1238,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#222222] bg-[#050505] rounded-b-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#2b313a] bg-[#0c0f13] rounded-b-sm">
           <div className="text-[9px] text-rmpg-600">
             <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
             <span className="sm:hidden">Ctrl+Enter to send</span>
@@ -1301,7 +1297,7 @@ function MoveToFolderDropdown({ folders, currentFolder, onMove }: { folders: Ema
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-white" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
           {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
             const Icon = FOLDER_ICONS[f.displayName] || Folder;
             return (
@@ -1385,7 +1381,7 @@ function ContextMenu({
           <FolderInput className="w-3 h-3" /> Move to <ChevronRightIcon className="w-3 h-3 ml-auto" />
         </div>
         {showMoveMenu && (
-          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
             {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
               const Icon = FOLDER_ICONS[f.displayName] || Folder;
               return (
@@ -1426,9 +1422,9 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
 
   if (!expanded) {
     return (
-      <div className="border-t border-[#222222] bg-[#050505]">
+      <div className="border-t border-[#2b313a] bg-[#0c0f13]">
         <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#222222] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#2b313a] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
         </div>
@@ -1437,13 +1433,13 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   }
 
   return (
-    <div className="border-t border-[#222222] bg-[#050505]">
-      <div className="mx-4 my-3 border border-[#222222] rounded-sm bg-[#0a0a0a] overflow-hidden focus-within:border-brand-500/40 transition-colors">
+    <div className="border-t border-[#2b313a] bg-[#0c0f13]">
+      <div className="mx-4 my-3 border border-[#2b313a] rounded-sm bg-[#161b21] overflow-hidden focus-within:border-brand-500/40 transition-colors">
         <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
-        <div className="flex items-center justify-between px-3 py-2 bg-[#050505]/50">
+        <div className="flex items-center justify-between px-3 py-2 bg-[#0c0f13]/50">
           <span className="text-[9px] text-rmpg-600 font-mono">Ctrl+Enter to send &middot; Esc to cancel</span>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
@@ -1633,47 +1629,10 @@ export default function EmailPage() {
     setLoadingMessage(true);
     try {
       const msg = await apiFetch<EmailMessage>(`/email/messages/${id}`);
-      let atts: EmailAttachment[] = [];
-      try { atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); } catch { /* no attachments */ }
-      setAttachments(atts);
-
-      // Resolve cid: inline image references → data URLs
-      let resolvedHtml = msg.bodyHtml || '';
-      if (resolvedHtml && atts.length > 0) {
-        const inlineAtts = atts.filter(a => a.isInline && a.contentId && a.contentType?.startsWith('image/'));
-        if (inlineAtts.length > 0) {
-          const token = localStorage.getItem('rmpg_token');
-          const authHeader = token ? `Bearer ${token}` : '';
-          const cidReplacements = await Promise.allSettled(
-            inlineAtts.map(async (att) => {
-              try {
-                const res = await fetch(`/api/email/messages/${id}/attachments/${att.id}`, {
-                  headers: authHeader ? { Authorization: authHeader } : {},
-                });
-                if (!res.ok) return null;
-                const blob = await res.blob();
-                return new Promise<{ cid: string; dataUrl: string } | null>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve({ cid: att.contentId!, dataUrl: reader.result as string });
-                  reader.onerror = () => resolve(null);
-                  reader.readAsDataURL(blob);
-                });
-              } catch { return null; }
-            })
-          );
-          for (const result of cidReplacements) {
-            if (result.status === 'fulfilled' && result.value) {
-              const { cid, dataUrl } = result.value;
-              // Replace all cid: variations (with or without angle brackets, URL-encoded)
-              resolvedHtml = resolvedHtml
-                .replace(new RegExp(`src=["']cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`)
-                .replace(new RegExp(`src=["']cid:${cid.replace(/@.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`);
-            }
-          }
-        }
-      }
-      setFullMessage({ ...msg, bodyHtml: resolvedHtml });
+      setFullMessage(msg);
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
+      try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
+      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 
@@ -2104,7 +2063,7 @@ export default function EmailPage() {
         )}
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent py-1">
           {topLevelFolders.map(f => renderFolderItem(f))}
         </div>
 
@@ -2196,7 +2155,7 @@ export default function EmailPage() {
           <select
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-[#050505] border border-[#222222] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-[#0c0f13] border border-[#2b313a] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);
@@ -2304,7 +2263,7 @@ export default function EmailPage() {
         )}
 
         {/* Message List (threaded) */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
           {loading && messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
           ) : messages.length === 0 ? (
@@ -2542,7 +2501,7 @@ export default function EmailPage() {
             </div>
 
             {/* Message Body */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
               {loadingMessage ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (

@@ -14,6 +14,16 @@ import { generateShiftSummary } from '../utils/shiftBriefing';
 const router = Router();
 router.use(authenticateToken);
 
+const NON_WARNING_PLACEHOLDERS = new Set(['', '0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified']);
+
+function getMeaningfulWarningValue(value: unknown): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  if (NON_WARNING_PLACEHOLDERS.has(normalized.toLowerCase())) return null;
+  return normalized;
+}
+
 // ─── Multer for audio upload (max 5MB) ───────────────
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -564,7 +574,8 @@ async function executeCommand(
         const flags: string[] = [];
         if (p.has_criminal_history) flags.push('criminal history');
         if (p.is_sex_offender) flags.push('registered sex offender');
-        if (p.gang_affiliation) flags.push(`gang affiliation: ${p.gang_affiliation}`);
+        const gangAffiliation = getMeaningfulWarningValue(p.gang_affiliation);
+        if (gangAffiliation) flags.push(`gang affiliation: ${gangAffiliation}`);
         if (p.caution_flags) flags.push(`caution: ${p.caution_flags}`);
         parts.push(`${p.first_name} ${p.last_name}${p.dob ? `, DOB ${p.dob}` : ''}.`);
         if (flags.length > 0) parts.push(`Flags: ${flags.join(', ')}.`);

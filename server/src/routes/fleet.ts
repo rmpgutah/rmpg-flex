@@ -930,6 +930,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       ...created,
       equipment: safeParseJson(created.equipment, []),
     });
+    broadcastFleetUpdate({ action: 'vehicle_created', vehicle_id: created.id });
   } catch (error: any) {
     console.error('Error creating fleet vehicle:', error);
     res.status(500).json({ error: 'Failed to create fleet vehicle', code: 'FAILED_TO_CREATE_FLEET' });
@@ -1036,6 +1037,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       ...updated,
       equipment: safeParseJson(updated.equipment, []),
     });
+    broadcastFleetUpdate({ action: 'vehicle_updated', vehicle_id: Number(id) });
   } catch (error: any) {
     console.error('Error updating fleet vehicle:', error);
     res.status(500).json({ error: 'Failed to update fleet vehicle', code: 'FAILED_TO_UPDATE_FLEET' });
@@ -1166,6 +1168,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
         req.user!.userId, vehicle.id, `Deleted fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
     });
     delTx();
+    broadcastFleetUpdate({ action: 'vehicle_deleted', vehicle_id: Number(req.params.id) });
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fleet vehicle error:', error);

@@ -197,7 +197,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.line(0, footerY, pageW, footerY);
     doc.setTextColor(...COLOR.TEXT_MUTED);
     doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.text(sanitizePdfText(`${formNum}  |  INTERNAL USE ONLY  |  Page ${pageNum} of ${totalPages}`), margin, footerY + footerH / 2 + 0.5);
     doc.text(sanitizePdfText(`GENERATED: ${reportDate.toUpperCase()}`), pageW - margin, footerY + footerH / 2 + 0.5, { align: 'right' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -356,7 +356,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.text(sanitizePdfText(`${trail.call_sign}  --  ${trail.officer_name}  (BADGE: ${trail.badge_number || 'N/A'})`).toUpperCase(), margin + 5, yPos + 4.2);
     yPos += 8;
 

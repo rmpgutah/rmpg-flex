@@ -156,11 +156,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" role="group" aria-label="Training compliance overview">
         <div className="panel-beveled p-3 flex items-center gap-3">
-          <div className="w-8 h-8 flex items-center justify-center bg-gray-900/30 border border-gray-700/40 shrink-0" aria-hidden="true">
-            <GraduationCap style={{ width: 14, height: 14 }} className="text-gray-400" />
+          <div className="w-8 h-8 flex items-center justify-center bg-blue-900/30 border border-blue-700/40 shrink-0" aria-hidden="true">
+            <GraduationCap style={{ width: 14, height: 14 }} className="text-blue-400" />
           </div>
           <div>
-            <div className="text-[18px] font-black text-gray-400 tabular-nums leading-tight">{stats.total_officers}</div>
+            <div className="text-[18px] font-black text-blue-400 tabular-nums leading-tight">{stats.total_officers}</div>
             <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Total Officers</div>
           </div>
         </div>
@@ -196,7 +196,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
 
       {/* Category Compliance Bars */}
-      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#181818] pb-1.5">
+      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#242a32] pb-1.5">
         <GraduationCap style={{ width: 10, height: 10 }} />
         Compliance by Category
       </div>

@@ -616,7 +616,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     <tr
                       key={job.id}
                       onClick={() => handleViewJob(job.id)}
-                      className="border-b border-rmpg-800 hover:bg-[#141414]/60 cursor-pointer transition-all duration-100"
+                      className="border-b border-rmpg-800 hover:bg-[#1b2128]/60 cursor-pointer transition-all duration-100"
                     >
                       <td className="py-1 pr-2 font-mono text-brand-400">{job.sm_job_number}</td>
                       <td className="py-1 pr-2 text-rmpg-200 max-w-[120px] truncate">{job.recipient_name || '—'}</td>

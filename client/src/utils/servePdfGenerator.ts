@@ -22,6 +22,7 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
+  formSectionPageBreak,
   sanitizePdfText,
 } from './pdfGenerator';
 import {

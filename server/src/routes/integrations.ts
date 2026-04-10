@@ -92,6 +92,18 @@ function getStats(db: any, queries: { [key: string]: string }): Record<string, n
   return stats;
 }
 
+function getIntegrationConfigValue(db: any, key: string): string | null {
+  const row = db.prepare(
+    "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
+  ).get(key) as { config_value?: string } | undefined;
+  if (!row?.config_value) return null;
+  try {
+    return decryptApiKey(row.config_value);
+  } catch {
+    return row.config_value;
+  }
+}
+
 function getHealth(db: any, integrationId: string, configured: boolean): {
   health: string; lastHealthCheck: string | null; lastError: string | null;
   uptimePercent: number | null; connected: boolean;
@@ -158,6 +170,35 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
   } catch (error: any) {
     console.error('Integration status error:', error);
     res.status(500).json({ error: 'Failed to fetch integration status', code: 'FAILED_TO_FETCH_INTEGRATION' });
+  }
+});
+
+// GET /api/integrations/google-maps/client-key
+// Exposes the browser-safe Maps JS key to authenticated app users so
+// live production maps do not depend on a build-time Vite env var.
+router.get('/google-maps/client-key', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const envKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
+    const storedKey =
+      getIntegrationConfigValue(db, 'google_maps_api_key')
+      || getIntegrationConfigValue(db, 'google_maps_browser_key')
+      || null;
+
+    const apiKey = envKey || storedKey || '';
+
+    res.json({
+      configured: apiKey.length > 0,
+      apiKey: apiKey || undefined,
+      source: envKey ? 'env' : storedKey ? 'system_config' : 'missing',
+    });
+  } catch (error: any) {
+    console.error('Google Maps key fetch error:', error);
+    res.status(500).json({
+      configured: false,
+      error: 'Failed to fetch Google Maps key',
+      code: 'FAILED_TO_FETCH_GOOGLE_MAPS_KEY',
+    });
   }
 });
 

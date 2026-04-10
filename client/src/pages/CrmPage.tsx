@@ -97,31 +97,31 @@ function priorityColor(p: string): string {
   switch (p) {
     case 'urgent': return 'text-red-400 bg-red-900/30 border-red-700/50';
     case 'high': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'normal': return 'text-gray-400 bg-gray-900/30 border-gray-700/50';
-    case 'low': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
-    default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'normal': return 'text-rmpg-200 bg-rmpg-700/20 border-rmpg-600/60';
+    case 'low': return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
+    default: return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
   }
 }
 
 function statusColor(s: string): string {
   switch (s) {
     case 'pending': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'in_progress': return 'text-gray-400 bg-gray-900/30 border-gray-700/50';
+    case 'in_progress': return 'text-rmpg-200 bg-rmpg-700/20 border-rmpg-600/60';
     case 'completed': return 'text-green-400 bg-green-900/30 border-green-700/50';
-    case 'cancelled': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
-    default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'cancelled': return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
+    default: return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
   }
 }
 
 function invoiceStatusColor(s: string): string {
   switch (s) {
     case 'paid': return 'text-green-400 bg-green-900/30 border-green-700/50';
-    case 'sent': return 'text-gray-400 bg-gray-900/30 border-gray-700/50';
+    case 'sent': return 'text-rmpg-200 bg-rmpg-700/20 border-rmpg-600/60';
     case 'overdue': return 'text-red-400 bg-red-900/30 border-red-700/50';
     case 'partial': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'draft': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
-    case 'void': case 'cancelled': return 'text-rmpg-500 bg-rmpg-900/30 border-rmpg-700/50';
-    default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'draft': return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'void': case 'cancelled': return 'text-rmpg-400 bg-rmpg-900/30 border-rmpg-700/50';
+    default: return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
   }
 }
 
@@ -646,7 +646,7 @@ export default function CrmPage() {
 
   function renderDashboard() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
           <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
@@ -663,7 +663,7 @@ export default function CrmPage() {
               <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
               <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
               <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
-              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-gray-400" />
+              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-blue-400" />
             </div>
 
             {/* Feature 15: Revenue Forecast */}
@@ -691,7 +691,7 @@ export default function CrmPage() {
                 </div>
                 <div className="flex gap-1">
                   {(pipelineSummary.stages || []).map((s: any) => {
-                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-gray-700', qualified: 'bg-cyan-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
+                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-blue-700', qualified: 'bg-cyan-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
                     return (
                       <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
                         <div className="text-sm font-bold text-white font-mono tabular-nums">{s.count}</div>
@@ -744,9 +744,9 @@ export default function CrmPage() {
                   )}
                   {(followUps.upcoming?.length || 0) > 0 && (
                     <div>
-                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
+                      <div className="text-[9px] text-blue-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
                       {followUps.upcoming.slice(0, 3).map((l: any) => (
-                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-gray-300">
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-blue-300">
                           <span className="flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">{l.next_follow_up}</span>
                         </div>
@@ -792,7 +792,7 @@ export default function CrmPage() {
                 {expiringContracts.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No contracts expiring soon</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
                     {expiringContracts.map((c: any) => (
                       <div key={c.id} className="flex items-center justify-between text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div>
@@ -812,13 +812,13 @@ export default function CrmPage() {
               {/* Recent Activity */}
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-3.5 h-3.5 text-gray-400" />
+                  <Activity className="w-3.5 h-3.5 text-blue-400" />
                   <span className="text-xs font-bold text-white">Recent Activity</span>
                 </div>
                 {recentActivity.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No recent activity</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
                     {recentActivity.slice(0, 10).map((a: any) => (
                       <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div className="flex items-center justify-between">
@@ -828,7 +828,7 @@ export default function CrmPage() {
                         <div className="text-rmpg-300 mt-0.5">
                           <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                             a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                            a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
+                            a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
                             'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                           }`}>{toDisplayLabel(a.activity_type)}</span>
                           {a.subject && <span className="ml-1.5">{a.subject}</span>}
@@ -856,7 +856,7 @@ export default function CrmPage() {
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
             {filteredClients.length === 0 && !isLoading && (
               <div className="text-center py-12 text-rmpg-500">
                 <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
@@ -886,7 +886,7 @@ export default function CrmPage() {
         </div>
 
         {/* Client Detail */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
           {selectedClient ? (
             <div>
               <div className="panel-title-bar flex items-center justify-between">
@@ -958,11 +958,11 @@ export default function CrmPage() {
                   {clientActivity.length === 0 ? (
                     <p className="text-xs text-rmpg-400">No activity recorded</p>
                   ) : (
-                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
                       <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
                       {clientActivity.map((a: any) => {
                         const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
-                          a.activity_type === 'email' ? 'bg-gray-500' :
+                          a.activity_type === 'email' ? 'bg-blue-500' :
                           a.activity_type === 'meeting' ? 'bg-purple-500' :
                           a.activity_type === 'invoice' ? 'bg-amber-500' :
                           a.activity_type === 'contract_change' ? 'bg-cyan-500' : 'bg-rmpg-500';
@@ -973,7 +973,7 @@ export default function CrmPage() {
                               <div className="flex items-center justify-between">
                                 <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                                   a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                                  a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
+                                  a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
                                   a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
                                   'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                                 }`}>{toDisplayLabel(a.activity_type)}</span>
@@ -1011,7 +1011,7 @@ export default function CrmPage() {
 
   function renderProperties() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
           <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
@@ -1050,7 +1050,7 @@ export default function CrmPage() {
 
   function renderContacts() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         <PanelTitleBar title="CONTACTS" icon={Users}>
           <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
           <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
@@ -1065,7 +1065,7 @@ export default function CrmPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 z-10 bg-[#050505]">
+                <thead className="sticky top-0 z-10 bg-[#0c0f13]">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Name</th>
                     <th className="p-2 font-medium">Client</th>
@@ -1077,7 +1077,7 @@ export default function CrmPage() {
                 </thead>
                 <tbody>
                   {contacts.map((c: any) => (
-                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-[#141414]/50 transition-colors">
+                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-[#1b2128]/50 transition-colors">
                       <td className="p-2 text-rmpg-200">{c.first_name} {c.last_name}</td>
                       <td className="p-2 text-brand-400">{c.client_name}</td>
                       <td className="p-2">
@@ -1103,7 +1103,7 @@ export default function CrmPage() {
 
   function renderInvoices() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         <PanelTitleBar title="INVOICES" icon={FileText}>
           <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
@@ -1120,7 +1120,7 @@ export default function CrmPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 z-10 bg-[#050505]">
+                <thead className="sticky top-0 z-10 bg-[#0c0f13]">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Invoice #</th>
                     <th className="p-2 font-medium">Client</th>
@@ -1133,7 +1133,7 @@ export default function CrmPage() {
                 </thead>
                 <tbody>
                   {filteredInvoices.map((inv: any) => (
-                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-[#141414]/50 transition-colors">
+                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-[#1b2128]/50 transition-colors">
                       <td className="p-2 text-green-400 font-mono">{inv.invoice_number}</td>
                       <td className="p-2 text-rmpg-200">{inv.client_name || '—'}</td>
                       <td className="p-2">
@@ -1160,7 +1160,7 @@ export default function CrmPage() {
 
   function renderTasks() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
           <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>

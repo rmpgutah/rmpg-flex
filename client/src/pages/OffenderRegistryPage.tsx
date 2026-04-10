@@ -18,6 +18,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -31,7 +32,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   danger: 'bg-red-900/60 text-red-300 border-red-600/50',
   warning: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   caution: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
-  info: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  info: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -39,7 +40,7 @@ const TYPE_COLORS: Record<string, string> = {
   watch_list: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   sex_offender: 'bg-purple-900/60 text-purple-300 border-purple-600/50',
   gang_member: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
-  probation: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  probation: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
   parole: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
   mental_health: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   violent_history: 'bg-red-900/70 text-red-300 border-red-600/50',
@@ -128,7 +129,7 @@ function CdocSearchPanel() {
                   <span className={`inline-block mt-1 text-[9px] px-1.5 py-0.5 font-bold border ${
                     selectedOffender.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                    'bg-gray-900/40 text-gray-400 border-gray-700/40'
+                    'bg-blue-900/40 text-blue-400 border-blue-700/40'
                   }`}>
                     {selectedOffender.status.toUpperCase()}
                   </span>
@@ -223,6 +224,7 @@ export default function OffenderRegistryPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
+  const [staticMapApiKey, setStaticMapApiKey] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -296,6 +298,20 @@ export default function OffenderRegistryPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useLiveSync('records', () => { fetchAlerts({ silent: true }); fetchStats(); });
 
+  useEffect(() => {
+    let cancelled = false;
+    getGoogleMapsApiKey()
+      .then((apiKey) => {
+        if (!cancelled) setStaticMapApiKey(apiKey);
+      })
+      .catch(() => {
+        if (!cancelled) setStaticMapApiKey('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Person search debounce
   useEffect(() => {
     if (personSearch.length < 2) { setPersonResults([]); return; }
@@ -341,7 +357,7 @@ export default function OffenderRegistryPage() {
     switch (severity) {
       case 'danger': return <ShieldAlert style={{ width: 14, height: 14 }} className="text-red-400" />;
       case 'warning': return <AlertTriangle style={{ width: 14, height: 14 }} className="text-amber-400" />;
-      default: return <Shield style={{ width: 14, height: 14 }} className="text-gray-400" />;
+      default: return <Shield style={{ width: 14, height: 14 }} className="text-blue-400" />;
     }
   };
 
@@ -383,7 +399,7 @@ export default function OffenderRegistryPage() {
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">PERSONS</div>
-              <div className="text-sm font-bold text-gray-400">{stats.total_persons || 0}</div>
+              <div className="text-sm font-bold text-blue-400">{stats.total_persons || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">DANGER</div>
@@ -513,13 +529,15 @@ export default function OffenderRegistryPage() {
                     <MapPin size={10} className="text-red-400" />
                     Registered Address / Ban Zone
                   </div>
-                  <div className="h-40 bg-[#050505] relative">
-                    <img
-                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&style=feature:all|element:geometry|color:0x242f3e&style=feature:all|element:labels.text.fill|color:0x746855`}
-                      alt="Ban zone map"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
+                  <div className="h-40 bg-[#0c0f13] relative">
+                    {staticMapApiKey ? (
+                      <img
+                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${staticMapApiKey}&style=feature:all|element:geometry|color:0x121212&style=feature:all|element:labels.text.fill|color:0x8a8a8a`}
+                        alt="Ban zone map"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    ) : null}
                     {selected.restriction_radius_ft && (
                       <div className="absolute bottom-2 left-2 px-2 py-1 bg-red-900/80 text-red-300 text-[9px] font-bold border border-red-700/50">
                         <Ban size={10} className="inline mr-1" />
@@ -528,7 +546,7 @@ export default function OffenderRegistryPage() {
                     )}
                   </div>
                   {selected.location_address && (
-                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#222222]">
+                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#2b313a]">
                       <MapPin size={10} className="text-rmpg-500" />
                       {selected.location_address}
                     </div>

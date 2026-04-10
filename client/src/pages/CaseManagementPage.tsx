@@ -6,11 +6,10 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link, ExternalLink,
+  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -25,7 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
-  { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
+  { value: 'open', label: 'Open', color: 'bg-blue-900/50 text-blue-400 border-blue-700/50' },
   { value: 'assigned', label: 'Assigned', color: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50' },
   { value: 'active', label: 'Active', color: 'bg-green-900/50 text-green-400 border-green-700/50' },
   { value: 'suspended', label: 'Suspended', color: 'bg-amber-900/50 text-amber-400 border-amber-700/50' },
@@ -50,7 +49,7 @@ const TYPE_OPTIONS: { value: CaseType; label: string }[] = [
 
 const PRIORITY_OPTIONS: { value: CasePriority; label: string; color: string }[] = [
   { value: 'low', label: 'Low', color: 'text-rmpg-400' },
-  { value: 'normal', label: 'Normal', color: 'text-gray-400' },
+  { value: 'normal', label: 'Normal', color: 'text-blue-400' },
   { value: 'high', label: 'High', color: 'text-amber-400' },
   { value: 'critical', label: 'Critical', color: 'text-red-400' },
 ];
@@ -90,7 +89,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
 
 // ── Reusable LinkedEntityPanel for each entity tab ──
 function LinkedEntityPanel({
-  items, columns, entityType, caseId, onRefresh, searchEndpoint, searchFields, onNavigate,
+  items, columns, entityType, caseId, onRefresh, searchEndpoint, searchFields,
 }: {
   items: any[];
   columns: { key: string; label: string; render?: (val: any, row: any) => React.ReactNode }[];
@@ -99,7 +98,6 @@ function LinkedEntityPanel({
   onRefresh: () => void;
   searchEndpoint: string;
   searchFields: string[];
-  onNavigate?: (item: any) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -164,19 +162,14 @@ function LinkedEntityPanel({
             </thead>
             <tbody>
               {items.map((item: any, idx: number) => (
-                <tr key={item.id || idx} className={`border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors ${onNavigate ? 'cursor-pointer' : ''}`} onClick={() => onNavigate?.(item)}>
+                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
                   {columns.map(col => (
                     <td key={col.key} className="px-2 py-1.5 text-rmpg-300">
                       {col.render ? col.render(item[col.key], item) : (item[col.key] ?? '—')}
                     </td>
                   ))}
-                  <td className="px-2 py-1.5 text-right flex items-center justify-end gap-2">
-                    {onNavigate && (
-                      <button type="button" onClick={(e) => { e.stopPropagation(); onNavigate(item); }} className="text-brand-300 hover:text-brand-200 text-[9px] font-mono uppercase flex items-center gap-0.5">
-                        <ExternalLink style={{ width: 9, height: 9 }} /> View
-                      </button>
-                    )}
-                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUnlink(item.id); }} className="text-red-400 hover:text-red-300 text-[9px] font-mono uppercase">
+                  <td className="px-2 py-1.5 text-right">
+                    <button type="button" onClick={() => handleUnlink(item.id)} className="text-red-400 hover:text-red-300 text-[9px] font-mono uppercase">
                       Unlink
                     </button>
                   </td>
@@ -207,7 +200,7 @@ function LinkedEntityPanel({
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent space-y-1">
                 {searchResults.map((item: any) => (
                   <button type="button" key={item.id} onClick={() => handleLink(item.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
@@ -371,7 +364,6 @@ const timeAgo = (date: string): string => {
 
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
-  const navigate = useNavigate();
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
@@ -686,7 +678,7 @@ export default function CaseManagementPage() {
         </div>
 
         {/* Case List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
           ) : cases.length === 0 ? (
@@ -744,7 +736,7 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
 
             {/* Tabs */}
-            <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+            <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
               {DETAIL_TABS.map(tab => {
                 const count = tab.countKey && caseFull?.counts ? (caseFull.counts as any)[tab.countKey] : undefined;
                 return (
@@ -764,7 +756,7 @@ export default function CaseManagementPage() {
               })}
             </div>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4">
               {detailTab === 'overview' && (
                 <div className="space-y-4">
                   {/* Status + Priority badges */}
@@ -942,7 +934,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/dispatch/calls"
                   searchFields={['call_number', 'incident_type', 'location_address']}
-                  onNavigate={(item) => navigate(`/dispatch?callId=${item.id}`)}
                 />
               )}
 
@@ -961,7 +952,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/incidents"
                   searchFields={['incident_number', 'incident_type', 'location']}
-                  onNavigate={(item) => navigate(`/incidents?id=${item.id}`)}
                 />
               )}
 
@@ -979,7 +969,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/persons"
                   searchFields={['last_name', 'first_name', 'date_of_birth']}
-                  onNavigate={(item) => navigate(`/records?tab=persons&personId=${item.id}`)}
                 />
               )}
 
@@ -999,7 +988,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/vehicles"
                   searchFields={['plate_number', 'make', 'model', 'color']}
-                  onNavigate={(item) => navigate(`/records?tab=vehicles&vehicleId=${item.id}`)}
                 />
               )}
 
@@ -1018,7 +1006,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/properties"
                   searchFields={['description', 'serial_number', 'property_type']}
-                  onNavigate={(item) => navigate(`/records?tab=properties&propertyId=${item.id}`)}
                 />
               )}
 
@@ -1037,7 +1024,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/evidence"
                   searchFields={['evidence_number', 'description', 'evidence_type']}
-                  onNavigate={(item) => navigate(`/evidence?id=${item.id}`)}
                 />
               )}
 
@@ -1056,7 +1042,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/warrants"
                   searchFields={['warrant_number', 'subject_name', 'warrant_type']}
-                  onNavigate={(item) => navigate(`/warrants?id=${item.id}`)}
                 />
               )}
 
@@ -1075,7 +1060,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/citations"
                   searchFields={['citation_number', 'violation', 'violator_name']}
-                  onNavigate={(item) => navigate(`/citations?id=${item.id}`)}
                 />
               )}
 
@@ -1238,7 +1222,7 @@ export default function CaseManagementPage() {
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent space-y-1">
                 {personResults.map((p: any) => (
                   <button type="button" key={p.id} onClick={() => handleLinkPerson(p)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">

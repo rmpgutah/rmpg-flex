@@ -103,11 +103,11 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
 
       {/* Panel */}
       <div
-        className="absolute bottom-full mb-1 z-[9999] bg-[#0a0a0a] border border-[#222222] rounded-sm shadow-lg"
+        className="absolute bottom-full mb-1 z-[9999] bg-[#161b21] border border-[#2b313a] rounded-sm shadow-lg"
         style={{ width: 340, maxHeight: 300, left: 0 }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[#222222]">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b313a]">
           <span className="text-[11px] font-semibold tracking-wider text-[#8ba2b8] uppercase">
             Sync Queue
           </span>
@@ -137,7 +137,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
               No pending sync items
             </div>
           ) : (
-            <div className="divide-y divide-[#222222]">
+            <div className="divide-y divide-[#2b313a]">
               {[...pendingItems, ...failedItems].map((item) => {
                 const typeInfo = TYPE_LABELS[item.type] || { label: (item.type || 'unknown').toUpperCase(), color: '#999999' };
                 const isFailed = item.status === 'failed';

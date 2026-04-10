@@ -297,7 +297,7 @@ export default function DlSearchPage() {
     if (src === 'MICROBILT_API' || src === 'MICROBILT_DL') {
       return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50 inline-flex items-center gap-0.5"><Wifi className="w-2.5 h-2.5" />API</span>;
     }
-    return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>;
+    return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>;
   };
 
   const statusBadge = (status: string) => {
@@ -323,17 +323,17 @@ export default function DlSearchPage() {
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
       <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
-        onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="Last name" />
+        onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
-        onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="First name" />
+        onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="DL Number" value={dlNumber}
-        onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="DL number" />
-      <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)} aria-label="DL state">
+        onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
+      <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
         <option value="">State</option>
         {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
       <input className="input-dark text-[10px] w-28 min-h-[36px]" type="date" placeholder="DOB" value={dob}
-        onChange={(e) => setDob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="Date of birth" />
+        onChange={(e) => setDob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[10px]">
         {loading ? 'Searching...' : 'Search'}
       </button>
@@ -386,17 +386,17 @@ export default function DlSearchPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #222222' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b313a' }}>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
-              onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="Last name" />
+              onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="First Name" value={firstName}
-              onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="First name" />
+              onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
           </div>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="DL Number" value={dlNumber}
-              onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} aria-label="DL number" />
-            <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)} aria-label="DL state">
+              onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
+            <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
               <option value="">State</option>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -418,12 +418,12 @@ export default function DlSearchPage() {
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
               </div>
               {/* DL OCR Scanner */}
-              <div className="border border-[#222222] rounded-sm p-3 bg-[#050505] space-y-2 w-full max-w-xs">
+              <div className="border border-[#1e2d40] rounded-sm p-3 bg-[#0c0f13] space-y-2 w-full max-w-xs">
                 <div className="flex items-center gap-2">
                   <CreditCard size={14} className="text-[#d4a017]" />
                   <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
                 </div>
-                <p className="text-[10px] text-[#666666]">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
+                <p className="text-[10px] text-[#556677]">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -434,7 +434,7 @@ export default function DlSearchPage() {
                     {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                     {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
                   </button>
-                  <span className="text-[9px] text-[#666666]">JPG, PNG, or camera capture</span>
+                  <span className="text-[9px] text-[#556677]">JPG, PNG, or camera capture</span>
                 </div>
               </div>
             </div>
@@ -652,15 +652,15 @@ export default function DlSearchPage() {
       {/* DL Verification Result Panel */}
       {verifyResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222222] bg-[#050505]">
+          <div className="bg-[#161b21] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0c0f13]">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={14} className={verifyResult.verified ? 'text-green-400' : 'text-amber-400'} />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">
                   DL Verification {verifyResult.verified ? '- VERIFIED' : '- NOT VERIFIED'}
                 </span>
               </div>
-              <button type="button" onClick={() => setVerifyResult(null)} className="text-[#666666] hover:text-white">
+              <button type="button" onClick={() => setVerifyResult(null)} className="text-[#556677] hover:text-white">
                 <X size={16} />
               </button>
             </div>
@@ -690,18 +690,18 @@ export default function DlSearchPage() {
                 ['Blood Group', verifyResult.blood_group],
               ] as [string, string][]).filter(([_, val]) => val).map(([label, val]) => (
                 <div key={label} className="flex items-center gap-2 text-[11px] py-0.5">
-                  <span className="text-[#666666] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
+                  <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
                   <span className="text-white font-mono">{val}</span>
                 </div>
               ))}
               {verifyResult.photo_url && (
                 <div className="mt-2">
-                  <span className="text-[9px] text-[#666666] uppercase font-mono">Photo</span>
-                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#222222] rounded-sm" />
+                  <span className="text-[9px] text-[#556677] uppercase font-mono">Photo</span>
+                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#1e2d40] rounded-sm" />
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#222222] bg-[#050505]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0c0f13]">
               {verifyResult.verified && (
                 <button
                   type="button"
@@ -715,7 +715,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setVerifyResult(null)}
-                className="px-4 py-2 bg-[#141414] hover:bg-[#222222] border border-[#222222] rounded-sm text-[11px] text-[#999999] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#1b2128] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Close
               </button>
@@ -727,18 +727,18 @@ export default function DlSearchPage() {
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222222] bg-[#050505]">
+          <div className="bg-[#161b21] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0c0f13]">
               <div className="flex items-center gap-2">
                 <CreditCard size={14} className="text-[#d4a017]" />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">DL OCR Results</span>
               </div>
-              <button type="button" onClick={() => setShowOcrPreview(false)} className="text-[#666666] hover:text-white">
+              <button type="button" onClick={() => setShowOcrPreview(false)} className="text-[#556677] hover:text-white">
                 <X size={16} />
               </button>
             </div>
             <div className="p-4 space-y-3">
-              <div className="text-[9px] font-bold text-[#999999] uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
+              <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
               {([
                 ['First Name', ocrResult.first_name],
                 ['Middle Name', ocrResult.middle_name],
@@ -762,23 +762,23 @@ export default function DlSearchPage() {
                 ['Endorsements', ocrResult.dl_endorsements],
               ] as [string, string][]).filter(([_, val]) => val).map(([label, val]) => (
                 <div key={label} className="flex items-center gap-2 text-[11px]">
-                  <span className="text-[#666666] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
+                  <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
                   <span className="text-white font-mono">{val}</span>
                 </div>
               ))}
               {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).length > 0 && (
-                <div className="border-t border-[#222222] pt-2 mt-2">
-                  <div className="text-[8px] text-[#666666] uppercase tracking-wider mb-1">Additional Fields</div>
+                <div className="border-t border-[#1e2d40] pt-2 mt-2">
+                  <div className="text-[8px] text-[#556677] uppercase tracking-wider mb-1">Additional Fields</div>
                   {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-2 text-[10px]">
-                      <span className="text-[#666666] w-28 flex-shrink-0 font-mono uppercase text-[8px]">{k}</span>
-                      <span className="text-[#999999] font-mono">{String(v)}</span>
+                      <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[8px]">{k}</span>
+                      <span className="text-[#8899aa] font-mono">{String(v)}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#222222] bg-[#050505]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0c0f13]">
               <button
                 type="button"
                 onClick={handleCreatePersonFromOcr}
@@ -790,7 +790,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setShowOcrPreview(false)}
-                className="px-4 py-2 bg-[#141414] hover:bg-[#222222] border border-[#222222] rounded-sm text-[11px] text-[#999999] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#1b2128] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Cancel
               </button>

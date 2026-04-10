@@ -407,7 +407,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       {/* 78: Modal with deeper shadow for elevation */}
       <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">

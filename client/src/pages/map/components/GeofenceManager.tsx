@@ -23,7 +23,7 @@ interface GeofenceManagerProps {
 // ─── Zone type badge colors ─────────────────────────────────
 
 const ZONE_TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  school:     { bg: '#88888822', border: '#88888844', text: '#aaaaaa' },
+  school:     { bg: '#3b82f622', border: '#3b82f644', text: '#aaaaaa' },
   restricted: { bg: '#dc262622', border: '#dc262644', text: '#f87171' },
   custom:     { bg: '#8b5cf622', border: '#8b5cf644', text: '#a78bfa' },
   patrol:     { bg: '#22c55e22', border: '#22c55e44', text: '#4ade80' },
@@ -137,7 +137,7 @@ export default function GeofenceManager({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
+        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -149,7 +149,7 @@ export default function GeofenceManager({
         {onClose && (
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 hover:bg-[#141414] transition-colors duration-150 rounded-sm"
+            className="toolbar-btn p-1 hover:bg-[#1b2128] transition-colors duration-150 rounded-sm"
             aria-label="Close"
             title="Close"
           >
@@ -163,7 +163,7 @@ export default function GeofenceManager({
         <button type="button"
           onClick={onDraw}
           className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center hover:shadow-md transition-all duration-150 active:scale-[0.97] ${
-            drawingMode ? 'toolbar-btn-primary ring-1 ring-gray-400/40' : ''
+            drawingMode ? 'toolbar-btn-primary ring-1 ring-blue-400/40' : ''
           }`}
           aria-label={drawingMode ? 'Stop drawing' : 'Draw geofence'}
           title={drawingMode ? 'Drawing mode active — click map to add vertices, double-click to finish' : 'Draw a new geofence zone'}
@@ -183,7 +183,7 @@ export default function GeofenceManager({
       </div>
 
       {/* Geofence list */}
-      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222]" style={{ scrollbarWidth: 'thin' }}>
+      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a]" style={{ scrollbarWidth: 'thin' }}>
         {loading && (
           <div className="flex items-center justify-center py-6 text-rmpg-500 animate-pulse">
             <Loader2 size={16} className="animate-spin" />
@@ -211,10 +211,10 @@ export default function GeofenceManager({
           return (
             <div
               key={fence.id}
-              className="rounded-sm hover:bg-[#141414]/50 transition-colors duration-100 cursor-pointer"
+              className="rounded-sm hover:bg-[#1b2128]/50 transition-colors duration-100 cursor-pointer"
               style={{
                 background: '#050505',
-                border: '1px solid #222222',
+                border: '1px solid #1e2a3a',
                 borderLeft: `2px solid ${fence.color || typeStyle.text}`,
                 opacity: isActive ? 1 : 0.5,
               }}
@@ -257,7 +257,7 @@ export default function GeofenceManager({
 
               {/* Expanded details */}
               {expanded && (
-                <div className="px-2 pb-2 pt-0.5 space-y-1.5" style={{ borderTop: '1px solid #222222' }}>
+                <div className="px-2 pb-2 pt-0.5 space-y-1.5" style={{ borderTop: '1px solid #1e2a3a' }}>
                   {/* Meta row */}
                   <div className="flex items-center gap-3 text-[10px] text-rmpg-500 font-mono">
                     <span className="flex items-center gap-1">
@@ -268,14 +268,14 @@ export default function GeofenceManager({
                       <span className="text-amber-500">enter alert</span>
                     ) : null}
                     {fence.alert_on_exit ? (
-                      <span className="text-gray-400">exit alert</span>
+                      <span className="text-blue-400">exit alert</span>
                     ) : null}
                   </div>
 
                   {/* Alert history */}
                   {alerts && alertCount > 0 && (
                     <div className="space-y-0.5">
-                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase border-b border-[#222222]/50 pb-0.5 mb-1">
+                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase border-b border-[#2b313a]/50 pb-0.5 mb-1">
                         <Bell size={8} />
                         <span className="flex-1">Recent alerts</span>
                         <span className="text-[8px] font-bold text-amber-400 bg-amber-900/30 px-1 py-0.5 rounded-sm">{alertCount}</span>
@@ -287,7 +287,7 @@ export default function GeofenceManager({
                           style={{ background: '#0a0a0a' }}
                         >
                           <span className="text-rmpg-300">{a.unitCallSign}</span>
-                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-gray-400'}>
+                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-blue-400'}>
                             {a.eventType}
                           </span>
                           <span className="text-rmpg-600">{timeAgo(a.timestamp)}</span>
@@ -311,7 +311,7 @@ export default function GeofenceManager({
                     {onNavigate && centroid && (
                       <button type="button"
                         onClick={() => onNavigate(centroid.lat, centroid.lng)}
-                        className="toolbar-btn p-1 text-gray-400 hover:text-gray-300"
+                        className="toolbar-btn p-1 text-blue-400 hover:text-blue-300"
                         title="Navigate to zone"
                       >
                         <Navigation size={12} />
@@ -337,7 +337,7 @@ export default function GeofenceManager({
       {geofences.length > 0 && (
         <div
           className="px-3 py-1.5 text-[9px] text-rmpg-600 font-mono"
-          style={{ borderTop: '1px solid #222222' }}
+          style={{ borderTop: '1px solid #1e2a3a' }}
         >
           {geofences.filter((f) => f.is_active).length} active of {geofences.length} zone{geofences.length !== 1 ? 's' : ''}
         </div>

@@ -401,18 +401,15 @@ export default function DashCamDetailPage() {
         ? { lat: video.latitude, lng: video.longitude }
         : { lat: 40.76, lng: -111.89 };
 
-    const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-    const mapOptions: google.maps.MapOptions = {
+    const map = new google.maps.Map(mapContainerRef.current, {
       center,
       zoom: 15,
       renderingType: 'RASTER' as any,
       disableDefaultUI: true,
       zoomControl: true,
-      styles: mapId ? undefined : DARK_MAP_STYLE,
+      styles: DARK_MAP_STYLE,
       backgroundColor: '#171717',
-    };
-    if (mapId) (mapOptions as any).mapId = mapId;
-    const map = new google.maps.Map(mapContainerRef.current, mapOptions);
+    });
     mapRef.current = map;
 
     // Marker
@@ -715,7 +712,7 @@ export default function DashCamDetailPage() {
 
             {/* Unit call sign */}
             {video.unit_call_sign && (
-              <span className="text-gray-400 font-bold tracking-wide">
+              <span className="text-blue-400 font-bold tracking-wide">
                 {video.unit_call_sign}
               </span>
             )}
@@ -1115,7 +1112,7 @@ export default function DashCamDetailPage() {
           </div>
 
           {/* ── Panel Bottom Actions ── */}
-          <div className="border-t border-[#141414] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+          <div className="border-t border-[#1b2128] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
             {/* File info */}
             <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
               <span>{formatSize(video.file_size)}</span>

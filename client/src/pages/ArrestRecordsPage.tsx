@@ -8,14 +8,13 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Database, Search, X, Loader2, ChevronDown, ChevronRight,
   Users, UserPlus, UserMinus, UserX, MapPin, Clock, Shield,
   BarChart3, TrendingUp, TrendingDown, Minus, Eye, Plus,
   Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2,
   ArrowUpDown, ArrowUp, ArrowDown, FileText, ShieldAlert,
-  Calendar, Building, Scale, ExternalLink,
+  Calendar, Building, Scale,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -102,7 +101,7 @@ interface PersonResult {
 // ── County colors ─────────────────────────────────────────
 
 const COUNTY_COLORS: Record<string, string> = {
-  weber:     'from-gray-600/20 to-gray-800/10 border-gray-500/30',
+  weber:     'from-blue-600/20 to-blue-800/10 border-blue-500/30',
   davis:     'from-emerald-600/20 to-emerald-800/10 border-emerald-500/30',
   iron:      'from-red-600/20 to-red-800/10 border-red-500/30',
   salt_lake: 'from-purple-600/20 to-purple-800/10 border-purple-500/30',
@@ -111,12 +110,12 @@ const COUNTY_COLORS: Record<string, string> = {
 };
 
 const COUNTY_ACCENTS: Record<string, string> = {
-  weber: 'text-gray-400', davis: 'text-emerald-400', iron: 'text-red-400',
+  weber: 'text-blue-400', davis: 'text-emerald-400', iron: 'text-red-400',
   salt_lake: 'text-purple-400', summit: 'text-cyan-400', uinta: 'text-amber-400',
 };
 
 const COUNTY_BAR_COLORS: Record<string, string> = {
-  weber: 'bg-gray-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
+  weber: 'bg-blue-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
   salt_lake: 'bg-purple-500', summit: 'bg-cyan-500', uinta: 'bg-amber-500',
 };
 
@@ -160,7 +159,7 @@ function statusBadge(status: string) {
   if (status === 'active') return { bg: 'bg-red-900/40 text-red-400', label: 'IN CUSTODY' };
   if (status === 'released') return { bg: 'bg-green-900/40 text-green-400', label: 'RELEASED' };
   if (status === 'transferred') return { bg: 'bg-amber-900/40 text-amber-400', label: 'TRANSFERRED' };
-  if (status === 'bonded') return { bg: 'bg-gray-900/40 text-gray-400', label: 'BONDED' };
+  if (status === 'bonded') return { bg: 'bg-blue-900/40 text-blue-400', label: 'BONDED' };
   return { bg: 'bg-rmpg-700 text-rmpg-400', label: status?.toUpperCase() || '—' };
 }
 
@@ -222,7 +221,6 @@ export default function ArrestRecordsPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
   const { user } = useAuth();
-  const navigate = useNavigate();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Statistics
@@ -238,9 +236,6 @@ export default function ArrestRecordsPage() {
   const [recordsPage, setRecordsPage] = useState(1);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ArrestRecord | null>(null);
-
-  // Warrant linkage
-  const [warrantCounts, setWarrantCounts] = useState<Record<number, number>>({});
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -269,7 +264,7 @@ export default function ArrestRecordsPage() {
   const [linkingPerson, setLinkingPerson] = useState(false);
 
   // Refs
-  const searchTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Fetch statistics ────────────────────────────────────
 
@@ -325,26 +320,6 @@ export default function ArrestRecordsPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchRecords(recordsPage); }, [fetchRecords, recordsPage]);
   useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
-
-  // ── Warrant check for linked persons ───────────────────
-  useEffect(() => {
-    const personIds = records.filter(r => r.person_id).map(r => r.person_id as number);
-    if (personIds.length === 0) { setWarrantCounts({}); return; }
-    const uniqueIds = [...new Set(personIds)];
-    const counts: Record<number, number> = {};
-    let cancelled = false;
-    (async () => {
-      for (const pid of uniqueIds) {
-        if (cancelled) break;
-        try {
-          const res = await apiFetch<{ count: number }>(`/warrants/check/${pid}`);
-          if (res.count > 0) counts[pid] = res.count;
-        } catch { /* ignore — warrant endpoint may not exist */ }
-      }
-      if (!cancelled) setWarrantCounts(counts);
-    })();
-    return () => { cancelled = true; };
-  }, [records]);
 
   // ── WebSocket live sync ─────────────────────────────────
 
@@ -687,11 +662,6 @@ export default function ArrestRecordsPage() {
                       {rec.entry_source === 'manual' && (
                         <span className="text-[7px] px-1 py-px bg-brand-900/40 text-brand-400 font-bold uppercase rounded-sm">M</span>
                       )}
-                      {rec.person_id && warrantCounts[rec.person_id] > 0 && (
-                        <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold ml-0.5 shrink-0" title={`${warrantCounts[rec.person_id]} active warrant(s)`}>
-                          {warrantCounts[rec.person_id]} WARRANT{warrantCounts[rec.person_id] > 1 ? 'S' : ''}
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
                       <span className={COUNTY_ACCENTS[rec.source_id] || ''}>{rec.county || rec.source_id || '—'}</span>
@@ -749,19 +719,24 @@ export default function ArrestRecordsPage() {
     return (
       <div className="h-full overflow-y-auto scrollbar-dark bg-surface-base">
         {/* Header */}
-        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}>
+        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)' }}>
           <div className="flex items-start justify-between gap-2">
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
-                {rec.person_id && warrantCounts[rec.person_id] > 0 && (
-                  <span className="text-[9px] bg-red-900/50 text-red-400 border border-red-700/50 px-2 py-0.5 rounded-sm font-bold animate-pulse" title={`${warrantCounts[rec.person_id]} active warrant(s)`}>
-                    {warrantCounts[rec.person_id]} ACTIVE WARRANT{warrantCounts[rec.person_id] > 1 ? 'S' : ''}
-                  </span>
-                )}
-              </div>
+              <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
               {rec.booking_number && (
-                <span className="text-[9px] font-mono text-rmpg-400">Booking #{rec.booking_number}</span>
+                <button
+                  type="button"
+                  className="text-[9px] font-mono text-rmpg-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1 group"
+                  title="Click to copy booking number"
+                  onClick={() => {
+                    navigator.clipboard.writeText(rec.booking_number!).then(() => {
+                      // brief visual feedback via title attribute
+                    }).catch(() => {});
+                  }}
+                >
+                  Booking #{rec.booking_number}
+                  <span className="opacity-0 group-hover:opacity-70 text-[8px] text-brand-400 transition-opacity">COPY</span>
+                </button>
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -858,14 +833,7 @@ export default function ArrestRecordsPage() {
             {rec.linked_person ? (
               <div className="flex items-center gap-2 text-[9px]">
                 <Link2 className="w-3 h-3 text-brand-400" />
-                <button
-                  type="button"
-                  onClick={() => navigate(`/records?tab=persons&personId=${rec.linked_person!.id}`)}
-                  className="text-brand-300 font-bold hover:text-brand-200 hover:underline transition-colors flex items-center gap-1"
-                >
-                  {rec.linked_person.name}
-                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                </button>
+                <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
                 <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
                 <button type="button"
                   onClick={() => handleUnlinkPerson(rec.id)}
@@ -1021,10 +989,10 @@ export default function ArrestRecordsPage() {
       {deleteConfirm !== null && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
-          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-fade-in">
             <div
               className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)' }}
             >
               <AlertTriangle className="w-4 h-4 text-red-400" />
               <h2 className="text-xs font-bold text-white uppercase tracking-wider">Delete Booking</h2>

@@ -33,7 +33,7 @@ export default function ProgressBar({
         </div>
       )}
       <div
-        className="w-full bg-surface-sunken border border-[#222222] rounded-sm overflow-hidden"
+        className="w-full bg-surface-sunken border border-[#2b313a] rounded-sm overflow-hidden"
         style={{ height }}
       >
         {isIndeterminate ? (

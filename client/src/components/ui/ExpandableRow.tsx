@@ -44,7 +44,7 @@ export function ExpandableRow({ cells, detail, className = '', onToggle }: Expan
       {expanded && (
         <tr>
           <td colSpan={cells.length + 1} className="p-0">
-            <div className="bg-surface-sunken border-t border-b border-[#222222] px-6 py-3 animate-fade-in">
+            <div className="bg-surface-sunken border-t border-b border-[#2b313a] px-6 py-3 animate-fade-in">
               {detail}
             </div>
           </td>

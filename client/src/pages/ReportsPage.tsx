@@ -101,14 +101,14 @@ const PRIORITY_COLORS: Record<string, string> = {
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
     backgroundColor: '#050505',
-    border: '1px solid #222222',
+    border: '1px solid #2b313a',
     borderRadius: '2px',
     color: '#e0e0e0',
     fontSize: '11px',
     fontFamily: 'monospace',
     boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   },
-  cursor: { fill: 'rgba(136,136,136,0.08)' },
+  cursor: { fill: 'rgba(26,90,158,0.08)' },
 };
 
 // ============================================================
@@ -383,7 +383,7 @@ function DailyBriefingCard() {
                 <div className="text-[8px] text-rmpg-500 uppercase">P2 Calls</div>
               </div>
               <div className="panel-beveled bg-surface-sunken p-2 text-center">
-                <div className="text-lg font-bold font-mono text-gray-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
+                <div className="text-lg font-bold font-mono text-blue-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
                 <div className="text-[8px] text-rmpg-500 uppercase">Avg Response</div>
               </div>
             </div>
@@ -556,7 +556,7 @@ function CrimeTrendCard() {
         {data.trends?.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#050505]">
+              <thead className="sticky top-0 z-10 bg-[#0c0f13]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
@@ -661,7 +661,7 @@ function BeatActivityCard() {
         {data.beats?.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#050505]">
+              <thead className="sticky top-0 z-10 bg-[#0c0f13]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Beat</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
@@ -675,7 +675,7 @@ function BeatActivityCard() {
                 {data.beats.map((b: any) => (
                   <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-blue-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>

@@ -59,7 +59,7 @@ export default function MapSidebar({
       className={`flex flex-col panel-beveled transition-all duration-200 overflow-hidden ${sidebarOpen ? 'shadow-lg' : ''}`}
       style={{
         width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-        background: '#050505',
+        background: '#060c14',
         flexShrink: 0,
       }}
       aria-label="Map sidebar"
@@ -67,7 +67,7 @@ export default function MapSidebar({
       {/* #1: Collapse/expand toggle with smooth icon rotation */}
       <button type="button"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="toolbar-btn flex items-center justify-center h-7 hover:bg-[#141414] transition-colors duration-150"
+        className="toolbar-btn flex items-center justify-center h-7 hover:bg-[#1b2128] transition-colors duration-150"
         style={{ borderRadius: 0 }}
         aria-expanded={sidebarOpen}
         aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -95,14 +95,14 @@ export default function MapSidebar({
             <div className="w-px h-3 bg-rmpg-700" />
             {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-400">P1:{callsByPriority['P1']}</span> : null}
             {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-400">P2:{callsByPriority['P2']}</span> : null}
-            {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-gray-400">P3:{callsByPriority['P3']}</span> : null}
+            {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
           </div>
 
           {/* #3: Tab bar with smooth active indicator transition */}
           <div className="tab-bar" role="tablist">
             <button type="button"
               onClick={() => setSidebarTab('units')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'units' ? 'active border-b-2 border-[#999999] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'units' ? 'active border-b-2 border-[#60a5fa] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               role="tab"
               aria-selected={sidebarTab === 'units'}
             >
@@ -110,7 +110,7 @@ export default function MapSidebar({
             </button>
             <button type="button"
               onClick={() => setSidebarTab('calls')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'calls' ? 'active border-b-2 border-[#999999] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'calls' ? 'active border-b-2 border-[#60a5fa] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               role="tab"
               aria-selected={sidebarTab === 'calls'}
             >
@@ -119,7 +119,7 @@ export default function MapSidebar({
           </div>
 
           {/* #4: Search input with clear button and improved focus ring */}
-          <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #222222' }}>
+          <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #2b313a' }}>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
               <input
@@ -138,7 +138,7 @@ export default function MapSidebar({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
             {sidebarTab === 'units' && (
               <div className="divide-y divide-rmpg-700/50" role="tabpanel">
                 {/* Fix 98: units sorted by status (available first) */}
@@ -153,7 +153,7 @@ export default function MapSidebar({
                     <button type="button"
                       key={unit.id}
                       onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-[#141414] transition-colors duration-100 ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1b2128] transition-colors duration-100 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
                     >
@@ -164,7 +164,7 @@ export default function MapSidebar({
                         />
                         <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                         {unit.gps_source === 'clearpathgps' && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
                         {/* #6: Stale GPS indicator with tooltip text */}
                         {isStale && (
@@ -180,7 +180,7 @@ export default function MapSidebar({
                       <div className="ml-5 mt-0.5">
                         <span className="text-[9px] text-rmpg-400">{unit.officer_name}</span>
                         {unit.call_number && (
-                          <span className="text-[9px] text-gray-400 ml-2 font-mono">{unit.call_number}</span>
+                          <span className="text-[9px] text-blue-400 ml-2 font-mono">{unit.call_number}</span>
                         )}
                       </div>
                       {unit.current_call_type && (
@@ -215,7 +215,7 @@ export default function MapSidebar({
                     <button type="button"
                       key={call.id}
                       onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-[#141414] transition-colors duration-100 border-l-2 ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1b2128] transition-colors duration-100 border-l-2 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
                       style={{ borderLeftColor: pColor, borderLeftWidth: 3 }}
@@ -235,7 +235,7 @@ export default function MapSidebar({
                       </div>
                       <div className="ml-8 text-[8px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>
                       {call.property_name && (
-                        <div className="ml-8 text-[8px] text-gray-400 truncate mt-0.5">{call.property_name}</div>
+                        <div className="ml-8 text-[8px] text-blue-400 truncate mt-0.5">{call.property_name}</div>
                       )}
                       {/* Quick actions */}
                       <div className="ml-8 mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -250,7 +250,7 @@ export default function MapSidebar({
                         {call.status === 'dispatched' && (
                           <button type="button"
                             onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                            className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-gray-700/40 hover:bg-gray-800/40 transition-colors"
+                            className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-blue-900/30 text-blue-400 border border-blue-700/40 hover:bg-blue-800/40 transition-colors"
                           >
                             EN ROUTE
                           </button>

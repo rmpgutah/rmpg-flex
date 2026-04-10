@@ -470,7 +470,7 @@ function blankEvidenceForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: n
     doc.setFillColor(...COLOR.BG_ZEBRA);
     const tw = ffw;
     doc.rect(lx, y, tw, 4.5, 'F');
-    doc.setFont('courier', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('DATE/TIME', lx + 1.5, y + 3);
     doc.text('RELEASED BY', lx + tw * 0.25 + 1.5, y + 3);
     doc.text('RECEIVED BY', lx + tw * 0.5 + 1.5, y + 3);
@@ -643,7 +643,7 @@ function blankDailyActivityForm(doc: jsPDF, y: number, lx: number, rx: number, f
     // Table header
     doc.setFillColor(...COLOR.BG_ZEBRA);
     doc.rect(lx, y, ffw, 4.5, 'F');
-    doc.setFont('courier', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('TIME', lx + 1.5, y + 3);
     doc.text('ACTIVITY / CALL #', lx + ffw * 0.15 + 1.5, y + 3);
     doc.text('LOCATION', lx + ffw * 0.55 + 1.5, y + 3);

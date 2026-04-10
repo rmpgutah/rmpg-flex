@@ -314,11 +314,11 @@ const AuditLogPage: React.FC = () => {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden mb-6">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #9ca4ad 30%, #9ca4ad 70%, #1a1a1a)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Audit Log</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#6f747b' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>

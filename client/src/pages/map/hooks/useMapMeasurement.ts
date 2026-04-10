@@ -97,8 +97,8 @@ function formatDistance(meters: number): { value: number; unit: string; display:
 }
 
 function formatDistanceMetric(meters: number): string {
-  if (meters < 1609) return `${Math.round(meters)} m`;
-  return `${(meters / 1609.34).toFixed(2)} mi`;
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(2)} km`;
 }
 
 function formatAreaMetric(sqMeters: number): string {
@@ -187,7 +187,7 @@ export function useMapMeasurement(): MeasurementState {
       const midLng = (p1.lng + p2.lng) / 2;
 
       const iw = new google.maps.InfoWindow({
-        content: `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#d4a017;background:#050505;padding:2px 6px;border:1px solid #d4a01740;border-radius:2px;white-space:nowrap;">${seg.displayFt} / ${seg.displayM}</div>`,
+        content: `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#d4a017;background:#0c0f13;padding:2px 6px;border:1px solid #d4a01740;border-radius:2px;white-space:nowrap;">${seg.displayFt} / ${seg.displayM}</div>`,
         position: { lat: midLat, lng: midLng },
         disableAutoPan: true,
       });

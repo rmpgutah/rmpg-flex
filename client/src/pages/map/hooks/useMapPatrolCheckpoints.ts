@@ -114,7 +114,7 @@ function createCheckpointMarkerElement(status: ScanStatus, overdue: boolean, sca
       position: absolute;
       top: -6px;
       right: -8px;
-      background: #141414;
+      background: #1b2128;
       color: ${color};
       font-size: 8px;
       font-weight: bold;
@@ -142,7 +142,7 @@ function buildCheckpointInfoContent(cp: CheckpointRecord, status: ScanStatus): H
   const color = STATUS_COLORS[status];
 
   const container = document.createElement('div');
-  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
+  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a';
 
   const heading = document.createElement('div');
   heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
@@ -156,7 +156,7 @@ function buildCheckpointInfoContent(cp: CheckpointRecord, status: ScanStatus): H
     if (value == null || value === '') return;
     const tr = document.createElement('tr');
     const tdLabel = document.createElement('td');
-    tdLabel.style.cssText = 'color:#888888;padding:1px 6px 1px 0';
+    tdLabel.style.cssText = 'color:#6b7b8d;padding:1px 6px 1px 0';
     tdLabel.textContent = lbl;
     const tdValue = document.createElement('td');
     tdValue.style.cssText = `color:${valColor || '#e0e0e0'}`;

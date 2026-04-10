@@ -33,10 +33,6 @@ import {
   Navigation,
   Mail,
   Zap,
-  ClipboardList,
-  Fingerprint,
-  ShieldBan,
-  Car,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -376,7 +372,6 @@ export default function DashboardPage() {
   } | null>(null);
   const [courtDatesCount, setCourtDatesCount] = useState(0);
   const [expiringCertsCount, setExpiringCertsCount] = useState(0);
-  const [unifiedStats, setUnifiedStats] = useState<any>(null);
 
   // Shift countdown timer — update every second
   useEffect(() => {
@@ -479,7 +474,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, ds] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -489,7 +484,6 @@ export default function DashboardPage() {
       safe<any>('/admin/shift-stats'),
       safe<any>('/admin/upcoming-court-dates?days=30'),
       safe<any>('/admin/expiring-certifications?days=30'),
-      safe<any>('/dashboard/stats'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -500,7 +494,6 @@ export default function DashboardPage() {
     if (ss) setShiftStats(ss);
     if (cd) setCourtDatesCount(cd.count ?? 0);
     if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
-    if (ds) setUnifiedStats(ds);
   }, []);
 
   useEffect(() => {
@@ -597,7 +590,7 @@ export default function DashboardPage() {
           </div>
           <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span className="border-l border-[#222222] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-[#2b313a] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
@@ -667,7 +660,7 @@ export default function DashboardPage() {
         {[
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-gray', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
           { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#555555' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
@@ -710,7 +703,7 @@ export default function DashboardPage() {
             </div>
             {/* Progress Bar */}
             <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
-              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#222222] shadow-inner">
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b313a] shadow-inner">
                 <div
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
@@ -727,7 +720,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+            <div className="flex items-center gap-2 pt-2 border-t border-[#2b313a]">
               {[
                 { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
                 { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
@@ -755,7 +748,7 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#222222] shadow-inner">
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#2b313a] shadow-inner">
                       <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
                     </div>
                     <div>
@@ -776,16 +769,16 @@ export default function DashboardPage() {
                   )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
-                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                    <div className="flex items-center gap-2 p-2.5 bg-blue-900/20 border border-blue-700/30 rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-blue-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
                       <div>
-                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
-                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                        <div className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-blue-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
                       </div>
                     </div>
                   )}
                   {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+                  <div className="flex items-center gap-2 pt-2 border-t border-[#2b313a]">
                     <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
                       Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -816,7 +809,7 @@ export default function DashboardPage() {
         <div className="panel-beveled bg-surface-base" role="region" aria-label="Quick actions">
           <PanelTitleBar title="QUICK ACTIONS" icon={Zap} />
           <div className="p-3">
-            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'} gap-2`}>
+            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'} gap-2`}>
               {[
                 { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
                 { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
@@ -824,17 +817,11 @@ export default function DashboardPage() {
                 { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
                 { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
                 { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
-                { icon: Briefcase, label: 'Cases', path: '/cases', color: '#06b6d4' },
-                { icon: ClipboardList, label: 'Field Interviews', path: '/field-interviews', color: '#888888' },
-                { icon: Fingerprint, label: 'Arrest Records', path: '/arrest-records', color: '#ef4444' },
-                { icon: Gavel, label: 'Court Tracker', path: '/court', color: '#f59e0b' },
-                { icon: ShieldBan, label: 'Trespass Orders', path: '/trespass-orders', color: '#f97316' },
-                { icon: Car, label: 'Fleet', path: '/fleet', color: '#888888' },
               ].map(({ icon: ActionIcon, label, path, color, action }) => (
                 <button type="button"
                   key={label}
                   onClick={() => action ? action() : navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2e2e2e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#3a3a3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
                   aria-label={label}
                 >
                   <ActionIcon
@@ -889,19 +876,19 @@ export default function DashboardPage() {
                 <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#222222]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b313a]">
                   <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
                 </div>
@@ -968,7 +955,7 @@ export default function DashboardPage() {
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#0a0a0a',
-                  border: '1px solid #2e2e2e',
+                  border: '1px solid #3a3a3a',
                   borderRadius: '2px',
                   color: '#cccccc',
                   fontSize: '11px',
@@ -1028,7 +1015,7 @@ export default function DashboardPage() {
                     <Tooltip
                       contentStyle={{
                         backgroundColor: '#0a0a0a',
-                        border: '1px solid #2e2e2e',
+                        border: '1px solid #3a3a3a',
                         borderRadius: '2px',
                         color: '#cccccc',
                         fontSize: '11px',
@@ -1048,7 +1035,7 @@ export default function DashboardPage() {
             })()}
 
             {/* Pie Legend */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#222222]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#2b313a]">
               {[
                 { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
                 { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
@@ -1065,7 +1052,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions — compact */}
-          <div className="border-t border-[#222222] px-3 py-2.5 space-y-1.5">
+          <div className="border-t border-[#2b313a] px-3 py-2.5 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest select-none">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
@@ -1112,78 +1099,6 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
-
-      {/* ═══════════════════════════════════════════════════════
-          Unified Stats Widgets: Warrants, Incident Backlog, Crime Types
-          ═══════════════════════════════════════════════════════ */}
-      {unifiedStats && (
-        <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 lg:grid-cols-3 gap-2'}`}>
-          {/* Active Warrants Summary */}
-          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/warrants')}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-red-500" style={{ borderRadius: '1px' }} />
-              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Active Warrants</span>
-              <span className="ml-auto text-lg font-bold font-mono text-red-400">{unifiedStats.warrants?.active || 0}</span>
-            </div>
-            <div className="space-y-1">
-              {Object.entries(unifiedStats.warrants?.by_type || {}).map(([type, count]) => (
-                <div key={type} className="flex items-center gap-2">
-                  <span className="text-[9px] text-rmpg-400 uppercase w-14 truncate">{type}</span>
-                  <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? '#ef4444' : type === 'bench' ? '#f59e0b' : type === 'search' ? '#888888' : '#888888' }} />
-                  </div>
-                  <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{count as number}</span>
-                </div>
-              ))}
-              <div className="text-[8px] text-rmpg-500 pt-1 border-t border-rmpg-700">Served (30d): <span className="text-green-400 font-mono">{unifiedStats.warrants?.served_30d || 0}</span></div>
-            </div>
-          </div>
-
-          {/* Incident Backlog */}
-          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-amber-500" style={{ borderRadius: '1px' }} />
-              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Incident Backlog</span>
-            </div>
-            <div className="space-y-1">
-              {(unifiedStats.incidents?.by_status || []).map((s: any) => {
-                const colorMap: Record<string, string> = { draft: '#888888', submitted: '#888888', under_review: '#f59e0b', approved: '#22c55e', closed: '#6b7280', open: '#ef4444' };
-                return (
-                  <div key={s.status} className="flex items-center gap-2">
-                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
-                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                      <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || '#888888' }} />
-                    </div>
-                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{s.count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Crime Type Breakdown */}
-          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2" style={{ background: '#d4a017', borderRadius: '1px' }} />
-              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Top Incident Types</span>
-            </div>
-            <div className="space-y-1">
-              {(unifiedStats.incidents?.by_type || []).slice(0, 8).map((t: any, i: number) => {
-                const maxCount = (unifiedStats.incidents?.by_type || [])[0]?.count || 1;
-                return (
-                  <div key={t.incident_type || i} className="flex items-center gap-2">
-                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{(t.incident_type || 'Unknown').replace(/_/g, ' ')}</span>
-                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: '#d4a017', opacity: 1 - i * 0.08 }} />
-                    </div>
-                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{t.count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ═══════════════════════════════════════════════════════
           Features 31-43: Analytics Dashboard Widgets
@@ -1346,7 +1261,7 @@ export default function DashboardPage() {
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Calls</span>
-                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
+                          <span className="text-xs font-bold font-mono text-blue-400 tabular-nums">{s.calls}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Incidents</span>
@@ -1436,10 +1351,10 @@ export default function DashboardPage() {
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-blue-500">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3 h-3 text-gray-400" />
+                    <Phone className="w-3 h-3 text-blue-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-gray-400 tabular-nums">{psoStats.todayCalls}</div>
+                  <div className="text-lg font-bold font-mono text-blue-400 tabular-nums">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">
@@ -1657,7 +1572,7 @@ export default function DashboardPage() {
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
               <table className="w-full text-xs" role="table" aria-label="Expiring credentials list">
                 <thead>
-                  <tr className="border-b border-[#222222]">
+                  <tr className="border-b border-[#2b313a]">
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Officer</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Credential</th>
                     {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Expiry Date</th>}
@@ -1750,7 +1665,7 @@ export default function DashboardPage() {
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#0a0a0a',
-                      border: '1px solid #2e2e2e',
+                      border: '1px solid #3a3a3a',
                       borderRadius: '2px',
                       color: '#e0e0e0',
                       fontSize: '11px',

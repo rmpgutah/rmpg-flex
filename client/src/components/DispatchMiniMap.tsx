@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
 import OfflineMapFallback from './OfflineMapFallback';
 import type { CallForService, Unit } from '../types';
@@ -55,8 +56,8 @@ function buildUnitMarker(callSign: string): HTMLElement {
   const el = document.createElement('div');
   /* #55: Unit marker with shadow */
   el.style.cssText =
-    'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #222222;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
+    'background:#3b82f6;color:#fff;font-size:8px;font-weight:900;' +
+    "padding:1px 4px;border:1px solid #1e3a5f;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
   el.textContent = callSign;
   return el;
 }
@@ -83,34 +84,43 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
   // Load Google Maps script with retry + online auto-recovery
   useEffect(() => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-    if (!apiKey) {
-      setError('Map key not configured');
-      return;
-    }
-
     let cancelled = false;
+    let unsubOnline = () => {};
     setError(null);
+    setLoaded(false);
 
-    function attemptLoad(attempt: number) {
+    function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled) return;
       loadGoogleMaps(apiKey)
         .then(() => { if (!cancelled) { setLoaded(true); setError(null); } })
         .catch(() => {
           if (cancelled) return;
           if (attempt < 3) {
-            setTimeout(() => attemptLoad(attempt + 1), [3000, 6000, 12000][attempt]);
+            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
           } else {
             setError('Map load failed — check connection');
           }
         });
     }
-    attemptLoad(0);
 
-    // Auto-retry when device comes back online
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !loaded) { setError(null); setLoaded(true); }
-    });
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        attemptLoad(apiKey, 0);
+        unsubOnline = onOnlineRetryMaps(apiKey, () => {
+          if (!cancelled) {
+            setError(null);
+            setLoaded(true);
+          }
+        });
+      } catch (err: any) {
+        if (!cancelled) {
+          setLoaded(false);
+          setError(err?.message || getGoogleMapsApiKeyErrorMessage());
+        }
+      }
+    })();
 
     return () => { cancelled = true; unsubOnline(); };
   }, [gmapsRetry]);
@@ -124,18 +134,15 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
-      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-      const mapOptions: google.maps.MapOptions = {
+      const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: MINI_ZOOM,
-        styles: mapId ? undefined : DARK_MAP_STYLE,
+        styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         gestureHandling: 'cooperative',
-      };
-      if (mapId) (mapOptions as any).mapId = mapId;
-      const map = new google.maps.Map(mapContainerRef.current, mapOptions);
+      });
       mapRef.current = map;
       registerMapInstance(map);
 
@@ -286,7 +293,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       : [];
 
     return (
-      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
+      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #161b21' }}>
         {/* Toolbar (same as online mode) */}
         <div style={{
           position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
@@ -341,14 +348,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // ── Auth error (config problem, not connectivity) ──
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060c14' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #161b21' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -386,7 +393,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
+          background: 'rgba(0,0,0,0.9)', border: '1px solid #3b82f650',
           padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
         }}>
           <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
@@ -404,7 +411,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#050505',
+          background: '#060c14',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>

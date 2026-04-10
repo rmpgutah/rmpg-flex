@@ -20,6 +20,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
+import { safeDateStr } from '../../utils/dateUtils';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import StatusBadge from '../../components/StatusBadge';
@@ -118,6 +119,11 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
       <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
+}
+
+function safeVehicleDate(value?: string | null): string | null {
+  const formatted = safeDateStr(value, '');
+  return formatted || null;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -409,7 +415,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[8px] px-1 py-0.5 bg-[#141414] text-rmpg-400 rounded-sm">{v.source}</span>
+                      <span className="text-[8px] px-1 py-0.5 bg-[#1b2128] text-rmpg-400 rounded-sm">{v.source}</span>
                       {onAutoFill && (
                         <button
                           type="button"
@@ -529,7 +535,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
                   {v.plate_state && (
                     <span className={`px-1 py-0 text-[8px] font-bold border rounded-sm ${
-                      v.plate_state === 'UT' ? 'bg-gray-900/40 text-gray-300 border-gray-700/50' :
+                      v.plate_state === 'UT' ? 'bg-blue-900/40 text-blue-300 border-blue-700/50' :
                       v.plate_state === 'CA' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
                       'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
                     }`}>{v.plate_state}</span>
@@ -658,7 +664,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         </div>
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
-          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-blue-900/30 border border-blue-700/50 text-blue-400 hover:bg-blue-900/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
           <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
@@ -674,9 +680,9 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         )}
         {/* Feature 41: History Panel */}
         {vehicleHistory && (
-          <div className="mt-1 p-1.5 text-[10px] bg-gray-900/10 border border-gray-700/30">
+          <div className="mt-1 p-1.5 text-[10px] bg-blue-900/10 border border-blue-700/30">
             <div className="flex justify-between">
-              <span className="text-gray-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
+              <span className="text-blue-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
               <button type="button" onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
             </div>
             {vehicleHistory.incidents?.length > 0 && <div className="text-rmpg-400 mt-0.5">{vehicleHistory.incidents.length} incidents</div>}
@@ -716,14 +722,13 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
             {renderInfoRow('Doors', selectedVehicle.doors ? String(selectedVehicle.doors) : null)}
             {renderInfoRow('Owner', selectedVehicle.owner_name)}
-            {renderInfoRow('Registered Owner', selectedVehicle.registered_owner)}
           </div>
           {selectedVehicle.vin && (
             <div className="mt-2 text-xs"><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedVehicle.vin}</span></div>
           )}
           {(selectedVehicle.commercial_vehicle || selectedVehicle.hazmat) && (
             <div className="flex gap-2 mt-2">
-              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">COMMERCIAL</span>}
+              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">COMMERCIAL</span>}
               {selectedVehicle.hazmat && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">HAZMAT</span>}
             </div>
           )}
@@ -745,9 +750,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Registration & Insurance ────────── */}
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Reg. Expiry', selectedVehicle.registration_expiry, Calendar)}
-            {renderInfoRow('Reg. State', selectedVehicle.registration_state)}
-            {renderInfoRow('Title Status', selectedVehicle.title_status)}
+            {renderInfoRow('Reg. Expiry', safeVehicleDate(selectedVehicle.registration_expiry), Calendar)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
@@ -756,34 +759,16 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           </div>
         </CollapsibleSection>
 
-        {/* ── Condition & Value (conditional) ──── */}
-        {(selectedVehicle.exterior_condition || selectedVehicle.interior_condition || selectedVehicle.estimated_value || selectedVehicle.window_tint || selectedVehicle.modifications || selectedVehicle.equipment_notes) && (
-          <CollapsibleSection title="Condition & Value" icon={Hash}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {renderInfoRow('Exterior', selectedVehicle.exterior_condition)}
-              {renderInfoRow('Interior', selectedVehicle.interior_condition)}
-              {renderInfoRow('Est. Value', selectedVehicle.estimated_value ? `$${selectedVehicle.estimated_value}` : undefined)}
-              {renderInfoRow('Window Tint', selectedVehicle.window_tint)}
-            </div>
-            {selectedVehicle.modifications && (
-              <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedVehicle.modifications}</span></div>
-            )}
-            {selectedVehicle.equipment_notes && (
-              <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedVehicle.equipment_notes}</span></div>
-            )}
-          </CollapsibleSection>
-        )}
-
         {/* ── Stolen / Tow Status (conditional) ── */}
         {(selectedVehicle.stolen_status || selectedVehicle.tow_status) && (
           <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle}>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {renderInfoRow('Stolen Status', selectedVehicle.stolen_status)}
-              {renderInfoRow('Stolen Date', selectedVehicle.stolen_date, Calendar)}
-              {renderInfoRow('Recovery Date', selectedVehicle.recovery_date, Calendar)}
+              {renderInfoRow('Stolen Date', safeVehicleDate(selectedVehicle.stolen_date), Calendar)}
+              {renderInfoRow('Recovery Date', safeVehicleDate(selectedVehicle.recovery_date), Calendar)}
               {renderInfoRow('Tow Status', selectedVehicle.tow_status)}
               {renderInfoRow('Tow Company', selectedVehicle.tow_company)}
-              {renderInfoRow('Tow Date', selectedVehicle.tow_date, Calendar)}
+              {renderInfoRow('Tow Date', safeVehicleDate(selectedVehicle.tow_date), Calendar)}
             </div>
           </CollapsibleSection>
         )}
@@ -827,7 +812,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
                   </span>
                   <span className="text-rmpg-300">{humanizeType(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
-                  <span className="text-rmpg-400 ml-auto">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</span>
+                  <span className="text-rmpg-400 ml-auto">{safeDateStr(inc.created_at, '')}</span>
                 </div>
               ))}
             </div>

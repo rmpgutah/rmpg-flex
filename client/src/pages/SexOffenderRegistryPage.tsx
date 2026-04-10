@@ -110,7 +110,6 @@ export default function SexOffenderRegistryPage() {
   // ── Data State ────────────────────────────────────────────
   const [records, setRecords] = useState<SexOffenderRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState('');
   const [selected, setSelected] = useState<SexOffenderRecord | null>(null);
   const [page, setPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -137,7 +136,6 @@ export default function SexOffenderRegistryPage() {
   // ── Fetch records (declared before handlers that depend on it) ──
   const fetchRecords = useCallback(async () => {
     setLoading(true);
-    setFetchError('');
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (search) params.set('search', search);
@@ -147,9 +145,8 @@ export default function SexOffenderRegistryPage() {
       const body = await apiFetch<{ data: SexOffenderRecord[]; pagination: any }>(`/sex-offender-registry?${params}`);
       setRecords(body.data || []);
       setTotalRecords(body.pagination?.total || 0);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to fetch SOR records:', err);
-      setFetchError(err?.message || 'Failed to load registry data');
     } finally {
       setLoading(false);
     }
@@ -296,17 +293,10 @@ export default function SexOffenderRegistryPage() {
   // ============================================================
   const leftPanel = (
     <div className="flex flex-col h-full" style={{ background: '#050505' }}>
-      {/* Error Banner */}
-      {fetchError && (
-        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-3 h-3" /> {fetchError}
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
-        </div>
-      )}
       {/* Stats Strip */}
       <div
         className="flex items-center gap-4 px-3 py-1.5 text-[11px] font-mono flex-shrink-0 overflow-x-auto"
-        style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)', borderBottom: '1px solid #222222' }}
+        style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)', borderBottom: '1px solid #2b313a' }}
       >
         <span className="flex items-center gap-1.5">
           <span className="led-dot led-amber" style={{ width: 6, height: 6 }} />
@@ -339,7 +329,7 @@ export default function SexOffenderRegistryPage() {
       {/* Search + Filters */}
       <div
         className="flex items-center gap-2 px-3 py-2 flex-shrink-0 flex-wrap"
-        style={{ background: '#0a0a0a', borderBottom: '1px solid #222222' }}
+        style={{ background: '#0a0a0a', borderBottom: '1px solid #2b313a' }}
       >
         <div className="relative flex-1 min-w-[140px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
@@ -360,7 +350,6 @@ export default function SexOffenderRegistryPage() {
           value={tierFilter}
           onChange={e => { setTierFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
-          aria-label="Filter by tier"
         >
           <option value="">All Tiers</option>
           <option value="1">Tier 1</option>
@@ -371,7 +360,6 @@ export default function SexOffenderRegistryPage() {
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
-          aria-label="Filter by status"
         >
           <option value="">All Status</option>
           <option value="compliant">Compliant</option>
@@ -405,14 +393,14 @@ export default function SexOffenderRegistryPage() {
                   onClick={() => setSelected(r)}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/50"
                   style={{
-                    background: isSelected ? 'rgba(136,136,136,0.15)' : undefined,
+                    background: isSelected ? 'rgba(26,90,158,0.15)' : undefined,
                     borderLeft: isSelected ? '3px solid #888888' : '3px solid transparent',
                   }}
                 >
                   {/* Mugshot Thumbnail */}
                   <div
                     className="w-12 h-14 rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-                    style={{ background: '#141414', border: '1px solid #2e2e2e' }}
+                    style={{ background: '#141414', border: '1px solid #2a3e58' }}
                   >
                     {r.photo_url ? (
                       <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
@@ -467,7 +455,7 @@ export default function SexOffenderRegistryPage() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5 text-[10px] text-rmpg-500 flex-shrink-0"
-          style={{ background: '#0a0a0a', borderTop: '1px solid #222222' }}
+          style={{ background: '#0a0a0a', borderTop: '1px solid #2b313a' }}
         >
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
@@ -505,12 +493,12 @@ export default function SexOffenderRegistryPage() {
       </button>
 
       {/* Header Section */}
-      <div className="p-4 relative" style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)', borderBottom: '1px solid #222222' }}>
+      <div className="p-4 relative" style={{ background: 'linear-gradient(180deg, #1b2128 0%, #161b21 100%)', borderBottom: '1px solid #2b313a' }}>
         <div className="flex gap-4">
           {/* Large Mugshot */}
           <div
             className="w-[100px] h-[130px] rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-            style={{ background: '#050505', border: '2px solid #2e2e2e' }}
+            style={{ background: '#050505', border: '2px solid #2a3e58' }}
           >
             {selected.photo_url ? (
               <img src={selected.photo_url} alt="" className="w-full h-full object-cover" />
@@ -630,7 +618,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Offenses" icon={<FileText size={12} />}>
             <div className="space-y-2">
               {offs.map((o, i) => (
-                <div key={i} className="p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #222222' }}>
+                <div key={i} className="p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #2b313a' }}>
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-[11px] font-mono font-bold">{o.statute}</span>
                     {o.date && <span className="text-[10px] text-rmpg-500">{formatDate(o.date)}</span>}
@@ -765,7 +753,7 @@ export default function SexOffenderRegistryPage() {
       )}
 
       {/* Quick Actions */}
-      <div className="p-3 flex gap-2 flex-wrap" style={{ borderTop: '1px solid #222222' }}>
+      <div className="p-3 flex gap-2 flex-wrap" style={{ borderTop: '1px solid #2b313a' }}>
         <button type="button"
           onClick={() => { setEditingRecord(selected); setShowAddModal(true); }}
           className="toolbar-btn px-3 py-1.5 text-[11px] flex items-center gap-1.5"
@@ -937,7 +925,7 @@ export default function SexOffenderRegistryPage() {
 
 function DetailSection({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="px-4 py-3" style={{ borderBottom: '1px solid #222222' }}>
+    <div className="px-4 py-3" style={{ borderBottom: '1px solid #2b313a' }}>
       <h3 className="flex items-center gap-1.5 text-[11px] font-bold text-[#d4a017] uppercase tracking-widest mb-2">
         {icon} {title}
       </h3>
@@ -1012,10 +1000,10 @@ function RecordFormModal({
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-md"
-        style={{ background: '#0a0a0a', border: '1px solid #2e2e2e' }}
+        style={{ background: '#0a0a0a', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2e2e2e' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a3e58' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <ShieldAlert size={14} className="text-[#d4a017]" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
@@ -1103,13 +1091,13 @@ function RecordFormModal({
           <FormField label="Notes" value={form.notes} onChange={v => set('notes', v)} multiline />
 
           {/* Submit */}
-          <div className="flex justify-end gap-2 pt-2" style={{ borderTop: '1px solid #222222' }}>
+          <div className="flex justify-end gap-2 pt-2" style={{ borderTop: '1px solid #2b313a' }}>
             <button type="button" onClick={onClose} className="toolbar-btn px-4 py-1.5 text-xs">Cancel</button>
             <button
               type="submit"
               disabled={saving || !form.first_name || !form.last_name}
               className="px-4 py-1.5 text-xs font-bold rounded-sm flex items-center gap-1.5 disabled:opacity-50"
-              style={{ background: '#888888', color: '#fff', border: '1px solid #2e2e2e' }}
+              style={{ background: '#888888', color: '#fff', border: '1px solid #2a7acf' }}
             >
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
               {record ? 'Update' : 'Create'} Entry
@@ -1176,10 +1164,10 @@ function ImportModal({
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-md"
-        style={{ background: '#0a0a0a', border: '1px solid #2e2e2e' }}
+        style={{ background: '#0a0a0a', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2e2e2e' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a3e58' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <Upload size={14} className="text-[#d4a017]" /> Import Records
           </h2>
@@ -1210,7 +1198,7 @@ function ImportModal({
               onClick={() => parsed && onImport(parsed)}
               disabled={!parsed}
               className="px-3 py-1.5 text-[11px] font-bold rounded-sm disabled:opacity-40"
-              style={{ background: '#888888', color: '#fff', border: '1px solid #2e2e2e' }}
+              style={{ background: '#888888', color: '#fff', border: '1px solid #2a7acf' }}
             >
               Import {parsed ? parsed.length : 0} Records
             </button>

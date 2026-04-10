@@ -5,43 +5,32 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/rmpg flex.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0a" />
-    <script>
-      // Register service worker for offline caching
-      // Cache versioning (CACHE_NAME in sw.js) handles invalidation naturally
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js').catch(function() {});
-        });
-      }
-    </script>
-    <script>
-      // If the entry bundle never takes over, recover by clearing the SW cache.
-      // This helps when a stale cached HTML shell references bundles that no longer exist.
-      window.__RMPG_BOOTSTRAPPED__ = false;
-      window.addEventListener('load', function() {
-        setTimeout(function() {
-          var splash = document.getElementById('pre-splash');
-          if (!window.__RMPG_BOOTSTRAPPED__ && splash) {
-            try {
-              var key = 'rmpg_bootstrap_recovery_at';
-              var last = Number(sessionStorage.getItem(key) || '0');
-              if (!last || Date.now() - last > 30000) {
-                sessionStorage.setItem(key, String(Date.now()));
-                window.location.replace('/force-refresh');
-              }
-            } catch (_) {
-              window.location.replace('/force-refresh');
-            }
-          }
-        }, 8000);
-      });
-    </script>
+    <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RMPG Flex" />
     <meta name="description" content="Rocky Mountain Protective Group — CAD/RMS Dispatch Console" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <script>
+      (function () {
+        var theme = 'dark';
+        try {
+          theme = localStorage.getItem('rmpg_theme_preference') === 'light' ? 'light' : 'dark';
+        } catch {}
+
+        var chrome = theme === 'light' ? '#f0f2f5' : '#000000';
+        var html = document.documentElement;
+        html.classList.add('theme-' + theme);
+        html.style.colorScheme = theme;
+        html.style.backgroundColor = chrome;
+
+        var themeColor = document.querySelector('meta[name="theme-color"]');
+        if (themeColor) themeColor.setAttribute('content', chrome);
+
+        var statusBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+        if (statusBar) statusBar.setAttribute('content', theme === 'light' ? 'default' : 'black-translucent');
+      })();
+    </script>
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:
       1. Vite dev mode injects inline scripts/styles for HMR
@@ -58,15 +47,15 @@
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
-  <body class="bg-[#0a0a0a] text-white">
+  <body class="bg-[#0a0b0d] text-white">
     <div id="root">
       <!-- Pre-React branded splash — hidden once React hydrates -->
-      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0a0a;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)">
+      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0b0d">
         <div style="display:flex;flex-direction:column;align-items:center">
           <img src="/rmpg flex.png" alt="RMPG Flex" width="88" height="88"
-               style="filter:drop-shadow(0 0 20px rgba(136,136,136,0.3));object-fit:contain" draggable="false" />
+               style="filter:drop-shadow(0 0 18px rgba(167,177,188,0.22));object-fit:contain" draggable="false" />
           <div style="margin-top:16px;margin-bottom:12px;width:140px;height:2px;background:#1a1a1a;border-radius:1px;overflow:hidden">
-            <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#888888,transparent);animation:sl 1.6s ease-in-out infinite"></div>
+            <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#a7b1bc,transparent);animation:sl 1.6s ease-in-out infinite"></div>
           </div>
           <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:system-ui,sans-serif;margin:0">
             Initializing

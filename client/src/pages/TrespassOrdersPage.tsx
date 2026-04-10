@@ -340,7 +340,7 @@ export default function TrespassOrdersPage() {
       <PanelTitleBar icon={ShieldBan} title="TRESPASS ORDERS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/trespass-orders/export/csv" exportFilename="trespass_orders_export.csv" />
+        <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
         {/* Feature 18: Expiration Calendar */}
         <button type="button" onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
           <Calendar style={{ width: 11, height: 11 }} /> Expirations
@@ -381,10 +381,10 @@ export default function TrespassOrdersPage() {
 
       {/* Feature 19: Bulk Create Panel */}
       {bulkMode && (
-        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs">
+        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-gray-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
-            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-gray-500 hover:text-gray-300"><X style={{ width: 12, height: 12 }} /></button>
+            <span className="text-blue-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
+            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-blue-500 hover:text-blue-300"><X style={{ width: 12, height: 12 }} /></button>
           </div>
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
@@ -430,7 +430,7 @@ export default function TrespassOrdersPage() {
           >
             {showActiveOnly ? 'ACTIVE ONLY' : 'ALL ORDERS'}
           </button>
-          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setShowActiveOnly(false); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by status">
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setShowActiveOnly(false); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Statuses</option>
             <option value="active">Active</option>
             <option value="served">Served</option>
@@ -444,18 +444,10 @@ export default function TrespassOrdersPage() {
         </div>
       </div>
 
-      {/* Error Banner */}
-      {error && (
-        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-3 h-3" /> {error}
-          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
-        </div>
-      )}
-
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* List */}
-        <div className={`${selectedOrder && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent border-r border-rmpg-700`}>
+        <div className={`${selectedOrder && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent border-r border-rmpg-700`}>
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...</div>
           ) : orders.length === 0 ? (
@@ -513,7 +505,7 @@ export default function TrespassOrdersPage() {
 
         {/* Detail panel */}
         {selectedOrder && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-white font-mono">{selectedOrder.order_number}</h2>
@@ -619,7 +611,7 @@ export default function TrespassOrdersPage() {
       {/* Form Modal */}
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
               <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
               <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
@@ -632,7 +624,7 @@ export default function TrespassOrdersPage() {
                   <input type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
                   {personResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
                       {personResults.map((p: any) => (
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
                           className="w-full text-left px-3 py-1.5 text-xs text-white hover:bg-rmpg-700 flex items-center gap-2">
@@ -674,7 +666,7 @@ export default function TrespassOrdersPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#1b2128] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -682,7 +674,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#1b2128] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -690,7 +682,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#1b2128] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
                     {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
@@ -720,7 +712,7 @@ export default function TrespassOrdersPage() {
                 <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(136,136,136,0.3)', borderColor: 'rgba(136,136,136,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>
