@@ -421,7 +421,7 @@ function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
     if (p.is_sex_offender) add('REGISTERED SEX OFFENDER');
 
     // Gang affiliation
-    if (p.gang_affiliation) add('GANG AFFILIATED');
+    if (p.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(p.gang_affiliation.toLowerCase().trim())) add('GANG AFFILIATED');
 
     // OFAC watchlist
     if (p.watchlist_match) add('WATCHLIST MATCH');

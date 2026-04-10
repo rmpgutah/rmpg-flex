@@ -339,6 +339,30 @@ export interface PersonPdfData {
   citizenship?: string;
   marital_status?: string;
   place_of_birth?: string;
+  // LE Identifiers
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
+  // Military / Education
+  military_branch?: string;
+  military_status?: string;
+  education_level?: string;
+  tribal_affiliation?: string;
+  // Medical / Behavioral
+  disability_flags?: string;
+  mental_health_flags?: string;
+  substance_abuse?: string;
+  medication_notes?: string;
+  // Detailed Marks
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  distinguishing_features?: string;
+  identifying_marks_location?: string;
   // Flags
   is_sex_offender?: boolean;
   is_veteran?: boolean;
@@ -407,6 +431,18 @@ export interface VehiclePdfData {
   tow_company?: string;
   tow_date?: string;
   lien_holder?: string;
+  // Condition
+  title_status?: string;
+  exterior_condition?: string;
+  interior_condition?: string;
+  estimated_value?: string;
+  // Features
+  window_tint?: string;
+  modifications?: string;
+  equipment_notes?: string;
+  // Additional Registration
+  registered_owner?: string;
+  registration_state?: string;
   // Description
   distinguishing_features?: string;
   damage_description?: string;
@@ -684,9 +720,35 @@ export interface PropertyPdfData {
   longitude?: number;
   property_type?: string;
   is_active?: boolean;
+  // Building Details
+  business_type?: string;
+  structure_type?: string;
+  occupancy_status?: string;
+  year_built?: string;
+  square_footage?: string;
+  number_of_stories?: string;
+  // Owner & Key Holder
+  owner_name?: string;
+  owner_phone?: string;
+  key_holder_name?: string;
+  key_holder_phone?: string;
+  key_holder_relationship?: string;
+  // Security
   gate_code?: string;
   alarm_code?: string;
+  alarm_company?: string;
+  alarm_account?: string;
+  camera_system?: string;
+  security_features?: string;
   emergency_contact?: string;
+  // Facility
+  parking_info?: string;
+  roof_access?: string;
+  utility_shutoffs?: string;
+  known_hazards?: string;
+  last_inspection_date?: string;
+  inspection_status?: string;
+  // Instructions
   access_instructions?: string;
   post_orders?: string;
   hazard_notes?: string;
@@ -1643,6 +1705,63 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── 7b. Law Enforcement Identifiers ────────────────────────
+  if (data.ncic_number || data.sor_number || data.fbi_number || data.state_id_number || data.passport_number || data.immigration_status) {
+    y = checkPageBreak(doc, y, 12, prio);
+    const sec = openAutoSection(doc, 'Law Enforcement Identifiers', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const le1 = addFieldPair(doc, 'NCIC #', data.ncic_number || '', lx, y, qw);
+    const le2 = addFieldPair(doc, 'SOR #', data.sor_number || '', lx + qw, y, qw);
+    const le3 = addFieldPair(doc, 'FBI #', data.fbi_number || '', lx + 2 * qw, y, qw);
+    const le4 = addFieldPair(doc, 'State ID #', data.state_id_number || '', lx + 3 * qw, y, qw);
+    y = Math.max(le1, le2, le3, le4);
+    const tw = ffw / 3;
+    const pp1 = addFieldPair(doc, 'Passport #', data.passport_number || '', lx, y, tw);
+    const pp2 = addFieldPair(doc, 'Passport Country', data.passport_country || '', lx + tw, y, tw);
+    const pp3 = addFieldPair(doc, 'Immigration Status', data.immigration_status || '', lx + 2 * tw, y, tw);
+    y = Math.max(pp1, pp2, pp3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7c. Military Service ──────────────────────────────────
+  if (data.military_branch || data.military_status || data.education_level || data.tribal_affiliation) {
+    y = checkPageBreak(doc, y, 12, prio);
+    const sec = openAutoSection(doc, 'Military Service & Demographics', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const m1 = addFieldPair(doc, 'Military Branch', data.military_branch || '', lx, y, qw);
+    const m2 = addFieldPair(doc, 'Military Status', data.military_status || '', lx + qw, y, qw);
+    const m3 = addFieldPair(doc, 'Education Level', data.education_level || '', lx + 2 * qw, y, qw);
+    const m4 = addFieldPair(doc, 'Tribal Affiliation', data.tribal_affiliation || '', lx + 3 * qw, y, qw);
+    y = Math.max(m1, m2, m3, m4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7d. Medical / Behavioral Flags ────────────────────────
+  if (data.disability_flags || data.mental_health_flags || data.substance_abuse || data.medication_notes) {
+    y = checkPageBreak(doc, y, 14, prio);
+    const sec = openAutoSection(doc, 'Medical / Behavioral Flags', y); y = sec.contentY;
+    const hw = ffw / 2;
+    const md1 = addFieldPair(doc, 'Disability', data.disability_flags || '', lx, y, hw);
+    const md2 = addFieldPair(doc, 'Mental Health', data.mental_health_flags || '', lx + hw, y, hw);
+    y = Math.max(md1, md2);
+    const md3 = addFieldPair(doc, 'Substance Abuse', data.substance_abuse || '', lx, y, hw);
+    const md4 = addFieldPair(doc, 'Medication Notes', data.medication_notes || '', lx + hw, y, hw);
+    y = Math.max(md3, md4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7e. Detailed Identifying Marks ────────────────────────
+  if (data.tattoo_description || data.scar_description || data.piercing_description || data.distinguishing_features || data.identifying_marks_location) {
+    y = checkPageBreak(doc, y, 14, prio);
+    const sec = openAutoSection(doc, 'Detailed Identifying Marks', y); y = sec.contentY;
+    if (data.tattoo_description) y = addNarrativeField(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
+    if (data.scar_description) y = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, ffw);
+    if (data.piercing_description) y = addNarrativeField(doc, 'Piercing Description', data.piercing_description, lx, y, ffw);
+    if (data.distinguishing_features) y = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, ffw);
+    if (data.identifying_marks_location) y = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // ── 8. Flags & Warnings ───────────────────────────────────
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Flags & Warnings', y); y = sec.contentY;
@@ -1656,7 +1775,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
     const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;
-    const f1 = addFieldPair(doc, 'Gang Affiliation', data.gang_affiliation || '', lx, y, thirdW);
+    const gangVal = data.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(data.gang_affiliation.toLowerCase().trim()) ? data.gang_affiliation : '';
+    const f1 = addFieldPair(doc, 'Gang Affiliation', gangVal, lx, y, thirdW);
     const f2 = addFieldPair(doc, 'Probation / Parole', probParole, lx + thirdW, y, thirdW * 2);
     y = Math.max(f1, f2);
     // Row 3: Known Associates (if present)
@@ -1967,6 +2087,29 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     const r2b = addFieldPair(doc, 'Tow Company', data.tow_company || '', lx + thirdW, y, thirdW);
     const r2c = addFieldPair(doc, 'Tow Date', fmtDate(data.tow_date), lx + thirdW * 2, y, thirdW);
     y = Math.max(r2a, r2b, r2c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Vehicle Condition ──
+  if (data.title_status || data.exterior_condition || data.interior_condition || data.estimated_value) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Vehicle Condition', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const c1 = addFieldPair(doc, 'Title Status', data.title_status || '', lx, y, qw);
+    const c2 = addFieldPair(doc, 'Exterior', data.exterior_condition || '', lx + qw, y, qw);
+    const c3 = addFieldPair(doc, 'Interior', data.interior_condition || '', lx + 2 * qw, y, qw);
+    const c4 = addFieldPair(doc, 'Est. Value', data.estimated_value ? `$${data.estimated_value}` : '', lx + 3 * qw, y, qw);
+    y = Math.max(c1, c2, c3, c4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Features & Modifications ──
+  if (data.window_tint || data.modifications || data.equipment_notes) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Features & Modifications', y); y = sec.contentY;
+    if (data.window_tint) y = addFieldPair(doc, 'Window Tint', data.window_tint, lx, y, ffw);
+    if (data.modifications) y = addNarrativeField(doc, 'Modifications', data.modifications, lx, y, ffw);
+    if (data.equipment_notes) y = addNarrativeField(doc, 'Equipment Notes', data.equipment_notes, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2794,6 +2937,21 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     const r2a = addFieldPair(doc, 'Property Type', data.property_type || '', lx, y, hfw);
     const r2b = addFieldPair(doc, 'Status', data.is_active ? 'ACTIVE' : 'INACTIVE', rx, y, hfw);
     y = Math.max(r2a, r2b);
+    // Row 3: Building details (if any)
+    if (data.business_type || data.structure_type || data.occupancy_status) {
+      const tw = ffw / 3;
+      const b1 = addFieldPair(doc, 'Business Type', data.business_type || '', lx, y, tw);
+      const b2 = addFieldPair(doc, 'Structure Type', data.structure_type || '', lx + tw, y, tw);
+      const b3 = addFieldPair(doc, 'Occupancy', data.occupancy_status || '', lx + 2 * tw, y, tw);
+      y = Math.max(b1, b2, b3);
+    }
+    if (data.year_built || data.square_footage || data.number_of_stories) {
+      const tw = ffw / 3;
+      const b4 = addFieldPair(doc, 'Year Built', data.year_built || '', lx, y, tw);
+      const b5 = addFieldPair(doc, 'Sq. Footage', data.square_footage || '', lx + tw, y, tw);
+      const b6 = addFieldPair(doc, 'Stories', data.number_of_stories || '', lx + 2 * tw, y, tw);
+      y = Math.max(b4, b5, b6);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2813,11 +2971,64 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   // ── Access & Security ──
   y = checkPageBreak(doc, y, 12);
   { const sec = openAutoSection(doc, 'Access & Security', y); y = sec.contentY;
-    const quarterW = ffw / 4;
-    const r1a = addFieldPair(doc, 'Gate Code', data.gate_code || '', lx, y, quarterW);
-    const r1b = addFieldPair(doc, 'Alarm Code', data.alarm_code || '', lx + quarterW, y, quarterW);
-    const r1c = addFieldPair(doc, 'Emergency Contact', data.emergency_contact || '', lx + quarterW * 2, y, quarterW * 2);
+    const tw = ffw / 4;
+    const r1a = addFieldPair(doc, 'Gate Code', data.gate_code || '', lx, y, tw);
+    const r1b = addFieldPair(doc, 'Alarm Code', data.alarm_code || '', lx + tw, y, tw);
+    const r1c = addFieldPair(doc, 'Emergency Contact', data.emergency_contact || '', lx + tw * 2, y, tw * 2);
     y = Math.max(r1a, r1b, r1c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Owner & Key Holder ──
+  if (data.owner_name || data.key_holder_name) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Owner & Key Holder', y); y = sec.contentY;
+    const hw = ffw / 2;
+    if (data.owner_name || data.owner_phone) {
+      const o1 = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hw);
+      const o2 = addFieldPair(doc, 'Owner Phone', data.owner_phone || '', rx, y, hw);
+      y = Math.max(o1, o2);
+    }
+    if (data.key_holder_name || data.key_holder_phone) {
+      const tw = ffw / 3;
+      const k1 = addFieldPair(doc, 'Key Holder', data.key_holder_name || '', lx, y, tw);
+      const k2 = addFieldPair(doc, 'Key Holder Phone', data.key_holder_phone || '', lx + tw, y, tw);
+      const k3 = addFieldPair(doc, 'Relationship', data.key_holder_relationship || '', lx + 2 * tw, y, tw);
+      y = Math.max(k1, k2, k3);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Security Systems ──
+  if (data.alarm_company || data.camera_system || data.security_features) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Security Systems', y); y = sec.contentY;
+    const tw = ffw / 3;
+    const s1 = addFieldPair(doc, 'Alarm Company', data.alarm_company || '', lx, y, tw);
+    const s2 = addFieldPair(doc, 'Alarm Account', data.alarm_account || '', lx + tw, y, tw);
+    const s3 = addFieldPair(doc, 'Camera System', data.camera_system || '', lx + 2 * tw, y, tw);
+    y = Math.max(s1, s2, s3);
+    if (data.security_features) y = addNarrativeField(doc, 'Security Features', data.security_features, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Facility Details ──
+  if (data.parking_info || data.roof_access || data.utility_shutoffs || data.known_hazards || data.last_inspection_date) {
+    y = checkPageBreak(doc, y, 14);
+    const sec = openAutoSection(doc, 'Facility Details', y); y = sec.contentY;
+    const tw = ffw / 3;
+    if (data.parking_info) y = addFieldPair(doc, 'Parking', data.parking_info, lx, y, ffw);
+    if (data.roof_access || data.utility_shutoffs) {
+      const f1 = addFieldPair(doc, 'Roof Access', data.roof_access || '', lx, y, hfw);
+      const f2 = addFieldPair(doc, 'Utility Shutoffs', data.utility_shutoffs || '', rx, y, hfw);
+      y = Math.max(f1, f2);
+    }
+    if (data.known_hazards) y = addNarrativeField(doc, 'Known Hazards', data.known_hazards, lx, y, ffw);
+    if (data.last_inspection_date || data.inspection_status) {
+      const i1 = addFieldPair(doc, 'Last Inspection', fmtDate(data.last_inspection_date), lx, y, hfw);
+      const i2 = addFieldPair(doc, 'Inspection Status', data.inspection_status || '', rx, y, hfw);
+      y = Math.max(i1, i2);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
