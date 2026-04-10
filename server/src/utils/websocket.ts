@@ -57,7 +57,7 @@ function safeSend(ws: WebSocket, data: string): boolean {
 const AUTH_TIMEOUT_MS = 8_000;
 
 // All channels every authenticated client auto-subscribes to
-const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email', 'serve'];
+const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email', 'serve', 'scraper_events'];
 
 // ─── Radio State ────────────────────────────────────────────
 // Tracks which radio channel each client is on, and who is
