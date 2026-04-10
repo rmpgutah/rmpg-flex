@@ -443,6 +443,15 @@ router.get('/calls/:id', (req: Request, res: Response) => {
 
 // PUT /api/dispatch/calls/:id - Update call
 router.put('/calls/:id', (req: Request, res: Response) => {
+  // Entry log — this is the live handler (dispatch.ts is imported before
+  // dispatch/index.ts due to bundler module resolution picking the .ts file).
+  try {
+    const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+    console.log(
+      `[PUT /calls/:id dispatch.ts ENTRY] id=${req.params.id} role=${req.user?.role || 'n/a'} body_keys=[${bodyKeys.join(',')}]`,
+    );
+  } catch { /* never let logging break requests */ }
+
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -617,7 +626,48 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('process_served_address', process_served_address);
     addField('client_id', resolvedUpdateClientId);
 
+    // ── Timeline dispatch timestamp override (admin/manager/supervisor/dispatcher) ──
+    // Allows editing historical dispatch timestamps (dispatched_at, enroute_at,
+    // onscene_at, cleared_at, closed_at, received_at). Pulled from req.body
+    // directly since these fields aren't in the main destructure above.
+    // Officers are excluded — field staff shouldn't correct historical records.
+    const TIMELINE_EDIT_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
+    if (TIMELINE_EDIT_ROLES.includes(req.user?.role || '')) {
+      const tlBody = req.body as Record<string, unknown>;
+      const isValidIso = (v: unknown): v is string =>
+        typeof v === 'string' && v.length >= 10 && !Number.isNaN(new Date(v).getTime());
+
+      const handleTimelineField = (col: string) => {
+        const val = tlBody[col];
+        if (val === undefined) return;
+        if (val === null || val === '') {
+          updates.push(`${col} = NULL`);
+          return;
+        }
+        if (isValidIso(val)) {
+          updates.push(`${col} = ?`);
+          params.push(val);
+          return;
+        }
+        console.warn(
+          `[PUT /calls/:id dispatch.ts] rejected timeline ${col}: type=${typeof val} value=${JSON.stringify(val)?.substring(0, 80)}`,
+        );
+      };
+
+      handleTimelineField('received_at');
+      handleTimelineField('dispatched_at');
+      handleTimelineField('enroute_at');
+      handleTimelineField('onscene_at');
+      handleTimelineField('cleared_at');
+      handleTimelineField('closed_at');
+      handleTimelineField('created_at');
+    }
+
     if (updates.length === 0) {
+      const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+      console.warn(
+        `[PUT /calls/:id dispatch.ts] NO_FIELDS_TO_UPDATE id=${req.params.id} role=${req.user?.role || 'n/a'} body_keys=[${bodyKeys.join(',')}]`,
+      );
       res.status(400).json({ error: 'No fields to update' });
       return;
     }
