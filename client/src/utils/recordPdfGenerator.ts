@@ -44,7 +44,7 @@ import {
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
 import {
-  drawCheckboxGrid, drawNibrsHeader, drawFormSection,
+  drawCheckboxGrid, drawNibrsHeader, drawFormSection, drawGeographyStrip,
   type CheckboxItem, type FormRow,
 } from './pdfFormHelpers';
 
@@ -328,6 +328,12 @@ export interface PersonPdfData {
   date_of_birth?: string;
   gender?: string;
   race?: string;
+  // Geography / Contract
+  area_name?: string;
+  sector_name?: string;
+  zone_name?: string;
+  beat_name?: string;
+  contract_id?: string;
   // Physical
   height?: string;
   weight?: string;
@@ -433,6 +439,12 @@ export interface VehiclePdfData {
   model?: string;
   year?: number;
   body_style?: string;
+  // Geography / Contract
+  area_name?: string;
+  sector_name?: string;
+  zone_name?: string;
+  beat_name?: string;
+  contract_id?: string;
   trim?: string;
   doors?: number;
   color?: string;
@@ -745,6 +757,12 @@ export interface PropertyPdfData {
   address?: string;
   city?: string;
   state?: string;
+  // Geography / Contract
+  area_name?: string;
+  sector_name?: string;
+  zone_name?: string;
+  beat_name?: string;
+  contract_id?: string;
   zip?: string;
   latitude?: number;
   longitude?: number;
@@ -1610,6 +1628,15 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
+  // Geography / Contract strip — AREA | SECTOR | ZONE | BEAT | CONTRACT ID
+  y = drawGeographyStrip(doc, y, {
+    area: data.area_name,
+    sector: data.sector_name,
+    zone: data.zone_name,
+    beat: data.beat_name,
+    contract_id: data.contract_id,
+  });
+
   // ── 1. Subject Identification ─────────────────────────────
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
     const fifthW = ffw / 5;
@@ -2040,6 +2067,15 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     formTitle: 'VEHICLE RECORD',
     formNumber: 'FORM PS-203',
     caseNumber: data.license_plate || 'N/A',
+  });
+
+  // Geography / Contract strip
+  y = drawGeographyStrip(doc, y, {
+    area: data.area_name,
+    sector: data.sector_name,
+    zone: data.zone_name,
+    beat: data.beat_name,
+    contract_id: data.contract_id,
   });
 
   // ── Vehicle Identification ──
@@ -2954,6 +2990,15 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     formTitle: 'PROPERTY RECORD',
     formNumber: 'FORM PS-208',
     caseNumber: data.name || 'N/A',
+  });
+
+  // Geography / Contract strip
+  y = drawGeographyStrip(doc, y, {
+    area: data.area_name,
+    sector: data.sector_name,
+    zone: data.zone_name,
+    beat: data.beat_name,
+    contract_id: data.contract_id,
   });
 
   // ── Property Information ──

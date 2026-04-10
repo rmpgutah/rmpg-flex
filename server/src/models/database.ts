@@ -1509,6 +1509,7 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'damage_description', 'TEXT');
   addCol('calls_for_service', 'action_taken', 'TEXT');
   addCol('calls_for_service', 'updated_at', 'TEXT');
+  addCol('calls_for_service', 'received_at', 'TEXT');
 
   // ── calls_for_service — expand source CHECK constraint ─────────────
   // The original CHECK only allowed: phone, radio, alarm, walk_in, email

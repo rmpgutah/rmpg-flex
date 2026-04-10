@@ -1571,7 +1571,8 @@ export default function DispatchPage() {
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
       console.error('Failed to update timeline:', err);
-      addToast('Failed to update timeline', 'error');
+      const msg = err instanceof Error ? err.message : 'Failed to update timeline';
+      addToast(`Timeline update failed: ${msg}`, 'error');
     }
     setEditingTimestamp(null);
   }, [selectedCall, isAdminOrManager, addToast]);

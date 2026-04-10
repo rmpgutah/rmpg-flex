@@ -253,7 +253,7 @@ export default function IncidentReportsPanel({
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] font-mono text-rmpg-200 truncate flex items-center gap-1">
                             <FileText size={8} className="shrink-0 text-rmpg-500" />
-                            {r.incident_type || 'Unknown'}
+                            {(r.incident_type || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                           </span>
                           <span
                             className="text-[8px] font-mono px-1 py-0.5 rounded-sm flex-shrink-0 ml-1"

@@ -634,7 +634,7 @@ function DashboardTab({ records, requirements, officers }: {
                   <span className="text-rmpg-500">—</span>
                   <span className="text-rmpg-300">{r.course_name}</span>
                   <span className={`ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 ${STATUS_COLORS[r.status].bg} ${STATUS_COLORS[r.status].text} border ${STATUS_COLORS[r.status].border}`}>
-                    {r.status}
+                    {String(r.status).replace(/_/g, ' ')}
                   </span>
                 </div>
               ))}

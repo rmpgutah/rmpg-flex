@@ -588,6 +588,77 @@ export function drawNibrsHeader(
   return y;
 }
 
+/**
+ * Draw the geography / contract strip row below the NIBRS header.
+ * Renders: AREA | SECTOR | ZONE | BEAT | CONTRACT ID
+ * Each cell is a labeled box matching field-pair style, full-width.
+ * All values forced to UPPERCASE for professional police-report style.
+ */
+export function drawGeographyStrip(
+  doc: jsPDF,
+  y: number,
+  data: {
+    area?: string | null;
+    sector?: string | null;   // displayed from section_id/sector_id
+    zone?: string | null;
+    beat?: string | null;
+    contract_id?: string | null;
+  },
+): number {
+  const margin = LAYOUT.PAGE_MARGIN;
+  const pageW = doc.internal.pageSize.getWidth();
+  const contentW = pageW - 2 * margin;
+  const cellW = contentW / 5;
+  const stripH = 6.5;
+
+  // Cell background (light gray)
+  doc.setFillColor(245, 245, 248);
+  doc.rect(margin, y, contentW, stripH, 'F');
+
+  // Top and bottom borders
+  doc.setDrawColor(...COLOR.BORDER_SECTION);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y, margin + contentW, y);
+  doc.line(margin, y + stripH, margin + contentW, y + stripH);
+
+  const labels = ['AREA', 'SECTOR', 'ZONE', 'BEAT', 'CONTRACT ID'];
+  const values = [
+    data.area || '—',
+    data.sector || '—',
+    data.zone || '—',
+    data.beat || '—',
+    data.contract_id || '—',
+  ];
+
+  for (let i = 0; i < 5; i++) {
+    const cellX = margin + i * cellW;
+    // Column separator (except before first)
+    if (i > 0) {
+      doc.setDrawColor(...COLOR.BORDER_COLUMN);
+      doc.setLineWidth(0.2);
+      doc.line(cellX, y, cellX, y + stripH);
+    }
+    // Label (top of cell)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(labels[i], cellX + 1.5, y + 2.2);
+    // Value (bottom of cell, monospace, UPPERCASE)
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const val = String(values[i]).toUpperCase();
+    // Truncate to fit cell
+    const maxChars = Math.floor((cellW - 3) / 1.5);
+    const displayVal = val.length > maxChars ? val.slice(0, maxChars - 1) + '…' : val;
+    doc.text(displayVal, cellX + 1.5, y + 5.5);
+  }
+
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + stripH + 1;
+}
+
 // ── NIBRS Code Constants ────────────────────────────────────
 
 export const NIBRS_PROPERTY_CODES: CodeEntry[] = [
