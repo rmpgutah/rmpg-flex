@@ -4578,7 +4578,7 @@ router.post('/plate-check', async (req: Request, res: Response) => {
 // COMPOUND SEARCH — NCIC-style multi-field search across persons and vehicles
 // ══════════════════════════════════════════════════════════════════════════════
 
-router.get('/compound-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/compound-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -4587,7 +4587,7 @@ router.get('/compound-search', requireRole('admin', 'manager', 'supervisor', 'of
       hair_color, eye_color, build,
       address, alias, ssn_last4,
       plate, dl_number, flags, limit,
-    } = req.query;
+    } = req.body;
 
     const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
 
