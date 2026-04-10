@@ -75,13 +75,13 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x, y + 2);
-  y += 3.5;
+  doc.text(label.toUpperCase(), x, y + 1.8);
+  y += 3.0;
   // Body text — word-wrapped Courier
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = 3.5;
+  const lineH = 3.2;
   const raw = sanitizePdfText(value);
   const lines = doc.splitTextToSize(raw, width - 1) as string[];
   for (const line of lines) {
