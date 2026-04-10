@@ -4772,13 +4772,14 @@ router.get('/universal-search', requireRole('admin', 'manager', 'supervisor', 'o
     const db = getDb();
     const { q, limit } = req.query;
 
-    if (!q || (q as string).length < 2) {
+    if (typeof q !== 'string' || q.trim().length < 2) {
       res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'QUERY_TOO_SHORT' });
       return;
     }
 
     const searchTerm = `%${q}%`;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 5, 50);
+    const parsedLimit = typeof limit === 'string' ? parseInt(limit, 10) : NaN;
+    const limitNum = Math.min(Number.isFinite(parsedLimit) ? parsedLimit : 5, 50);
 
     // ── Persons ──
     let persons: any[] = [];
