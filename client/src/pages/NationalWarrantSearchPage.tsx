@@ -705,12 +705,12 @@ function WarrantRow({ warrant }: { warrant: any }) {
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           {warrant.offense_level && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${severityBadge(warrant.offense_level)}`}>
-              {warrant.offense_level.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              {warrant.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
             </span>
           )}
           {warrant.warrant_type && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeBadge(warrant.warrant_type)}`}>
-              {warrant.warrant_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              {warrant.warrant_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
             </span>
           )}
           {warrant.court && (

@@ -3473,6 +3473,9 @@ function migrateSchema(): void {
   // ── COURT EVENTS — continuance, bail, confirmation, judge notes, documents ──
   addCol('court_events', 'continuance_count', 'INTEGER DEFAULT 0');
   addCol('court_events', 'continuance_log', "TEXT DEFAULT '[]'");
+  // Bug: court.ts POST route INSERTs defendant_dob but no migration added it.
+  // Every court event create threw 500 "no such column: defendant_dob".
+  addCol('court_events', 'defendant_dob', 'TEXT');
   addCol('court_events', 'bail_amount', 'REAL');
   addCol('court_events', 'bond_status', 'TEXT');
   addCol('court_events', 'surety_info', 'TEXT');
@@ -3833,6 +3836,9 @@ function migrateSchema(): void {
   addCol('fleet_vehicles', 'total_fuel_cost', 'REAL DEFAULT 0');
   addCol('fleet_vehicles', 'total_trips', 'INTEGER DEFAULT 0');
   addCol('fleet_vehicles', 'avg_mpg', 'REAL');
+  // Bug: fleet.ts POST route INSERTs next_service_mileage but the column
+  // was never added to the schema — every fleet vehicle create threw 500.
+  addCol('fleet_vehicles', 'next_service_mileage', 'INTEGER');
   addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
 
   // ── HR — performance review template field ──
@@ -3947,6 +3953,128 @@ function migrateSchema(): void {
   addCol('vehicles_records', 'insurance_verified_at', 'TEXT');
   addCol('vehicles_records', 'insurance_verified_by', 'INTEGER');
   addCol('vehicles_records', 'is_stolen', 'INTEGER DEFAULT 0');
+
+  // ── CRM: Leads ──
+  // Bug: Production has this table but it was never added to the schema
+  // migration. Any fresh install had no CRM functionality.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS crm_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      source_id TEXT,
+      source_url TEXT,
+      business_name TEXT NOT NULL,
+      industry TEXT,
+      sic_code TEXT,
+      business_type TEXT,
+      contact_name TEXT,
+      contact_email TEXT,
+      contact_phone TEXT,
+      contact_title TEXT,
+      address TEXT,
+      city TEXT,
+      state TEXT DEFAULT 'UT',
+      zip TEXT,
+      latitude REAL,
+      longitude REAL,
+      estimated_value REAL,
+      permit_number TEXT,
+      registration_date TEXT,
+      license_number TEXT,
+      project_type TEXT,
+      property_size TEXT,
+      pipeline_stage TEXT NOT NULL DEFAULT 'new',
+      lead_score INTEGER DEFAULT 0,
+      assigned_to INTEGER,
+      client_id INTEGER,
+      proposal_id INTEGER,
+      notes TEXT,
+      lost_reason TEXT,
+      next_follow_up TEXT,
+      service_interest TEXT,
+      enrichment_status TEXT,
+      enrichment_data TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_source ON crm_leads(source)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(pipeline_stage)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_score ON crm_leads(lead_score DESC)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned ON crm_leads(assigned_to)`).run();
+
+  // Activity log for leads (audit trail of stage changes, calls, etc.)
+  // Same missing-from-schema issue as crm_leads.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS crm_lead_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
+      activity_type TEXT NOT NULL,
+      subject TEXT,
+      details TEXT,
+      old_value TEXT,
+      new_value TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_lead_activity_lead ON crm_lead_activity(lead_id)`).run();
+
+  // ── HR: Leave Requests ──
+  // Bug: This table exists in production but was never added to the schema
+  // migration. Any fresh install (including test DBs) had no HR functionality.
+  // No CHECK constraints on type/status — route enum list has drifted from
+  // the production CHECK list, so permissive TEXT avoids silent constraint
+  // violations (e.g. route accepts 'military', 'jury_duty' which old CHECK rejects).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'vacation',
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL DEFAULT 0,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_leave_requests_officer ON leave_requests(officer_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)`).run();
+
+  // ── HR: Disciplinary Records ──
+  // Same missing-from-schema issue as leave_requests. No CHECK constraints
+  // on type/status to accommodate route enum values that drifted from the
+  // production CHECK list (route sends 'probation', 'other', 'pending_review'
+  // which old production CHECK constraints rejected).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS disciplinary_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'verbal_warning',
+      severity TEXT NOT NULL DEFAULT 'minor',
+      incident_date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      action_taken TEXT,
+      follow_up_date TEXT,
+      follow_up_notes TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      issued_by INTEGER NOT NULL,
+      witness TEXT,
+      attachments TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (issued_by) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_disciplinary_officer ON disciplinary_records(officer_id)`).run();
 
   // ── Feature 3: Call tag system ──
   addCol('calls_for_service', 'tags', "TEXT DEFAULT '[]'");
