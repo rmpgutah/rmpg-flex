@@ -1267,10 +1267,11 @@ export function addNarrativeSection(
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
   // Draw background tint sized to actual content (subtle light gray) — first page only
+  const cw = getContentWidth(doc);
   const pageH = doc.internal.pageSize.getHeight();
   const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
   doc.setFillColor(246, 246, 250);
-  doc.rect(lx - 2, y - 2, ffw + 4, maxTintH, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
 
   // Page break callback: draw section continuation sub-header + fresh tint
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
@@ -1290,9 +1291,10 @@ export function addNarrativeSection(
     doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     // Draw fresh background tint for remaining text on this page
+    const cw2 = getContentWidth(doc);
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
     doc.setFillColor(246, 246, 250);
-    doc.rect(lx - 2, contentStartY - 2, ffw + 4, remainH, 'F');
+    doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont('courier', 'normal');
     doc.setFontSize(fontSize);
@@ -1568,20 +1570,20 @@ export function addTableWithShading(
     if (lightHdr) {
       // Light header: white background, thin border, uppercase label (field-pair style)
       doc.setFillColor(255, 255, 255);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setDrawColor(...COLOR.BORDER_FIELD);
       doc.setLineWidth(BORDER.FIELD);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH);
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
       // Dark table header (police report style)
       doc.setFillColor(...COLOR.BG_TABLE_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setDrawColor(...COLOR.BORDER_OUTER);
       doc.setLineWidth(BORDER.TABLE_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH);
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_INVERTED);
@@ -1645,13 +1647,13 @@ export function addTableWithShading(
     // Zebra shading — rect starts at y, full rowH
     if (i % 2 === 0) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, y, cw - 2, rowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
     }
 
     // Row separator at bottom of row
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH);
+    doc.line(LAYOUT.PAGE_MARGIN, y + rowH, LAYOUT.PAGE_MARGIN + cw, y + rowH);
 
     // Render cell text — vertically centered within row
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1691,7 +1693,7 @@ export function addTableWithShading(
     // Outer border enclosing this segment
     doc.setDrawColor(...COLOR.BORDER_OUTER);
     doc.setLineWidth(BORDER.TABLE_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, segH);
+    doc.rect(LAYOUT.PAGE_MARGIN, seg.top, cw, segH);
   }
   // Restore to current (last) page
   doc.setPage(currentPage);
