@@ -133,7 +133,7 @@ export const SECTION_COLORS: Record<string, string> = {
   SL1: '#22c55e', SL2: '#888888', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#22c55e',
   DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
   WB1: '#8b5cf6', WB2: '#10b981',
-  UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
+  UC1: '#888888', UC2: '#eab308', UC3: '#f43f5e',
 };
 const SECTION_COLOR_FALLBACKS = ['#666666', '#78716c', '#a3a3a3', '#71717a', '#737373', '#666666'];
 

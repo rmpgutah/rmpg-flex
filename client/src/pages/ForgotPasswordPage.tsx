@@ -99,7 +99,7 @@ export default function ForgotPasswordPage() {
                     disabled={loading || !email.trim()}
                     className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     style={{
-                      background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                      background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                       border: '1px solid rgba(136, 136, 136, 0.5)',
                       borderRadius: '2px',
                     }}
@@ -133,7 +133,7 @@ export default function ForgotPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b313a' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b2b2b' }}>
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors"

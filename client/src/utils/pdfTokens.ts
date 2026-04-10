@@ -117,10 +117,10 @@ export const SPACING = {
   XL:                 2.5,   // Generous gap
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
-  SECTION_HEADER_H:   3.8,   // Section header bar height (compact)
-  SECTION_GAP:        0.5,   // Gap between sections (minimal)
-  SECTION_CONTENT_PAD: 2.0,  // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  0.2,  // Padding inside section before bottom border
+  SECTION_HEADER_H:   3.5,   // Section header bar height (compact)
+  SECTION_GAP:        0.3,   // Gap between sections (minimal)
+  SECTION_CONTENT_PAD: 1.2,  // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  0.1,  // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   2.8,   // Value area height (no box, just label+value)
   FIELD_ROW_ADVANCE:  2.8,   // Y-advance after field row (tight)
@@ -200,6 +200,18 @@ export function getThirdWidth(doc: jsPDF): number {
 /** One-quarter width for 4-column layouts (with 2mm gaps) */
 export function getQuarterWidth(doc: jsPDF): number {
   return (getContentWidth(doc) - 2 * SPACING.CONTENT_INSET - 3 * SPACING.MD) / 4;
+}
+
+/** Approximate line height for a given font size (mm). PDF points: 1 pt = 0.3528 mm.
+ *  Standard line height is 1.2× font size. */
+export function getLineHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 1.2;
+}
+
+/** Approximate cap height (height of capital letters) for a given font size (mm).
+ *  Cap height is typically ~70% of font size in points, converted to mm. */
+export function getCapHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 0.7;
 }
 
 /** Generate proportional column X positions from ratio array */

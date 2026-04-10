@@ -63,7 +63,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/county.geojson',
     icon: Map,
     description: 'Utah county polygons with census population data',
-    color: '#60a5fa',
+    color: '#a0a0a0',
   },
   {
     id: 'municipality',

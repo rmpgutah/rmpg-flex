@@ -1112,7 +1112,7 @@ export default function DashCamDetailPage() {
           </div>
 
           {/* ── Panel Bottom Actions ── */}
-          <div className="border-t border-[#1b2128] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+          <div className="border-t border-[#181818] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
             {/* File info */}
             <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
               <span>{formatSize(video.file_size)}</span>

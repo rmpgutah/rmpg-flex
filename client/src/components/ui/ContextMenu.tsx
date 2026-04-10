@@ -62,12 +62,12 @@ export default function ContextMenu({ items, children, disabled }: ContextMenuPr
       {visible && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[9999] min-w-[180px] bg-surface-base border border-[#2a3e58] shadow-xl py-1"
+          className="fixed z-[9999] min-w-[180px] bg-surface-base border border-[#2a2a2a] shadow-xl py-1"
           style={{ left: position.x, top: position.y }}
         >
           {items.map((item, i) => (
             item.separator ? (
-              <div key={i} className="border-t border-[#2b313a] my-1" />
+              <div key={i} className="border-t border-[#2b2b2b] my-1" />
             ) : (
               <button type="button"
                 key={i}

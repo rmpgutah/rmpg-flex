@@ -40,7 +40,7 @@ export default function MileagePromptModal({
         className="w-full max-w-[340px] border rounded-sm"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'var(--color-rmpg-800, #161b21)',
+          background: 'var(--color-rmpg-800, #141414)',
           borderColor: 'var(--color-rmpg-600, #2a3a4e)',
         }}
       >
@@ -48,7 +48,7 @@ export default function MileagePromptModal({
         <div
           className="flex items-center justify-between px-3 py-2 border-b"
           style={{
-            background: 'var(--color-rmpg-700, #1b2128)',
+            background: 'var(--color-rmpg-700, #181818)',
             borderColor: 'var(--color-rmpg-600, #2a3a4e)',
           }}
         >
