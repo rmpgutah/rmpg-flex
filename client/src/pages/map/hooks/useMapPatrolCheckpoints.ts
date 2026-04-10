@@ -114,7 +114,7 @@ function createCheckpointMarkerElement(status: ScanStatus, overdue: boolean, sca
       position: absolute;
       top: -6px;
       right: -8px;
-      background: #1b2128;
+      background: #181818;
       color: ${color};
       font-size: 8px;
       font-weight: bold;

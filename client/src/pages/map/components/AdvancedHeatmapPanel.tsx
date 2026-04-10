@@ -95,7 +95,7 @@ const MODE_CONFIG: {
   accent: string;
   accentBg: string;
 }[] = [
-  { key: 'density', label: 'DENSITY', icon: BarChart3, accent: '#888888', accentBg: 'rgba(59,130,246,0.15)' },
+  { key: 'density', label: 'DENSITY', icon: BarChart3, accent: '#888888', accentBg: 'rgba(136, 136, 136,0.15)' },
   { key: 'risk', label: 'RISK', icon: AlertTriangle, accent: '#ef4444', accentBg: 'rgba(239,68,68,0.15)' },
   { key: 'temporal', label: 'TEMPORAL', icon: Clock, accent: '#f97316', accentBg: 'rgba(249,115,22,0.15)' },
   { key: 'comparison', label: 'COMPARE', icon: GitCompare, accent: '#a855f7', accentBg: 'rgba(168,85,247,0.15)' },
@@ -167,7 +167,7 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 
 {/* #38: Section divider with subtler gradient */}
 function SectionDivider() {
-  return <div className="mx-2" style={{ height: 1, background: 'linear-gradient(to right, transparent, #2b313a 30%, #2b313a 70%, transparent)' }} />;
+  return <div className="mx-2" style={{ height: 1, background: 'linear-gradient(to right, transparent, #2b2b2b 30%, #2b2b2b 70%, transparent)' }} />;
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -282,7 +282,7 @@ export default function AdvancedHeatmapPanel({
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={onRefresh}
-            className="toolbar-btn p-1 rounded-sm hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97]"
+            className="toolbar-btn p-1 rounded-sm hover:bg-[#181818] transition-all duration-150 active:scale-[0.97]"
             title="Refresh data"
             aria-label="Refresh heatmap data"
           >
@@ -290,7 +290,7 @@ export default function AdvancedHeatmapPanel({
           </button>
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 rounded-sm hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97]"
+            className="toolbar-btn p-1 rounded-sm hover:bg-[#181818] transition-all duration-150 active:scale-[0.97]"
             aria-label="Close advanced heatmap panel"
             title="Close"
           >
@@ -300,7 +300,7 @@ export default function AdvancedHeatmapPanel({
       </div>
 
       {/* ── Scrollable body ───────────────────────────── */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         {/* ── Section 1: Mode Selector ──────────────── */}
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-4 gap-1.5">
@@ -311,7 +311,7 @@ export default function AdvancedHeatmapPanel({
                 <button type="button"
                   key={m.key}
                   onClick={() => onModeChange(m.key)}
-                  className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-[#1b2128]/50"
+                  className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-[#181818]/50"
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
                     border: active ? `2px solid ${m.accent}` : '1px solid #1e2a3a',
@@ -423,7 +423,7 @@ export default function AdvancedHeatmapPanel({
                   <button type="button"
                     key={preset.label}
                     onClick={() => setDayPreset(preset.days)}
-                    className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-all duration-150 hover:text-rmpg-200 hover:bg-[#1b2128]/50 active:scale-[0.97]"
+                    className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-all duration-150 hover:text-rmpg-200 hover:bg-[#181818]/50 active:scale-[0.97]"
                     style={{
                       background: 'rgba(255,255,255,0.03)',
                       color: '#666666',
@@ -442,7 +442,7 @@ export default function AdvancedHeatmapPanel({
                   <button type="button"
                     key={label}
                     onClick={() => toggleDay(idx)}
-                    className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all duration-150 text-center active:scale-[0.97] hover:bg-[#1b2128]/50"
+                    className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all duration-150 text-center active:scale-[0.97] hover:bg-[#181818]/50"
                     style={{
                       background: active ? activeMode.accentBg : '#050505',
                       border: `1px solid ${active ? activeMode.accent + '55' : '#1e1e1e'}`,
@@ -639,7 +639,7 @@ export default function AdvancedHeatmapPanel({
                 <button type="button"
                   key={t.incident_type}
                   onClick={() => toggleType(t.incident_type)}
-                  className="flex items-center gap-2 w-full px-2 py-1 rounded-sm text-left transition-all duration-100 hover:bg-[#1b2128]/50 active:scale-[0.98]"
+                  className="flex items-center gap-2 w-full px-2 py-1 rounded-sm text-left transition-all duration-100 hover:bg-[#181818]/50 active:scale-[0.98]"
                 >
                   <div
                     className="w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 transition-all"

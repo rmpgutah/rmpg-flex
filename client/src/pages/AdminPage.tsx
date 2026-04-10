@@ -726,7 +726,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark"
-          style={{ background: '#050505', borderBottom: '1px solid #242a32' }}
+          style={{ background: '#050505', borderBottom: '1px solid #242424' }}
           role="tablist"
           aria-label="Admin sections"
         >
@@ -764,7 +764,7 @@ export default function AdminPage() {
             style={{
               width: 200,
               background: '#050505',
-              borderRight: '1px solid #242a32',
+              borderRight: '1px solid #242424',
             }}
             aria-label="Admin navigation"
             role="tablist"
@@ -772,7 +772,7 @@ export default function AdminPage() {
             {tabGroups.map((group, gi) => (
               <div key={group.category} className={gi > 0 ? 'mt-2' : ''}>
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#242a32]/60 mb-0.5"
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#242424]/60 mb-0.5"
                   style={{ color: '#737b84' }}
                   aria-hidden="true"
                 >

@@ -231,7 +231,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
 
       {/* Add Form */}
       {showAdd && (
-        <div className="panel-surface border border-[#1b2128] p-4 space-y-3 animate-fade-in">
+        <div className="panel-surface border border-[#181818] p-4 space-y-3 animate-fade-in">
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">New Radio Channel</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>

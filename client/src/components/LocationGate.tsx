@@ -82,7 +82,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
   if (showWifiIndicator) {
     return (
       <div style={{
-        background: 'rgba(59, 130, 246, 0.08)',
+        background: 'rgba(136, 136, 136, 0.08)',
         borderBottom: '1px solid #222222',
         padding: '4px 16px',
         display: 'flex',

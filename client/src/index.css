@@ -426,6 +426,46 @@ html:not(.theme-light) [style*="rgb(59 130 246"] {
   color: #d0d0d0 !important;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   BLUE-KILLSWITCH — catch any hardcoded blue hex in inline styles.
+   Covers the full Tailwind blue/sky/cyan/indigo palettes plus common
+   custom blues. Updates background, border-color, color, outline,
+   box-shadow, fill, and stroke so the blue never reaches the pixel.
+   ═══════════════════════════════════════════════════════════════════ */
+[style*="#3b82f6"], [style*="#60a5fa"], [style*="#93c5fd"],
+[style*="#bfdbfe"], [style*="#dbeafe"], [style*="#eff6ff"],
+[style*="#2563eb"], [style*="#1d4ed8"], [style*="#1e40af"],
+[style*="#1e3a8a"], [style*="#172554"],
+[style*="#38bdf8"], [style*="#0ea5e9"], [style*="#0284c7"],
+[style*="#0369a1"], [style*="#075985"], [style*="#0c4a6e"],
+[style*="#7dd3fc"], [style*="#bae6fd"], [style*="#e0f2fe"], [style*="#f0f9ff"],
+[style*="#06b6d4"], [style*="#22d3ee"], [style*="#67e8f9"],
+[style*="#a5f3fc"], [style*="#cffafe"],
+[style*="#0891b2"], [style*="#0e7490"], [style*="#155e75"], [style*="#164e63"],
+[style*="#6366f1"], [style*="#818cf8"], [style*="#4f46e5"],
+[style*="#4338ca"], [style*="#3730a3"], [style*="#312e81"],
+[style*="#1a6abe"], [style*="#2068b0"], [style*="#144a84"],
+[style*="#1e6ab8"], [style*="#2a6ab0"], [style*="#2a7acf"],
+[style*="rgba(59,130,246"], [style*="rgba(59, 130, 246"],
+[style*="rgba(96,165,250"], [style*="rgba(96, 165, 250"],
+[style*="rgba(147,197,253"], [style*="rgba(147, 197, 253"],
+[style*="rgba(29,78,216"],   [style*="rgba(29, 78, 216"],
+[style*="rgba(37,99,235"],   [style*="rgba(37, 99, 235"],
+[style*="rgba(56,189,248"],  [style*="rgba(56, 189, 248"],
+[style*="rgba(14,165,233"],  [style*="rgba(14, 165, 233"],
+[style*="rgba(6,182,212"],   [style*="rgba(6, 182, 212"],
+[style*="rgba(34,211,238"],  [style*="rgba(34, 211, 238"] {
+  background: #0b0b0b !important;
+  border-color: #3a3a3a !important;
+  color: #c8c8c8 !important;
+  outline-color: #3a3a3a !important;
+  box-shadow: none !important;
+  fill: #8a8a8a !important;
+  stroke: #8a8a8a !important;
+  accent-color: #8a8a8a !important;
+  text-shadow: none !important;
+}
+
 html.theme-dark [style*="linear-gradient(180deg, #1b2128"],
 html.theme-dark [style*="linear-gradient(180deg, #2b313a"],
 html.theme-dark [style*="linear-gradient(180deg, #161b21"],
@@ -2397,9 +2437,9 @@ body.fx-noise::after {
 .ncic-c-summary { color: #ffd700; font-weight: bold; }
 
 /* ── NCIC semantic line coloring ─────────────────── */
-/* System header/footer bookends — teal */
+/* System header/footer bookends — neutral light gray (was sky blue) */
 .ncic-c-header {
-  color: #38bdf8;
+  color: #c8c8c8;
   font-weight: bold;
 }
 /* Section titles — bright white */
@@ -2435,9 +2475,9 @@ body.fx-noise::after {
 .ncic-c-dim {
   color: #5a4a2a;
 }
-/* Field-label codes (NAM/, DOB/, etc.) — cyan inline highlight */
+/* Field-label codes (NAM/, DOB/, etc.) — neutral gray inline highlight (was cyan) */
 .ncic-c-label {
-  color: #22d3ee;
+  color: #a8a8a8;
   font-weight: bold;
 }
 
@@ -4550,8 +4590,9 @@ html, body {
   }
 
   /* --- Spillman Console Glow Effects --- */
+  /* .glow-blue kept as a class name for API compat but renders as neutral white glow */
   .glow-blue {
-    text-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+    text-shadow: 0 0 8px rgba(200, 200, 200, 0.4);
   }
   .glow-green {
     text-shadow: 0 0 8px rgba(34, 197, 94, 0.4);

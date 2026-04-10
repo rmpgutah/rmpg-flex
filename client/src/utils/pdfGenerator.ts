@@ -189,6 +189,31 @@ export function getCachedLogoDark(): string | null {
 
 // ── Base Helpers ─────────────────────────────────────────────
 
+/** Convert a dataURL image to grayscale via canvas, returns new dataURL */
+export async function convertToGrayscale(dataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('no ctx')); return; }
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+        d[i] = d[i + 1] = d[i + 2] = gray;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 /** Parse hex color to RGB tuple */
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
@@ -484,7 +509,7 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 2.5;        // Height reserved for label above value
+  const labelH = 2.0;        // Height reserved for label above value
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
@@ -501,7 +526,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
-  const baseBoxH = useReadableText ? 3.6 : 3;
+  const baseBoxH = useReadableText ? 3.2 : 2.6;
   const displayText = isEmpty ? 'N/A' : useReadableText ? sanitized : sanitized.toUpperCase();
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -536,7 +561,15 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 0.5; // label + box + small gap
+  return y + labelH + boxH + 0.2; // label + box + small gap
+}
+
+/**
+ * Alias for addFieldPair — used by recordPdfGenerator for narrative-style
+ * long-text fields. Same signature: (doc, label, value, x, y, width).
+ */
+export function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
+  return addFieldPair(doc, label, value, x, y, width, maxLinesOverride);
 }
 
 /**
@@ -1242,10 +1275,11 @@ export function addNarrativeSection(
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
   // Draw background tint sized to actual content (subtle light gray) — first page only
+  const cw = getContentWidth(doc);
   const pageH = doc.internal.pageSize.getHeight();
   const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
   doc.setFillColor(246, 246, 250);
-  doc.rect(lx - 2, y - 2, ffw + 4, maxTintH, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
 
   // Page break callback: draw section continuation sub-header + fresh tint
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
@@ -1265,9 +1299,10 @@ export function addNarrativeSection(
     doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     // Draw fresh background tint for remaining text on this page
+    const cw2 = getContentWidth(doc);
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
     doc.setFillColor(246, 246, 250);
-    doc.rect(lx - 2, contentStartY - 2, ffw + 4, remainH, 'F');
+    doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont('courier', 'normal');
     doc.setFontSize(fontSize);
@@ -1523,9 +1558,9 @@ export function addTableWithShading(
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
-  const minRowH = 6;
-  const cellLineH = 3.8;      // Line height within table cells
-  const cellPad = 2;           // Padding inside cells
+  const minRowH = 5.5;
+  const cellLineH = 3.4;      // Line height within table cells
+  const cellPad = 1.5;        // Padding inside cells
   const maxCellLines = 50;    // Show full note text without truncation
 
   // Pre-compute column widths from position deltas
@@ -1543,20 +1578,20 @@ export function addTableWithShading(
     if (lightHdr) {
       // Light header: white background, thin border, uppercase label (field-pair style)
       doc.setFillColor(255, 255, 255);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setDrawColor(...COLOR.BORDER_FIELD);
       doc.setLineWidth(BORDER.FIELD);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH);
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
       // Dark table header (police report style)
       doc.setFillColor(...COLOR.BG_TABLE_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
       doc.setDrawColor(...COLOR.BORDER_OUTER);
       doc.setLineWidth(BORDER.TABLE_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH);
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_INVERTED);
@@ -1620,13 +1655,13 @@ export function addTableWithShading(
     // Zebra shading — rect starts at y, full rowH
     if (i % 2 === 0) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, y, cw - 2, rowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
     }
 
     // Row separator at bottom of row
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH);
+    doc.line(LAYOUT.PAGE_MARGIN, y + rowH, LAYOUT.PAGE_MARGIN + cw, y + rowH);
 
     // Render cell text — vertically centered within row
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1663,10 +1698,7 @@ export function addTableWithShading(
       doc.line(sepX, seg.top, sepX, seg.bottom);
     }
 
-    // Outer border enclosing this segment
-    doc.setDrawColor(...COLOR.BORDER_OUTER);
-    doc.setLineWidth(BORDER.TABLE_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, segH);
+    // No outer border — section header bar provides the visual frame
   }
   // Restore to current (last) page
   doc.setPage(currentPage);

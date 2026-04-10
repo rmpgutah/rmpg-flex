@@ -128,7 +128,7 @@ export default function IncidentReportsPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1 hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="toolbar-btn p-1 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close incident reports panel"
           title="Close"
         >
@@ -162,7 +162,7 @@ export default function IncidentReportsPanel({
                       className={`toolbar-btn px-1.5 py-0.5 text-[9px] font-mono transition-all duration-150 active:scale-[0.97] ${
                         days === d
                           ? 'text-emerald-300 bg-emerald-900/40'
-                          : 'text-rmpg-500 hover:bg-[#1b2128]/50'
+                          : 'text-rmpg-500 hover:bg-[#181818]/50'
                       }`}
                       title={`Show last ${d} days`}
                       aria-label={`Show last ${d} days`}
@@ -226,7 +226,7 @@ export default function IncidentReportsPanel({
                 {topTypes.map(([type, cnt]) => (
                   <div
                     key={type}
-                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-[#1b2128]/50 transition-colors duration-100"
+                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-[#181818]/50 transition-colors duration-100"
                     style={{ background: '#0a0a0a' }}
                   >
                     <span className="text-rmpg-300 truncate">{type}</span>
@@ -240,14 +240,14 @@ export default function IncidentReportsPanel({
             {recentReports.length > 0 && (
               <div className="space-y-0.5">
                 <span className="text-[9px] font-mono text-rmpg-500 uppercase">Recent</span>
-                <div className="max-h-[140px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+                <div className="max-h-[140px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                   {recentReports.map((r) => {
                     const ss = getStatusStyle(r.status);
                     const hasCoords = r.latitude != null && r.longitude != null;
                     return (
                       <div
                         key={r.id}
-                        className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-[#1b2128]/50 transition-colors duration-100"
+                        className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-[#181818]/50 transition-colors duration-100"
                         style={{ background: '#050505', border: '1px solid #1e2a3a', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">

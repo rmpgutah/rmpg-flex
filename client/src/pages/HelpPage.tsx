@@ -580,7 +580,7 @@ export default function HelpPage() {
                 <div className="space-y-1.5">
                   {[
                     { code: 'AVL', label: 'Available', color: '#22c55e', desc: 'Ready to receive calls' },
-                    { code: 'DSP', label: 'Dispatched', color: '#3b82f6', desc: 'Assigned to a call, en route' },
+                    { code: 'DSP', label: 'Dispatched', color: '#888888', desc: 'Assigned to a call, en route' },
                     { code: 'ENR', label: 'Enroute', color: '#f97316', desc: 'Traveling to call location' },
                     { code: 'ONS', label: 'On Scene', color: '#ef4444', desc: 'Arrived at call location' },
                     { code: 'BSY', label: 'Busy', color: '#eab308', desc: 'Occupied, not available for calls' },
