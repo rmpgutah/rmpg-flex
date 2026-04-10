@@ -128,7 +128,7 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
         const sLabel = STATUS_LABELS[incident.status] || incident.status;
 
         infoWindowRef.current?.setContent(`
-          <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0c0f13;color:#e5e7eb;padding:10px;border:1px solid ${sColor}40;border-radius:4px;">
+          <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${sColor}40;border-radius:4px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
               <span style="font-weight:900;font-size:13px;color:#e5e7eb;">${escapeHtml(incident.incident_number)}</span>
             </div>
@@ -140,11 +140,11 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
               <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(sLabel)}</span>
             </div>
             <div style="font-size:10px;color:#d1d5db;">${escapeHtml(incident.location_address || '')}</div>
-            ${incident.narrative_preview ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #2b313a;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(incident.narrative_preview)}</div>` : ''}
-            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #2b313a;font-size:9px;">
+            ${incident.narrative_preview ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #2b2b2b;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(incident.narrative_preview)}</div>` : ''}
+            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;">
               ${incident.officer_name ? `<div style="color:#9ca3af;margin-bottom:2px;">${escapeHtml(incident.officer_name)}</div>` : ''}
               <div style="color:#4b5563;">${escapeHtml(formatDate(incident.created_at))}</div>
-              ${incident.call_number ? `<div style="color:#60a5fa;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
+              ${incident.call_number ? `<div style="color:#a0a0a0;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
               ${incident.case_number ? `<div style="color:#d4a017;margin-top:2px;font-weight:bold;">Case: ${escapeHtml(incident.case_number)}</div>` : ''}
             </div>
           </div>

@@ -156,7 +156,7 @@ export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   MED: '#22c55e',
   SUSP: '#a855f7',
   ALM: '#eab308',
-  TRSP: '#6366f1',
+  TRSP: '#888888',
   DV: '#ec4899',
   DRUG: '#14b8a6',
   VNDL: '#f43f5e',

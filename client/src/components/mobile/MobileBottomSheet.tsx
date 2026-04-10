@@ -129,8 +129,8 @@ export default function MobileBottomSheet({
         height: Math.max(currentHeight, 0),
         maxHeight: '92vh',
         transition: isDragging ? 'none' : 'height 0.3s cubic-bezier(0.32,0.72,0,1)',
-        background: 'linear-gradient(180deg, #1b2128 0%, #0c0f13 100%)',
-        borderTop: '1px solid #2a3e58',
+        background: 'linear-gradient(180deg, #181818 0%, #0c0c0c 100%)',
+        borderTop: '1px solid #2a2a2a',
         boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
         willChange: 'height, transform',
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -162,7 +162,7 @@ export default function MobileBottomSheet({
       {header && (
         <div
           className="flex-shrink-0 px-4 pb-2"
-          style={{ borderBottom: '1px solid #2b313a' }}
+          style={{ borderBottom: '1px solid #2b2b2b' }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}

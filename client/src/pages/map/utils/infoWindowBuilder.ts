@@ -438,7 +438,7 @@ export function buildPropertyInfoWindow(
         ${sectionHeader("Today's Officers")}
         ${schedules.map(s => `
           <div style="font-size:9px;color:${C_TEXT_DIM};padding:1px 0;">
-            <span style="color:#22d3ee;">&#9679;</span> ${escapeHtml(s.officer_name || 'Unassigned')}
+            <span style="color:#a8a8a8;">&#9679;</span> ${escapeHtml(s.officer_name || 'Unassigned')}
             ${s.shift_type ? `<span style="color:${C_TEXT_MUTED};margin-left:4px;">${escapeHtml(s.shift_type)}</span>` : ''}
           </div>
         `).join('')}
