@@ -1691,3 +1691,69 @@ docs(plans): record geography rebuild deploy outcome
 5. Express 5 migration (separate plan)
 6. Wasatch Front AOG split if you later want WFRC and MAG as separate areas
 7. "RMPG operational jurisdictions" filter toggle
+8. **GeoJSON reseed on production** — the idempotent seed guard correctly skipped production (pre-existing 5/46/166/427 rows); a future planned migration can swap legacy IDs to GeoJSON-sourced ones with a code-string remap (see "Post-deploy outcome" below for FK impact)
+
+---
+
+## Post-deploy outcome — 2026-04-11
+
+**Merge strategy:** Cherry-pick, not rebase. While the branch was cooking, main landed commit `1c65343d` (43 Records field fixes + completed Express 5 migration: removed `path-to-regexp` override, stripped regex route params from `incidents.ts`, renamed SPA fallback to `/*splat`). That commit directly contradicts Phase 0 (Express 4 revert), so Phase 0 was **abandoned** and Phases 1–3 were cherry-picked on top of the Express 5 state.
+
+**Cherry-pick SHAs on main:**
+- `c2ab4a95` — Phase 1 mechanical rename (from `f90b57c7`)
+- `7dbd2909` — Phase 2 seed + API (from `2685a02c`)
+- `b3d28307` — Phase 3 UI rewrite (from `3c75a515`)
+- `f0d3d124` — SW cache bump v181 → v182 (added at deploy time)
+
+**All three cherry-picks auto-merged with zero conflicts.** Phase 1's `section → sector` rename touched the same files (`database.ts`, `incidents.ts`) as main's Express 5 work, but Git's three-way merge correctly saw them as non-overlapping changes — main stripped regex route params, Phase 1 renamed column references inside handler bodies.
+
+**Verification gates after cherry-pick:**
+
+| Gate | Result |
+|---|---|
+| Server `tsc --noEmit` | 28 errors — unchanged from pre-cherrypick main (pre-existing `@types/express` 5.x `req.params.X: string \| string[]` errors, orthogonal to this work) |
+| Server `vitest run` | **356 / 356 passing** (347 baseline + 9 new geography tests) |
+| Server `check:routes` | 107 files, 0 duplicate METHOD+path handlers |
+| Client `tsc --noEmit` | **0 errors** |
+| Client `vite build` | Success (2.70s) |
+| No stale `/geography/sections` client refs | Clean |
+
+**Deploy execution:**
+1. `git push origin main` — 4 commits pushed (enforcement bypass: `Security & TypeScript Check` not yet wired, 7 pre-existing high CVEs already on main)
+2. `bash deploy/deploy.sh` — ✅ DEPLOY SUCCESSFUL, `systemd` unit `rmpg-flex` restarted on 5.7.0
+3. Orphan cleanup — `deploy.sh` uses `rsync -avz` **without `--delete`** (deliberate safety against wiping production-only files), so the renamed file left a zombie on the VPS. Manually removed:
+   - `server/src/routes/dispatch/districts.ts` (renamed to `geography.ts`)
+   - `server/src/seeds/dispatchDistricts.ts` (deleted in Phase 2)
+4. Verified `dispatch/index.ts` imports `./geography` exclusively before deleting — confirmed dead code.
+
+**Production data state (not reseeded):**
+
+| Tier | Row count | Notes |
+|---|---|---|
+| `dispatch_areas` | 5 | NORTH / WASATCH / SOUTH / EAST / CENTRAL (legacy pre-rebuild classification) |
+| `dispatch_sectors` | 46 | linked to areas, new `county_nbr` + `fips_code` columns present but NULL on legacy rows |
+| `dispatch_zones` | 166 | linked to sectors, new `zone_type` + `ugrc_code` columns present but NULL |
+| `dispatch_beats` | 427 | linked to zones, new `district_letter` + `beat_number` columns present but NULL |
+| **Orphans** | **0** | No sectors without area, no zones without sector, no beats without zone — full hierarchy intact |
+
+**Why seed skipped:** `database.ts:2956` calls `seedGeographyFromGeoJSON(db, geojsonDir)` which has an idempotent guard — runs only when all 4 geography tables are empty. Production had pre-existing rows from the `DISPATCH_DISTRICTS` legacy seed (~269 rows compacted to 427 beats over time), so the guard correctly bailed out. The guard is belt-and-suspenders safety — blindly truncating the 4 tables on production would orphan **144 live FK references**:
+
+| Table | Rows w/ sector_id/zone_id/beat_id | Total |
+|---|---|---|
+| `calls_for_service` | 100 | 105 |
+| `incidents` | 43 | 44 |
+| `citations` | 1 | 2 |
+
+**Decision:** User selected **Accept legacy data** — the rebuild shipped as schema + API + UI; the GeoJSON reseed becomes a planned follow-up with proper FK remap. Production continues on its long-standing 5-area classification with no data loss.
+
+**What works now in production:**
+- New 4-column Miller drilldown at `/geography` renders the 5 → 46 → 166 → 427 hierarchy
+- All CRUD endpoints (`/areas /sectors /zones /beats`) functional against legacy data
+- `/tree` endpoint returns nested structure with correct parent/child joins
+- `/identify?lat&lng` route exists (polygon lookup is still a deferred follow-up)
+- Dead `/sections` endpoint returns 404 for any authenticated client
+- 144 historical dispatch records keep their district assignments intact
+
+**Pre-existing issues NOT introduced by this deploy (flagged for awareness):**
+- 28 server TS errors from `@types/express` 5.x — orthogonal, deploy pipeline only gates on client `tsc`
+- 7 high-severity Dependabot CVEs on main — pre-existing, will need a separate security sweep
