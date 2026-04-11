@@ -5038,7 +5038,7 @@ export default function MapPage() {
         className="flex flex-col panel-beveled transition-all"
         style={{
           width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-          background: '#060c14',
+          background: '#0a0a0a',
           flexShrink: 0,
         }}
       >

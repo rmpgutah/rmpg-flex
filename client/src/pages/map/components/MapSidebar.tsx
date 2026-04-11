@@ -59,7 +59,7 @@ export default function MapSidebar({
       className={`flex flex-col panel-beveled transition-all duration-200 overflow-hidden ${sidebarOpen ? 'shadow-lg' : ''}`}
       style={{
         width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-        background: '#060c14',
+        background: '#0a0a0a',
         flexShrink: 0,
       }}
       aria-label="Map sidebar"

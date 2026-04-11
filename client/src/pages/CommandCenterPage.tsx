@@ -131,7 +131,7 @@ export default function CommandCenterPage() {
                   <YAxis tick={{ fontSize: 9, fill: '#6b7280' }} width={25} />
                   <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {data.calls_by_hour.map((entry, index) => (
-                      <Cell key={index} fill={entry.count > 5 ? '#ef4444' : entry.count > 3 ? '#f59e0b' : '#1a5a9e'} />
+                      <Cell key={index} fill={entry.count > 5 ? '#ef4444' : entry.count > 3 ? '#f59e0b' : '#888888'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -170,7 +170,7 @@ export default function CommandCenterPage() {
                     borderLeft: `3px solid ${
                       call.priority === 'P1' ? '#ef4444' : call.priority === 'P2' ? '#f59e0b' : call.priority === 'P3' ? '#3b82f6' : '#6b7280'
                     }`,
-                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : '#141e2b',
+                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : '#141414',
                   }}
                 >
                   <div className="flex-1 min-w-0">
@@ -216,7 +216,7 @@ export default function CommandCenterPage() {
                     <div
                       key={unit.id}
                       className="flex items-center gap-1.5 px-2 py-1 panel-beveled"
-                      style={{ background: '#141e2b' }}
+                      style={{ background: '#141414' }}
                     >
                       <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: color, boxShadow: `0 0 4px ${color}` }} />
                       <div className="min-w-0">
