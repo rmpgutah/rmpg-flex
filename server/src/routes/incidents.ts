@@ -1156,7 +1156,13 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
       collected_date, packaging_type, dimensions, weight,
       photo_taken, lab_submitted, lab_case_number, lab_name,
       disposal_method, disposal_date, disposal_authorized_by,
-      serial_number, brand, model, estimated_value, category
+      serial_number, brand, model, estimated_value, category,
+      // Previously silent-dropped fields (audit 2026-04-11) — including
+      // is_biological and narcotics_flag which are SAFETY-CRITICAL
+      // evidence handling flags collected by EvidenceFormModal but never
+      // persisted, putting officers and storage compliance at risk.
+      location_found, condition, quantity,
+      is_biological, narcotics_flag, temperature_sensitive, notes,
     } = req.body;
     if (!description || !evidence_type) {
       res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
@@ -1182,16 +1188,24 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
         collected_date, packaging_type, dimensions, weight,
         photo_taken, lab_submitted, lab_case_number, lab_name,
         disposal_method, disposal_date, disposal_authorized_by,
-        serial_number, brand, model, estimated_value, category
+        serial_number, brand, model, estimated_value, category,
+        location_found, condition, quantity,
+        is_biological, narcotics_flag, temperature_sensitive, notes
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?)
     `).run(
       evidenceNumber, incident.id, description, evidence_type,
       storage_location || null, req.user!.userId,
       collected_date || null, packaging_type || null, dimensions || null, weight || null,
       photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
-      serial_number || null, brand || null, model || null, estimated_value || null, category || null
+      serial_number || null, brand || null, model || null, estimated_value || null, category || null,
+      location_found || null, condition || null,
+      quantity === '' || quantity == null ? null : (parseInt(quantity, 10) || null),
+      is_biological ? 1 : 0, narcotics_flag ? 1 : 0, temperature_sensitive ? 1 : 0,
+      notes || null
     );
 
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);
