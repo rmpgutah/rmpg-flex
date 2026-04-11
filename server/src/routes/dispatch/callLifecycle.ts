@@ -366,7 +366,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
         officer_safety_caution, k9_requested, ems_requested, fire_requested,
         hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
         trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
-        section_id, zone_id, beat_id, disposition)
+        sector_id, zone_id, beat_id, disposition)
       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
@@ -404,7 +404,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
       call.vehicle_pursuit ? 1 : 0, call.foot_pursuit ? 1 : 0,
       call.le_notified ? 1 : 0, call.supervisor_notified ? 1 : 0,
       // District from dispatch call
-      call.section_id || null, call.zone_id || null, call.beat_id || null,
+      call.sector_id || null, call.zone_id || null, call.beat_id || null,
       call.disposition || null
     );
 

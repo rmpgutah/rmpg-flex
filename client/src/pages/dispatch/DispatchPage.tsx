@@ -576,7 +576,7 @@ export default function DispatchPage() {
         location_floor: ed.location_floor,
         location_room: ed.location_room,
         zone_beat: ed.zone_beat,
-        section_id: ed.section_id,
+        sector_id: ed.sector_id,
         zone_id: ed.zone_id,
         beat_id: ed.beat_id,
         weapons_involved: ed.weapons_involved,
@@ -1372,7 +1372,7 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
-        section_id: callData.section_id ?? null,
+        sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
         weapons_involved: callData.weapons_involved || null,
@@ -1920,7 +1920,7 @@ export default function DispatchPage() {
       location_floor: selectedCall.location_floor || '',
       location_room: selectedCall.location_room || '',
       zone_beat: selectedCall.zone_beat || '',
-      section_id: selectedCall.section_id || '',
+      sector_id: selectedCall.sector_id || '',
       zone_id: selectedCall.zone_id || '',
       beat_id: selectedCall.beat_id || '',
       weapons_involved: selectedCall.weapons_involved || '',
@@ -1996,7 +1996,7 @@ export default function DispatchPage() {
         location_floor: editData.location_floor,
         location_room: editData.location_room,
         zone_beat: editData.zone_beat,
-        section_id: editData.section_id,
+        sector_id: editData.sector_id,
         zone_id: editData.zone_id,
         beat_id: editData.beat_id,
         dispatch_code: editData.dispatch_code,
@@ -4357,13 +4357,13 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── EXTENDED DETAILS — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.section_id || selectedCall.zone_id || selectedCall.beat_id || selectedCall.latitude || selectedCall.dispatch_code) && (
+                {detailTab === 'info' && (isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.sector_id || selectedCall.zone_id || selectedCall.beat_id || selectedCall.latitude || selectedCall.dispatch_code) && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
-                      const filteredZones = zonesForSection(editData.section_id);
+                      const filteredZones = zonesForSection(editData.sector_id);
                       const filteredBeats = beatsForZone(editData.zone_id);
                       return (
                         <div className="space-y-2 mt-1">
@@ -4376,9 +4376,9 @@ export default function DispatchPage() {
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Section</label>
-                              <select className="input-dark text-xs" value={editData.section_id} onChange={(e) => {
+                              <select className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
                                 const val = e.target.value;
-                                setEditData(prev => ({ ...prev, section_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
+                                setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
                                 <option value="">— Select —</option>
                                 {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -4399,8 +4399,8 @@ export default function DispatchPage() {
                               <select className="input-dark text-xs" value={editData.beat_id} onChange={(e) => {
                                 const beatVal = e.target.value;
                                 // Auto-resolve dispatch code when beat is selected
-                                const match = beatVal && editData.section_id && editData.zone_id
-                                  ? districts.find(d => d.section_id === editData.section_id && d.zone_id === editData.zone_id && d.beat_id === beatVal)
+                                const match = beatVal && editData.sector_id && editData.zone_id
+                                  ? districts.find(d => d.sector_id === editData.sector_id && d.zone_id === editData.zone_id && d.beat_id === beatVal)
                                   : null;
                                 setEditData(prev => ({ ...prev, beat_id: beatVal, dispatch_code: match?.dispatch_code || '' }));
                               }}>
@@ -4426,7 +4426,7 @@ export default function DispatchPage() {
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {selectedCall.section_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.section_id} — {sectionLabels.get(selectedCall.section_id) || ''}</span>}
+                        {selectedCall.sector_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.sector_id} — {sectionLabels.get(selectedCall.sector_id) || ''}</span>}
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
                         {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (

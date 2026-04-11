@@ -22,7 +22,7 @@ const DEFAULT_PSO_DATA = {
   location: '',
   latitude: null as number | null,
   longitude: null as number | null,
-  section_id: '',
+  sector_id: '',
   zone_id: '',
   beat_id: '',
   pso_requestor_name: '',
@@ -226,7 +226,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                   if (district) {
                     setFormData((prev) => ({
                       ...prev,
-                      section_id: district.section_id || prev.section_id,
+                      sector_id: district.sector_id || prev.sector_id,
                       zone_id: district.zone_id || prev.zone_id,
                       beat_id: district.beat_id || prev.beat_id,
                     }));

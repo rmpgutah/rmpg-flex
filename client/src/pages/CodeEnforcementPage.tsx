@@ -60,7 +60,7 @@ const TOW_REASONS: { value: TowReason; label: string }[] = [
 const EMPTY_VIOLATION = {
   violation_type: 'other' as ViolationType, location: '', description: '',
   code_section: '', severity: 'low', fine_amount: '', compliance_deadline: '', notes: '',
-  section_id: '', zone_id: '', beat_id: '',
+  sector_id: '', zone_id: '', beat_id: '',
 };
 
 const EMPTY_TOW = {
@@ -440,8 +440,8 @@ export default function CodeEnforcementPage() {
                   <MapPin style={{ width: 9, height: 9 }} />
                   <span className="truncate">{formatAddressDisplay(v.location)}</span>
                   {v.fine_amount && !isNaN(Number(v.fine_amount)) && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
-                  {((v as any).section_id || (v as any).zone_id || (v as any).beat_id) && (
-                    <span className="font-mono text-rmpg-400">{[(v as any).section_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
+                  {((v as any).sector_id || (v as any).zone_id || (v as any).beat_id) && (
+                    <span className="font-mono text-rmpg-400">{[(v as any).sector_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
                   )}
                 </div>
               </button>
@@ -572,7 +572,7 @@ export default function CodeEnforcementPage() {
                   ['Severity', selectedViolation.severity ? selectedViolation.severity.charAt(0).toUpperCase() + selectedViolation.severity.slice(1) : '—'],
                   ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
-                  ['S/Z/B', [(selectedViolation as any).section_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
+                  ['S/Z/B', [(selectedViolation as any).sector_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
@@ -681,7 +681,7 @@ export default function CodeEnforcementPage() {
                 <div>
                   <label className="field-label">Section</label>
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
-                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value, zone_id: '', beat_id: ''}))}>
+                    value={vFormData.sector_id || ''} onChange={e => setVFormData(p => ({...p, sector_id: e.target.value, zone_id: '', beat_id: ''}))}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
@@ -691,7 +691,7 @@ export default function CodeEnforcementPage() {
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
                     value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
                     <option value="">—</option>
-                    {zonesForSection(vFormData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zonesForSection(vFormData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>

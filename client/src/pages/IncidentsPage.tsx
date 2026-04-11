@@ -1069,7 +1069,7 @@ export default function IncidentsPage() {
       client_name: inc?.client_name,
       call_number: inc?.call_number,
       // District / zone
-      section_id: inc?.section_id,
+      sector_id: inc?.sector_id,
       zone_id: inc?.zone_id,
       beat_id: inc?.beat_id,
       disposition: inc?.disposition,
@@ -1434,7 +1434,7 @@ export default function IncidentsPage() {
                 <p className="text-sm text-rmpg-300">{timeAgo(selectedIncident.updated_at)}</p>
               </div>
             )}
-            {(inc.dispatch_code || inc.section_id || inc.zone_id || inc.beat_id) && (
+            {(inc.dispatch_code || inc.sector_id || inc.zone_id || inc.beat_id) && (
               <div>
                 <label className="field-label">District:</label>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -1444,7 +1444,7 @@ export default function IncidentsPage() {
                     </span>
                   )}
                   <span className="text-sm text-rmpg-200">
-                    {[inc.section_id, inc.zone_id, inc.beat_id].filter(Boolean).join(' / ')}
+                    {[inc.sector_id, inc.zone_id, inc.beat_id].filter(Boolean).join(' / ')}
                   </span>
                 </div>
               </div>

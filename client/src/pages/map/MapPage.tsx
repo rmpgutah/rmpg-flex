@@ -396,8 +396,8 @@ export default function MapPage() {
       for (const d of districts) {
         if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
         map.get(d.zone_id)!.set(d.beat_id, {
-          sectionId: d.section_id,
-          sectionName: d.section_name,
+          sectionId: d.sector_id,
+          sectionName: d.sector_name,
           zoneId: d.zone_id,
           zoneName: d.zone_name,
           beatId: d.beat_id,
@@ -405,7 +405,7 @@ export default function MapPage() {
           beatDescriptor: d.beat_descriptor || '',
           dispatchCode: d.dispatch_code,
         });
-        sectionSet.set(d.section_id, d.section_name);
+        sectionSet.set(d.sector_id, d.sector_name);
       }
       setBeatDistrictMap(map);
       setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));

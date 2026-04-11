@@ -8,22 +8,22 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiFetch } from './useApi';
 
 export interface DistrictInfo {
-  section_id: string;
+  sector_id: string;
   zone_id: string;
   beat_id: string;
   dispatch_code?: string;
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
 }
 
 export interface DistrictOption {
-  section_id: string;
+  sector_id: string;
   zone_id: string;
   beat_id: string;
   dispatch_code: string;
-  section_name: string;
+  sector_name: string;
   zone_name: string;
   beat_name: string;
   beat_descriptor: string;
@@ -52,7 +52,7 @@ export function useDistrictOptions() {
   useEffect(() => { return loadDistricts(); }, [loadDistricts]);
 
   // Unique sections for top-level dropdown
-  const sections = useMemo(() => Array.from(new Set(districts.map(d => d.section_id))).sort(), [districts]);
+  const sections = useMemo(() => Array.from(new Set(districts.map(d => d.sector_id))).sort(), [districts]);
 
   // Global fallbacks (all zones, all beats) — used when no parent is selected
   const zones = useMemo(() => Array.from(new Set(districts.map(d => d.zone_id))).sort(), [districts]);
@@ -61,7 +61,7 @@ export function useDistrictOptions() {
   // Cascading helpers: zones scoped to section, beats scoped to zone
   const zonesForSection = useCallback((sectionId: string) => {
     if (!sectionId) return zones;
-    return Array.from(new Set(districts.filter(d => d.section_id === sectionId).map(d => d.zone_id))).sort();
+    return Array.from(new Set(districts.filter(d => d.sector_id === sectionId).map(d => d.zone_id))).sort();
   }, [districts, zones]);
 
   const beatsForZone = useCallback((zoneId: string) => {
@@ -72,7 +72,7 @@ export function useDistrictOptions() {
   // Labels: section/zone are globally unique, but beat labels must be scoped by zone
   const sectionLabels = useMemo(() => {
     const m = new Map<string, string>();
-    for (const d of districts) m.set(d.section_id, d.section_name);
+    for (const d of districts) m.set(d.sector_id, d.sector_name);
     return m;
   }, [districts]);
 
@@ -120,11 +120,11 @@ export function useDistrictIdentify() {
       );
       if (result && result.found) {
         return {
-          section_id: result.section_id,
+          sector_id: result.sector_id,
           zone_id: result.zone_id,
           beat_id: result.beat_id,
           dispatch_code: result.dispatch_code,
-          section_name: result.section_name,
+          sector_name: result.sector_name,
           zone_name: result.zone_name,
           beat_name: result.beat_name,
           beat_descriptor: result.beat_descriptor,
