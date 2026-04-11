@@ -471,8 +471,12 @@ router.put('/calls/:id', (req: Request, res: Response) => {
       // PSO Client Request fields
       pso_service_type, pso_authorization, pso_requestor_name,
       pso_requestor_phone, pso_requestor_email, pso_billing_code,
+      pso_attempt_number,
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
+      process_attempts, process_served_at, process_service_result,
+      // Case linkage
+      case_number, case_id, contract_id,
       client_id: updateClientId,
     } = req.body;
 
@@ -611,10 +615,18 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('pso_requestor_phone', pso_requestor_phone);
     addField('pso_requestor_email', pso_requestor_email);
     addField('pso_billing_code', pso_billing_code);
+    addField('pso_attempt_number', pso_attempt_number !== undefined ? (isNaN(Number(pso_attempt_number)) ? null : Number(pso_attempt_number)) : undefined);
     // Process Service fields
     addField('process_service_type', process_service_type);
     addField('process_served_to', process_served_to);
     addField('process_served_address', process_served_address);
+    addField('process_attempts', process_attempts !== undefined ? (isNaN(Number(process_attempts)) ? null : Number(process_attempts)) : undefined);
+    addField('process_served_at', process_served_at);
+    addField('process_service_result', process_service_result);
+    // Case linkage
+    addField('case_number', case_number);
+    addField('case_id', case_id);
+    addField('contract_id', contract_id);
     addField('client_id', resolvedUpdateClientId);
 
     // ── Timeline dispatch timestamp override (admin/manager/supervisor/dispatcher) ──
