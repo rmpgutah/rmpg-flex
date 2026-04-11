@@ -433,7 +433,8 @@ app.use(express.static(clientDistPath, {
 }));
 
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('*', (req, res) => {
+// Express 5 requires named wildcards — '*' alone throws "Missing parameter name"
+app.get('/*splat', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {

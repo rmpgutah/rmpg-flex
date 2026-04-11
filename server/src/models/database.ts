@@ -3258,6 +3258,40 @@ function migrateSchema(): void {
   addCol('persons', 'aliases', 'TEXT');
   addCol('persons', 'photo', 'TEXT');
 
+  // ── Persons: extended identification, medical, military, LE fields ──
+  // Bug: these columns existed in production but were never added to the
+  // codebase schema migration. Fresh installs had no support for them.
+  // The client PersonFormModal renders inputs for ALL of these, so users
+  // typed data into fields that the POST/PUT routes then silently dropped.
+  // Route fixes in records.ts complete the repair; this migration lets
+  // fresh installs receive the same columns production already has.
+  addCol('persons', 'ncic_number', 'TEXT');
+  addCol('persons', 'sor_number', 'TEXT');
+  addCol('persons', 'fbi_number', 'TEXT');
+  addCol('persons', 'state_id_number', 'TEXT');
+  addCol('persons', 'passport_number', 'TEXT');
+  addCol('persons', 'passport_country', 'TEXT');
+  addCol('persons', 'immigration_status', 'TEXT');
+  addCol('persons', 'disability_flags', 'TEXT');
+  addCol('persons', 'mental_health_flags', 'TEXT');
+  addCol('persons', 'substance_abuse', 'TEXT');
+  addCol('persons', 'medication_notes', 'TEXT');
+  addCol('persons', 'education_level', 'TEXT');
+  addCol('persons', 'military_branch', 'TEXT');
+  addCol('persons', 'military_status', 'TEXT');
+  addCol('persons', 'tribal_affiliation', 'TEXT');
+  addCol('persons', 'identifying_marks_location', 'TEXT');
+  addCol('persons', 'tattoo_description', 'TEXT');
+  addCol('persons', 'scar_description', 'TEXT');
+  addCol('persons', 'piercing_description', 'TEXT');
+  addCol('persons', 'distinguishing_features', 'TEXT');
+  addCol('persons', 'email_secondary', 'TEXT');
+  addCol('persons', 'date_last_seen', 'TEXT');
+  addCol('persons', 'location_last_seen', 'TEXT');
+  addCol('persons', 'alias_dob', 'TEXT');
+  addCol('persons', 'home_phone', 'TEXT');
+  addCol('persons', 'work_phone', 'TEXT');
+
   // Feature 27/37: Report approval and case assignment columns
   addCol('incidents', 'approved_at', 'TEXT');
   addCol('incidents', 'assigned_detective_id', 'INTEGER');
@@ -4124,6 +4158,29 @@ function migrateSchema(): void {
   addCol('vehicles_records', 'tow_release_date', 'TEXT');
   addCol('vehicles_records', 'tow_release_to', 'TEXT');
   addCol('vehicles_records', 'tow_reason', 'TEXT');
+
+  // ── Vehicles: owner/condition/registration extended fields ──
+  // Bug: VehicleFormModal renders inputs for all of these but the schema
+  // migration never added them. Production has them (from an earlier
+  // manual migration); fresh installs did not. Route fixes in records.ts
+  // add these to the shared VEHICLE_FIELD_MAP so POST and PUT accept them.
+  addCol('vehicles_records', 'registration_state', 'TEXT');
+  addCol('vehicles_records', 'owner_name', 'TEXT');
+  addCol('vehicles_records', 'owner_dl_number', 'TEXT');
+  addCol('vehicles_records', 'owner_dob', 'TEXT');
+  addCol('vehicles_records', 'primary_driver_name', 'TEXT');
+  addCol('vehicles_records', 'registered_owner', 'TEXT');
+  addCol('vehicles_records', 'exterior_condition', 'TEXT');
+  addCol('vehicles_records', 'interior_condition', 'TEXT');
+  addCol('vehicles_records', 'title_status', 'TEXT');
+  addCol('vehicles_records', 'window_tint', 'TEXT');
+  addCol('vehicles_records', 'modifications', 'TEXT');
+  addCol('vehicles_records', 'equipment_notes', 'TEXT');
+  addCol('vehicles_records', 'vehicle_use', 'TEXT');
+  addCol('vehicles_records', 'ncic_entry_number', 'TEXT');
+  addCol('vehicles_records', 'estimated_value', 'REAL');
+  addCol('vehicles_records', 'tow_location', 'TEXT');
+  addCol('vehicles_records', 'insurance_expiry', 'TEXT');
 
   // ── Feature 8: Evidence temperature tracking ──
   addCol('evidence', 'storage_temperature', 'REAL');
