@@ -1475,7 +1475,20 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'caller_relationship', "TEXT DEFAULT ''");
   addCol('calls_for_service', 'caller_address', 'TEXT');
   addCol('calls_for_service', 'zone_beat', 'TEXT');
-  addCol('calls_for_service', 'section_id', 'TEXT');
+  addCol('calls_for_service', 'sector_id', 'TEXT');
+  // Migration: rename legacy section_id → sector_id on calls_for_service
+  try {
+    const cols = db.prepare('PRAGMA table_info(calls_for_service)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_id');
+    if (hasOld) {
+      // Both columns now exist (sector_id added above). Copy data then drop the old column.
+      // SQLite doesn't support DROP COLUMN until 3.35 — use UPDATE to copy then leave old in place.
+      db.prepare('UPDATE calls_for_service SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
+      console.log('[migrate] calls_for_service.section_id -> sector_id (data copied)');
+    }
+  } catch (err: any) {
+    console.log('[migrate] calls_for_service sector_id copy skipped:', err.message);
+  }
   addCol('calls_for_service', 'zone_id', 'TEXT');
   addCol('calls_for_service', 'beat_id', 'TEXT');
   addCol('calls_for_service', 'cross_street', 'TEXT');
@@ -1578,6 +1591,7 @@ function migrateSchema(): void {
           damage_description TEXT,
           action_taken TEXT,
           section_id TEXT,
+          sector_id TEXT,
           zone_id TEXT,
           beat_id TEXT,
           client_id INTEGER,
@@ -1678,9 +1692,21 @@ function migrateSchema(): void {
   addCol('incidents', 'review_notes', 'TEXT');
   addCol('incidents', 'disposition', 'TEXT');
   addCol('incidents', 'zone_beat', 'TEXT');
-  addCol('incidents', 'section_id', 'TEXT');
+  addCol('incidents', 'section_id', 'TEXT');  // legacy column, kept for rolling upgrade compat
+  addCol('incidents', 'sector_id', 'TEXT');
   addCol('incidents', 'zone_id', 'TEXT');
   addCol('incidents', 'beat_id', 'TEXT');
+  // Migration: copy section_id → sector_id for existing rows
+  try {
+    const cols = db.prepare('PRAGMA table_info(incidents)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_id');
+    if (hasOld) {
+      db.prepare('UPDATE incidents SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
+      console.log('[migrate] incidents.section_id -> sector_id (data copied)');
+    }
+  } catch (err: any) {
+    console.log('[migrate] incidents sector_id copy skipped:', err.message);
+  }
   addCol('incidents', 'responding_le_agency', 'TEXT');
   addCol('incidents', 'le_case_number', 'TEXT');
 
@@ -2680,7 +2706,7 @@ function migrateSchema(): void {
 
     if (callsToBackfill.length > 0) {
       const updateStmt = db.prepare(`
-        UPDATE calls_for_service SET beat_id = ?, zone_id = ?, section_id = ?, zone_beat = ?
+        UPDATE calls_for_service SET beat_id = ?, zone_id = ?, sector_id = ?, zone_beat = ?
         WHERE id = ?
       `);
       let filled = 0;
@@ -2710,7 +2736,7 @@ function migrateSchema(): void {
 
     if (incidentsToBackfill.length > 0) {
       const updateStmt = db.prepare(`
-        UPDATE incidents SET beat_id = ?, zone_id = ?, section_id = ?, zone_beat = ?
+        UPDATE incidents SET beat_id = ?, zone_id = ?, sector_id = ?, zone_beat = ?
         WHERE id = ?
       `);
       let filled = 0;
@@ -2786,11 +2812,27 @@ function migrateSchema(): void {
         updated_at TEXT DEFAULT (datetime('now'))
       )
     `);
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS dispatch_sections (
+    // Migration: rename existing dispatch_sections → dispatch_sectors (if present)
+    // Runs before the CREATE below so fresh DBs skip the rename entirely.
+    try {
+      const oldExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='dispatch_sections'"
+      ).get();
+      const newExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='dispatch_sectors'"
+      ).get();
+      if (oldExists && !newExists) {
+        db.prepare('ALTER TABLE dispatch_sections RENAME TO dispatch_sectors').run();
+        console.log('[migrate] Renamed dispatch_sections -> dispatch_sectors');
+      }
+    } catch (err: any) {
+      console.log('[migrate] dispatch_sections rename skipped:', err.message);
+    }
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS dispatch_sectors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        section_code TEXT NOT NULL UNIQUE,
-        section_name TEXT NOT NULL,
+        sector_code TEXT NOT NULL UNIQUE,
+        sector_name TEXT NOT NULL,
         area_id INTEGER REFERENCES dispatch_areas(id) ON DELETE SET NULL,
         color TEXT DEFAULT '#3b82f6',
         description TEXT,
@@ -2802,13 +2844,31 @@ function migrateSchema(): void {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
-    `);
-    db.exec(`
+    `).run();
+    // Migration: rename legacy section_code/section_name columns on dispatch_sectors
+    try {
+      const cols = db.prepare('PRAGMA table_info(dispatch_sectors)').all() as any[];
+      const hasOldName = cols.some((c) => c.name === 'section_name');
+      const hasNewName = cols.some((c) => c.name === 'sector_name');
+      if (hasOldName && !hasNewName) {
+        db.prepare('ALTER TABLE dispatch_sectors RENAME COLUMN section_name TO sector_name').run();
+        console.log('[migrate] dispatch_sectors.section_name -> sector_name');
+      }
+      const hasOldCode = cols.some((c) => c.name === 'section_code');
+      const hasNewCode = cols.some((c) => c.name === 'sector_code');
+      if (hasOldCode && !hasNewCode) {
+        db.prepare('ALTER TABLE dispatch_sectors RENAME COLUMN section_code TO sector_code').run();
+        console.log('[migrate] dispatch_sectors.section_code -> sector_code');
+      }
+    } catch (err: any) {
+      console.log('[migrate] dispatch_sectors column rename skipped:', err.message);
+    }
+    db.prepare(`
       CREATE TABLE IF NOT EXISTS dispatch_zones (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         zone_code TEXT NOT NULL UNIQUE,
         zone_name TEXT NOT NULL,
-        section_id INTEGER REFERENCES dispatch_sections(id) ON DELETE SET NULL,
+        sector_id INTEGER REFERENCES dispatch_sectors(id) ON DELETE SET NULL,
         color TEXT,
         description TEXT,
         primary_unit TEXT,
@@ -2823,7 +2883,19 @@ function migrateSchema(): void {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
-    `);
+    `).run();
+    // Migration: rename dispatch_zones.section_id -> sector_id if legacy column exists
+    try {
+      const cols = db.prepare('PRAGMA table_info(dispatch_zones)').all() as any[];
+      const hasOld = cols.some((c) => c.name === 'section_id');
+      const hasNew = cols.some((c) => c.name === 'sector_id');
+      if (hasOld && !hasNew) {
+        db.prepare('ALTER TABLE dispatch_zones RENAME COLUMN section_id TO sector_id').run();
+        console.log('[migrate] dispatch_zones.section_id -> sector_id');
+      }
+    } catch (err: any) {
+      console.log('[migrate] dispatch_zones column rename skipped:', err.message);
+    }
     db.exec(`
       CREATE TABLE IF NOT EXISTS dispatch_beats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2892,21 +2964,24 @@ function migrateSchema(): void {
   }
 
   // Seed normalized geography tables from existing dispatch_districts if empty
+  // NOTE: This is the legacy seed — Phase 2 replaces it with a GeoJSON-driven
+  // seed module. Kept here for compatibility with existing databases that still
+  // have dispatch_districts rows from before the rebuild.
   try {
-    const sectionCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_sections').get() as any;
-    if (sectionCount?.cnt === 0) {
+    const sectorCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_sectors').get() as any;
+    if (sectorCount?.cnt === 0) {
       const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all() as any[];
       if (districts.length > 0) {
-        const seenSections = new Set<string>();
-        const insertSection = db.prepare('INSERT OR IGNORE INTO dispatch_sections (section_code, section_name) VALUES (?, ?)');
+        const seenSectors = new Set<string>();
+        const insertSector = db.prepare('INSERT OR IGNORE INTO dispatch_sectors (sector_code, sector_name) VALUES (?, ?)');
         for (const d of districts) {
-          if (!seenSections.has(d.section_id)) {
-            insertSection.run(d.section_id, d.section_name);
-            seenSections.add(d.section_id);
+          if (!seenSectors.has(d.section_id)) {
+            insertSector.run(d.section_id, d.section_name);
+            seenSectors.add(d.section_id);
           }
         }
         const seenZones = new Set<string>();
-        const insertZone = db.prepare('INSERT OR IGNORE INTO dispatch_zones (zone_code, zone_name, section_id) VALUES (?, ?, (SELECT id FROM dispatch_sections WHERE section_code = ?))');
+        const insertZone = db.prepare('INSERT OR IGNORE INTO dispatch_zones (zone_code, zone_name, sector_id) VALUES (?, ?, (SELECT id FROM dispatch_sectors WHERE sector_code = ?))');
         for (const d of districts) {
           if (!seenZones.has(d.zone_id)) {
             insertZone.run(d.zone_id, d.zone_name, d.section_id);
@@ -2918,7 +2993,7 @@ function migrateSchema(): void {
           const beatCode = d.zone_id + '-' + d.beat_id;
           insertBeat.run(beatCode, d.beat_name, d.beat_descriptor, d.zone_id, d.dispatch_code);
         }
-        console.log('[migrate] Seeded normalized geography: ' + seenSections.size + ' sections, ' + seenZones.size + ' zones, ' + districts.length + ' beats');
+        console.log('[migrate] Seeded normalized geography: ' + seenSectors.size + ' sectors, ' + seenZones.size + ' zones, ' + districts.length + ' beats');
       }
     }
   } catch (err) {
@@ -3030,20 +3105,42 @@ function migrateSchema(): void {
   addCol('cases', 'linked_calls', "TEXT DEFAULT '[]'");
 
   // ── Dispatch district name fields on calls (green columns) ──
-  addCol('calls_for_service', 'section_name', 'TEXT');
+  addCol('calls_for_service', 'section_name', 'TEXT');  // legacy, kept for rolling upgrade
+  addCol('calls_for_service', 'sector_name', 'TEXT');
   addCol('calls_for_service', 'zone_name', 'TEXT');
   addCol('calls_for_service', 'beat_name', 'TEXT');
   addCol('calls_for_service', 'beat_descriptor', 'TEXT');
+  // Copy section_name → sector_name for any existing rows
+  try {
+    const cols = db.prepare('PRAGMA table_info(calls_for_service)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_name');
+    if (hasOld) {
+      db.prepare('UPDATE calls_for_service SET sector_name = section_name WHERE section_name IS NOT NULL AND sector_name IS NULL').run();
+    }
+  } catch (err: any) {
+    console.log('[migrate] calls_for_service sector_name copy skipped:', err.message);
+  }
 
   // ── Contract ID for PSO Client Request incidents ──
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
-  addCol('citations', 'section_id', 'TEXT');
+  addCol('citations', 'section_id', 'TEXT');  // legacy
+  addCol('citations', 'sector_id', 'TEXT');
   addCol('citations', 'zone_id', 'TEXT');
   addCol('citations', 'beat_id', 'TEXT');
   addCol('citations', 'zone_beat', 'TEXT');
+  // Copy section_id → sector_id on citations for existing rows
+  try {
+    const cols = db.prepare('PRAGMA table_info(citations)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_id');
+    if (hasOld) {
+      db.prepare('UPDATE citations SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
+    }
+  } catch (err: any) {
+    console.log('[migrate] citations sector_id copy skipped:', err.message);
+  }
   addCol('citations', 'latitude', 'REAL');
   addCol('citations', 'longitude', 'REAL');
   addCol('citations', 'vehicle_vin', 'TEXT');
@@ -3164,7 +3261,7 @@ function migrateSchema(): void {
     if (callsNeedingDistrict.length > 0) {
       const updateStmt = db.prepare(`
         UPDATE calls_for_service
-        SET dispatch_code = ?, section_name = ?, zone_name = ?, beat_name = ?, beat_descriptor = ?
+        SET dispatch_code = ?, section_name = ?, sector_name = ?, zone_name = ?, beat_name = ?, beat_descriptor = ?
         WHERE id = ?
       `);
 
@@ -3176,7 +3273,9 @@ function migrateSchema(): void {
 
         if (district) {
           updateStmt.run(
-            district.dispatch_code, district.section_name,
+            district.dispatch_code,
+            district.section_name,
+            district.section_name, // also populate sector_name
             district.zone_name, district.beat_name, district.beat_descriptor,
             call.id,
           );

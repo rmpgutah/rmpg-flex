@@ -32,7 +32,7 @@ router.get('/geography/areas', requireRole('admin', 'manager', 'supervisor', 'of
     const db = getDb();
     const areas = db.prepare(`
       SELECT a.*,
-        (SELECT COUNT(*) FROM dispatch_sections WHERE area_id = a.id) as section_count
+        (SELECT COUNT(*) FROM dispatch_sectors WHERE area_id = a.id) as section_count
       FROM dispatch_areas a
       ORDER BY a.sort_order, a.area_name
     `).all();
@@ -88,7 +88,7 @@ router.delete('/geography/areas/:id', requireRole('admin'), (req: Request, res: 
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    db.prepare('UPDATE dispatch_sections SET area_id = NULL WHERE area_id = ?').run(id);
+    db.prepare('UPDATE dispatch_sectors SET area_id = NULL WHERE area_id = ?').run(id);
     db.prepare('DELETE FROM dispatch_areas WHERE id = ?').run(id);
     auditLog(req, 'DELETE', 'dispatch_areas', id, '');
     res.json({ success: true });
@@ -106,13 +106,13 @@ router.get('/geography/sections', requireRole('admin', 'manager', 'supervisor', 
     let query = `
       SELECT s.*,
         a.area_name, a.area_code,
-        (SELECT COUNT(*) FROM dispatch_zones WHERE section_id = s.id) as zone_count
-      FROM dispatch_sections s
+        (SELECT COUNT(*) FROM dispatch_zones WHERE sector_id = s.id) as zone_count
+      FROM dispatch_sectors s
       LEFT JOIN dispatch_areas a ON a.id = s.area_id
     `;
     const params: any[] = [];
     if (areaId) { query += ' WHERE s.area_id = ?'; params.push(areaId); }
-    query += ' ORDER BY s.sort_order, s.section_name';
+    query += ' ORDER BY s.sort_order, s.sector_name';
     const sections = db.prepare(query).all(...params);
     setCacheHeaders(res, 30);
     res.json(sections);
@@ -125,13 +125,13 @@ router.get('/geography/sections', requireRole('admin', 'manager', 'supervisor', 
 router.post('/geography/sections', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { section_code, section_name, area_id, color, description, supervisor, radio_channel, notes, sort_order } = req.body;
-    if (!section_code || !section_name) { res.status(400).json({ error: 'section_code and section_name required' }); return; }
+    const { sector_code, sector_name, area_id, color, description, supervisor, radio_channel, notes, sort_order } = req.body;
+    if (!sector_code || !sector_name) { res.status(400).json({ error: 'sector_code and sector_name required' }); return; }
     const result = db.prepare(`
-      INSERT INTO dispatch_sections (section_code, section_name, area_id, color, description, supervisor, radio_channel, notes, sort_order)
+      INSERT INTO dispatch_sectors (sector_code, sector_name, area_id, color, description, supervisor, radio_channel, notes, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(section_code, section_name, area_id || null, color || '#3b82f6', description, supervisor, radio_channel, notes, sort_order || 0);
-    auditLog(req, 'CREATE', 'dispatch_sections', result.lastInsertRowid as number, JSON.stringify(req.body));
+    `).run(sector_code, sector_name, area_id || null, color || '#3b82f6', description, supervisor, radio_channel, notes, sort_order || 0);
+    auditLog(req, 'CREATE', 'dispatch_sectors', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Section code already exists' }); return; }
@@ -143,9 +143,9 @@ router.put('/geography/sections/:id', requireRole('admin', 'manager'), (req: Req
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    const old = db.prepare('SELECT * FROM dispatch_sections WHERE id = ?').get(id);
+    const old = db.prepare('SELECT * FROM dispatch_sectors WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Section not found' }); return; }
-    const fields = ['section_code', 'section_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
+    const fields = ['sector_code', 'sector_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
     const updates: string[] = [];
     const values: any[] = [];
     for (const f of fields) {
@@ -154,8 +154,8 @@ router.put('/geography/sections/:id', requireRole('admin', 'manager'), (req: Req
     if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
-    db.prepare(`UPDATE dispatch_sections SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'dispatch_sections', id, JSON.stringify(req.body));
+    db.prepare(`UPDATE dispatch_sectors SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    auditLog(req, 'UPDATE', 'dispatch_sectors', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to update section' }); }
 });
@@ -164,16 +164,16 @@ router.delete('/geography/sections/:id', requireRole('admin'), (req: Request, re
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    db.prepare('UPDATE dispatch_zones SET section_id = NULL WHERE section_id = ?').run(id);
-    db.prepare('DELETE FROM dispatch_sections WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'dispatch_sections', id, '');
+    db.prepare('UPDATE dispatch_zones SET sector_id = NULL WHERE sector_id = ?').run(id);
+    db.prepare('DELETE FROM dispatch_sectors WHERE id = ?').run(id);
+    auditLog(req, 'DELETE', 'dispatch_sectors', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete section' }); }
 });
 
 // ════════════════════════════════════════════════════════════
 // SECTORS — Alias of SECTIONS (new nomenclature: Area=state, Sector=county)
-// Routes accept sector_code/sector_name in body, map to section_code/section_name
+// Routes accept sector_code/sector_name in body, map to sector_code/sector_name
 // GET returns rows with both naming conventions for transition compatibility
 // ════════════════════════════════════════════════════════════
 
@@ -183,15 +183,15 @@ router.get('/geography/sectors', requireRole('admin', 'manager', 'supervisor', '
     const areaId = req.query.area_id ? parseInt(req.query.area_id as string, 10) : null;
     let query = `
       SELECT s.*,
-        s.section_code AS sector_code, s.section_name AS sector_name,
+        s.sector_code AS sector_code, s.sector_name AS sector_name,
         a.area_name, a.area_code,
-        (SELECT COUNT(*) FROM dispatch_zones WHERE section_id = s.id) as zone_count
-      FROM dispatch_sections s
+        (SELECT COUNT(*) FROM dispatch_zones WHERE sector_id = s.id) as zone_count
+      FROM dispatch_sectors s
       LEFT JOIN dispatch_areas a ON a.id = s.area_id
     `;
     const params: any[] = [];
     if (areaId) { query += ' WHERE s.area_id = ?'; params.push(areaId); }
-    query += ' ORDER BY s.sort_order, s.section_name';
+    query += ' ORDER BY s.sort_order, s.sector_name';
     const sectors = db.prepare(query).all(...params);
     setCacheHeaders(res, 30);
     res.json(sectors);
@@ -204,12 +204,12 @@ router.get('/geography/sectors', requireRole('admin', 'manager', 'supervisor', '
 router.post('/geography/sectors', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const sector_code = req.body.sector_code || req.body.section_code;
-    const sector_name = req.body.sector_name || req.body.section_name;
+    const sector_code = req.body.sector_code || req.body.sector_code;
+    const sector_name = req.body.sector_name || req.body.sector_name;
     const { area_id, color, description, supervisor, radio_channel, notes, sort_order } = req.body;
     if (!sector_code || !sector_name) { res.status(400).json({ error: 'sector_code and sector_name required' }); return; }
     const result = db.prepare(`
-      INSERT INTO dispatch_sections (section_code, section_name, area_id, color, description, supervisor, radio_channel, notes, sort_order)
+      INSERT INTO dispatch_sectors (sector_code, sector_name, area_id, color, description, supervisor, radio_channel, notes, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(sector_code, sector_name, area_id || null, color || '#888888', description, supervisor, radio_channel, notes, sort_order || 0);
     auditLog(req, 'CREATE', 'dispatch_sectors', result.lastInsertRowid as number, JSON.stringify(req.body));
@@ -224,13 +224,13 @@ router.put('/geography/sectors/:id', requireRole('admin', 'manager'), (req: Requ
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    const old = db.prepare('SELECT * FROM dispatch_sections WHERE id = ?').get(id);
+    const old = db.prepare('SELECT * FROM dispatch_sectors WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Sector not found' }); return; }
     // Accept both sector_* and section_* field names
     const body = { ...req.body };
-    if (body.sector_code !== undefined) body.section_code = body.sector_code;
-    if (body.sector_name !== undefined) body.section_name = body.sector_name;
-    const fields = ['section_code', 'section_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
+    if (body.sector_code !== undefined) body.sector_code = body.sector_code;
+    if (body.sector_name !== undefined) body.sector_name = body.sector_name;
+    const fields = ['sector_code', 'sector_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
     const updates: string[] = [];
     const values: any[] = [];
     for (const f of fields) {
@@ -239,7 +239,7 @@ router.put('/geography/sectors/:id', requireRole('admin', 'manager'), (req: Requ
     if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
     updates.push('updated_at = ?'); values.push(now());
     values.push(id);
-    db.prepare(`UPDATE dispatch_sections SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    db.prepare(`UPDATE dispatch_sectors SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     auditLog(req, 'UPDATE', 'dispatch_sectors', id, JSON.stringify(req.body));
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to update sector' }); }
@@ -249,8 +249,8 @@ router.delete('/geography/sectors/:id', requireRole('admin'), (req: Request, res
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    db.prepare('UPDATE dispatch_zones SET section_id = NULL WHERE section_id = ?').run(id);
-    db.prepare('DELETE FROM dispatch_sections WHERE id = ?').run(id);
+    db.prepare('UPDATE dispatch_zones SET sector_id = NULL WHERE sector_id = ?').run(id);
+    db.prepare('DELETE FROM dispatch_sectors WHERE id = ?').run(id);
     auditLog(req, 'DELETE', 'dispatch_sectors', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete sector' }); }
@@ -263,17 +263,17 @@ router.delete('/geography/sectors/:id', requireRole('admin'), (req: Request, res
 router.get('/geography/zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const sectionId = req.query.section_id ? parseInt(req.query.section_id as string, 10) : null;
+    const sectionId = req.query.sector_id ? parseInt(req.query.sector_id as string, 10) : null;
     let query = `
       SELECT z.*,
-        s.section_code, s.section_name,
+        s.sector_code, s.sector_name,
         (SELECT COUNT(*) FROM dispatch_beats WHERE zone_id = z.id) as beat_count,
         (SELECT COUNT(*) FROM calls_for_service WHERE zone_id = z.zone_code AND status NOT IN ('closed','archived','cancelled')) as active_calls
       FROM dispatch_zones z
-      LEFT JOIN dispatch_sections s ON s.id = z.section_id
+      LEFT JOIN dispatch_sectors s ON s.id = z.sector_id
     `;
     const params: any[] = [];
-    if (sectionId) { query += ' WHERE z.section_id = ?'; params.push(sectionId); }
+    if (sectionId) { query += ' WHERE z.sector_id = ?'; params.push(sectionId); }
     query += ' ORDER BY z.sort_order, z.zone_name';
     const zones = db.prepare(query).all(...params);
     setCacheHeaders(res, 30);
@@ -287,12 +287,12 @@ router.get('/geography/zones', requireRole('admin', 'manager', 'supervisor', 'of
 router.post('/geography/zones', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { zone_code, zone_name, section_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order } = req.body;
+    const { zone_code, zone_name, sector_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order } = req.body;
     if (!zone_code || !zone_name) { res.status(400).json({ error: 'zone_code and zone_name required' }); return; }
     const result = db.prepare(`
-      INSERT INTO dispatch_zones (zone_code, zone_name, section_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order)
+      INSERT INTO dispatch_zones (zone_code, zone_name, sector_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(zone_code, zone_name, section_id || null, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order || 0);
+    `).run(zone_code, zone_name, sector_id || null, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order || 0);
     auditLog(req, 'CREATE', 'dispatch_zones', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
@@ -307,7 +307,7 @@ router.put('/geography/zones/:id', requireRole('admin', 'manager'), (req: Reques
     const id = parseInt(req.params.id as string, 10);
     const old = db.prepare('SELECT * FROM dispatch_zones WHERE id = ?').get(id);
     if (!old) { res.status(404).json({ error: 'Zone not found' }); return; }
-    const fields = ['zone_code', 'zone_name', 'section_id', 'color', 'description', 'primary_unit', 'backup_unit', 'radio_channel', 'hazard_notes', 'notes', 'population_estimate', 'sq_miles', 'sort_order', 'active'];
+    const fields = ['zone_code', 'zone_name', 'sector_id', 'color', 'description', 'primary_unit', 'backup_unit', 'radio_channel', 'hazard_notes', 'notes', 'population_estimate', 'sq_miles', 'sort_order', 'active'];
     const updates: string[] = [];
     const values: any[] = [];
     for (const f of fields) {
@@ -345,11 +345,11 @@ router.get('/geography/beats', requireRole('admin', 'manager', 'supervisor', 'of
     let query = `
       SELECT b.*,
         z.zone_code, z.zone_name,
-        s.section_code, s.section_name,
+        s.sector_code, s.sector_name,
         (SELECT COUNT(*) FROM calls_for_service WHERE beat_id = b.beat_code AND status NOT IN ('closed','archived','cancelled')) as active_calls
       FROM dispatch_beats b
       LEFT JOIN dispatch_zones z ON z.id = b.zone_id
-      LEFT JOIN dispatch_sections s ON s.id = z.section_id
+      LEFT JOIN dispatch_sectors s ON s.id = z.sector_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -598,19 +598,19 @@ router.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'off
     const areas = db.prepare('SELECT * FROM dispatch_areas WHERE active = 1 ORDER BY sort_order, area_name').all() as any[];
     const sections = db.prepare(`
       SELECT s.*, a.area_code, a.area_name
-      FROM dispatch_sections s LEFT JOIN dispatch_areas a ON a.id = s.area_id
-      WHERE s.active = 1 ORDER BY s.sort_order, s.section_name
+      FROM dispatch_sectors s LEFT JOIN dispatch_areas a ON a.id = s.area_id
+      WHERE s.active = 1 ORDER BY s.sort_order, s.sector_name
     `).all() as any[];
     const zones = db.prepare(`
-      SELECT z.*, s.section_code, s.section_name
-      FROM dispatch_zones z LEFT JOIN dispatch_sections s ON s.id = z.section_id
+      SELECT z.*, s.sector_code, s.sector_name
+      FROM dispatch_zones z LEFT JOIN dispatch_sectors s ON s.id = z.sector_id
       WHERE z.active = 1 ORDER BY z.sort_order, z.zone_name
     `).all() as any[];
     const beats = db.prepare(`
-      SELECT b.*, z.zone_code, z.zone_name, s.section_code, s.section_name
+      SELECT b.*, z.zone_code, z.zone_name, s.sector_code, s.sector_name
       FROM dispatch_beats b
       LEFT JOIN dispatch_zones z ON z.id = b.zone_id
-      LEFT JOIN dispatch_sections s ON s.id = z.section_id
+      LEFT JOIN dispatch_sectors s ON s.id = z.sector_id
       WHERE b.active = 1 ORDER BY b.sort_order, b.beat_name
     `).all() as any[];
 
@@ -622,7 +622,7 @@ router.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'off
         .map((section: any) => ({
           ...section,
           zones: zones
-            .filter((z: any) => z.section_id === section.id)
+            .filter((z: any) => z.sector_id === section.id)
             .map((zone: any) => ({
               ...zone,
               beats: beats.filter((b: any) => b.zone_id === zone.id),
@@ -636,7 +636,7 @@ router.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'off
       .map((section: any) => ({
         ...section,
         zones: zones
-          .filter((z: any) => z.section_id === section.id)
+          .filter((z: any) => z.sector_id === section.id)
           .map((zone: any) => ({
             ...zone,
             beats: beats.filter((b: any) => b.zone_id === zone.id),
@@ -663,7 +663,7 @@ router.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'of
 
     // Call counts by section
     const sectionStats = db.prepare(`
-      SELECT section_id as code, section_name as name,
+      SELECT sector_id as code, sector_name as name,
         COUNT(*) as total_calls,
         SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_calls,
         SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2_calls,
@@ -671,14 +671,14 @@ router.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'of
         AVG(CASE WHEN dispatched_at IS NOT NULL AND enroute_at IS NOT NULL
           THEN (julianday(enroute_at) - julianday(dispatched_at)) * 86400 END) as avg_response_sec
       FROM calls_for_service
-      WHERE created_at >= ? AND section_id IS NOT NULL AND section_id != ''
-      GROUP BY section_id, section_name
+      WHERE created_at >= ? AND sector_id IS NOT NULL AND sector_id != ''
+      GROUP BY sector_id, sector_name
       ORDER BY total_calls DESC
     `).all(cutoff);
 
     // Call counts by zone
     const zoneStats = db.prepare(`
-      SELECT zone_id as code, zone_name as name, section_id,
+      SELECT zone_id as code, zone_name as name, sector_id,
         COUNT(*) as total_calls,
         SUM(CASE WHEN status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls,
         AVG(CASE WHEN dispatched_at IS NOT NULL AND enroute_at IS NOT NULL
@@ -702,11 +702,11 @@ router.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'of
 
     // Top incident types by section
     const topTypes = db.prepare(`
-      SELECT section_id, incident_type, COUNT(*) as cnt
+      SELECT sector_id, incident_type, COUNT(*) as cnt
       FROM calls_for_service
-      WHERE created_at >= ? AND section_id IS NOT NULL AND section_id != ''
-      GROUP BY section_id, incident_type
-      ORDER BY section_id, cnt DESC
+      WHERE created_at >= ? AND sector_id IS NOT NULL AND sector_id != ''
+      GROUP BY sector_id, incident_type
+      ORDER BY sector_id, cnt DESC
     `).all(cutoff);
 
     setCacheHeaders(res, 120);
@@ -739,10 +739,10 @@ router.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 
 
     // Look up normalized geography
     const beatRecord = db.prepare(`
-      SELECT b.*, z.zone_code, z.zone_name, s.section_code, s.section_name, a.area_code, a.area_name
+      SELECT b.*, z.zone_code, z.zone_name, s.sector_code, s.sector_name, a.area_code, a.area_name
       FROM dispatch_beats b
       LEFT JOIN dispatch_zones z ON z.id = b.zone_id
-      LEFT JOIN dispatch_sections s ON s.id = z.section_id
+      LEFT JOIN dispatch_sectors s ON s.id = z.sector_id
       LEFT JOIN dispatch_areas a ON a.id = s.area_id
       WHERE b.beat_code = ? OR b.beat_code LIKE ?
       LIMIT 1
@@ -763,7 +763,7 @@ router.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 
       res.json({
         found: true,
         area: { code: beatRecord.area_code, name: beatRecord.area_name },
-        section: { code: beatRecord.section_code, name: beatRecord.section_name },
+        section: { code: beatRecord.sector_code, name: beatRecord.sector_name },
         zone: { code: beatRecord.zone_code, name: beatRecord.zone_name },
         beat: {
           code: beatRecord.beat_code, name: beatRecord.beat_name,

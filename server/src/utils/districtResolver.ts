@@ -14,11 +14,11 @@ import { identifyBeat, findNearestBeat, BeatMatch } from './geofence';
 import { getDb } from '../models/database';
 
 export interface DistrictResult {
-  section_id: string;
+  sector_id: string;
   zone_id: string;
   beat_id: string;
   zone_beat: string;
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
@@ -56,11 +56,11 @@ export function resolveDistrict(lat: number, lng: number): DistrictResult | null
 
     if (district) {
       return {
-        section_id: district.section_id,
+        sector_id: district.sector_id,
         zone_id: district.zone_name,
         beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
         zone_beat: beat.beat_code,
-        section_name: district.section_name,
+        sector_name: district.sector_name,
         zone_name: district.zone_name,
         beat_name: district.beat_name,
         beat_descriptor: district.beat_descriptor,
@@ -71,7 +71,7 @@ export function resolveDistrict(lat: number, lng: number): DistrictResult | null
     // No dispatch_districts row — log warning and return raw geofence data
     console.warn(`[districtResolver] No dispatch_districts row for beat_code=${beat.beat_code} (zone=${beat.city_code}, beat=${beat.district_letter})`);
     return {
-      section_id: beat.district_letter,
+      sector_id: beat.district_letter,
       zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
       beat_id: beat.beat_id,
       zone_beat: beat.beat_code,
@@ -97,11 +97,11 @@ export function autoFillDistrict(record: Record<string, any>): boolean {
   if (!district) return false;
 
   // Only fill if not already provided
-  if (!record.section_id) record.section_id = district.section_id;
+  if (!record.sector_id) record.sector_id = district.sector_id;
   if (!record.zone_id) record.zone_id = district.zone_id;
   if (!record.beat_id) record.beat_id = district.beat_id;
   if (!record.zone_beat) record.zone_beat = district.zone_beat;
-  if (!record.section_name && district.section_name) record.section_name = district.section_name;
+  if (!record.sector_name && district.sector_name) record.sector_name = district.sector_name;
   if (!record.zone_name && district.zone_name) record.zone_name = district.zone_name;
   if (!record.beat_name && district.beat_name) record.beat_name = district.beat_name;
   if (!record.beat_descriptor && district.beat_descriptor) record.beat_descriptor = district.beat_descriptor;

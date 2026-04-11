@@ -599,7 +599,7 @@ export function drawGeographyStrip(
   y: number,
   data: {
     area?: string | null;
-    sector?: string | null;   // displayed from section_id/sector_id
+    sector?: string | null;   // displayed from sector_id/sector_id
     zone?: string | null;
     beat?: string | null;
     contract_id?: string | null;

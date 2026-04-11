@@ -349,7 +349,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           // Lookup dispatch district for full names
           const district = db.prepare('SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ? LIMIT 1').get(zoneId, beatId) as any;
           if (district) {
-            sectionId = district.section_id || sectionId;
+            sectionId = district.sector_id || sectionId;
             dispatchCode = district.dispatch_code || '';
           }
         }
@@ -437,7 +437,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         caller_name, caller_phone, caller_relationship, caller_address,
         location_address, property_id, latitude, longitude,
         weather_conditions, lighting_conditions,
-        section_id, zone_id, beat_id, zone_beat, dispatch_code,
+        sector_id, zone_id, beat_id, zone_beat, dispatch_code,
         description, notes, source, dispatcher_id,
         subject_description,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,

@@ -45,7 +45,7 @@ const EMPTY_FORM = {
   order_type: 'trespass_warning' as TrespassOrderType,
   reason: '', conditions: '', duration_days: '', notes: '',
   authorized_by: '', person_id: '', property_id: '',
-  section_id: '', zone_id: '', beat_id: '',
+  sector_id: '', zone_id: '', beat_id: '',
 };
 
 const timeAgo = (date: string): string => {
@@ -204,7 +204,7 @@ export default function TrespassOrdersPage() {
       authorized_by: order.authorized_by || '',
       person_id: order.person_id ? String(order.person_id) : '',
       property_id: order.property_id ? String(order.property_id) : '',
-      section_id: order.section_id || '',
+      sector_id: order.sector_id || '',
       zone_id: order.zone_id || '',
       beat_id: order.beat_id || '',
     });
@@ -226,7 +226,7 @@ export default function TrespassOrdersPage() {
         person_id: formData.person_id ? parseInt(formData.person_id, 10) : null,
         property_id: formData.property_id ? parseInt(formData.property_id, 10) : null,
         duration_days: formData.duration_days ? parseInt(formData.duration_days, 10) : null,
-        section_id: formData.section_id || null,
+        sector_id: formData.sector_id || null,
         zone_id: formData.zone_id || null,
         beat_id: formData.beat_id || null,
         zone_beat: (formData.zone_id && formData.beat_id) ? `${formData.zone_id}-${formData.beat_id}` : formData.zone_id || formData.beat_id || null,
@@ -486,8 +486,8 @@ export default function TrespassOrdersPage() {
                   <span>{order.issued_by_name || order.issued_by_display}</span>
                   <span>•</span>
                   <span>{safeDateStr(order.created_at)}</span>
-                  {(order.section_id || order.zone_id || order.beat_id) && (
-                    <span className="font-mono text-rmpg-500">{[order.section_id, order.zone_id, order.beat_id].filter(Boolean).join('/')}</span>
+                  {(order.sector_id || order.zone_id || order.beat_id) && (
+                    <span className="font-mono text-rmpg-500">{[order.sector_id, order.zone_id, order.beat_id].filter(Boolean).join('/')}</span>
                   )}
                   {order.expiration_date && <span className="text-amber-500/70">Exp: {safeDateStr(order.expiration_date)}</span>}
                 </div>
@@ -575,8 +575,8 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? new Date(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-white">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-white">{selectedOrder.authorized_by || '—'}</div></div>
-              {(selectedOrder.section_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
-                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-white font-mono">{[selectedOrder.section_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+              {(selectedOrder.sector_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
+                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-white font-mono">{[selectedOrder.sector_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
               {selectedOrder.served_at && (
                 <>
@@ -667,7 +667,7 @@ export default function TrespassOrdersPage() {
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Section</label>
                   <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                    value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+                    value={formData.sector_id || ''} onChange={e => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
@@ -677,7 +677,7 @@ export default function TrespassOrdersPage() {
                   <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
-                    {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>

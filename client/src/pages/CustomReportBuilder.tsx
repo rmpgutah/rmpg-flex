@@ -16,7 +16,7 @@ import { useToast } from '../components/ToastProvider';
 const SOURCES: Record<string, { label: string; columns: string[] }> = {
   calls_for_service: {
     label: 'Calls for Service',
-    columns: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'section_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
+    columns: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'sector_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
   },
   incidents: {
     label: 'Incident Reports',
