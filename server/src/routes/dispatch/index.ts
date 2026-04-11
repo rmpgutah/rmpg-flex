@@ -7,7 +7,7 @@ import callLifecycleRouter from './callLifecycle';
 import unitsRouter from './units';
 import gpsRouter from './gps';
 import aggregatesRouter from './aggregates';
-import districtsRouter from './districts';
+import geographyRouter from './geography';
 
 const router = Router();
 
@@ -22,6 +22,6 @@ router.use('/', callActionsRouter);
 router.use('/', unitsRouter);
 router.use('/', gpsRouter);
 router.use('/', aggregatesRouter);
-router.use('/', districtsRouter);
+router.use('/', geographyRouter);
 
 export default router;
