@@ -1151,12 +1151,26 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
     const { generateIncidentNumber } = require('../utils/caseNumbers');
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
 
+    // Propagate all operational flags + district + client info from the source call
+    // (Previously only 3 flags propagated + a type mismatch on `injuries`/`weapons_involved`
+    //  stuffed 0 into text columns — audit 2026-04-10.)
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
         location_address, property_id, latitude, longitude, narrative, officer_id,
-        zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
-        injuries, created_by)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        zone_beat, section_id, zone_id, beat_id, client_id, contract_id,
+        alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
+        injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+        officer_safety_caution, k9_requested, ems_requested, fire_requested,
+        hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
+        disposition, created_by)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?)
     `).run(
       incidentNumber,
       call.id,
@@ -1172,9 +1186,31 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
       call.section_id || null,
       call.zone_id || null,
       call.beat_id || null,
-      call.domestic_violence || 0,
-      call.weapons_involved || 0,
-      call.injuries_reported || 0,
+      call.client_id || null,
+      call.contract_id || null,
+      call.alcohol_involved ? 1 : 0,
+      call.drugs_involved ? 1 : 0,
+      call.domestic_violence ? 1 : 0,
+      call.weapons_involved || null,
+      call.injuries_reported ? 1 : 0,
+      call.mental_health_crisis ? 1 : 0,
+      call.juvenile_involved ? 1 : 0,
+      call.felony_in_progress ? 1 : 0,
+      call.officer_safety_caution ? 1 : 0,
+      call.k9_requested ? 1 : 0,
+      call.ems_requested ? 1 : 0,
+      call.fire_requested ? 1 : 0,
+      call.hazmat ? 1 : 0,
+      call.gang_related ? 1 : 0,
+      call.evidence_collected ? 1 : 0,
+      call.body_camera_active ? 1 : 0,
+      call.photos_taken ? 1 : 0,
+      call.trespass_issued ? 1 : 0,
+      call.vehicle_pursuit ? 1 : 0,
+      call.foot_pursuit ? 1 : 0,
+      call.le_notified ? 1 : 0,
+      call.supervisor_notified ? 1 : 0,
+      call.disposition || null,
       req.user!.userId
     );
 
@@ -2001,15 +2037,43 @@ router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
 
     const narrative = narrativeParts.join('\n');
 
+    // Propagate ALL operational flags + district + client info from the source call
+    // (Previously dropped here — audit 2026-04-10.)
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
-        property_id, latitude, longitude, narrative, officer_id)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+        property_id, latitude, longitude, narrative, officer_id, client_id, contract_id,
+        alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
+        injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+        officer_safety_caution, k9_requested, ems_requested, fire_requested,
+        hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
+        section_id, zone_id, beat_id, disposition)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?)
     `).run(
       incidentNumber, call.id, call.incident_type, call.priority,
       call.location_address || call.property_address || null,
       call.property_id || null, call.latitude || null, call.longitude || null,
-      narrative, req.user!.userId
+      narrative, req.user!.userId, call.client_id || null, call.contract_id || null,
+      call.alcohol_involved ? 1 : 0, call.drugs_involved ? 1 : 0,
+      call.domestic_violence ? 1 : 0, call.weapons_involved || null,
+      call.injuries_reported ? 1 : 0, call.mental_health_crisis ? 1 : 0,
+      call.juvenile_involved ? 1 : 0, call.felony_in_progress ? 1 : 0,
+      call.officer_safety_caution ? 1 : 0, call.k9_requested ? 1 : 0,
+      call.ems_requested ? 1 : 0, call.fire_requested ? 1 : 0,
+      call.hazmat ? 1 : 0, call.gang_related ? 1 : 0,
+      call.evidence_collected ? 1 : 0, call.body_camera_active ? 1 : 0,
+      call.photos_taken ? 1 : 0,
+      call.trespass_issued ? 1 : 0, call.vehicle_pursuit ? 1 : 0,
+      call.foot_pursuit ? 1 : 0, call.le_notified ? 1 : 0,
+      call.supervisor_notified ? 1 : 0,
+      call.section_id || null, call.zone_id || null, call.beat_id || null,
+      call.disposition || null
     );
 
     const incident = db.prepare(`
