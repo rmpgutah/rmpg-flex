@@ -123,7 +123,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
             type="datetime-local"
             value={shiftStart}
             onChange={e => setShiftStart(e.target.value)}
-            className="ml-1 bg-[#050505] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
+            className="ml-1 bg-[#0a0a0a] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
           />
         </label>
         <label className="text-rmpg-300 text-xs font-mono">
@@ -132,7 +132,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
             type="datetime-local"
             value={shiftEnd}
             onChange={e => setShiftEnd(e.target.value)}
-            className="ml-1 bg-[#050505] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
+            className="ml-1 bg-[#0a0a0a] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
           />
         </label>
         <button onClick={fetchReport} className="toolbar-btn text-xs" disabled={loading}>
@@ -150,7 +150,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       )}
 
       {/* ── Report Header ── */}
-      <div className="panel-beveled bg-[#141414] p-3 print:border print:border-gray-400">
+      <div className="panel-beveled bg-[#1a1a1a] p-3 print:border print:border-gray-400">
         <h1 className="text-brand-400 text-sm font-bold tracking-wider uppercase flex items-center gap-2 mb-2">
           <FileText size={16} /> Shift Handoff Report
         </h1>
@@ -173,7 +173,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Open Calls ── */}
-      <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+      <div className="panel-beveled bg-[#1a1a1a] print:border print:border-gray-400">
         <PanelTitleBar title="Open Calls" icon={Radio} />
         <div className="p-2">
           {!data?.open_calls.length ? (
@@ -206,7 +206,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Active BOLOs ── */}
-      <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+      <div className="panel-beveled bg-[#1a1a1a] print:border print:border-gray-400">
         <PanelTitleBar title="Active BOLOs" icon={AlertTriangle} />
         <div className="p-2">
           {!data?.active_bolos.length ? (
@@ -214,7 +214,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           ) : (
             <div className="space-y-2">
               {data.active_bolos.map(b => (
-                <div key={b.id} className="bg-[#050505] border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
+                <div key={b.id} className="bg-[#0a0a0a] border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-brand-400 font-bold uppercase">{b.type}</span>
                     <StatusBadge status={b.priority} type="priority" size="sm" />
@@ -229,11 +229,11 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Shift Notes ── */}
-      <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+      <div className="panel-beveled bg-[#1a1a1a] print:border print:border-gray-400">
         <PanelTitleBar title="Shift Notes" icon={StickyNote} />
         <div className="p-2 space-y-2">
           {data?.shift_notes.map(n => (
-            <div key={n.id} className="bg-[#050505] border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
+            <div key={n.id} className="bg-[#0a0a0a] border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
               <div className="flex items-center gap-2 text-rmpg-400 mb-1">
                 <span className="bg-brand-900/40 text-brand-400 px-1.5 py-0.5 rounded-[2px] text-[10px] uppercase font-bold">
                   {n.category}
@@ -248,7 +248,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
             <select
               value={noteCategory}
               onChange={e => setNoteCategory(e.target.value)}
-              className="bg-[#050505] border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1.5 rounded-[2px] font-mono"
+              className="bg-[#0a0a0a] border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1.5 rounded-[2px] font-mono"
             >
               <option value="general">General</option>
               <option value="safety">Safety</option>
@@ -261,7 +261,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addNote()}
-              className="flex-1 bg-[#050505] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1.5 rounded-[2px] font-mono placeholder:text-rmpg-500"
+              className="flex-1 bg-[#0a0a0a] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1.5 rounded-[2px] font-mono placeholder:text-rmpg-500"
             />
             <button onClick={addNote} disabled={submitting || !noteText.trim()} className="toolbar-btn text-xs">
               <Plus size={13} className="mr-1 inline" />{submitting ? 'Saving...' : 'Add'}
@@ -272,7 +272,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
 
       {/* ── GPS Summary & Shift Stats ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+        <div className="panel-beveled bg-[#1a1a1a] print:border print:border-gray-400">
           <PanelTitleBar title="GPS Summary" icon={MapPin} />
           <div className="p-3 text-center">
             <Car size={28} className="mx-auto text-brand-400 mb-2" />
@@ -283,7 +283,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           </div>
         </div>
 
-        <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+        <div className="panel-beveled bg-[#1a1a1a] print:border print:border-gray-400">
           <PanelTitleBar title="Shift Stats" icon={BarChart3} />
           <div className="p-3 space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">

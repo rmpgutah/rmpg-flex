@@ -4,8 +4,8 @@
 
 /* ============================================================
    RMPG Flex - Custom Styles
-   Pure black shell
-   Black chrome, neutral gray surfaces, gold utility accents
+   Spillman Flex / Motorola Solutions — Pure Black Dark Theme
+   Gray + gold accents on a pure-black CAD console
    ============================================================ */
 
 /* --- Theme Custom Properties ─────────────────────────────── */
@@ -2276,7 +2276,7 @@ body.fx-noise::after {
   font-size: 11px;
   line-height: 1.5;
   border-top: 1px solid #222222;
-  background: #080808;
+  background: #050505;
 }
 
 .cad-command-output-expanded pre {
@@ -2518,7 +2518,7 @@ body.fx-noise::after {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: #080808;
+  background: #050505;
   border-top: 2px solid #222222;
 }
 
@@ -3017,7 +3017,7 @@ body.fx-noise::after {
   [style*="background: #141414"],
   [style*="background: #050505"],
   [style*="background: #030303"],
-  [style*="background: #0b0b0b"],
+  [style*="background: #0a0a0a"],
   [style*="background: linear-gradient"] {
     background: white !important;
   }
@@ -4584,8 +4584,8 @@ html, body {
   .data-panel-inset {
     background: var(--surface-sunken);
     border: 1px solid #030303;
-    border-top-color: #0b0b0b;
-    border-left-color: #0b0b0b;
+    border-top-color: #0a0a0a;
+    border-left-color: #0a0a0a;
     border-bottom-color: var(--border-default);
     border-right-color: var(--border-default);
     padding: 8px 10px;

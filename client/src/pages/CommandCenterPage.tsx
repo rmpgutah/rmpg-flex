@@ -170,7 +170,7 @@ export default function CommandCenterPage() {
                     borderLeft: `3px solid ${
                       call.priority === 'P1' ? '#ef4444' : call.priority === 'P2' ? '#f59e0b' : call.priority === 'P3' ? '#888888' : '#6b7280'
                     }`,
-                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : '#0a0a0a',
+                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : '#141414',
                   }}
                 >
                   <div className="flex-1 min-w-0">
@@ -216,7 +216,7 @@ export default function CommandCenterPage() {
                     <div
                       key={unit.id}
                       className="flex items-center gap-1.5 px-2 py-1 panel-beveled"
-                      style={{ background: '#0a0a0a' }}
+                      style={{ background: '#141414' }}
                     >
                       <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: color, boxShadow: `0 0 4px ${color}` }} />
                       <div className="min-w-0">

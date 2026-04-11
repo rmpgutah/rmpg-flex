@@ -534,7 +534,7 @@ export default function OfflineMapFallback({
   }
 
   return (
-    <div role="application" aria-label="Offline map fallback" className={`relative w-full h-full ${className}`} style={{ background: '#0b0b0b' }}>
+    <div role="application" aria-label="Offline map fallback" className={`relative w-full h-full ${className}`} style={{ background: '#0a0a0a' }}>
       {/* Leaflet map container */}
       <div ref={containerRef} className="absolute inset-0 z-0" />
 
@@ -671,7 +671,7 @@ export default function OfflineMapFallback({
         }
         /* Match background to our theme */
         .leaflet-container {
-          background: #0b0b0b !important;
+          background: #0a0a0a !important;
           font-family: 'JetBrains Mono', monospace !important;
         }
         /* Touch-friendly: prevent 300ms click delay on mobile */
