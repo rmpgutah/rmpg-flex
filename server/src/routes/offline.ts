@@ -272,14 +272,40 @@ function pushCallForService(db: any, body: any, userId: number) {
 
 function pushIncident(db: any, body: any, userId: number) {
   const now = localNow();
+  // Propagate ALL operational flags — previously silent-dropped (audit 2026-04-10)
   const result = db.prepare(`
     INSERT INTO incidents (incident_type, priority, status, location_address, property_id,
-      narrative, officer_id, supervisor_id, call_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      narrative, officer_id, supervisor_id, call_id,
+      alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
+      injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+      officer_safety_caution, k9_requested, ems_requested, fire_requested,
+      hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
+      trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
+      created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?)
   `).run(
     body.incident_type, body.priority || 'P3', body.status || 'draft',
     body.location_address, body.property_id, body.narrative,
-    body.officer_id || userId, body.supervisor_id, body.call_id, now, now
+    body.officer_id || userId, body.supervisor_id, body.call_id,
+    body.alcohol_involved ? 1 : 0, body.drugs_involved ? 1 : 0,
+    body.domestic_violence ? 1 : 0, body.weapons_involved || null,
+    body.injuries_reported ? 1 : 0, body.mental_health_crisis ? 1 : 0,
+    body.juvenile_involved ? 1 : 0, body.felony_in_progress ? 1 : 0,
+    body.officer_safety_caution ? 1 : 0, body.k9_requested ? 1 : 0,
+    body.ems_requested ? 1 : 0, body.fire_requested ? 1 : 0,
+    body.hazmat ? 1 : 0, body.gang_related ? 1 : 0,
+    body.evidence_collected ? 1 : 0, body.body_camera_active ? 1 : 0,
+    body.photos_taken ? 1 : 0,
+    body.trespass_issued ? 1 : 0, body.vehicle_pursuit ? 1 : 0,
+    body.foot_pursuit ? 1 : 0, body.le_notified ? 1 : 0,
+    body.supervisor_notified ? 1 : 0,
+    now, now
   );
 
   return { id: result.lastInsertRowid };
