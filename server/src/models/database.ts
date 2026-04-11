@@ -7,7 +7,8 @@ import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
-import { DISPATCH_DISTRICTS } from '../seeds/dispatchDistricts';
+// DISPATCH_DISTRICTS legacy constant import removed (Phase 2 of geography rebuild)
+import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 
@@ -2761,38 +2762,13 @@ function migrateSchema(): void {
     console.log('[migrate] Beat/zone backfill skipped:', (err as Error).message);
   }
 
-  // ── DISPATCH DISTRICTS — 3-Tier lookup table ───────────────
+  // ── DISPATCH DISTRICTS — obsolete 3-tier flat table, dropped in Phase 2
+  //    of the geography rebuild. Replaced by the 4-tier normalized
+  //    dispatch_areas / sectors / zones / beats model seeded from GeoJSON.
   try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS dispatch_districts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        section_id TEXT NOT NULL,
-        zone_id TEXT NOT NULL,
-        beat_id TEXT NOT NULL,
-        dispatch_code TEXT NOT NULL UNIQUE,
-        section_name TEXT NOT NULL,
-        zone_name TEXT NOT NULL,
-        beat_name TEXT NOT NULL,
-        beat_descriptor TEXT
-      )
-    `);
-  } catch { /* already exists */ }
-
-  // Seed dispatch_districts if empty
-  try {
-    const districtCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_districts').get() as any;
-    if (districtCount?.cnt === 0) {
-      const insertStmt = db.prepare(`
-        INSERT OR IGNORE INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const d of DISPATCH_DISTRICTS) {
-        insertStmt.run(d.section_id, d.zone_id, d.beat_id, d.dispatch_code, d.section_name, d.zone_name, d.beat_name, d.beat_descriptor);
-      }
-      console.log(`[migrate] Seeded ${DISPATCH_DISTRICTS.length} dispatch districts from 3-tier data`);
-    }
-  } catch (err) {
-    console.log('[migrate] dispatch_districts seed skipped:', (err as Error).message);
+    db.prepare('DROP TABLE IF EXISTS dispatch_districts').run();
+  } catch (err: any) {
+    console.log('[migrate] dispatch_districts drop skipped:', err.message);
   }
 
   // ── DISPATCH GEOGRAPHY — Normalized Section / Zone / Beat / Area tables ──
@@ -2834,7 +2810,9 @@ function migrateSchema(): void {
         sector_code TEXT NOT NULL UNIQUE,
         sector_name TEXT NOT NULL,
         area_id INTEGER REFERENCES dispatch_areas(id) ON DELETE SET NULL,
-        color TEXT DEFAULT '#3b82f6',
+        county_nbr TEXT,
+        fips_code TEXT,
+        color TEXT DEFAULT '#808080',
         description TEXT,
         supervisor TEXT,
         radio_channel TEXT,
@@ -2845,6 +2823,9 @@ function migrateSchema(): void {
         updated_at TEXT DEFAULT (datetime('now'))
       )
     `).run();
+    // addCol migrations for existing DBs missing the new columns
+    try { addCol('dispatch_sectors', 'county_nbr', 'TEXT'); } catch { /* ignore */ }
+    try { addCol('dispatch_sectors', 'fips_code', 'TEXT'); } catch { /* ignore */ }
     // Migration: rename legacy section_code/section_name columns on dispatch_sectors
     try {
       const cols = db.prepare('PRAGMA table_info(dispatch_sectors)').all() as any[];
@@ -2869,6 +2850,8 @@ function migrateSchema(): void {
         zone_code TEXT NOT NULL UNIQUE,
         zone_name TEXT NOT NULL,
         sector_id INTEGER REFERENCES dispatch_sectors(id) ON DELETE SET NULL,
+        zone_type TEXT DEFAULT 'municipality',
+        ugrc_code TEXT,
         color TEXT,
         description TEXT,
         primary_unit TEXT,
@@ -2884,6 +2867,8 @@ function migrateSchema(): void {
         updated_at TEXT DEFAULT (datetime('now'))
       )
     `).run();
+    try { addCol('dispatch_zones', 'zone_type', "TEXT DEFAULT 'municipality'"); } catch { /* ignore */ }
+    try { addCol('dispatch_zones', 'ugrc_code', 'TEXT'); } catch { /* ignore */ }
     // Migration: rename dispatch_zones.section_id -> sector_id if legacy column exists
     try {
       const cols = db.prepare('PRAGMA table_info(dispatch_zones)').all() as any[];
@@ -2896,13 +2881,15 @@ function migrateSchema(): void {
     } catch (err: any) {
       console.log('[migrate] dispatch_zones column rename skipped:', err.message);
     }
-    db.exec(`
+    db.prepare(`
       CREATE TABLE IF NOT EXISTS dispatch_beats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         beat_code TEXT NOT NULL UNIQUE,
         beat_name TEXT NOT NULL,
         beat_descriptor TEXT,
         zone_id INTEGER REFERENCES dispatch_zones(id) ON DELETE SET NULL,
+        district_letter TEXT,
+        beat_number INTEGER,
         dispatch_code TEXT,
         color TEXT,
         assigned_unit TEXT,
@@ -2919,7 +2906,9 @@ function migrateSchema(): void {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
-    `);
+    `).run();
+    try { addCol('dispatch_beats', 'district_letter', 'TEXT'); } catch { /* ignore */ }
+    try { addCol('dispatch_beats', 'beat_number', 'INTEGER'); } catch { /* ignore */ }
     db.exec(`
       CREATE TABLE IF NOT EXISTS dispatch_codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2963,41 +2952,13 @@ function migrateSchema(): void {
     console.log('[migrate] Dispatch geography tables:', (err as Error).message);
   }
 
-  // Seed normalized geography tables from existing dispatch_districts if empty
-  // NOTE: This is the legacy seed — Phase 2 replaces it with a GeoJSON-driven
-  // seed module. Kept here for compatibility with existing databases that still
-  // have dispatch_districts rows from before the rebuild.
+  // Seed dispatch_areas / sectors / zones / beats from Utah GeoJSON.
+  // Runs only when all 4 tables are empty (idempotent guard in the seed module).
   try {
-    const sectorCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_sectors').get() as any;
-    if (sectorCount?.cnt === 0) {
-      const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all() as any[];
-      if (districts.length > 0) {
-        const seenSectors = new Set<string>();
-        const insertSector = db.prepare('INSERT OR IGNORE INTO dispatch_sectors (sector_code, sector_name) VALUES (?, ?)');
-        for (const d of districts) {
-          if (!seenSectors.has(d.section_id)) {
-            insertSector.run(d.section_id, d.section_name);
-            seenSectors.add(d.section_id);
-          }
-        }
-        const seenZones = new Set<string>();
-        const insertZone = db.prepare('INSERT OR IGNORE INTO dispatch_zones (zone_code, zone_name, sector_id) VALUES (?, ?, (SELECT id FROM dispatch_sectors WHERE sector_code = ?))');
-        for (const d of districts) {
-          if (!seenZones.has(d.zone_id)) {
-            insertZone.run(d.zone_id, d.zone_name, d.section_id);
-            seenZones.add(d.zone_id);
-          }
-        }
-        const insertBeat = db.prepare('INSERT OR IGNORE INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code) VALUES (?, ?, ?, (SELECT id FROM dispatch_zones WHERE zone_code = ?), ?)');
-        for (const d of districts) {
-          const beatCode = d.zone_id + '-' + d.beat_id;
-          insertBeat.run(beatCode, d.beat_name, d.beat_descriptor, d.zone_id, d.dispatch_code);
-        }
-        console.log('[migrate] Seeded normalized geography: ' + seenSectors.size + ' sectors, ' + seenZones.size + ' zones, ' + districts.length + ' beats');
-      }
-    }
+    const geojsonDir = path.resolve(__dirname, '../../../client/public/geojson');
+    seedGeographyFromGeoJSON(db, geojsonDir);
   } catch (err) {
-    console.log('[migrate] Geography seed:', (err as Error).message);
+    console.log('[migrate] Geography seed skipped:', (err as Error).message);
   }
 
   // Seed default dispatch codes if empty
@@ -3251,41 +3212,11 @@ function migrateSchema(): void {
   }
 
   // ── Backfill dispatch district names on existing calls ──────────
-  try {
-    const callsNeedingDistrict = db.prepare(`
-      SELECT c.id, c.section_id, c.zone_id, c.beat_id
-      FROM calls_for_service c
-      WHERE c.dispatch_code IS NULL AND c.section_id IS NOT NULL AND c.section_id != ''
-    `).all() as any[];
-
-    if (callsNeedingDistrict.length > 0) {
-      const updateStmt = db.prepare(`
-        UPDATE calls_for_service
-        SET dispatch_code = ?, section_name = ?, sector_name = ?, zone_name = ?, beat_name = ?, beat_descriptor = ?
-        WHERE id = ?
-      `);
-
-      for (const call of callsNeedingDistrict) {
-        // Look up the district by section_id — need to find matching zone_id (stored as zone_name in old data)
-        const district = db.prepare(
-          `SELECT * FROM dispatch_districts WHERE section_id = ? LIMIT 1`
-        ).get(call.section_id) as any;
-
-        if (district) {
-          updateStmt.run(
-            district.dispatch_code,
-            district.section_name,
-            district.section_name, // also populate sector_name
-            district.zone_name, district.beat_name, district.beat_descriptor,
-            call.id,
-          );
-        }
-      }
-      if (callsNeedingDistrict.length > 0) {
-        console.log(`  Backfilled dispatch district data on ${callsNeedingDistrict.length} calls`);
-      }
-    }
-  } catch { /* safe to ignore */ }
+  // REMOVED in Phase 2 of geography rebuild: the dispatch_districts table
+  // is dropped earlier in this migration. The backfill would always find
+  // 0 rows and the SELECT * FROM dispatch_districts would throw. Existing
+  // calls that had section_id set will need manual geography reassignment
+  // via the new Geography admin page.
 
   // ── Migrate existing case numbers to YY-######-XX format ──────
   try {

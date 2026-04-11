@@ -96,82 +96,6 @@ router.delete('/geography/areas/:id', requireRole('admin'), (req: Request, res: 
 });
 
 // ════════════════════════════════════════════════════════════
-// SECTIONS — Second-level geographic divisions
-// ════════════════════════════════════════════════════════════
-
-router.get('/geography/sections', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const areaId = req.query.area_id ? parseInt(req.query.area_id as string, 10) : null;
-    let query = `
-      SELECT s.*,
-        a.area_name, a.area_code,
-        (SELECT COUNT(*) FROM dispatch_zones WHERE sector_id = s.id) as zone_count
-      FROM dispatch_sectors s
-      LEFT JOIN dispatch_areas a ON a.id = s.area_id
-    `;
-    const params: any[] = [];
-    if (areaId) { query += ' WHERE s.area_id = ?'; params.push(areaId); }
-    query += ' ORDER BY s.sort_order, s.sector_name';
-    const sections = db.prepare(query).all(...params);
-    setCacheHeaders(res, 30);
-    res.json(sections);
-  } catch (err: any) {
-    if (err?.message?.includes('no such table')) { res.json([]); return; }
-    res.status(500).json({ error: 'Failed to load sections' });
-  }
-});
-
-router.post('/geography/sections', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { sector_code, sector_name, area_id, color, description, supervisor, radio_channel, notes, sort_order } = req.body;
-    if (!sector_code || !sector_name) { res.status(400).json({ error: 'sector_code and sector_name required' }); return; }
-    const result = db.prepare(`
-      INSERT INTO dispatch_sectors (sector_code, sector_name, area_id, color, description, supervisor, radio_channel, notes, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(sector_code, sector_name, area_id || null, color || '#3b82f6', description, supervisor, radio_channel, notes, sort_order || 0);
-    auditLog(req, 'CREATE', 'dispatch_sectors', result.lastInsertRowid as number, JSON.stringify(req.body));
-    res.json({ success: true, id: result.lastInsertRowid });
-  } catch (err: any) {
-    if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Section code already exists' }); return; }
-    res.status(500).json({ error: 'Failed to create section' });
-  }
-});
-
-router.put('/geography/sections/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
-    const old = db.prepare('SELECT * FROM dispatch_sectors WHERE id = ?').get(id);
-    if (!old) { res.status(404).json({ error: 'Section not found' }); return; }
-    const fields = ['sector_code', 'sector_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
-    const updates: string[] = [];
-    const values: any[] = [];
-    for (const f of fields) {
-      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
-    }
-    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
-    updates.push('updated_at = ?'); values.push(now());
-    values.push(id);
-    db.prepare(`UPDATE dispatch_sectors SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    auditLog(req, 'UPDATE', 'dispatch_sectors', id, JSON.stringify(req.body));
-    res.json({ success: true });
-  } catch { res.status(500).json({ error: 'Failed to update section' }); }
-});
-
-router.delete('/geography/sections/:id', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
-    db.prepare('UPDATE dispatch_zones SET sector_id = NULL WHERE sector_id = ?').run(id);
-    db.prepare('DELETE FROM dispatch_sectors WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'dispatch_sectors', id, '');
-    res.json({ success: true });
-  } catch { res.status(500).json({ error: 'Failed to delete section' }); }
-});
-
-// ════════════════════════════════════════════════════════════
 // SECTORS — Alias of SECTIONS (new nomenclature: Area=state, Sector=county)
 // Routes accept sector_code/sector_name in body, map to sector_code/sector_name
 // GET returns rows with both naming conventions for transition compatibility
@@ -596,7 +520,7 @@ router.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'off
   try {
     const db = getDb();
     const areas = db.prepare('SELECT * FROM dispatch_areas WHERE active = 1 ORDER BY sort_order, area_name').all() as any[];
-    const sections = db.prepare(`
+    const sectors = db.prepare(`
       SELECT s.*, a.area_code, a.area_name
       FROM dispatch_sectors s LEFT JOIN dispatch_areas a ON a.id = s.area_id
       WHERE s.active = 1 ORDER BY s.sort_order, s.sector_name
@@ -614,15 +538,15 @@ router.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'off
       WHERE b.active = 1 ORDER BY b.sort_order, b.beat_name
     `).all() as any[];
 
-    // Build nested tree
+    // Build nested 4-level tree: areas → sectors → zones → beats
     const tree = areas.map((area: any) => ({
       ...area,
-      sections: sections
+      sectors: sectors
         .filter((s: any) => s.area_id === area.id)
-        .map((section: any) => ({
-          ...section,
+        .map((sector: any) => ({
+          ...sector,
           zones: zones
-            .filter((z: any) => z.sector_id === section.id)
+            .filter((z: any) => z.sector_id === sector.id)
             .map((zone: any) => ({
               ...zone,
               beats: beats.filter((b: any) => b.zone_id === zone.id),
@@ -630,13 +554,13 @@ router.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'off
         })),
     }));
 
-    // Orphaned sections (no area)
-    const orphanSections = sections
+    // Orphaned sectors (no area)
+    const orphanSectors = sectors
       .filter((s: any) => !s.area_id)
-      .map((section: any) => ({
-        ...section,
+      .map((sector: any) => ({
+        ...sector,
         zones: zones
-          .filter((z: any) => z.sector_id === section.id)
+          .filter((z: any) => z.sector_id === sector.id)
           .map((zone: any) => ({
             ...zone,
             beats: beats.filter((b: any) => b.zone_id === zone.id),
@@ -644,9 +568,9 @@ router.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'off
       }));
 
     setCacheHeaders(res, 30);
-    res.json({ areas: tree, unassigned_sections: orphanSections });
+    res.json({ areas: tree, unassigned_sectors: orphanSectors });
   } catch (err: any) {
-    if (err?.message?.includes('no such table')) { res.json({ areas: [], unassigned_sections: [] }); return; }
+    if (err?.message?.includes('no such table')) { res.json({ areas: [], unassigned_sectors: [] }); return; }
     res.status(500).json({ error: 'Failed to load geography tree' });
   }
 });
@@ -763,7 +687,7 @@ router.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 
       res.json({
         found: true,
         area: { code: beatRecord.area_code, name: beatRecord.area_name },
-        section: { code: beatRecord.sector_code, name: beatRecord.sector_name },
+        sector: { code: beatRecord.sector_code, name: beatRecord.sector_name },
         zone: { code: beatRecord.zone_code, name: beatRecord.zone_name },
         beat: {
           code: beatRecord.beat_code, name: beatRecord.beat_name,
@@ -777,7 +701,7 @@ router.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 
       res.json({
         found: true,
         area: null,
-        section: { code: beat.district_letter, name: beat.district_letter },
+        sector: { code: beat.district_letter, name: beat.district_letter },
         zone: { code: beat.city_code, name: beat.city },
         beat: { code: beat.beat_code, name: beat.beat_id, descriptor: null, dispatch_code: null, assigned_unit: null, hazard_notes: null },
         premise_alerts: alerts,

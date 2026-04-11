@@ -88,15 +88,15 @@ describe('GET /api/dispatch/geography/beats', () => {
   });
 });
 
-describe('GET /api/dispatch/geography/sections', () => {
-  it('lists seeded dispatch sections', async () => {
+describe('GET /api/dispatch/geography/sectors', () => {
+  it('lists seeded dispatch sectors', async () => {
     const res = await request(app)
-      .get('/api/dispatch/geography/sections')
+      .get('/api/dispatch/geography/sectors')
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    const list = Array.isArray(res.body) ? res.body : res.body.data || res.body.sections || [];
-    // Migration seeds 22 sections
+    const list = Array.isArray(res.body) ? res.body : res.body.data || res.body.sectors || [];
+    // GeoJSON seed produces 29 Utah counties as sectors
     expect(list.length).toBeGreaterThan(0);
   });
 });
