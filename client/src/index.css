@@ -4748,9 +4748,10 @@ a:focus-visible {
 }
 
 /* --- 9. TOOLTIP CONSISTENCY --- */
-[title]:not([title=""]) {
-  cursor: help;
-}
+/* Removed global [title] cursor:help rule — applied the "?" cursor to
+   every button, link, icon, and label with a title attribute (essentially
+   the entire UI). Native browser tooltips still render on hover; only
+   the cursor shape is back to normal. Audit 2026-04-11. */
 
 /* --- 10. BACKDROP BLUR — Consistent overlay treatment --- */
 .backdrop-blur-sm { backdrop-filter: blur(4px) !important; -webkit-backdrop-filter: blur(4px) !important; }

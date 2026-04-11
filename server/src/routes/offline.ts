@@ -51,12 +51,43 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 200,
   },
   persons: {
-    columns: 'id, first_name, last_name, dob, gender, race, address, phone, dl_number, dl_state, flags, notes, created_at, updated_at',
+    // Full PersonFormModal field set so officers see the complete record
+    // offline (previously only 14 of 166 columns synced — name + DL + a
+    // few extras, hiding SSN/ID numbers, employer, watchlist match,
+    // medical/military intel, etc.). Audit 2026-04-11.
+    columns: 'id, first_name, last_name, middle_name, alias_nickname, dob, gender, race, ' +
+      'height, height_feet, height_inches, weight, build, complexion, hair_color, eye_color, ' +
+      'scars_marks_tattoos, clothing_description, address, city, state, zip, phone, email, ' +
+      'dl_number, dl_state, dl_expiry, dl_class, ssn_last4, id_image_url, id_type, id_number, ' +
+      'id_state, id_expiry, employer, occupation, emergency_contact_name, ' +
+      'emergency_contact_phone, emergency_contact_relationship, gang_affiliation, ' +
+      'is_sex_offender, is_veteran, language, place_of_birth, citizenship, marital_status, ' +
+      'hair_length, hair_style, facial_hair, glasses, shoe_size, blood_type, phone_secondary, ' +
+      'social_media, probation_parole, probation_parole_officer, known_associates, ' +
+      'caution_flags, photo_url, ncic_number, sor_number, fbi_number, state_id_number, ' +
+      'passport_number, passport_country, immigration_status, disability_flags, ' +
+      'mental_health_flags, substance_abuse, medication_notes, education_level, ' +
+      'military_branch, military_status, tribal_affiliation, identifying_marks_location, ' +
+      'tattoo_description, scar_description, piercing_description, distinguishing_features, ' +
+      'email_secondary, date_last_seen, location_last_seen, alias_dob, home_phone, work_phone, ' +
+      'watchlist_match, watchlist_checked_at, flags, notes, created_at, updated_at',
     hasUpdatedAt: true,
     limit: 500,
   },
   vehicles_records: {
-    columns: 'id, plate_number, state, make, model, year, color, vin, owner_person_id, flags, stolen_status, created_at, updated_at',
+    // Full VehicleFormModal field set so officers see the complete vehicle
+    // record offline (previously only 13 of 137 columns synced — plate +
+    // make/model, hiding insurance, owner, tow, lien, modifications,
+    // condition, etc.). Audit 2026-04-11.
+    columns: 'id, plate_number, state, make, model, year, color, secondary_color, body_style, ' +
+      'doors, vin, owner_person_id, owner_name, owner_address, owner_phone, owner_dl_number, ' +
+      'owner_dob, registered_owner, primary_driver_name, insurance_company, insurance_policy, ' +
+      'insurance_expiry, registration_expiry, registration_state, damage_description, ' +
+      'distinguishing_features, trim, engine_type, fuel_type, transmission, drive_type, ' +
+      'tow_status, tow_company, tow_date, tow_location, plate_type, commercial_vehicle, ' +
+      'hazmat, odometer, lien_holder, stolen_status, stolen_date, recovery_date, title_status, ' +
+      'exterior_condition, interior_condition, estimated_value, window_tint, modifications, ' +
+      'equipment_notes, vehicle_use, ncic_entry_number, flags, notes, created_at, updated_at',
     hasUpdatedAt: true,
     limit: 500,
   },
@@ -216,6 +247,20 @@ router.post('/sync/push', (req: Request, res: Response) => {
           const result = pushTrespassOrder(db, body, req.user!.userId);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
+        } else if (item.table_name === 'persons' && item.method === 'POST') {
+          // Persons records created offline (audit 2026-04-11 — previously
+          // returned "Unsupported operation" so the entire offline person
+          // intake workflow was broken).
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushPerson(db, body);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'vehicles_records' && item.method === 'POST') {
+          // Vehicles records created offline (audit 2026-04-11 — same fix).
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushVehicle(db, body);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
         } else if (item.method === 'PUT') {
           // Generic update — parse the endpoint to get table and id
           const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
@@ -281,6 +326,133 @@ function pushIncident(db: any, body: any, userId: number) {
     body.location_address, body.property_id, body.narrative,
     body.officer_id || userId, body.supervisor_id, body.call_id, now, now
   );
+
+  return { id: result.lastInsertRowid };
+}
+
+// Whitelist of person columns the offline sync push handler will accept.
+// Mirrors PersonFormModal so an officer creating a person record offline
+// gets the full set persisted, not just first/last name. Audit 2026-04-11.
+const PUSH_PERSON_COLUMNS = [
+  'first_name', 'last_name', 'middle_name', 'alias_nickname', 'dob', 'gender', 'race',
+  'height', 'height_feet', 'height_inches', 'weight', 'build', 'complexion',
+  'hair_color', 'eye_color', 'scars_marks_tattoos', 'clothing_description',
+  'address', 'city', 'state', 'zip', 'phone', 'email',
+  'dl_number', 'dl_state', 'dl_expiry', 'dl_class', 'ssn_last4', 'ssn_full',
+  'id_image_url', 'id_type', 'id_number', 'id_state', 'id_expiry',
+  'employer', 'occupation', 'emergency_contact_name', 'emergency_contact_phone',
+  'emergency_contact_relationship', 'gang_affiliation', 'language',
+  'place_of_birth', 'citizenship', 'marital_status',
+  'hair_length', 'hair_style', 'facial_hair', 'glasses', 'shoe_size', 'blood_type',
+  'phone_secondary', 'social_media', 'probation_parole', 'probation_parole_officer',
+  'known_associates', 'caution_flags', 'photo_url',
+  'ncic_number', 'sor_number', 'fbi_number', 'state_id_number',
+  'passport_number', 'passport_country', 'immigration_status',
+  'disability_flags', 'mental_health_flags', 'substance_abuse', 'medication_notes',
+  'education_level', 'military_branch', 'military_status', 'tribal_affiliation',
+  'identifying_marks_location', 'tattoo_description', 'scar_description',
+  'piercing_description', 'distinguishing_features',
+  'email_secondary', 'date_last_seen', 'location_last_seen', 'alias_dob',
+  'home_phone', 'work_phone', 'notes',
+];
+
+const PUSH_PERSON_BOOL_COLUMNS = new Set(['is_sex_offender', 'is_veteran']);
+
+function pushPerson(db: any, body: any) {
+  if (!body.first_name || !body.last_name) {
+    throw new Error('first_name and last_name are required');
+  }
+
+  const now = localNow();
+  const columns: string[] = [];
+  const placeholders: string[] = [];
+  const values: any[] = [];
+
+  for (const col of PUSH_PERSON_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] === '' ? null : body[col]);
+    }
+  }
+  for (const col of PUSH_PERSON_BOOL_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] ? 1 : 0);
+    }
+  }
+  // flags column is JSON
+  columns.push('flags');
+  placeholders.push('?');
+  values.push(JSON.stringify(body.flags || []));
+
+  columns.push('created_at');
+  placeholders.push('?');
+  values.push(now);
+  columns.push('updated_at');
+  placeholders.push('?');
+  values.push(now);
+
+  const result = db.prepare(
+    `INSERT INTO persons (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+  ).run(...values);
+
+  return { id: result.lastInsertRowid };
+}
+
+// Whitelist of vehicles_records columns the offline sync push handler
+// will accept. Mirrors VehicleFormModal. Audit 2026-04-11.
+const PUSH_VEHICLE_COLUMNS = [
+  'plate_number', 'state', 'make', 'model', 'year', 'color', 'secondary_color',
+  'body_style', 'doors', 'vin', 'owner_person_id', 'owner_name', 'owner_address',
+  'owner_phone', 'owner_dl_number', 'owner_dob', 'registered_owner',
+  'primary_driver_name', 'insurance_company', 'insurance_policy', 'insurance_expiry',
+  'registration_expiry', 'registration_state', 'damage_description',
+  'distinguishing_features', 'trim', 'engine_type', 'fuel_type', 'transmission',
+  'drive_type', 'tow_status', 'tow_company', 'tow_date', 'tow_location', 'plate_type',
+  'odometer', 'lien_holder', 'stolen_status', 'stolen_date', 'recovery_date',
+  'title_status', 'exterior_condition', 'interior_condition', 'estimated_value',
+  'window_tint', 'modifications', 'equipment_notes', 'vehicle_use',
+  'ncic_entry_number', 'notes',
+];
+
+const PUSH_VEHICLE_BOOL_COLUMNS = new Set(['commercial_vehicle', 'hazmat']);
+
+function pushVehicle(db: any, body: any) {
+  const now = localNow();
+  const columns: string[] = [];
+  const placeholders: string[] = [];
+  const values: any[] = [];
+
+  for (const col of PUSH_VEHICLE_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] === '' ? null : body[col]);
+    }
+  }
+  for (const col of PUSH_VEHICLE_BOOL_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] ? 1 : 0);
+    }
+  }
+  columns.push('flags');
+  placeholders.push('?');
+  values.push(JSON.stringify(body.flags || []));
+
+  columns.push('created_at');
+  placeholders.push('?');
+  values.push(now);
+  columns.push('updated_at');
+  placeholders.push('?');
+  values.push(now);
+
+  const result = db.prepare(
+    `INSERT INTO vehicles_records (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+  ).run(...values);
 
   return { id: result.lastInsertRowid };
 }
@@ -358,6 +530,62 @@ function pushUpdate(db: any, endpoint: string, body: any) {
     if (sets.length > 0) {
       vals.push(entityId);
       db.prepare(`UPDATE units SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    }
+
+  } else if (parts[0] === 'records' && parts[1] === 'persons') {
+    // Persons edited offline (audit 2026-04-11 — previously this branch
+    // didn't exist, so the entire offline person edit workflow was a
+    // silent no-op).
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const col of PUSH_PERSON_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] === '' ? null : body[col]);
+      }
+    }
+    for (const col of PUSH_PERSON_BOOL_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] ? 1 : 0);
+      }
+    }
+    if (body.flags !== undefined) {
+      sets.push('flags = ?');
+      vals.push(JSON.stringify(body.flags || []));
+    }
+    if (sets.length > 0) {
+      sets.push('updated_at = ?');
+      vals.push(localNow());
+      vals.push(entityId);
+      db.prepare(`UPDATE persons SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    }
+
+  } else if (parts[0] === 'records' && parts[1] === 'vehicles') {
+    // Vehicles edited offline (audit 2026-04-11 — same fix as persons).
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const col of PUSH_VEHICLE_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] === '' ? null : body[col]);
+      }
+    }
+    for (const col of PUSH_VEHICLE_BOOL_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] ? 1 : 0);
+      }
+    }
+    if (body.flags !== undefined) {
+      sets.push('flags = ?');
+      vals.push(JSON.stringify(body.flags || []));
+    }
+    if (sets.length > 0) {
+      sets.push('updated_at = ?');
+      vals.push(localNow());
+      vals.push(entityId);
+      db.prepare(`UPDATE vehicles_records SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     }
   }
 }
