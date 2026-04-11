@@ -415,6 +415,17 @@ router.post('/persons', (req: Request, res: Response) => {
       probation_parole, probation_parole_officer, known_associates,
       emergency_contact_relationship, caution_flags,
       photo_url, flags, notes,
+      // Extended identification, medical, military, LE fields — these
+      // correspond to inputs in PersonFormModal.tsx that were previously
+      // being silently dropped by this route.
+      ncic_number, sor_number, fbi_number, state_id_number,
+      passport_number, passport_country, immigration_status,
+      disability_flags, mental_health_flags, substance_abuse, medication_notes,
+      education_level, military_branch, military_status, tribal_affiliation,
+      identifying_marks_location, tattoo_description, scar_description,
+      piercing_description, distinguishing_features,
+      email_secondary, date_last_seen, location_last_seen, alias_dob,
+      home_phone, work_phone,
     } = req.body;
 
     if (!first_name || !last_name) {
@@ -435,8 +446,24 @@ router.post('/persons', (req: Request, res: Response) => {
         phone_secondary, social_media,
         probation_parole, probation_parole_officer, known_associates,
         emergency_contact_relationship, caution_flags,
-        photo_url, flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        photo_url, flags, notes,
+        ncic_number, sor_number, fbi_number, state_id_number,
+        passport_number, passport_country, immigration_status,
+        disability_flags, mental_health_flags, substance_abuse, medication_notes,
+        education_level, military_branch, military_status, tribal_affiliation,
+        identifying_marks_location, tattoo_description, scar_description,
+        piercing_description, distinguishing_features,
+        email_secondary, date_last_seen, location_last_seen, alias_dob,
+        home_phone, work_phone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?, ?,
+        ?, ?)
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
@@ -455,6 +482,14 @@ router.post('/persons', (req: Request, res: Response) => {
       probation_parole || null, probation_parole_officer || null, known_associates || null,
       emergency_contact_relationship || null, caution_flags || null,
       photo_url || null, JSON.stringify(flags || []), notes || null,
+      ncic_number || null, sor_number || null, fbi_number || null, state_id_number || null,
+      passport_number || null, passport_country || null, immigration_status || null,
+      disability_flags || null, mental_health_flags || null, substance_abuse || null, medication_notes || null,
+      education_level || null, military_branch || null, military_status || null, tribal_affiliation || null,
+      identifying_marks_location || null, tattoo_description || null, scar_description || null,
+      piercing_description || null, distinguishing_features || null,
+      email_secondary || null, date_last_seen || null, location_last_seen || null, alias_dob || null,
+      home_phone || null, work_phone || null,
     );
 
     db.prepare(`
@@ -537,6 +572,35 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       known_associates: v => v ?? null,
       emergency_contact_relationship: v => v ?? null, caution_flags: v => v ?? null,
       photo_url: v => v ?? null, notes: v => v ?? null,
+      // Extended identification, medical, military, LE fields — added
+      // to match the full PersonFormModal input set so edits no longer
+      // silently drop values the user typed.
+      ncic_number: v => v ?? null,
+      sor_number: v => v ?? null,
+      fbi_number: v => v ?? null,
+      state_id_number: v => v ?? null,
+      passport_number: v => v ?? null,
+      passport_country: v => v ?? null,
+      immigration_status: v => v ?? null,
+      disability_flags: v => v ?? null,
+      mental_health_flags: v => v ?? null,
+      substance_abuse: v => v ?? null,
+      medication_notes: v => v ?? null,
+      education_level: v => v ?? null,
+      military_branch: v => v ?? null,
+      military_status: v => v ?? null,
+      tribal_affiliation: v => v ?? null,
+      identifying_marks_location: v => v ?? null,
+      tattoo_description: v => v ?? null,
+      scar_description: v => v ?? null,
+      piercing_description: v => v ?? null,
+      distinguishing_features: v => v ?? null,
+      email_secondary: v => v ?? null,
+      date_last_seen: v => v ?? null,
+      location_last_seen: v => v ?? null,
+      alias_dob: v => v ?? null,
+      home_phone: v => v ?? null,
+      work_phone: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -810,54 +874,108 @@ router.get('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/vehicles - Create vehicle
+// Shared fieldMap for vehicles_records — used by BOTH POST and PUT so adding
+// a new writable field only requires editing ONE place. Previously this route
+// had a hand-written INSERT with positional args, which silently dropped any
+// body field not in the destructure list. 17 fields that the client form
+// renders were being lost on every save.
+const VEHICLE_FIELD_MAP: Record<string, (v: any) => any> = {
+  plate_number: v => v ?? null,
+  state: v => v ?? null,
+  make: v => v ?? null,
+  model: v => v ?? null,
+  year: v => v ?? null,
+  color: v => v ?? null,
+  secondary_color: v => v ?? null,
+  body_style: v => v ?? null,
+  doors: v => v ?? null,
+  vin: v => v ?? null,
+  owner_person_id: v => v ?? null,
+  insurance_company: v => v ?? null,
+  insurance_policy: v => v ?? null,
+  insurance_expiry: v => v ?? null,
+  registration_expiry: v => v ?? null,
+  registration_state: v => v ?? null,
+  damage_description: v => v ?? null,
+  distinguishing_features: v => v ?? null,
+  trim: v => v ?? null,
+  engine_type: v => v ?? null,
+  fuel_type: v => v ?? null,
+  transmission: v => v ?? null,
+  drive_type: v => v ?? null,
+  tow_status: v => v ?? null,
+  tow_company: v => v ?? null,
+  tow_date: v => v ?? null,
+  tow_location: v => v ?? null,
+  plate_type: v => v ?? null,
+  commercial_vehicle: v => v ? 1 : 0,
+  hazmat: v => v ? 1 : 0,
+  odometer: v => v ?? null,
+  owner_address: v => v ?? null,
+  owner_phone: v => v ?? null,
+  owner_name: v => v ?? null,
+  owner_dl_number: v => v ?? null,
+  owner_dob: v => v ?? null,
+  primary_driver_name: v => v ?? null,
+  registered_owner: v => v ?? null,
+  lien_holder: v => v ?? null,
+  stolen_status: v => v ?? null,
+  stolen_date: v => v ?? null,
+  recovery_date: v => v ?? null,
+  title_status: v => v ?? null,
+  exterior_condition: v => v ?? null,
+  interior_condition: v => v ?? null,
+  estimated_value: v => v ?? null,
+  window_tint: v => v ?? null,
+  modifications: v => v ?? null,
+  equipment_notes: v => v ?? null,
+  vehicle_use: v => v ?? null,
+  ncic_entry_number: v => v ?? null,
+  notes: v => v ?? null,
+};
+
 router.post('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      plate_number, state, make, model, year, color, secondary_color,
-      body_style, doors, vin, owner_person_id,
-      insurance_company, insurance_policy, registration_expiry,
-      damage_description, distinguishing_features,
-      trim, engine_type, fuel_type, transmission, drive_type,
-      tow_status, tow_company, tow_date, plate_type,
-      commercial_vehicle, hazmat, odometer,
-      owner_address, owner_phone, lien_holder,
-      stolen_status, stolen_date, recovery_date,
-      flags, notes,
-    } = req.body;
+    const bodyKeys = Object.keys(req.body || {});
 
-    const result = db.prepare(`
-      INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
-        body_style, doors, vin, owner_person_id,
-        insurance_company, insurance_policy, registration_expiry,
-        damage_description, distinguishing_features,
-        trim, engine_type, fuel_type, transmission, drive_type,
-        tow_status, tow_company, tow_date, plate_type,
-        commercial_vehicle, hazmat, odometer,
-        owner_address, owner_phone, lien_holder,
-        stolen_status, stolen_date, recovery_date,
-        flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      plate_number || null, state || null, make || null, model || null,
-      year || null, color || null, secondary_color || null,
-      body_style || null, doors || null, vin || null, owner_person_id || null,
-      insurance_company || null, insurance_policy || null, registration_expiry || null,
-      damage_description || null, distinguishing_features || null,
-      trim || null, engine_type || null, fuel_type || null, transmission || null, drive_type || null,
-      tow_status || null, tow_company || null, tow_date || null, plate_type || null,
-      commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer || null,
-      owner_address || null, owner_phone || null, lien_holder || null,
-      stolen_status || null, stolen_date || null, recovery_date || null,
-      JSON.stringify(flags || []), notes || null,
-    );
+    // Dynamic INSERT driven by VEHICLE_FIELD_MAP — includes every key from
+    // the body that matches an allowlisted field, plus the always-present
+    // flags column (JSON-stringified) and timestamps.
+    const columns: string[] = [];
+    const placeholders: string[] = [];
+    const values: any[] = [];
 
-    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
+    for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
+      if (bodyKeys.includes(key)) {
+        columns.push(key);
+        placeholders.push('?');
+        values.push(transform(req.body[key]));
+      }
+    }
+
+    // flags is always set (defaults to empty array)
+    columns.push('flags');
+    placeholders.push('?');
+    values.push(JSON.stringify(req.body.flags || []));
+
+    columns.push('created_at');
+    placeholders.push('?');
+    values.push(localNow());
+    columns.push('updated_at');
+    placeholders.push('?');
+    values.push(localNow());
+
+    const result = db.prepare(
+      `INSERT INTO vehicles_records (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+    ).run(...values);
+
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid) as any;
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'vehicle_created', 'vehicle', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${plate_number || 'No plate'} ${make || ''} ${model || ''}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${vehicle?.plate_number || 'No plate'} ${vehicle?.make || ''} ${vehicle?.model || ''}`, req.ip || 'unknown');
 
     res.status(201).json(vehicle);
   } catch (error: any) {
@@ -876,44 +994,14 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const {
-      plate_number, state, make, model, year, color, secondary_color,
-      body_style, doors, vin, owner_person_id,
-      insurance_company, insurance_policy, registration_expiry,
-      damage_description, distinguishing_features,
-      trim, engine_type, fuel_type, transmission, drive_type,
-      tow_status, tow_company, tow_date, plate_type,
-      commercial_vehicle, hazmat, odometer,
-      owner_address, owner_phone, lien_holder,
-      stolen_status, stolen_date, recovery_date,
-      flags, notes,
-    } = req.body;
-
-    // Build dynamic SET clause — only update fields explicitly provided
+    // Build dynamic SET clause — only update fields explicitly provided.
+    // Uses the shared VEHICLE_FIELD_MAP so POST and PUT always accept the
+    // same field set; previously they diverged and PUT dropped 17 fields.
     const fields: string[] = [];
     const values: any[] = [];
     const bodyKeys = Object.keys(req.body);
 
-    const vFieldMap: Record<string, (v: any) => any> = {
-      plate_number: v => v ?? null, state: v => v ?? null, make: v => v ?? null,
-      model: v => v ?? null, year: v => v ?? null, color: v => v ?? null,
-      secondary_color: v => v ?? null, body_style: v => v ?? null, doors: v => v ?? null,
-      vin: v => v ?? null, owner_person_id: v => v ?? null,
-      insurance_company: v => v ?? null, insurance_policy: v => v ?? null,
-      registration_expiry: v => v ?? null, damage_description: v => v ?? null,
-      distinguishing_features: v => v ?? null, trim: v => v ?? null,
-      engine_type: v => v ?? null, fuel_type: v => v ?? null,
-      transmission: v => v ?? null, drive_type: v => v ?? null,
-      tow_status: v => v ?? null, tow_company: v => v ?? null,
-      tow_date: v => v ?? null, plate_type: v => v ?? null,
-      commercial_vehicle: v => v ? 1 : 0, hazmat: v => v ? 1 : 0,
-      odometer: v => v ?? null, owner_address: v => v ?? null,
-      owner_phone: v => v ?? null, lien_holder: v => v ?? null,
-      stolen_status: v => v ?? null, stolen_date: v => v ?? null,
-      recovery_date: v => v ?? null, notes: v => v ?? null,
-    };
-
-    for (const [key, transform] of Object.entries(vFieldMap)) {
+    for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
       if (bodyKeys.includes(key)) {
         fields.push(`${key} = ?`);
         values.push(transform(req.body[key]));
@@ -921,7 +1009,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
     }
     if (bodyKeys.includes('flags')) {
       fields.push('flags = ?');
-      values.push(JSON.stringify(flags ?? []));
+      values.push(JSON.stringify(req.body.flags ?? []));
     }
 
     if (fields.length > 0) {
