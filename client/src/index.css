@@ -4769,11 +4769,20 @@ a:focus-visible {
   box-shadow: 0 0 0 1px var(--brand-blue), 0 0 0 3px rgba(136, 136, 136, 0.2);
 }
 
-/* --- 9. TOOLTIP CONSISTENCY --- */
-/* Removed global [title] cursor:help rule — applied the "?" cursor to
-   every button, link, icon, and label with a title attribute (essentially
-   the entire UI). Native browser tooltips still render on hover; only
-   the cursor shape is back to normal. Audit 2026-04-11. */
+/* --- 9. TOOLTIP CURSOR — intentionally left unset ---
+   The previous rule applied `cursor: help` (question-mark cursor) to every
+   element with a non-empty title attribute. In a CAD/dispatch app where
+   virtually every button, icon, and toolbar item has a title for accessibility,
+   this caused the question-mark cursor to appear everywhere — making clickable
+   controls look like help links.
+
+   Browsers already pick the right cursor based on element type:
+     buttons + links → pointer
+     inputs → text
+     generic divs → default
+
+   Elements that genuinely want the question-mark cursor (e.g. an info dot next
+   to a label) can opt in explicitly with the `cursor-help` Tailwind class. */
 
 /* --- 10. BACKDROP BLUR — Consistent overlay treatment --- */
 .backdrop-blur-sm { backdrop-filter: blur(4px) !important; -webkit-backdrop-filter: blur(4px) !important; }
