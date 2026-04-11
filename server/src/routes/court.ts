@@ -897,18 +897,25 @@ router.post('/subpoenas', (req: Request, res: Response) => {
     if (!officer_id || !hearing_date) return res.status(400).json({ error: 'officer_id and hearing_date required', code: 'MISSING_SUBPOENA_FIELDS' });
 
     // Store as court event of type 'subpoena'
+    // Audit 2026-04-11: dropped subpoena_served_date / subpoena_served_method
+    // bindings — neither column exists in court_events, so every POST threw a
+    // SQLite "no such column" error and the entire feature was unusable.
+    // Service-of-process metadata is folded into notes until a proper schema
+    // migration adds dedicated columns.
     const event_number = nextEventNumber();
+    const servedNote = (served_date || served_method)
+      ? `[Served: ${served_date || 'date n/a'}${served_method ? ` via ${served_method}` : ''}]`
+      : '';
+    const combinedNotes = [servedNote, notes].filter(Boolean).join(' ').trim() || null;
     const result = db.prepare(`
       INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
         court_name, court_case_number, officers_required,
-        subpoena_served_date, subpoena_served_method,
         notes, created_by, created_at, updated_at)
-      VALUES (?, 'subpoena', 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, 'subpoena', 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(event_number, hearing_date, hearing_time || null,
       court_name || null, court_case_number || null,
       JSON.stringify([officer_id]),
-      served_date || null, served_method || null,
-      notes || null, req.user!.userId, now, now);
+      combinedNotes, req.user!.userId, now, now);
 
     // Notify the officer
     createNotification(

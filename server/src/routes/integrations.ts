@@ -264,7 +264,9 @@ router.post('/keys', requireRole('admin'), (req: Request, res: Response) => {
     const keyHash = hashApiKey(fullKey);
 
     const scopeList = Array.isArray(scopes) ? JSON.stringify(scopes) : '["service_request"]';
-    const userId = (req as any).user?.id || null;
+    // Audit 2026-04-11: JWT middleware sets req.user.userId, NOT .id —
+    // every API key was being created with created_by = NULL.
+    const userId = (req as any).user?.userId || (req as any).user?.id || null;
     const now = localNow();
 
     const result = db.prepare(`

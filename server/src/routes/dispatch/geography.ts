@@ -296,12 +296,15 @@ router.get('/geography/beats', requireRole('admin', 'manager', 'supervisor', 'of
 router.post('/geography/beats', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order } = req.body;
+    // Audit 2026-04-11: previous handler dropped premise_alerts on create
+    // (PUT accepted it). New beats had to be created then re-edited to
+    // attach premise alerts.
+    const { beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order } = req.body;
     if (!beat_code || !beat_name) { res.status(400).json({ error: 'beat_code and beat_name required' }); return; }
     const result = db.prepare(`
-      INSERT INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(beat_code, beat_name, beat_descriptor, zone_id || null, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, patrol_frequency || 'normal', priority_modifier || 0, population_estimate, sq_miles, notes, sort_order || 0);
+      INSERT INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(beat_code, beat_name, beat_descriptor, zone_id || null, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts || null, patrol_frequency || 'normal', priority_modifier || 0, population_estimate, sq_miles, notes, sort_order || 0);
     auditLog(req, 'CREATE', 'dispatch_beats', result.lastInsertRowid as number, JSON.stringify(req.body));
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {

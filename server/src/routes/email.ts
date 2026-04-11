@@ -918,18 +918,36 @@ router.post('/templates', (req: Request, res: Response) => {
 router.put('/templates/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { name, category, subject, body } = req.body;
     const now = localNow();
 
     const existing = db.prepare('SELECT id FROM email_templates WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
 
-    db.prepare(`
-      UPDATE email_templates SET name = ?, category = ?, subject = ?, body = ?, updated_at = ?
-      WHERE id = ?
-    `).run(name, category, subject, body, now, req.params.id);
+    // Audit 2026-04-11: previous handler hard-overwrote name/category/
+    // subject/body unconditionally — partial PUTs (e.g. only `name`)
+    // bound undefined into NOT NULL columns and the entire request
+    // failed. Switched to a dynamic SET clause gated by hasOwnProperty.
+    const fieldMap: Record<string, (v: any) => any> = {
+      name: v => v ?? null,
+      category: v => v ?? null,
+      subject: v => v ?? null,
+      body: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const values: any[] = [];
+    for (const [key, transform] of Object.entries(fieldMap)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        sets.push(`${key} = ?`);
+        values.push(transform(req.body[key]));
+      }
+    }
+    if (sets.length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }); return; }
+    sets.push('updated_at = ?');
+    values.push(now);
+    values.push(req.params.id);
+    db.prepare(`UPDATE email_templates SET ${sets.join(', ')} WHERE id = ?`).run(...values);
 
-    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template: ${name}`);
+    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template ${req.params.id}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
