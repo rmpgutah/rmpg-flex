@@ -625,11 +625,11 @@ function handleClientMessage(clientId: string, message: any): void {
           console.error('[Panic Audio] Failed to create uploads/panic directory:', mkdirErr);
         }
 
-        if (message.data.chunk === true && message.data.audioData) {
+        if (message.data.chunk === true && message.data.audio) {
           // Append base64-decoded audio chunk to raw file
           try {
             const rawPath = path.join(panicUploadDir, `${message.data.panicId}_raw.webm`);
-            const audioBuffer = Buffer.from(message.data.audioData, 'base64');
+            const audioBuffer = Buffer.from(message.data.audio, 'base64');
             fs.appendFileSync(rawPath, audioBuffer);
           } catch (writeErr) {
             console.error(`[Panic Audio] Failed to write chunk for panic #${message.data.panicId}:`, writeErr);
