@@ -1146,10 +1146,13 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
 
     if (!entry) { res.status(404).json({ error: 'Audio entry not found', code: 'AUDIO_ENTRY_NOT_FOUND' }); return; }
 
-    if (entry.audio_path) {
-      // path, fs imported at top of file
-      const audioPath = path.resolve(entry.audio_path);
+    if (entry.audio_file) {
+      // audio_file stores relative path like "radio/filename.webm" — resolve against uploads dir
+      const uploadsDir = path.resolve(__dirname, '../../uploads');
+      const audioPath = path.resolve(uploadsDir, entry.audio_file);
       if (fs.existsSync(audioPath)) {
+        res.setHeader('Content-Type', 'audio/webm');
+        if (entry.file_size) res.setHeader('Content-Length', entry.file_size);
         res.sendFile(audioPath);
         return;
       }

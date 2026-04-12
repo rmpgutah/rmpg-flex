@@ -4549,6 +4549,11 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
 
+  // ── Radio transcripts — audio recording columns ──
+  addCol('radio_transcripts', 'audio_file', 'TEXT');
+  addCol('radio_transcripts', 'file_size', 'INTEGER');
+  addCol('radio_transcripts', 'linked_call_id', 'INTEGER');
+
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS cpgps_dashcam_events (
