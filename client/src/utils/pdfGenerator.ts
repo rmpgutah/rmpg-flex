@@ -607,7 +607,7 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   doc.text(safeLabel, x + boxSize + 1.5, y);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  return x + boxSize + 1.5 + doc.getTextWidth(safeLabel) + 3;
+  return x + boxSize + 1.5 + doc.getTextWidth(safeLabel) + 5;
 }
 
 /**
