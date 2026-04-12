@@ -1775,6 +1775,11 @@ export type WSMessageType =
   | 'serve_attempt'
   | 'serve_created'
   // Radio events (for cross-integration)
+  | 'radio_check'
+  | 'radio_check_ack'
+  | 'radio_transmission'
+  | 'emergency_talkgroup_active'
+  | 'emergency_talkgroup_ended'
   // Security
   | 'security:updated';
 

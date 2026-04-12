@@ -1,8 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Radio, ChevronLeft, ChevronRight } from 'lucide-react';
 import EncryptionIndicator from './EncryptionIndicator';
 import RadioChannelScanner from './RadioChannelScanner';
 import SignalMeter from './SignalMeter';
+import UnitSelector from './UnitSelector';
+import PTTButton from './PTTButton';
+import EmergencyOverride from './EmergencyOverride';
+import TransmissionLog from './TransmissionLog';
+import type { TransmissionLogHandle } from './TransmissionLog';
+import QuickCommands from './QuickCommands';
 import { useRadioConsole } from '../../hooks/useRadioConsole';
 import { useSignalStrength } from '../../hooks/useSignalStrength';
 
@@ -15,11 +21,19 @@ export default function RadioConsole() {
 
   const radioConsole = useRadioConsole();
   const signalStats = useSignalStrength();
+  const txLogRef = useRef<TransmissionLogHandle>(null);
 
   // Persist open/close state
   useEffect(() => {
     try { localStorage.setItem(LS_KEY, String(isOpen)); } catch { /* ignore */ }
   }, [isOpen]);
+
+  // Listen for external toggle events (from StatusBarRadio)
+  useEffect(() => {
+    const handler = () => setIsOpen((prev) => !prev);
+    window.addEventListener('rmpg-radio-toggle', handler);
+    return () => window.removeEventListener('rmpg-radio-toggle', handler);
+  }, []);
 
   // "R" key toggle (skip when focused on input/textarea/select)
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -38,6 +52,53 @@ export default function RadioConsole() {
 
   // TX/RX LED color based on connection
   const ledColor = signalStats.signalBars >= 6 ? '#22c55e' : signalStats.signalBars >= 2 ? '#d4a017' : '#dc2626';
+
+  // Broadcast PTT state change via custom event (for StatusBarRadio)
+  const handlePTTStateChange = useCallback((state: 'idle' | 'tx' | 'rx') => {
+    window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state } }));
+    if (state === 'tx') {
+      txLogRef.current?.addLogEntry({
+        source: 'LOCAL',
+        text: 'PTT transmit started',
+        type: 'unit',
+      });
+    }
+  }, []);
+
+  // Radio check result callback
+  const handleRadioCheckResult = useCallback((callSign: string, status: string) => {
+    txLogRef.current?.addLogEntry({
+      source: 'SYSTEM',
+      text: `Radio check ${callSign}: ${status}`,
+      type: 'system',
+    });
+  }, []);
+
+  // Quick command callback
+  const handleQuickCommand = useCallback((code: string) => {
+    txLogRef.current?.addLogEntry({
+      source: 'LOCAL',
+      text: `Quick command: ${code}`,
+      type: 'dispatch',
+    });
+  }, []);
+
+  // Emergency callbacks
+  const handleEmergencyActivate = useCallback(() => {
+    txLogRef.current?.addLogEntry({
+      source: 'LOCAL',
+      text: 'Emergency override ACTIVATED',
+      type: 'emergency',
+    });
+  }, []);
+
+  const handleEmergencyDeactivate = useCallback(() => {
+    txLogRef.current?.addLogEntry({
+      source: 'LOCAL',
+      text: 'Emergency override DEACTIVATED',
+      type: 'system',
+    });
+  }, []);
 
   // ── Collapsed strip ──
   if (!isOpen) {
@@ -143,35 +204,23 @@ export default function RadioConsole() {
           dbm={signalStats.dbm}
         />
 
-        {/* 4. Unit Selector — placeholder */}
-        <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
-          <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">UNIT SELECTOR</div>
-          <div className="text-[10px] text-[#555555] italic">Coming soon</div>
-        </div>
+        {/* 4. Unit Selector */}
+        <UnitSelector onRadioCheckResult={handleRadioCheckResult} />
 
-        {/* 5. PTT — placeholder */}
-        <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
-          <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">PUSH-TO-TALK</div>
-          <div className="text-[10px] text-[#555555] italic">Coming soon</div>
-        </div>
+        {/* 5. PTT */}
+        <PTTButton onStateChange={handlePTTStateChange} />
 
-        {/* 6. Emergency — placeholder */}
-        <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
-          <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">EMERGENCY</div>
-          <div className="text-[10px] text-[#555555] italic">Coming soon</div>
-        </div>
+        {/* 6. Emergency Override */}
+        <EmergencyOverride
+          onActivate={handleEmergencyActivate}
+          onDeactivate={handleEmergencyDeactivate}
+        />
 
-        {/* 7. Transmission Log — placeholder */}
-        <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
-          <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">TX LOG</div>
-          <div className="text-[10px] text-[#555555] italic">Coming soon</div>
-        </div>
+        {/* 7. Transmission Log */}
+        <TransmissionLog ref={txLogRef} />
 
-        {/* 8. Quick Commands — placeholder */}
-        <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
-          <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">QUICK COMMANDS</div>
-          <div className="text-[10px] text-[#555555] italic">Coming soon</div>
-        </div>
+        {/* 8. Quick Commands */}
+        <QuickCommands onCommand={handleQuickCommand} />
       </div>
     </div>
   );
