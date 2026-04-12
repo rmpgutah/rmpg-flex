@@ -157,6 +157,20 @@ export function getSectionColor(sectionId: string): string {
   return SECTION_COLOR_FALLBACKS[Math.abs(hash) % SECTION_COLOR_FALLBACKS.length];
 }
 
+/** Per-city color — 24 high-contrast hues for distinct city boundaries on the map */
+const CITY_COLORS = [
+  '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
+  '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#06b6d4', '#e11d48',
+  '#84cc16', '#6366f1', '#d946ef', '#0ea5e9', '#facc15', '#fb923c',
+  '#2dd4bf', '#f472b6', '#a3e635', '#818cf8', '#fbbf24', '#38bdf8',
+];
+
+export function getCityColor(cityCode: string): string {
+  let hash = 0;
+  for (let i = 0; i < cityCode.length; i++) hash = ((hash << 5) - hash + cityCode.charCodeAt(i)) | 0;
+  return CITY_COLORS[Math.abs(hash) % CITY_COLORS.length];
+}
+
 // ── Beat-District enrichment data ────────────────────────────
 
 export interface BeatDistrictEntry {
@@ -287,10 +301,10 @@ export function useGeoJsonLayers({
     if (!beatCfg) return undefined;
     const lookup = new Map<string, BeatStyleEntry>();
     for (const [cityCode, zoneMap] of beatDistrictMap) {
+      const cColor = getCityColor(cityCode);
       for (const [distLetter, entry] of zoneMap) {
-        const sColor = getSectionColor(entry.sectionId);
         lookup.set(`${cityCode}::${distLetter}`, {
-          style: { ...beatCfg.style, fillColor: sColor, strokeColor: sColor, fillOpacity: 0.18, strokeOpacity: 0.75, strokeWeight: 1.5 },
+          style: { ...beatCfg.style, fillColor: cColor, strokeColor: cColor, fillOpacity: 0.18, strokeOpacity: 0.75, strokeWeight: 1.5 },
           entry,
         });
       }
@@ -346,12 +360,17 @@ export function useGeoJsonLayers({
 
         // For beat layer: use pre-computed section-based style (O(1) lookup, no object spread)
         let baseStyle = cfg.style;
-        if (cfg.id === 'beat' && beatStyleLookupRef.current && !isSelected && !isAssigned) {
+        if (cfg.id === 'beat' && !isSelected && !isAssigned) {
           const cityCode = feature.getProperty('city_code') as string;
           const distLetter = feature.getProperty('district_letter') as string;
-          if (cityCode && distLetter) {
+          if (cityCode && distLetter && beatStyleLookupRef.current) {
             const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
             if (cached) baseStyle = cached.style;
+          }
+          // Fallback: color by city_code even without district map data
+          if (baseStyle === cfg.style && cityCode) {
+            const cc = getCityColor(cityCode);
+            baseStyle = { ...cfg.style, fillColor: cc, strokeColor: cc, fillOpacity: 0.18, strokeOpacity: 0.75, strokeWeight: 1.5 };
           }
         }
 
@@ -505,7 +524,7 @@ export function useGeoJsonLayers({
         if (pointCount === 0) return;
         const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
 
-        const sColor = getSectionColor(entry.sectionId);
+        const labelColor = getCityColor(cityCode);
         const marker = new google.maps.Marker({
           position: centroid,
           map,
@@ -515,7 +534,7 @@ export function useGeoJsonLayers({
           },
           label: {
             text: entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`,
-            color: sColor,
+            color: labelColor,
             fontSize: '9px',
             fontWeight: 'bold',
             fontFamily: 'JetBrains Mono, Courier New, monospace',
