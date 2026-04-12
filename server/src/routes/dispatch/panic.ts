@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { getDb } from '../../models/database';
 import { authenticateToken, requireRole } from '../../middleware/auth';
 import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '../../utils/websocket';
@@ -26,6 +28,137 @@ export function cancelEscalationTimer(panicId: number): void {
 }
 
 export { escalationTimers };
+
+// ── Escalation Engine (Task 3) ─────────────────────────────
+// After a panic is created, three escalation tiers fire on timers:
+//   Level 1 — Re-broadcast the panic (configurable, default 30s)
+//   Level 2 — Auto-dispatch nearest available units (default 60s)
+//   Level 3 — Email all supervisors/admins/managers (default 90s)
+// Timers are cancelled when the panic is acknowledged, resolved,
+// cancelled, or marked as false alarm.
+
+function startEscalationTimer(panicId: number): void {
+  const db = getDb();
+  const getConfig = (key: string, fallback: number): number => {
+    const row = db.prepare('SELECT config_value FROM system_config WHERE config_key = ?').get(key) as any;
+    return row ? parseInt(row.config_value) : fallback;
+  };
+
+  const esc1Ms = getConfig('panic_escalation_1_seconds', 30) * 1000;
+  const esc2Ms = getConfig('panic_escalation_2_seconds', 60) * 1000;
+  const esc3Ms = getConfig('panic_escalation_3_seconds', 90) * 1000;
+
+  const timers: NodeJS.Timeout[] = [];
+
+  // Level 1: Re-broadcast after esc1Ms
+  timers.push(setTimeout(() => {
+    try {
+      const db2 = getDb();
+      const panic = db2.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+      if (!panic || panic.status !== 'active') return;
+      db2.prepare('UPDATE panic_alerts SET escalation_level = 1, updated_at = ? WHERE id = ?')
+        .run(localNow(), panicId);
+      broadcastPanic({ type: 'panic_escalated', data: { panic_id: panicId, level: 1 } });
+      console.log(`[Panic] Escalation level 1 triggered for panic #${panicId}`);
+    } catch (err) {
+      console.error(`[Panic] Escalation level 1 error for panic #${panicId}:`, err);
+    }
+  }, esc1Ms));
+
+  // Level 2: Auto-dispatch nearest units after esc2Ms
+  timers.push(setTimeout(() => {
+    try {
+      const db2 = getDb();
+      const panic = db2.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+      if (!panic || panic.status !== 'active') return;
+      db2.prepare('UPDATE panic_alerts SET escalation_level = 2, updated_at = ? WHERE id = ?')
+        .run(localNow(), panicId);
+      autoDispatchNearestUnits(panicId, panic);
+      broadcastPanic({ type: 'panic_escalated', data: { panic_id: panicId, level: 2 } });
+      console.log(`[Panic] Escalation level 2 triggered for panic #${panicId} — auto-dispatching nearest units`);
+    } catch (err) {
+      console.error(`[Panic] Escalation level 2 error for panic #${panicId}:`, err);
+    }
+  }, esc2Ms));
+
+  // Level 3: Email supervisors after esc3Ms
+  timers.push(setTimeout(async () => {
+    try {
+      const db2 = getDb();
+      const panic = db2.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+      if (!panic || panic.status !== 'active') return;
+      db2.prepare('UPDATE panic_alerts SET escalation_level = 3, updated_at = ? WHERE id = ?')
+        .run(localNow(), panicId);
+      await emailSupervisors(panicId, panic);
+      broadcastPanic({ type: 'panic_escalated', data: { panic_id: panicId, level: 3 } });
+      console.log(`[Panic] Escalation level 3 triggered for panic #${panicId} — emailing supervisors`);
+    } catch (err) {
+      console.error(`[Panic] Escalation level 3 error for panic #${panicId}:`, err);
+    }
+  }, esc3Ms));
+
+  escalationTimers.set(panicId, timers);
+}
+
+function autoDispatchNearestUnits(panicId: number, panic: any): void {
+  const db = getDb();
+  if (!panic.latitude || !panic.longitude) return;
+
+  const availableUnits = db.prepare(`
+    SELECT * FROM units
+    WHERE status IN ('available', 'on_patrol')
+    AND latitude IS NOT NULL AND longitude IS NOT NULL
+    ORDER BY (
+      (latitude - ?) * (latitude - ?) +
+      (longitude - ?) * (longitude - ?)
+    ) ASC
+    LIMIT 3
+  `).all(panic.latitude, panic.latitude, panic.longitude, panic.longitude);
+
+  const unitIds: number[] = [];
+  const now = localNow();
+  for (const unit of availableUnits as any[]) {
+    db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
+      .run('dispatched', panic.call_id, now, unit.id);
+    unitIds.push(unit.id);
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: panic.call_id } });
+  }
+
+  if (unitIds.length > 0) {
+    db.prepare('UPDATE panic_alerts SET responder_unit_ids = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(unitIds), now, panicId);
+    console.log(`[Panic] Auto-dispatched ${unitIds.length} units for panic #${panicId}: [${unitIds.join(', ')}]`);
+  }
+}
+
+async function emailSupervisors(panicId: number, panic: any): Promise<void> {
+  try {
+    const { sendEmail } = await import('../../utils/emailSender');
+    const db = getDb();
+    const supervisors = db.prepare(
+      "SELECT email, full_name FROM users WHERE role IN ('admin', 'supervisor', 'manager') AND email IS NOT NULL"
+    ).all() as any[];
+
+    const user = db.prepare('SELECT full_name, badge_number FROM users WHERE id = ?').get(panic.user_id) as any;
+
+    for (const sup of supervisors) {
+      if (!sup.email) continue;
+      await sendEmail({
+        to: sup.email,
+        subject: `EMERGENCY: Unacknowledged Panic Alert - ${user?.full_name || 'Unknown Officer'}`,
+        html: `<h2 style="color:red;">Panic Alert - Unacknowledged</h2>
+          <p><strong>Officer:</strong> ${user?.full_name || 'Unknown'} (Badge: ${user?.badge_number || 'N/A'})</p>
+          <p><strong>Location:</strong> ${panic.location_address || 'Unknown'}</p>
+          <p><strong>GPS:</strong> ${panic.latitude ?? 'N/A'}, ${panic.longitude ?? 'N/A'}</p>
+          <p><strong>Time:</strong> ${panic.created_at}</p>
+          <p><strong>Message:</strong> ${panic.message || 'None'}</p>
+          <p>This alert has not been acknowledged after 90 seconds. Immediate action required.</p>`,
+      }).catch((err: any) => console.error('[Panic] Failed to email supervisor:', sup.email, err));
+    }
+  } catch (err) {
+    console.error('[Panic] Failed to email supervisors for panic escalation:', err);
+  }
+}
 
 // ── POST /api/dispatch/panic — Emergency PANIC button ──
 // Broadcasts audible alert to all connected users, creates dispatch call + panic_alerts record
@@ -221,6 +354,9 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     }).catch(() => { /* non-critical */ });
 
     auditLog(req, 'panic_activated', 'call', call.id, `PANIC alert by ${user.full_name} (${user.badge_number || 'N/A'}) — call ${callNumber} created`);
+
+    // Start escalation timer (Task 3) — fires Level 1/2/3 if panic remains unacknowledged
+    startEscalationTimer(panicId);
 
     res.json({
       success: true,
@@ -481,6 +617,44 @@ router.get('/panic/history', requireRole('admin', 'supervisor', 'manager'), (req
   } catch (error: any) {
     console.error('[Panic] history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error', code: 'PANIC_HISTORY_ERROR' });
+  }
+});
+
+// ── GET /api/dispatch/panic/:id/audio — Stream recorded panic audio (Task 4) ──
+router.get('/panic/:id/audio', requireRole('admin', 'supervisor', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const panicId = parseInt(req.params.id as string);
+    if (isNaN(panicId)) {
+      res.status(400).json({ error: 'Invalid panic ID', code: 'INVALID_ID' });
+      return;
+    }
+
+    const panic = db.prepare('SELECT audio_file_id FROM panic_alerts WHERE id = ?').get(panicId) as any;
+    if (!panic?.audio_file_id) {
+      res.status(404).json({ error: 'No audio recorded for this panic' });
+      return;
+    }
+
+    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(panic.audio_file_id) as any;
+    if (!attachment) {
+      res.status(404).json({ error: 'Audio attachment not found' });
+      return;
+    }
+
+    const filePath = attachment.file_path;
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Audio file not found on disk' });
+      return;
+    }
+
+    res.setHeader('Content-Type', attachment.mime_type || 'audio/webm');
+    res.setHeader('Content-Length', attachment.file_size);
+    res.setHeader('Content-Disposition', `inline; filename="${attachment.original_name}"`);
+    fs.createReadStream(filePath).pipe(res);
+  } catch (error: any) {
+    console.error('[Panic] audio stream error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'PANIC_AUDIO_ERROR' });
   }
 });
 

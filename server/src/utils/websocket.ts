@@ -612,6 +612,73 @@ function handleClientMessage(clientId: string, message: any): void {
       // Relay audio chunk from panic sender to ALL other authenticated clients
       if (!client.authenticated) return;
       broadcastPanicAudio(clientId, message.data);
+
+      // ── Server-side panic audio recording (Task 4) ──
+      // Write incoming audio chunks to disk for post-incident review
+      if (message.data?.panicId) {
+        const panicUploadDir = path.join(__ws_dirname, '../../uploads/panic');
+        try {
+          if (!fs.existsSync(panicUploadDir)) {
+            fs.mkdirSync(panicUploadDir, { recursive: true });
+          }
+        } catch (mkdirErr) {
+          console.error('[Panic Audio] Failed to create uploads/panic directory:', mkdirErr);
+        }
+
+        if (message.data.chunk === true && message.data.audioData) {
+          // Append base64-decoded audio chunk to raw file
+          try {
+            const rawPath = path.join(panicUploadDir, `${message.data.panicId}_raw.webm`);
+            const audioBuffer = Buffer.from(message.data.audioData, 'base64');
+            fs.appendFileSync(rawPath, audioBuffer);
+          } catch (writeErr) {
+            console.error(`[Panic Audio] Failed to write chunk for panic #${message.data.panicId}:`, writeErr);
+          }
+        }
+
+        if (message.data.end === true) {
+          // Audio stream ended — create attachment record and link to panic
+          try {
+            const panicId = message.data.panicId;
+            const rawPath = path.join(panicUploadDir, `${panicId}_raw.webm`);
+            if (fs.existsSync(rawPath)) {
+              const stats = fs.statSync(rawPath);
+              const timestamp = Date.now();
+              const fileId = `panic_${panicId}_${timestamp}`;
+              const storedName = `${panicId}_raw.webm`;
+              const db = database.getDb();
+
+              db.prepare(`
+                INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, entity_type, entity_id, uploaded_by, created_at)
+                VALUES (?, ?, ?, ?, 'audio/webm', ?, 'panic_alert', ?, ?, datetime('now','localtime'))
+              `).run(
+                fileId,
+                `panic_${panicId}_audio.webm`,
+                storedName,
+                rawPath,
+                stats.size,
+                panicId,
+                client.userId || 0
+              );
+
+              // Link audio to panic_alerts record
+              const updateFields: string[] = ['audio_file_id = ?'];
+              const updateValues: any[] = [fileId];
+              if (message.data.duration != null) {
+                updateFields.push('audio_duration_seconds = ?');
+                updateValues.push(Math.round(message.data.duration));
+              }
+              updateValues.push(panicId);
+              db.prepare(`UPDATE panic_alerts SET ${updateFields.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`)
+                .run(...updateValues);
+
+              console.log(`[Panic Audio] Saved ${stats.size} bytes for panic #${panicId} -> ${fileId}`);
+            }
+          } catch (endErr) {
+            console.error(`[Panic Audio] Failed to finalize audio for panic #${message.data.panicId}:`, endErr);
+          }
+        }
+      }
       break;
 
     case 'panic_audio_response':
