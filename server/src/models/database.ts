@@ -4472,19 +4472,16 @@ function migrateSchema(): void {
     const uInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='units'").get() as { sql: string } | undefined;
     if (uInfo && !uInfo.sql.includes('out_of_service')) {
       db.pragma('foreign_keys = OFF');
+      // Use the original CREATE TABLE SQL but replace the CHECK constraint
+      const newSql = uInfo.sql
+        .replace(/CREATE TABLE units/i, 'CREATE TABLE units_new')
+        .replace(
+          /CHECK\(status IN \([^)]+\)\)/i,
+          "CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service'))"
+        );
       const cols = db.prepare("PRAGMA table_info(units)").all() as any[];
-      const colDefs = cols.map((c: any) => {
-        if (c.name === 'status') {
-          return `status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service'))`;
-        }
-        let def = `${c.name} ${c.type}`;
-        if (c.notnull) def += ' NOT NULL';
-        if (c.dflt_value != null) def += ` DEFAULT ${c.dflt_value}`;
-        if (c.pk) def += ' PRIMARY KEY AUTOINCREMENT';
-        return def;
-      }).join(', ');
       const colNames = cols.map((c: any) => c.name).join(', ');
-      db.prepare(`CREATE TABLE units_new (${colDefs})`).run();
+      db.prepare(newSql).run();
       db.prepare(`INSERT INTO units_new (${colNames}) SELECT ${colNames} FROM units`).run();
       db.prepare('DROP TABLE units').run();
       db.prepare('ALTER TABLE units_new RENAME TO units').run();
