@@ -1155,9 +1155,11 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
       const uploadsDir = path.resolve(__dirname_comms, '../../uploads');
       const audioPath = path.resolve(uploadsDir, entry.audio_file);
       if (fs.existsSync(audioPath)) {
+        const stat = fs.statSync(audioPath);
         res.setHeader('Content-Type', 'audio/webm');
-        if (entry.file_size) res.setHeader('Content-Length', entry.file_size);
-        res.sendFile(audioPath);
+        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Accept-Ranges', 'bytes');
+        fs.createReadStream(audioPath).pipe(res);
         return;
       }
     }

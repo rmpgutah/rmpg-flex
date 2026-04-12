@@ -202,7 +202,9 @@ export default function RadioPage() {
         console.error('[Radio Playback] HTTP error:', res.status, res.statusText);
         throw new Error(`HTTP ${res.status}`);
       }
-      const blob = await res.blob();
+      const rawBlob = await res.blob();
+      // Ensure blob has audio MIME type for <audio> element compatibility
+      const blob = rawBlob.type.startsWith('audio/') ? rawBlob : new Blob([rawBlob], { type: 'audio/webm' });
       const blobUrl = URL.createObjectURL(blob);
       blobUrlRef.current = blobUrl;
 
