@@ -33,11 +33,90 @@ let currentSource: AudioBufferSourceNode | null = null;
 // Preferred female voices for SpeechSynthesis fallback
 const PREFERRED_VOICES = ['Samantha', 'Karen', 'Zira', 'Jenny'];
 
+// ─── AudioWorklet Registration ─────────────────────────────
+// Inline processor code as Blob URLs to avoid separate public files.
+// Registration is idempotent — only loads once per AudioContext.
+
+let workletsRegistered = false;
+
+const NOISE_GATE_CODE = `
+class NoiseGateProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'threshold', defaultValue: -40, minValue: -100, maxValue: 0 }];
+  }
+  constructor() { super(); this.envelope = 0; this.attack = 0.01; this.release = 0.1; }
+  process(inputs, outputs, parameters) {
+    const input = inputs[0]; const output = outputs[0];
+    if (!input || !input[0]) return true;
+    const threshold = parameters.threshold[0];
+    for (let ch = 0; ch < input.length; ch++) {
+      const inp = input[ch]; const out = output[ch];
+      for (let i = 0; i < inp.length; i++) {
+        const amplitude = Math.abs(inp[i]);
+        const db = 20 * Math.log10(amplitude + 1e-10);
+        this.envelope = db > threshold
+          ? Math.min(1, this.envelope + this.attack)
+          : Math.max(0, this.envelope - this.release);
+        out[i] = inp[i] * this.envelope;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('noise-gate-processor', NoiseGateProcessor);
+`;
+
+const BITCRUSHER_CODE = `
+class BitcrusherProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'bitDepth', defaultValue: 12, minValue: 1, maxValue: 16 }];
+  }
+  process(inputs, outputs, parameters) {
+    const input = inputs[0]; const output = outputs[0];
+    if (!input || !input[0]) return true;
+    const bits = parameters.bitDepth[0];
+    const step = 1 / Math.pow(2, bits);
+    for (let ch = 0; ch < input.length; ch++) {
+      const inp = input[ch]; const out = output[ch];
+      for (let i = 0; i < inp.length; i++) {
+        out[i] = Math.round(inp[i] / step) * step;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('bitcrusher-processor', BitcrusherProcessor);
+`;
+
+async function registerWorklets(ctx: AudioContext): Promise<boolean> {
+  if (workletsRegistered) return true;
+  if (!ctx.audioWorklet) return false; // AudioWorklet not supported
+
+  try {
+    const noiseBlob = new Blob([NOISE_GATE_CODE], { type: 'application/javascript' });
+    const noiseUrl = URL.createObjectURL(noiseBlob);
+    await ctx.audioWorklet.addModule(noiseUrl);
+    URL.revokeObjectURL(noiseUrl);
+
+    const crushBlob = new Blob([BITCRUSHER_CODE], { type: 'application/javascript' });
+    const crushUrl = URL.createObjectURL(crushBlob);
+    await ctx.audioWorklet.addModule(crushUrl);
+    URL.revokeObjectURL(crushUrl);
+
+    workletsRegistered = true;
+    return true;
+  } catch (err) {
+    console.warn('AudioWorklet registration failed, using fallback chain:', err);
+    return false;
+  }
+}
+
 // ─── AudioContext ───────────────────────────────────────────
 
 function getAudioContext(): AudioContext {
   if (!audioCtx || audioCtx.state === 'closed') {
     audioCtx = new AudioContext();
+    workletsRegistered = false; // New context needs fresh registration
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {});
@@ -141,6 +220,9 @@ async function fetchAndPlay(text: string): Promise<void> {
   const token = localStorage.getItem('rmpg_token');
   const ctx = getAudioContext();
 
+  // Register AudioWorklet processors (idempotent, graceful fallback)
+  const hasWorklets = await registerWorklets(ctx);
+
   const res = await fetch('/api/tts', {
     method: 'POST',
     headers: {
@@ -189,6 +271,15 @@ async function fetchAndPlay(text: string): Promise<void> {
     // Slight compression feel via gain staging
     const voiceGain = ctx.createGain();
     voiceGain.gain.value = 0.85;
+
+    // ── 2a. AGC (DynamicsCompressor) ──────────────────────
+    // Automatic gain control — levels out volume spikes/dips
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -24;
+    compressor.knee.value = 30;
+    compressor.ratio.value = 12;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.25;
 
     // ── 3. RADIO STATIC / BACKGROUND NOISE ────────────────
     // Pink noise — continuous hiss during transmission
@@ -239,12 +330,29 @@ async function fetchAndPlay(text: string): Promise<void> {
     noiseSource.stop(now + noiseLen);
 
     // ── 4. VOICE CHAIN ────────────────────────────────────
-    // source → highpass → lowpass → presence → voiceGain → output
-    source.connect(highpass);
-    highpass.connect(lowpass);
-    lowpass.connect(presence);
-    presence.connect(voiceGain);
-    voiceGain.connect(ctx.destination);
+    // Full chain: Source → NoiseGate → AGC → HP → LP → Presence → Bitcrusher → VoiceGain → Output
+    // Fallback (no AudioWorklet): Source → AGC → HP → LP → Presence → VoiceGain → Output
+    if (hasWorklets) {
+      const noiseGate = new AudioWorkletNode(ctx, 'noise-gate-processor');
+      const bitcrusher = new AudioWorkletNode(ctx, 'bitcrusher-processor');
+
+      source.connect(noiseGate);
+      noiseGate.connect(compressor);
+      compressor.connect(highpass);
+      highpass.connect(lowpass);
+      lowpass.connect(presence);
+      presence.connect(bitcrusher);
+      bitcrusher.connect(voiceGain);
+      voiceGain.connect(ctx.destination);
+    } else {
+      // Graceful fallback — skip worklet nodes, keep AGC + filters
+      source.connect(compressor);
+      compressor.connect(highpass);
+      highpass.connect(lowpass);
+      lowpass.connect(presence);
+      presence.connect(voiceGain);
+      voiceGain.connect(ctx.destination);
+    }
 
     // ── 5. CLOSE SQUELCH BEEP (after voice ends) ──────────
     const closeTime = now + voiceDelay + voiceDuration + 0.1;
