@@ -1250,7 +1250,14 @@ const PROPERTY_FIELD_MAP: Record<string, (v: any) => any> = {
 router.post('/properties', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const bodyKeys = Object.keys(req.body || {});
+    const {
+      client_id, name, address, city, state, zip, latitude, longitude, property_type,
+      gate_code, alarm_code, emergency_contact, post_orders, hazard_notes,
+      access_instructions, is_active, notes,
+      business_type, structure_type, occupancy_status, year_built, square_footage,
+      number_of_stories, security_features, key_holder_name, key_holder_phone,
+      key_holder_relationship, owner_name, owner_phone, last_inspection_date,
+    } = req.body;
 
     if (!req.body.client_id) {
       res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' });
@@ -1261,37 +1268,25 @@ router.post('/properties', (req: Request, res: Response) => {
       return;
     }
 
-    // Dynamic INSERT driven by PROPERTY_FIELD_MAP — persists every field
-    // present in the body instead of hand-copying 17 of them.
-    const columns: string[] = [];
-    const placeholders: string[] = [];
-    const values: any[] = [];
-
-    for (const [key, transform] of Object.entries(PROPERTY_FIELD_MAP)) {
-      if (bodyKeys.includes(key)) {
-        columns.push(key);
-        placeholders.push('?');
-        values.push(transform(req.body[key]));
-      }
-    }
-
-    // Default is_active=1 when not explicitly provided (matches prior behaviour)
-    if (!bodyKeys.includes('is_active')) {
-      columns.push('is_active');
-      placeholders.push('?');
-      values.push(1);
-    }
-
-    columns.push('created_at');
-    placeholders.push('?');
-    values.push(localNow());
-    columns.push('updated_at');
-    placeholders.push('?');
-    values.push(localNow());
-
-    const result = db.prepare(
-      `INSERT INTO properties (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
-    ).run(...values);
+    const result = db.prepare(`
+      INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
+        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes,
+        business_type, structure_type, occupancy_status, year_built, square_footage,
+        number_of_stories, security_features, key_holder_name, key_holder_phone,
+        key_holder_relationship, owner_name, owner_phone, last_inspection_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      client_id, name, address, city || null, state || null, zip || null,
+      latitude || null, longitude || null,
+      property_type || null, gate_code || null, alarm_code || null,
+      emergency_contact || null, post_orders || null, hazard_notes || null,
+      access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1, notes || null,
+      business_type || null, structure_type || null, occupancy_status || null,
+      year_built || null, square_footage || null, number_of_stories || null,
+      security_features || null, key_holder_name || null, key_holder_phone || null,
+      key_holder_relationship || null, owner_name || null, owner_phone || null,
+      last_inspection_date || null,
+    );
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -2182,7 +2177,26 @@ router.put('/properties/:id', (req: Request, res: Response) => {
     const pValues: any[] = [];
     const pBodyKeys = Object.keys(req.body);
 
-    for (const [key, transform] of Object.entries(PROPERTY_FIELD_MAP)) {
+    const pFieldMap: Record<string, (v: any) => any> = {
+      name: v => v ?? null, address: v => v ?? null,
+      city: v => v ?? null, state: v => v ?? null, zip: v => v ?? null,
+      latitude: v => v ?? null, longitude: v => v ?? null,
+      property_type: v => v ?? null, gate_code: v => v ?? null,
+      alarm_code: v => v ?? null, emergency_contact: v => v ?? null,
+      post_orders: v => v ?? null, hazard_notes: v => v ?? null,
+      access_instructions: v => v ?? null, notes: v => v ?? null,
+      is_active: v => v ? 1 : 0,
+      client_id: v => v || null,
+      business_type: v => v ?? null, structure_type: v => v ?? null,
+      occupancy_status: v => v ?? null, year_built: v => v ?? null,
+      square_footage: v => v ?? null, number_of_stories: v => v ?? null,
+      security_features: v => v ?? null, key_holder_name: v => v ?? null,
+      key_holder_phone: v => v ?? null, key_holder_relationship: v => v ?? null,
+      owner_name: v => v ?? null, owner_phone: v => v ?? null,
+      last_inspection_date: v => v ?? null,
+    };
+
+    for (const [key, transform] of Object.entries(pFieldMap)) {
       if (pBodyKeys.includes(key)) {
         pFields.push(`${key} = ?`);
         pValues.push(transform(req.body[key]));
@@ -2284,7 +2298,14 @@ router.post('/properties/:id/unarchive', (req: Request, res: Response) => {
 router.post('/evidence', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const bodyKeys = Object.keys(req.body || {});
+    const {
+      incident_id, description, evidence_type, storage_location,
+      collected_date, packaging_type, dimensions, weight,
+      photo_taken, lab_submitted, lab_case_number, lab_name,
+      disposal_method, disposal_date, disposal_authorized_by,
+      serial_number, brand, model, estimated_value, category, notes,
+      location_found, condition, quantity, is_biological,
+    } = req.body;
 
     if (!req.body.description || !req.body.evidence_type) {
       res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
@@ -2304,25 +2325,26 @@ router.post('/evidence', (req: Request, res: Response) => {
     }
     const evidenceNumber = `EV-${currentYear}-${String(nextNum).padStart(5, '0')}`;
 
-    // Dynamic INSERT driven by EVIDENCE_FIELD_MAP — persists every field
-    // present in the body (including location_found/condition/quantity/
-    // is_biological/narcotics_flag/temperature_sensitive, which were
-    // previously silent-dropped).
-    const columns: string[] = ['evidence_number', 'collected_by'];
-    const placeholders: string[] = ['?', '?'];
-    const values: any[] = [evidenceNumber, req.user!.userId];
-
-    for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
-      if (bodyKeys.includes(key)) {
-        columns.push(key);
-        placeholders.push('?');
-        values.push(transform(req.body[key]));
-      }
-    }
-
-    const result = db.prepare(
-      `INSERT INTO evidence (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
-    ).run(...values);
+    const result = db.prepare(`
+      INSERT INTO evidence (
+        evidence_number, incident_id, description, evidence_type, storage_location, collected_by,
+        collected_date, packaging_type, dimensions, weight,
+        photo_taken, lab_submitted, lab_case_number, lab_name,
+        disposal_method, disposal_date, disposal_authorized_by,
+        serial_number, brand, model, estimated_value, category, notes,
+        location_found, condition, quantity, is_biological
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      evidenceNumber, incident_id || null, description, evidence_type,
+      storage_location || null, req.user!.userId,
+      collected_date || null, packaging_type || null, dimensions || null, weight || null,
+      photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
+      disposal_method || null, disposal_date || null, disposal_authorized_by || null,
+      serial_number || null, brand || null, model || null, estimated_value || null, category || null,
+      notes || null,
+      location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0
+    );
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

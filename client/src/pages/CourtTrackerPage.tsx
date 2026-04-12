@@ -65,6 +65,10 @@ const EMPTY_FORM = {
   event_date: '', event_time: '',
   court_name: '', courtroom: '', judge_name: '', court_case_number: '',
   defendant_name: '', defendant_dob: '',
+  prosecutor: '', defense_attorney: '',
+  officers_required: '' as string,
+  citation_id: '' as string, incident_id: '' as string, case_id: '' as string,
+  defendant_person_id: '' as string,
   notes: '',
 };
 
@@ -1025,6 +1029,14 @@ export default function CourtTrackerPage() {
                 <div>
                   <label className="field-label">Judge</label>
                   <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                </div>
+                <div>
+                  <label className="field-label">Prosecutor</label>
+                  <input value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                </div>
+                <div>
+                  <label className="field-label">Defense Attorney</label>
+                  <input value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">

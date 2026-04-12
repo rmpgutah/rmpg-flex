@@ -195,7 +195,7 @@ function createTables(): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       call_sign TEXT UNIQUE NOT NULL,
       officer_id INTEGER,
-      status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty')),
+      status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service')),
       latitude REAL,
       longitude REAL,
       vehicle_id TEXT,
@@ -1875,6 +1875,19 @@ function migrateSchema(): void {
   addCol('properties', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
   addCol('properties', 'updated_at', 'TEXT');
   addCol('properties', 'notes', 'TEXT');
+  addCol('properties', 'business_type', 'TEXT');
+  addCol('properties', 'structure_type', 'TEXT');
+  addCol('properties', 'occupancy_status', 'TEXT');
+  addCol('properties', 'year_built', 'TEXT');
+  addCol('properties', 'square_footage', 'TEXT');
+  addCol('properties', 'number_of_stories', 'TEXT');
+  addCol('properties', 'security_features', 'TEXT');
+  addCol('properties', 'key_holder_name', 'TEXT');
+  addCol('properties', 'key_holder_phone', 'TEXT');
+  addCol('properties', 'key_holder_relationship', 'TEXT');
+  addCol('properties', 'owner_name', 'TEXT');
+  addCol('properties', 'owner_phone', 'TEXT');
+  addCol('properties', 'last_inspection_date', 'TEXT');
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema
@@ -3217,6 +3230,10 @@ function migrateSchema(): void {
     addCol(tbl, 'pso_service_type', 'TEXT');        // patrol, standing_post, escort, process_service, alarm_response, event_security
     addCol(tbl, 'pso_billing_code', 'TEXT');
     addCol(tbl, 'pso_authorization', 'TEXT');        // auth/PO number from client
+    addCol(tbl, 'pso_72hr_deadline', 'TEXT');         // ISO timestamp: 72hr re-dispatch deadline after clear/close
+    addCol(tbl, 'pso_72hr_notified', 'TEXT');         // 'overdue'|'resolved'|NULL — tracks 72hr notification state
+    addCol(tbl, 'pso_service_windows', 'TEXT');       // JSON: {early_morning,daytime,evening,weekend} compliance
+    addCol(tbl, 'responding_vehicle_id', 'INTEGER');  // FK to fleet_vehicles — responding unit's vehicle
   }
   // Process service specific — must exist on BOTH calls_for_service AND incidents
   // Bug: incidents POST route INSERTs these columns but they were only added to
@@ -4332,6 +4349,32 @@ function migrateSchema(): void {
   // ── Feature 23: Per-user notification sound toggle ──
   // Stored in user_preferences table with pref_key='notification_sounds_enabled'
 
+  // ── PSO visit history — tracks each dispatch attempt's timestamps + service windows ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS call_visit_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      visit_number INTEGER NOT NULL,
+      status TEXT,
+      dispatched_at TEXT,
+      enroute_at TEXT,
+      onscene_at TEXT,
+      cleared_at TEXT,
+      closed_at TEXT,
+      assigned_units TEXT,
+      responding_vehicle_id INTEGER,
+      starting_mileage REAL,
+      ending_mileage REAL,
+      disposition TEXT,
+      note TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      time_window TEXT,
+      is_weekend INTEGER DEFAULT 0
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_call_visit_call ON call_visit_history(call_id)').run();
+
   // ── Ensure call_persons junction table exists (used by dispatch person linking) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS call_persons (
@@ -4443,8 +4486,32 @@ function migrateSchema(): void {
   addCol('warrants', 'external_source_key', 'TEXT');
   addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
 
-  // ── dispatch_units mileage column ──
-  addCol('dispatch_units', 'mileage', 'REAL');
+  // ── units mileage + GPS source columns ──
+  addCol('units', 'mileage', 'REAL');
+  addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
+  addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
+
+  // ── units: add 'out_of_service' to CHECK constraint (production fix) ──
+  try {
+    const uInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='units'").get() as { sql: string } | undefined;
+    if (uInfo && !uInfo.sql.includes('out_of_service')) {
+      db.pragma('foreign_keys = OFF');
+      // Use the original CREATE TABLE SQL but replace the CHECK constraint
+      const newSql = uInfo.sql
+        .replace(/CREATE TABLE units/i, 'CREATE TABLE units_new')
+        .replace(
+          /CHECK\(status IN \([^)]+\)\)/i,
+          "CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service'))"
+        );
+      const cols = db.prepare("PRAGMA table_info(units)").all() as any[];
+      const colNames = cols.map((c: any) => c.name).join(', ');
+      db.prepare(newSql).run();
+      db.prepare(`INSERT INTO units_new (${colNames}) SELECT ${colNames} FROM units`).run();
+      db.prepare('DROP TABLE units').run();
+      db.prepare('ALTER TABLE units_new RENAME TO units').run();
+      db.pragma('foreign_keys = ON');
+    }
+  } catch (e) { console.warn('[DB] units CHECK migration skipped:', e instanceof Error ? e.message : e); }
 
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');

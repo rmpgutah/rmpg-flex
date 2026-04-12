@@ -93,6 +93,8 @@ const DEFAULT_FORM_DATA = {
   caller_relationship: '',
   caller_address: '',
   location: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
   property_id: '',
   client_id: '',
   description: '',
@@ -380,8 +382,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         num_victims: formData.num_victims ? Number(formData.num_victims) : undefined,
         damage_estimate: formData.damage_estimate ? Number(formData.damage_estimate) : undefined,
         status: formData.is_historical ? (formData.historical_status || 'closed') : 'pending',
-        assigned_units: [],
-        notes: [],
         ...historicalFields,
       } as any);
       // Only reset form on success (parent closes the modal)
