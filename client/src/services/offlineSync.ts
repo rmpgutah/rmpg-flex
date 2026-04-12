@@ -38,6 +38,12 @@ let syncStartedAt: number | null = null;
 let lastPushAt: string | null = null;
 const SYNC_LOCK_TIMEOUT = 60_000; // force-release stale lock after 60s
 
+// Auth failure backoff — stop hammering server when tokens are expired
+let authFailureCount = 0;
+let authBackoffUntil = 0;
+const AUTH_BACKOFF_THRESHOLD = 3;   // pause after 3 consecutive 401s
+const AUTH_BACKOFF_MS = 5 * 60_000; // pause for 5 minutes
+
 const eventListeners: Map<SyncEventType, Set<SyncEventCallback>> = new Map();
 
 // ─── Pull Sync Intervals (ms) — same as Electron ───────────
@@ -113,9 +119,9 @@ export function startSyncSchedule(url: string, token?: string): void {
   // Set up recurring timers per table
   for (const [table, interval] of Object.entries(PULL_INTERVALS)) {
     pullTimers[table] = setInterval(() => {
-      // Only poll when page is visible AND browser is online
+      // Only poll when page is visible AND browser is online AND auth isn't backed off
       // Skipping when offline prevents wasted fetch attempts on metered connections
-      if (document.visibilityState === 'visible' && navigator.onLine) {
+      if (document.visibilityState === 'visible' && navigator.onLine && Date.now() > authBackoffUntil) {
         pullTable(table).catch(err => {
           console.error(`[SYNC] Pull ${table} failed:`, err?.message || err);
         });
@@ -143,9 +149,13 @@ export function stopSyncSchedule(): void {
 
 export function updateAuthToken(token: string): void {
   authToken = token;
+  // New token received — reset auth backoff so sync resumes immediately
+  authFailureCount = 0;
+  authBackoffUntil = 0;
 }
 
 export async function pullAll(): Promise<void> {
+  if (Date.now() < authBackoffUntil) { console.warn('[SYNC] Auth backoff active — skipping pullAll'); return; }
   if (!acquireSyncLock()) return;
 
   try {
@@ -445,9 +455,16 @@ async function refreshAndRetry(endpoint: string, options: RequestInit): Promise<
   });
 
   if (!refreshResponse.ok) {
+    authFailureCount++;
+    if (authFailureCount >= AUTH_BACKOFF_THRESHOLD) {
+      authBackoffUntil = Date.now() + AUTH_BACKOFF_MS;
+      console.warn(`[SYNC] ${authFailureCount} consecutive auth failures — pausing sync for 5 minutes`);
+    }
     throw new Error('Refresh failed');
   }
 
+  // Refresh succeeded — reset failure counter
+  authFailureCount = 0;
   const data = await refreshResponse.json();
 
   // Store new tokens
