@@ -23,7 +23,7 @@ import { useRadio } from '../hooks/useRadio';
 import { usePrivateCall } from '../hooks/usePrivateCall';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { localToday, safeTimeStr } from '../utils/dateUtils';
@@ -193,16 +193,8 @@ export default function RadioPage() {
     }
 
     try {
-      // Fetch audio with JWT auth header (new Audio(url) can't set headers)
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/comms/radio/audio/${entryId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        console.error('[Radio Playback] HTTP error:', res.status, res.statusText);
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const rawBlob = await res.blob();
+      // Fetch audio via apiFetchBlob (handles JWT auth + token refresh on 401)
+      const rawBlob = await apiFetchBlob(`/comms/radio/audio/${entryId}`);
       // Ensure blob has audio MIME type for <audio> element compatibility
       const blob = rawBlob.type.startsWith('audio/') ? rawBlob : new Blob([rawBlob], { type: 'audio/webm' });
       const blobUrl = URL.createObjectURL(blob);
