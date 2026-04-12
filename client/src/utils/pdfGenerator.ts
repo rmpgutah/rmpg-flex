@@ -3241,6 +3241,21 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'PSO Service Type', (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
       y = Math.max(yL, yR); }
+    if ((data as any).attorney_name || (data as any).client_name || (data as any).jurisdiction) {
+      const tw = ffw / 3;
+      const a1 = addFieldPair(doc, 'Attorney', (data as any).attorney_name || '', lx, y, tw);
+      const a2 = addFieldPair(doc, 'Client', (data as any).client_name || '', lx + tw, y, tw);
+      const a3 = addFieldPair(doc, 'Jurisdiction', (data as any).jurisdiction || '', lx + 2 * tw, y, tw);
+      y = Math.max(a1, a2, a3);
+    }
+    if ((data as any).deadline || (data as any).time_window) {
+      const dl1 = addFieldPair(doc, 'Deadline', (data as any).deadline || '', lx, y, hfw);
+      const dl2 = addFieldPair(doc, 'Time Window', (data as any).time_window || '', rx, y, hfw);
+      y = Math.max(dl1, dl2);
+    }
+    if ((data as any).service_instructions) {
+      y = addFieldPair(doc, 'Service Instructions', (data as any).service_instructions, lx, y, ffw);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
