@@ -28,6 +28,7 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Property, RecordEntityType } from '../../types';
 import type { PropertyFormData } from '../../components/PropertyFormModal';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -540,12 +541,6 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           </CollapsibleSection>
         )}
 
-        {selectedProperty.notes && (
-          <CollapsibleSection title="Notes" icon={FileWarning}>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
-          </CollapsibleSection>
-        )}
-
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -610,4 +605,3 @@ export default function PropertiesTab(props: PropertiesTabProps) {
     </>
   );
 }
-import { safeDateTimeStr } from '../../utils/dateUtils';

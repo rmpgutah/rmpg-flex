@@ -146,8 +146,8 @@ export default function RecordsPage() {
   const fetchProperties = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingProperties(true); setError(null); }
     try {
-      const res = await apiFetch<Record<string, unknown>[]>(`/records/properties?archived=${showArchived}`);
-      setProperties((Array.isArray(res) ? res : []).map(mapDbProperty));
+      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/properties?limit=200&archived=${showArchived}`);
+      setProperties((Array.isArray(res?.data) ? res.data : []).map(mapDbProperty));
     } catch (err) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load properties');
     } finally {
@@ -406,6 +406,7 @@ export default function RecordsPage() {
         )}
         {activeTab === 'properties' && (
           <>
+            <ExportButton exportUrl={`/records/properties/export?format=csv&archived=${showArchived}`} exportFilename="properties_export.csv" />
             {!showArchived && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />

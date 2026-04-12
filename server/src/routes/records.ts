@@ -1095,7 +1095,10 @@ router.post('/vehicles/:id/unarchive', (req: Request, res: Response) => {
 router.get('/properties', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { clientId, archived } = req.query;
+    const { clientId, archived, page = '1', limit = '200' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(1000, Math.max(1, parseInt(limit as string, 10) || 200));
+    const offset = (pageNum - 1) * limitNum;
 
     const conditions: string[] = [];
     const params: any[] = [];
@@ -1114,20 +1117,75 @@ router.get('/properties', (req: Request, res: Response) => {
 
     const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM properties p ${whereClause}`).get(...params) as any;
+
     const properties = db.prepare(`
       SELECT p.*, c.name as client_name
       FROM properties p
       LEFT JOIN clients c ON p.client_id = c.id
       ${whereClause}
       ORDER BY c.name, p.name
-    
-      LIMIT 1000
-    `).all(...params);
+      LIMIT ? OFFSET ?
+    `).all(...params, limitNum, offset);
 
-    res.json(properties);
+    res.json({
+      data: properties,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: countRow.total,
+        totalPages: Math.ceil(countRow.total / limitNum),
+      },
+    });
   } catch (error: any) {
     console.error('Get properties error:', error);
     res.status(500).json({ error: 'Failed to get properties', code: 'GET_PROPERTIES_ERROR' });
+  }
+});
+
+// GET /api/records/properties/export - Export properties as CSV
+router.get('/properties/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { archived } = req.query;
+
+    const conditions: string[] = [];
+    if (archived === 'true') {
+      conditions.push('p.archived_at IS NOT NULL');
+    } else if (archived !== 'all') {
+      conditions.push('p.archived_at IS NULL');
+    }
+
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const rows = db.prepare(`
+      SELECT p.name, p.address, p.city, p.state, p.zip, p.property_type,
+        p.is_active, p.gate_code, p.alarm_company, p.emergency_contact,
+        c.name as client_name, p.created_at
+      FROM properties p
+      LEFT JOIN clients c ON p.client_id = c.id
+      ${whereClause}
+      ORDER BY c.name, p.name
+      LIMIT 1000
+    `).all();
+
+    sendCsv(res, 'properties_export.csv', [
+      { key: 'name', header: 'Property Name' },
+      { key: 'address', header: 'Address' },
+      { key: 'city', header: 'City' },
+      { key: 'state', header: 'State' },
+      { key: 'zip', header: 'ZIP' },
+      { key: 'property_type', header: 'Type' },
+      { key: 'is_active', header: 'Active' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'gate_code', header: 'Gate Code' },
+      { key: 'alarm_company', header: 'Alarm Company' },
+      { key: 'emergency_contact', header: 'Emergency Contact' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export properties error:', error);
+    res.status(500).json({ error: 'Failed to export properties', code: 'EXPORT_PROPERTIES_ERROR' });
   }
 });
 
@@ -1414,6 +1472,50 @@ router.get('/evidence', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Get evidence error:', error);
     res.status(500).json({ error: 'Failed to get evidence', code: 'GET_EVIDENCE_ERROR' });
+  }
+});
+
+// GET /api/records/evidence/export - Export evidence as CSV
+router.get('/evidence/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { archived } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    if (archived === 'true') {
+      whereClause += ' AND e.archived_at IS NOT NULL';
+    } else if (archived !== 'all') {
+      whereClause += ' AND e.archived_at IS NULL';
+    }
+
+    const rows = db.prepare(`
+      SELECT e.evidence_number, e.description, e.evidence_type, e.category,
+        e.storage_location, e.collected_date, e.status, e.estimated_value,
+        i.incident_number, u.full_name as collected_by_name, e.created_at
+      FROM evidence e
+      LEFT JOIN incidents i ON e.incident_id = i.id
+      LEFT JOIN users u ON e.collected_by = u.id
+      ${whereClause}
+      ORDER BY e.created_at DESC
+      LIMIT 1000
+    `).all();
+
+    sendCsv(res, 'evidence_export.csv', [
+      { key: 'evidence_number', header: 'Evidence #' },
+      { key: 'description', header: 'Description' },
+      { key: 'evidence_type', header: 'Type' },
+      { key: 'category', header: 'Category' },
+      { key: 'storage_location', header: 'Storage Location' },
+      { key: 'collected_date', header: 'Collected Date' },
+      { key: 'collected_by_name', header: 'Collected By' },
+      { key: 'status', header: 'Status' },
+      { key: 'estimated_value', header: 'Estimated Value' },
+      { key: 'incident_number', header: 'Incident #' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export evidence error:', error);
+    res.status(500).json({ error: 'Failed to export evidence', code: 'EXPORT_EVIDENCE_ERROR' });
   }
 });
 
@@ -3157,6 +3259,43 @@ router.get('/ncic-query', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════════
 // Feature 21: Person Merge Tool — Detect and merge duplicate persons
 // ═══════════════════════════════════════════════════════════════════
+
+// POST /api/records/persons/check-duplicates - Check for duplicates before creating a person
+router.post('/persons/check-duplicates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { first_name, last_name, dob } = req.body;
+    if (!first_name || !last_name) {
+      res.json({ matches: [] });
+      return;
+    }
+
+    const conditions: string[] = ['archived_at IS NULL'];
+    const params: any[] = [];
+
+    // Match by exact name (case-insensitive)
+    conditions.push('LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)');
+    params.push(first_name, last_name);
+
+    let query = `SELECT id, first_name, last_name, dob, address, dl_number FROM persons WHERE ${conditions.join(' AND ')} LIMIT 10`;
+
+    let matches = db.prepare(query).all(...params) as any[];
+
+    // If DOB provided and no exact name matches, also check same last_name + same DOB
+    if (matches.length === 0 && dob) {
+      matches = db.prepare(
+        `SELECT id, first_name, last_name, dob, address, dl_number FROM persons
+         WHERE archived_at IS NULL AND LOWER(last_name) = LOWER(?) AND dob = ?
+         LIMIT 10`
+      ).all(last_name, dob) as any[];
+    }
+
+    res.json({ matches });
+  } catch (error: any) {
+    console.error('Check duplicates error:', error);
+    res.status(500).json({ error: 'Failed to check duplicates', code: 'CHECK_DUPLICATES_ERROR' });
+  }
+});
 
 // GET /api/records/persons/duplicates - Find potential duplicate persons
 router.get('/persons/duplicates', (req: Request, res: Response) => {
