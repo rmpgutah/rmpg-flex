@@ -143,12 +143,12 @@ function getMuniColor(name: string): string {
 // ── Section color palette (12 distinct hues for beat sections) ──
 
 export const SECTION_COLORS: Record<string, string> = {
-  SL1: '#22c55e', SL2: '#888888', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#22c55e',
+  SL1: '#22c55e', SL2: '#3b82f6', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#06b6d4',
   DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
   WB1: '#8b5cf6', WB2: '#10b981',
-  UC1: '#888888', UC2: '#eab308', UC3: '#f43f5e',
+  UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
 };
-const SECTION_COLOR_FALLBACKS = ['#666666', '#78716c', '#a3a3a3', '#71717a', '#737373', '#666666'];
+const SECTION_COLOR_FALLBACKS = ['#0ea5e9', '#d946ef', '#84cc16', '#fb923c', '#e11d48', '#14b8a6', '#f59e0b', '#8b5cf6'];
 
 export function getSectionColor(sectionId: string): string {
   if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];
@@ -290,7 +290,7 @@ export function useGeoJsonLayers({
       for (const [distLetter, entry] of zoneMap) {
         const sColor = getSectionColor(entry.sectionId);
         lookup.set(`${cityCode}::${distLetter}`, {
-          style: { ...beatCfg.style, fillColor: sColor, strokeColor: sColor, fillOpacity: 0.12, strokeOpacity: 0.6 },
+          style: { ...beatCfg.style, fillColor: sColor, strokeColor: sColor, fillOpacity: 0.18, strokeOpacity: 0.75, strokeWeight: 1.5 },
           entry,
         });
       }
