@@ -7,7 +7,8 @@ import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
-import { DISPATCH_DISTRICTS } from '../seeds/dispatchDistricts';
+// DISPATCH_DISTRICTS legacy constant import removed (Phase 2 of geography rebuild)
+import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 
@@ -1475,8 +1476,18 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'caller_relationship', "TEXT DEFAULT ''");
   addCol('calls_for_service', 'caller_address', 'TEXT');
   addCol('calls_for_service', 'zone_beat', 'TEXT');
-  addCol('calls_for_service', 'section_id', 'TEXT');
   addCol('calls_for_service', 'sector_id', 'TEXT');
+  // Migration: rename legacy section_id → sector_id on calls_for_service
+  try {
+    const cols = db.prepare('PRAGMA table_info(calls_for_service)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_id');
+    if (hasOld) {
+      db.prepare('UPDATE calls_for_service SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
+      console.log('[migrate] calls_for_service.section_id -> sector_id (data copied)');
+    }
+  } catch (err: any) {
+    console.log('[migrate] calls_for_service sector_id copy skipped:', err.message);
+  }
   addCol('calls_for_service', 'zone_id', 'TEXT');
   addCol('calls_for_service', 'beat_id', 'TEXT');
   addCol('calls_for_service', 'cross_street', 'TEXT');
@@ -1579,6 +1590,7 @@ function migrateSchema(): void {
           damage_description TEXT,
           action_taken TEXT,
           section_id TEXT,
+          sector_id TEXT,
           zone_id TEXT,
           beat_id TEXT,
           client_id INTEGER,
@@ -1679,10 +1691,21 @@ function migrateSchema(): void {
   addCol('incidents', 'review_notes', 'TEXT');
   addCol('incidents', 'disposition', 'TEXT');
   addCol('incidents', 'zone_beat', 'TEXT');
-  addCol('incidents', 'section_id', 'TEXT');
+  addCol('incidents', 'section_id', 'TEXT');  // legacy column, kept for rolling upgrade compat
   addCol('incidents', 'sector_id', 'TEXT');
   addCol('incidents', 'zone_id', 'TEXT');
   addCol('incidents', 'beat_id', 'TEXT');
+  // Migration: copy section_id → sector_id for existing rows
+  try {
+    const cols = db.prepare('PRAGMA table_info(incidents)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_id');
+    if (hasOld) {
+      db.prepare('UPDATE incidents SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
+      console.log('[migrate] incidents.section_id -> sector_id (data copied)');
+    }
+  } catch (err: any) {
+    console.log('[migrate] incidents sector_id copy skipped:', err.message);
+  }
   addCol('incidents', 'responding_le_agency', 'TEXT');
   addCol('incidents', 'le_case_number', 'TEXT');
 
@@ -2682,7 +2705,7 @@ function migrateSchema(): void {
 
     if (callsToBackfill.length > 0) {
       const updateStmt = db.prepare(`
-        UPDATE calls_for_service SET beat_id = ?, zone_id = ?, section_id = ?, zone_beat = ?
+        UPDATE calls_for_service SET beat_id = ?, zone_id = ?, sector_id = ?, zone_beat = ?
         WHERE id = ?
       `);
       let filled = 0;
@@ -2712,7 +2735,7 @@ function migrateSchema(): void {
 
     if (incidentsToBackfill.length > 0) {
       const updateStmt = db.prepare(`
-        UPDATE incidents SET beat_id = ?, zone_id = ?, section_id = ?, zone_beat = ?
+        UPDATE incidents SET beat_id = ?, zone_id = ?, sector_id = ?, zone_beat = ?
         WHERE id = ?
       `);
       let filled = 0;
@@ -2737,38 +2760,13 @@ function migrateSchema(): void {
     console.log('[migrate] Beat/zone backfill skipped:', (err as Error).message);
   }
 
-  // ── DISPATCH DISTRICTS — 3-Tier lookup table ───────────────
+  // ── DISPATCH DISTRICTS — obsolete 3-tier flat table, dropped in Phase 2
+  //    of the geography rebuild. Replaced by the 4-tier normalized
+  //    dispatch_areas / sectors / zones / beats model seeded from GeoJSON.
   try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS dispatch_districts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        section_id TEXT NOT NULL,
-        zone_id TEXT NOT NULL,
-        beat_id TEXT NOT NULL,
-        dispatch_code TEXT NOT NULL UNIQUE,
-        section_name TEXT NOT NULL,
-        zone_name TEXT NOT NULL,
-        beat_name TEXT NOT NULL,
-        beat_descriptor TEXT
-      )
-    `);
-  } catch { /* already exists */ }
-
-  // Seed dispatch_districts if empty
-  try {
-    const districtCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_districts').get() as any;
-    if (districtCount?.cnt === 0) {
-      const insertStmt = db.prepare(`
-        INSERT OR IGNORE INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const d of DISPATCH_DISTRICTS) {
-        insertStmt.run(d.section_id, d.zone_id, d.beat_id, d.dispatch_code, d.section_name, d.zone_name, d.beat_name, d.beat_descriptor);
-      }
-      console.log(`[migrate] Seeded ${DISPATCH_DISTRICTS.length} dispatch districts from 3-tier data`);
-    }
-  } catch (err) {
-    console.log('[migrate] dispatch_districts seed skipped:', (err as Error).message);
+    db.prepare('DROP TABLE IF EXISTS dispatch_districts').run();
+  } catch (err: any) {
+    console.log('[migrate] dispatch_districts drop skipped:', err.message);
   }
 
   // ── DISPATCH GEOGRAPHY — Normalized Section / Zone / Beat / Area tables ──
@@ -2788,13 +2786,31 @@ function migrateSchema(): void {
         updated_at TEXT DEFAULT (datetime('now'))
       )
     `);
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS dispatch_sections (
+    // Migration: rename existing dispatch_sections → dispatch_sectors (if present)
+    // Runs before the CREATE below so fresh DBs skip the rename entirely.
+    try {
+      const oldExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='dispatch_sections'"
+      ).get();
+      const newExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='dispatch_sectors'"
+      ).get();
+      if (oldExists && !newExists) {
+        db.prepare('ALTER TABLE dispatch_sections RENAME TO dispatch_sectors').run();
+        console.log('[migrate] Renamed dispatch_sections -> dispatch_sectors');
+      }
+    } catch (err: any) {
+      console.log('[migrate] dispatch_sections rename skipped:', err.message);
+    }
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS dispatch_sectors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        section_code TEXT NOT NULL UNIQUE,
-        section_name TEXT NOT NULL,
+        sector_code TEXT NOT NULL UNIQUE,
+        sector_name TEXT NOT NULL,
         area_id INTEGER REFERENCES dispatch_areas(id) ON DELETE SET NULL,
-        color TEXT DEFAULT '#3b82f6',
+        county_nbr TEXT,
+        fips_code TEXT,
+        color TEXT DEFAULT '#808080',
         description TEXT,
         supervisor TEXT,
         radio_channel TEXT,
@@ -2804,13 +2820,36 @@ function migrateSchema(): void {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
-    `);
-    db.exec(`
+    `).run();
+    // addCol migrations for existing DBs missing the new columns
+    try { addCol('dispatch_sectors', 'county_nbr', 'TEXT'); } catch { /* ignore */ }
+    try { addCol('dispatch_sectors', 'fips_code', 'TEXT'); } catch { /* ignore */ }
+    // Migration: rename legacy section_code/section_name columns on dispatch_sectors
+    try {
+      const cols = db.prepare('PRAGMA table_info(dispatch_sectors)').all() as any[];
+      const hasOldName = cols.some((c) => c.name === 'section_name');
+      const hasNewName = cols.some((c) => c.name === 'sector_name');
+      if (hasOldName && !hasNewName) {
+        db.prepare('ALTER TABLE dispatch_sectors RENAME COLUMN section_name TO sector_name').run();
+        console.log('[migrate] dispatch_sectors.section_name -> sector_name');
+      }
+      const hasOldCode = cols.some((c) => c.name === 'section_code');
+      const hasNewCode = cols.some((c) => c.name === 'sector_code');
+      if (hasOldCode && !hasNewCode) {
+        db.prepare('ALTER TABLE dispatch_sectors RENAME COLUMN section_code TO sector_code').run();
+        console.log('[migrate] dispatch_sectors.section_code -> sector_code');
+      }
+    } catch (err: any) {
+      console.log('[migrate] dispatch_sectors column rename skipped:', err.message);
+    }
+    db.prepare(`
       CREATE TABLE IF NOT EXISTS dispatch_zones (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         zone_code TEXT NOT NULL UNIQUE,
         zone_name TEXT NOT NULL,
-        section_id INTEGER REFERENCES dispatch_sections(id) ON DELETE SET NULL,
+        sector_id INTEGER REFERENCES dispatch_sectors(id) ON DELETE SET NULL,
+        zone_type TEXT DEFAULT 'municipality',
+        ugrc_code TEXT,
         color TEXT,
         description TEXT,
         primary_unit TEXT,
@@ -2825,14 +2864,30 @@ function migrateSchema(): void {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
-    `);
-    db.exec(`
+    `).run();
+    try { addCol('dispatch_zones', 'zone_type', "TEXT DEFAULT 'municipality'"); } catch { /* ignore */ }
+    try { addCol('dispatch_zones', 'ugrc_code', 'TEXT'); } catch { /* ignore */ }
+    // Migration: rename dispatch_zones.section_id -> sector_id if legacy column exists
+    try {
+      const cols = db.prepare('PRAGMA table_info(dispatch_zones)').all() as any[];
+      const hasOld = cols.some((c) => c.name === 'section_id');
+      const hasNew = cols.some((c) => c.name === 'sector_id');
+      if (hasOld && !hasNew) {
+        db.prepare('ALTER TABLE dispatch_zones RENAME COLUMN section_id TO sector_id').run();
+        console.log('[migrate] dispatch_zones.section_id -> sector_id');
+      }
+    } catch (err: any) {
+      console.log('[migrate] dispatch_zones column rename skipped:', err.message);
+    }
+    db.prepare(`
       CREATE TABLE IF NOT EXISTS dispatch_beats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         beat_code TEXT NOT NULL UNIQUE,
         beat_name TEXT NOT NULL,
         beat_descriptor TEXT,
         zone_id INTEGER REFERENCES dispatch_zones(id) ON DELETE SET NULL,
+        district_letter TEXT,
+        beat_number INTEGER,
         dispatch_code TEXT,
         color TEXT,
         assigned_unit TEXT,
@@ -2849,7 +2904,9 @@ function migrateSchema(): void {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
-    `);
+    `).run();
+    try { addCol('dispatch_beats', 'district_letter', 'TEXT'); } catch { /* ignore */ }
+    try { addCol('dispatch_beats', 'beat_number', 'INTEGER'); } catch { /* ignore */ }
     db.exec(`
       CREATE TABLE IF NOT EXISTS dispatch_codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2893,38 +2950,13 @@ function migrateSchema(): void {
     console.log('[migrate] Dispatch geography tables:', (err as Error).message);
   }
 
-  // Seed normalized geography tables from existing dispatch_districts if empty
+  // Seed dispatch_areas / sectors / zones / beats from Utah GeoJSON.
+  // Runs only when all 4 tables are empty (idempotent guard in the seed module).
   try {
-    const sectionCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_sections').get() as any;
-    if (sectionCount?.cnt === 0) {
-      const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all() as any[];
-      if (districts.length > 0) {
-        const seenSections = new Set<string>();
-        const insertSection = db.prepare('INSERT OR IGNORE INTO dispatch_sections (section_code, section_name) VALUES (?, ?)');
-        for (const d of districts) {
-          if (!seenSections.has(d.section_id)) {
-            insertSection.run(d.section_id, d.section_name);
-            seenSections.add(d.section_id);
-          }
-        }
-        const seenZones = new Set<string>();
-        const insertZone = db.prepare('INSERT OR IGNORE INTO dispatch_zones (zone_code, zone_name, section_id) VALUES (?, ?, (SELECT id FROM dispatch_sections WHERE section_code = ?))');
-        for (const d of districts) {
-          if (!seenZones.has(d.zone_id)) {
-            insertZone.run(d.zone_id, d.zone_name, d.section_id);
-            seenZones.add(d.zone_id);
-          }
-        }
-        const insertBeat = db.prepare('INSERT OR IGNORE INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code) VALUES (?, ?, ?, (SELECT id FROM dispatch_zones WHERE zone_code = ?), ?)');
-        for (const d of districts) {
-          const beatCode = d.zone_id + '-' + d.beat_id;
-          insertBeat.run(beatCode, d.beat_name, d.beat_descriptor, d.zone_id, d.dispatch_code);
-        }
-        console.log('[migrate] Seeded normalized geography: ' + seenSections.size + ' sections, ' + seenZones.size + ' zones, ' + districts.length + ' beats');
-      }
-    }
+    const geojsonDir = path.resolve(__dirname, '../../../client/public/geojson');
+    seedGeographyFromGeoJSON(db, geojsonDir);
   } catch (err) {
-    console.log('[migrate] Geography seed:', (err as Error).message);
+    console.log('[migrate] Geography seed skipped:', (err as Error).message);
   }
 
   // Seed default dispatch codes if empty
@@ -3032,10 +3064,21 @@ function migrateSchema(): void {
   addCol('cases', 'linked_calls', "TEXT DEFAULT '[]'");
 
   // ── Dispatch district name fields on calls (green columns) ──
-  addCol('calls_for_service', 'section_name', 'TEXT');
+  addCol('calls_for_service', 'section_name', 'TEXT');  // legacy, kept for rolling upgrade
+  addCol('calls_for_service', 'sector_name', 'TEXT');
   addCol('calls_for_service', 'zone_name', 'TEXT');
   addCol('calls_for_service', 'beat_name', 'TEXT');
   addCol('calls_for_service', 'beat_descriptor', 'TEXT');
+  // Copy section_name → sector_name for any existing rows
+  try {
+    const cols = db.prepare('PRAGMA table_info(calls_for_service)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_name');
+    if (hasOld) {
+      db.prepare('UPDATE calls_for_service SET sector_name = section_name WHERE section_name IS NOT NULL AND sector_name IS NULL').run();
+    }
+  } catch (err: any) {
+    console.log('[migrate] calls_for_service sector_name copy skipped:', err.message);
+  }
 
   // ── Contract ID for PSO Client Request incidents ──
   addCol('calls_for_service', 'contract_id', 'TEXT');
@@ -3075,11 +3118,21 @@ function migrateSchema(): void {
   } catch { /* older SQLite may not support — backfill still works */ }
 
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
-  addCol('citations', 'section_id', 'TEXT');
+  addCol('citations', 'section_id', 'TEXT');  // legacy
   addCol('citations', 'sector_id', 'TEXT');
   addCol('citations', 'zone_id', 'TEXT');
   addCol('citations', 'beat_id', 'TEXT');
   addCol('citations', 'zone_beat', 'TEXT');
+  // Copy section_id → sector_id on citations for existing rows
+  try {
+    const cols = db.prepare('PRAGMA table_info(citations)').all() as any[];
+    const hasOld = cols.some((c) => c.name === 'section_id');
+    if (hasOld) {
+      db.prepare('UPDATE citations SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
+    }
+  } catch (err: any) {
+    console.log('[migrate] citations sector_id copy skipped:', err.message);
+  }
   addCol('citations', 'latitude', 'REAL');
   addCol('citations', 'longitude', 'REAL');
   addCol('citations', 'vehicle_vin', 'TEXT');
@@ -3187,48 +3240,29 @@ function migrateSchema(): void {
     addCol(tbl, 'pso_billing_code', 'TEXT');
     addCol(tbl, 'pso_authorization', 'TEXT');        // auth/PO number from client
   }
-  // Process service specific
-  addCol('calls_for_service', 'process_service_type', 'TEXT'); // subpoena, summons, complaint, eviction, restraining_order, other
-  addCol('calls_for_service', 'process_served_to', 'TEXT');
-  addCol('calls_for_service', 'process_served_address', 'TEXT');
-  addCol('calls_for_service', 'process_attempts', 'INTEGER DEFAULT 0');
-  addCol('calls_for_service', 'process_served_at', 'TEXT');
-  addCol('calls_for_service', 'process_service_result', 'TEXT'); // served, unable_to_serve, refused, substitute_service
+  // Process service specific — must exist on BOTH calls_for_service AND incidents
+  // Bug: incidents POST route INSERTs these columns but they were only added to
+  // calls_for_service, causing every incident create to fail with SQLITE_ERROR.
+  for (const tbl of flagTables) {
+    addCol(tbl, 'pso_attempt_number', 'INTEGER DEFAULT 1');
+    addCol(tbl, 'process_service_type', 'TEXT'); // subpoena, summons, complaint, eviction, restraining_order, other
+    addCol(tbl, 'process_served_to', 'TEXT');
+    addCol(tbl, 'process_served_address', 'TEXT');
+    addCol(tbl, 'process_attempts', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'process_served_at', 'TEXT');
+    addCol(tbl, 'process_service_result', 'TEXT'); // served, unable_to_serve, refused, substitute_service
+    // LE notification + reporting flags also missing from incidents
+    addCol(tbl, 'le_notified', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'supervisor_notified', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'injuries_reported', 'INTEGER DEFAULT 0');
+  }
 
   // ── Backfill dispatch district names on existing calls ──────────
-  try {
-    const callsNeedingDistrict = db.prepare(`
-      SELECT c.id, c.section_id, c.zone_id, c.beat_id
-      FROM calls_for_service c
-      WHERE c.dispatch_code IS NULL AND c.section_id IS NOT NULL AND c.section_id != ''
-    `).all() as any[];
-
-    if (callsNeedingDistrict.length > 0) {
-      const updateStmt = db.prepare(`
-        UPDATE calls_for_service
-        SET dispatch_code = ?, section_name = ?, zone_name = ?, beat_name = ?, beat_descriptor = ?
-        WHERE id = ?
-      `);
-
-      for (const call of callsNeedingDistrict) {
-        // Look up the district by section_id — need to find matching zone_id (stored as zone_name in old data)
-        const district = db.prepare(
-          `SELECT * FROM dispatch_districts WHERE section_id = ? LIMIT 1`
-        ).get(call.section_id) as any;
-
-        if (district) {
-          updateStmt.run(
-            district.dispatch_code, district.section_name,
-            district.zone_name, district.beat_name, district.beat_descriptor,
-            call.id,
-          );
-        }
-      }
-      if (callsNeedingDistrict.length > 0) {
-        console.log(`  Backfilled dispatch district data on ${callsNeedingDistrict.length} calls`);
-      }
-    }
-  } catch { /* safe to ignore */ }
+  // REMOVED in Phase 2 of geography rebuild: the dispatch_districts table
+  // is dropped earlier in this migration. The backfill would always find
+  // 0 rows and the SELECT * FROM dispatch_districts would throw. Existing
+  // calls that had section_id set will need manual geography reassignment
+  // via the new Geography admin page.
 
   // ── Migrate existing case numbers to YY-######-XX format ──────
   try {
@@ -3299,6 +3333,40 @@ function migrateSchema(): void {
   addCol('persons', 'watchlist_checked_at', 'TEXT DEFAULT NULL');
   addCol('persons', 'aliases', 'TEXT');
   addCol('persons', 'photo', 'TEXT');
+
+  // ── Persons: extended identification, medical, military, LE fields ──
+  // Bug: these columns existed in production but were never added to the
+  // codebase schema migration. Fresh installs had no support for them.
+  // The client PersonFormModal renders inputs for ALL of these, so users
+  // typed data into fields that the POST/PUT routes then silently dropped.
+  // Route fixes in records.ts complete the repair; this migration lets
+  // fresh installs receive the same columns production already has.
+  addCol('persons', 'ncic_number', 'TEXT');
+  addCol('persons', 'sor_number', 'TEXT');
+  addCol('persons', 'fbi_number', 'TEXT');
+  addCol('persons', 'state_id_number', 'TEXT');
+  addCol('persons', 'passport_number', 'TEXT');
+  addCol('persons', 'passport_country', 'TEXT');
+  addCol('persons', 'immigration_status', 'TEXT');
+  addCol('persons', 'disability_flags', 'TEXT');
+  addCol('persons', 'mental_health_flags', 'TEXT');
+  addCol('persons', 'substance_abuse', 'TEXT');
+  addCol('persons', 'medication_notes', 'TEXT');
+  addCol('persons', 'education_level', 'TEXT');
+  addCol('persons', 'military_branch', 'TEXT');
+  addCol('persons', 'military_status', 'TEXT');
+  addCol('persons', 'tribal_affiliation', 'TEXT');
+  addCol('persons', 'identifying_marks_location', 'TEXT');
+  addCol('persons', 'tattoo_description', 'TEXT');
+  addCol('persons', 'scar_description', 'TEXT');
+  addCol('persons', 'piercing_description', 'TEXT');
+  addCol('persons', 'distinguishing_features', 'TEXT');
+  addCol('persons', 'email_secondary', 'TEXT');
+  addCol('persons', 'date_last_seen', 'TEXT');
+  addCol('persons', 'location_last_seen', 'TEXT');
+  addCol('persons', 'alias_dob', 'TEXT');
+  addCol('persons', 'home_phone', 'TEXT');
+  addCol('persons', 'work_phone', 'TEXT');
 
   // Feature 27/37: Report approval and case assignment columns
   addCol('incidents', 'approved_at', 'TEXT');
@@ -3515,6 +3583,9 @@ function migrateSchema(): void {
   // ── COURT EVENTS — continuance, bail, confirmation, judge notes, documents ──
   addCol('court_events', 'continuance_count', 'INTEGER DEFAULT 0');
   addCol('court_events', 'continuance_log', "TEXT DEFAULT '[]'");
+  // Bug: court.ts POST route INSERTs defendant_dob but no migration added it.
+  // Every court event create threw 500 "no such column: defendant_dob".
+  addCol('court_events', 'defendant_dob', 'TEXT');
   addCol('court_events', 'bail_amount', 'REAL');
   addCol('court_events', 'bond_status', 'TEXT');
   addCol('court_events', 'surety_info', 'TEXT');
@@ -3875,6 +3946,9 @@ function migrateSchema(): void {
   addCol('fleet_vehicles', 'total_fuel_cost', 'REAL DEFAULT 0');
   addCol('fleet_vehicles', 'total_trips', 'INTEGER DEFAULT 0');
   addCol('fleet_vehicles', 'avg_mpg', 'REAL');
+  // Bug: fleet.ts POST route INSERTs next_service_mileage but the column
+  // was never added to the schema — every fleet vehicle create threw 500.
+  addCol('fleet_vehicles', 'next_service_mileage', 'INTEGER');
   addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
 
   // ── HR — performance review template field ──
@@ -3990,6 +4064,128 @@ function migrateSchema(): void {
   addCol('vehicles_records', 'insurance_verified_by', 'INTEGER');
   addCol('vehicles_records', 'is_stolen', 'INTEGER DEFAULT 0');
 
+  // ── CRM: Leads ──
+  // Bug: Production has this table but it was never added to the schema
+  // migration. Any fresh install had no CRM functionality.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS crm_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      source_id TEXT,
+      source_url TEXT,
+      business_name TEXT NOT NULL,
+      industry TEXT,
+      sic_code TEXT,
+      business_type TEXT,
+      contact_name TEXT,
+      contact_email TEXT,
+      contact_phone TEXT,
+      contact_title TEXT,
+      address TEXT,
+      city TEXT,
+      state TEXT DEFAULT 'UT',
+      zip TEXT,
+      latitude REAL,
+      longitude REAL,
+      estimated_value REAL,
+      permit_number TEXT,
+      registration_date TEXT,
+      license_number TEXT,
+      project_type TEXT,
+      property_size TEXT,
+      pipeline_stage TEXT NOT NULL DEFAULT 'new',
+      lead_score INTEGER DEFAULT 0,
+      assigned_to INTEGER,
+      client_id INTEGER,
+      proposal_id INTEGER,
+      notes TEXT,
+      lost_reason TEXT,
+      next_follow_up TEXT,
+      service_interest TEXT,
+      enrichment_status TEXT,
+      enrichment_data TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_source ON crm_leads(source)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(pipeline_stage)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_score ON crm_leads(lead_score DESC)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned ON crm_leads(assigned_to)`).run();
+
+  // Activity log for leads (audit trail of stage changes, calls, etc.)
+  // Same missing-from-schema issue as crm_leads.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS crm_lead_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
+      activity_type TEXT NOT NULL,
+      subject TEXT,
+      details TEXT,
+      old_value TEXT,
+      new_value TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crm_lead_activity_lead ON crm_lead_activity(lead_id)`).run();
+
+  // ── HR: Leave Requests ──
+  // Bug: This table exists in production but was never added to the schema
+  // migration. Any fresh install (including test DBs) had no HR functionality.
+  // No CHECK constraints on type/status — route enum list has drifted from
+  // the production CHECK list, so permissive TEXT avoids silent constraint
+  // violations (e.g. route accepts 'military', 'jury_duty' which old CHECK rejects).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'vacation',
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL DEFAULT 0,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_leave_requests_officer ON leave_requests(officer_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)`).run();
+
+  // ── HR: Disciplinary Records ──
+  // Same missing-from-schema issue as leave_requests. No CHECK constraints
+  // on type/status to accommodate route enum values that drifted from the
+  // production CHECK list (route sends 'probation', 'other', 'pending_review'
+  // which old production CHECK constraints rejected).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS disciplinary_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'verbal_warning',
+      severity TEXT NOT NULL DEFAULT 'minor',
+      incident_date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      action_taken TEXT,
+      follow_up_date TEXT,
+      follow_up_notes TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      issued_by INTEGER NOT NULL,
+      witness TEXT,
+      attachments TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (issued_by) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_disciplinary_officer ON disciplinary_records(officer_id)`).run();
+
   // ── Feature 3: Call tag system ──
   addCol('calls_for_service', 'tags', "TEXT DEFAULT '[]'");
 
@@ -3998,6 +4194,18 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'response_time_seconds', 'REAL');
   addCol('calls_for_service', 'status_changed_at', 'TEXT');
   addCol('calls_for_service', 'onscene_duration_seconds', 'REAL');
+
+  // ── Calls: overdue notification tracking (prevent duplicate alerts) ──
+  // Used by callAgingMonitor to track which aging thresholds (30m/60m/72h) have
+  // already been notified. Cleared when call transitions to cleared/closed/cancelled.
+  // Bug: This column was referenced in callActions.ts clear-status path but never
+  // added to the schema — every call-clear threw "no such column" 500 errors.
+  addCol('calls_for_service', 'overdue_notified', 'TEXT');
+
+  // ── Calls: received_at timestamp (when call was first received) ──
+  // Bug: calls.ts:576 INSERT and calls.ts:1213 UPDATE both reference this
+  // column but no migration added it — every call create threw 500 errors.
+  addCol('calls_for_service', 'received_at', 'TEXT');
 
   // ── Feature 5: Shift handoff notes ──
   // Stored in system_config table with config_key='shift_handoff_notes'
@@ -4026,6 +4234,29 @@ function migrateSchema(): void {
   addCol('vehicles_records', 'tow_release_date', 'TEXT');
   addCol('vehicles_records', 'tow_release_to', 'TEXT');
   addCol('vehicles_records', 'tow_reason', 'TEXT');
+
+  // ── Vehicles: owner/condition/registration extended fields ──
+  // Bug: VehicleFormModal renders inputs for all of these but the schema
+  // migration never added them. Production has them (from an earlier
+  // manual migration); fresh installs did not. Route fixes in records.ts
+  // add these to the shared VEHICLE_FIELD_MAP so POST and PUT accept them.
+  addCol('vehicles_records', 'registration_state', 'TEXT');
+  addCol('vehicles_records', 'owner_name', 'TEXT');
+  addCol('vehicles_records', 'owner_dl_number', 'TEXT');
+  addCol('vehicles_records', 'owner_dob', 'TEXT');
+  addCol('vehicles_records', 'primary_driver_name', 'TEXT');
+  addCol('vehicles_records', 'registered_owner', 'TEXT');
+  addCol('vehicles_records', 'exterior_condition', 'TEXT');
+  addCol('vehicles_records', 'interior_condition', 'TEXT');
+  addCol('vehicles_records', 'title_status', 'TEXT');
+  addCol('vehicles_records', 'window_tint', 'TEXT');
+  addCol('vehicles_records', 'modifications', 'TEXT');
+  addCol('vehicles_records', 'equipment_notes', 'TEXT');
+  addCol('vehicles_records', 'vehicle_use', 'TEXT');
+  addCol('vehicles_records', 'ncic_entry_number', 'TEXT');
+  addCol('vehicles_records', 'estimated_value', 'REAL');
+  addCol('vehicles_records', 'tow_location', 'TEXT');
+  addCol('vehicles_records', 'insurance_expiry', 'TEXT');
 
   // ── Feature 8: Evidence temperature tracking ──
   addCol('evidence', 'storage_temperature', 'REAL');

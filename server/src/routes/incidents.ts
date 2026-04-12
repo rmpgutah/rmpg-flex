@@ -392,7 +392,7 @@ router.post('/', async (req: Request, res: Response) => {
       weather_conditions, lighting_conditions,
       injuries, injury_description, damage_estimate, damage_description,
       weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
-      disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
+      disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
       client_id: requestClientId,
       // Sub-type fields
       road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
@@ -430,7 +430,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier lookup ──
     let autoZoneBeat = zone_beat || null;
-    let autoSectionId = section_id || null;
+    let autoSectionId = sector_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
     if (resolvedLat && resolvedLng) {
@@ -445,7 +445,7 @@ router.post('/', async (req: Request, res: Response) => {
           ).get(beat.city_code, beat.district_letter) as any;
 
           if (district) {
-            if (!autoSectionId) autoSectionId = district.section_id;
+            if (!autoSectionId) autoSectionId = district.sector_id;
             if (!autoZoneId) autoZoneId = district.zone_name;
             if (!autoBeatId) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
           } else {
@@ -464,7 +464,7 @@ router.post('/', async (req: Request, res: Response) => {
         weather_conditions, lighting_conditions,
         injuries, injury_description, damage_estimate, damage_description,
         weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
-        disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
+        disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
         statute_id, statute_citation, citation_fine, client_id,
         road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
         patient_status, ems_transport, patient_vitals, treatment_rendered,
@@ -553,7 +553,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       weather_conditions, lighting_conditions,
       injuries, injury_description, damage_estimate, damage_description,
       weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
-      disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
+      disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
     } = req.body;
 
     // Auto-geocode if address provided/changed but no coordinates
@@ -589,7 +589,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       alcohol_involved: v => v ? 1 : 0, drugs_involved: v => v ? 1 : 0,
       domestic_violence: v => v ? 1 : 0,
       disposition: v => v ?? null, zone_beat: v => v ?? null,
-      section_id: v => v ?? null, zone_id: v => v ?? null, beat_id: v => v ?? null,
+      sector_id: v => v ?? null, zone_id: v => v ?? null, beat_id: v => v ?? null,
       responding_le_agency: v => v ?? null, le_case_number: v => v ?? null,
       statute_id: v => v ?? null, statute_citation: v => v ?? null, citation_fine: v => v ?? null,
       client_id: v => v ?? null,
@@ -1156,7 +1156,13 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
       collected_date, packaging_type, dimensions, weight,
       photo_taken, lab_submitted, lab_case_number, lab_name,
       disposal_method, disposal_date, disposal_authorized_by,
-      serial_number, brand, model, estimated_value, category
+      serial_number, brand, model, estimated_value, category,
+      // Previously silent-dropped fields (audit 2026-04-11) — including
+      // is_biological and narcotics_flag which are SAFETY-CRITICAL
+      // evidence handling flags collected by EvidenceFormModal but never
+      // persisted, putting officers and storage compliance at risk.
+      location_found, condition, quantity,
+      is_biological, narcotics_flag, temperature_sensitive, notes,
     } = req.body;
     if (!description || !evidence_type) {
       res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
@@ -1182,16 +1188,24 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
         collected_date, packaging_type, dimensions, weight,
         photo_taken, lab_submitted, lab_case_number, lab_name,
         disposal_method, disposal_date, disposal_authorized_by,
-        serial_number, brand, model, estimated_value, category
+        serial_number, brand, model, estimated_value, category,
+        location_found, condition, quantity,
+        is_biological, narcotics_flag, temperature_sensitive, notes
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?)
     `).run(
       evidenceNumber, incident.id, description, evidence_type,
       storage_location || null, req.user!.userId,
       collected_date || null, packaging_type || null, dimensions || null, weight || null,
       photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
-      serial_number || null, brand || null, model || null, estimated_value || null, category || null
+      serial_number || null, brand || null, model || null, estimated_value || null, category || null,
+      location_found || null, condition || null,
+      quantity === '' || quantity == null ? null : (parseInt(quantity, 10) || null),
+      is_biological ? 1 : 0, narcotics_flag ? 1 : 0, temperature_sensitive ? 1 : 0,
+      notes || null
     );
 
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);

@@ -9,6 +9,25 @@ const router = Router();
 
 router.use(authenticateToken);
 
+// Audit 2026-04-11: 3 handlers (snooze, snoozed-due, stats) reference a
+// `snoozed_until` column that the notifications table never had. Every
+// snooze action returned 500 and notifications stats were broken. The
+// canonical lazy column-add pattern lets us survive without a separate
+// database.ts migration.
+let snoozedUntilEnsured = false;
+function ensureSnoozedUntilColumn(db: any) {
+  if (snoozedUntilEnsured) return;
+  try {
+    const cols = db.prepare("PRAGMA table_info(notifications)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'snoozed_until')) {
+      db.prepare("ALTER TABLE notifications ADD COLUMN snoozed_until TEXT").run();
+    }
+    snoozedUntilEnsured = true;
+  } catch (e) {
+    // If the table doesn't exist yet (initialization order), try again on next call
+  }
+}
+
 // ─── HELPER: CREATE NOTIFICATION ─────────────────────
 
 export function createNotification(
@@ -270,6 +289,7 @@ router.get('/categories', (req: Request, res: Response) => {
 router.put('/:id/snooze', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureSnoozedUntilColumn(db);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
 
@@ -302,6 +322,7 @@ router.put('/:id/snooze', (req: Request, res: Response) => {
 router.get('/snoozed-due', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureSnoozedUntilColumn(db);
     const now = localNow();
 
     const due = db.prepare(`
@@ -437,6 +458,7 @@ router.post('/escalate', (req: Request, res: Response) => {
 router.get('/stats', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureSnoozedUntilColumn(db);
 
     const byType = db.prepare(`
       SELECT type, COUNT(*) as total,

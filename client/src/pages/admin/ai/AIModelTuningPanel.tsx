@@ -148,7 +148,7 @@ export default function AIModelTuningPanel() {
       )}
 
       {/* Default Parameters */}
-      <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-4">
+      <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
         <h3 className="text-sm font-semibold text-white">Default Parameters</h3>
 
         <Slider label="Temperature" description="Controls randomness. Lower = more deterministic."
@@ -169,10 +169,10 @@ export default function AIModelTuningPanel() {
       </div>
 
       {/* Per-Feature Overrides */}
-      <div className="bg-[#161b21] border border-[#1a3550] rounded">
+      <div className="bg-[#141414] border border-[#303030] rounded">
         <button
           onClick={() => setOverridesOpen(!overridesOpen)}
-          className="w-full flex items-center justify-between p-4 text-sm font-semibold text-white hover:bg-[#1b2128] transition-colors"
+          className="w-full flex items-center justify-between p-4 text-sm font-semibold text-white hover:bg-[#181818] transition-colors"
         >
           <span>Per-Feature Overrides</span>
           {overridesOpen ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
@@ -184,7 +184,7 @@ export default function AIModelTuningPanel() {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-gray-500 border-b border-[#1a3550]">
+                  <tr className="text-gray-500 border-b border-[#303030]">
                     <th className="text-left py-2 pr-4 font-medium">Feature</th>
                     <th className="text-left py-2 px-2 font-medium">Temperature</th>
                     <th className="text-left py-2 px-2 font-medium">Max Tokens</th>
@@ -194,7 +194,7 @@ export default function AIModelTuningPanel() {
                 </thead>
                 <tbody>
                   {FEATURES.map(feature => (
-                    <tr key={feature} className="border-b border-[#1a3550]/50">
+                    <tr key={feature} className="border-b border-[#303030]/50">
                       <td className="py-2 pr-4 text-gray-300">{FEATURE_LABELS[feature]}</td>
                       {(['temperature', 'maxTokens', 'topP', 'repeatPenalty'] as const).map(key => (
                         <td key={key} className="py-2 px-2">
@@ -204,7 +204,7 @@ export default function AIModelTuningPanel() {
                             value={(featureParams[feature] || {})[key] ?? ''}
                             onChange={e => updateFeatureOverride(feature, key, e.target.value)}
                             placeholder="—"
-                            className="w-20 px-2 py-1 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs placeholder-gray-700 focus:outline-none focus:border-blue-500"
+                            className="w-20 px-2 py-1 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs placeholder-gray-700 focus:outline-none focus:border-blue-500"
                           />
                         </td>
                       ))}
@@ -218,13 +218,13 @@ export default function AIModelTuningPanel() {
       </div>
 
       {/* Presets */}
-      <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-4">
+      <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
         <h3 className="text-sm font-semibold text-white">Presets</h3>
 
         {presets.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {presets.map(preset => (
-              <div key={preset.id} className="bg-[#0c0f13] border border-[#1a3550] rounded p-3 space-y-2">
+              <div key={preset.id} className="bg-[#0c0c0c] border border-[#303030] rounded p-3 space-y-2">
                 <p className="text-sm font-medium text-white">{preset.name}</p>
                 <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500">
                   <span>Temp: <span className="text-blue-400 font-mono">{preset.temperature}</span></span>
@@ -270,18 +270,18 @@ export default function AIModelTuningPanel() {
           <p className="text-xs text-gray-600">No presets saved yet.</p>
         )}
 
-        <div className="flex items-center gap-2 pt-2 border-t border-[#1a3550]">
+        <div className="flex items-center gap-2 pt-2 border-t border-[#303030]">
           <input
             type="text"
             value={newPresetName}
             onChange={e => setNewPresetName(e.target.value)}
             placeholder="Preset name..."
-            className="flex-1 px-3 py-1.5 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500"
+            className="flex-1 px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500"
           />
           <button
             onClick={handleSavePreset}
             disabled={!newPresetName.trim()}
-            className="px-3 py-1.5 text-xs bg-[#1a3550] text-gray-300 rounded hover:bg-[#2a4560] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs bg-[#303030] text-gray-300 rounded hover:bg-[#404040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Save Current as Preset
           </button>
@@ -315,7 +315,7 @@ function Slider({ label, description, value, min, max, step, onChange }: {
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-[#1a3550] rounded appearance-none cursor-pointer accent-blue-500" />
+        className="w-full h-1.5 bg-[#303030] rounded appearance-none cursor-pointer accent-blue-500" />
       <p className="text-[10px] text-gray-600">{description}</p>
     </div>
   );

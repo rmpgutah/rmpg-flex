@@ -45,7 +45,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         height: 48,
         borderRadius: '50%',
         background: 'rgba(13, 21, 32, 0.88)',
-        border: '1px solid #2b313a',
+        border: '1px solid #2b2b2b',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -70,14 +70,14 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         }}
       >
         {/* Cross lines (E-W and N-S subtle lines) */}
-        <line x1="20" y1="6" x2="20" y2="34" stroke="#3a4f66" strokeWidth="0.5" />
-        <line x1="6" y1="20" x2="34" y2="20" stroke="#3a4f66" strokeWidth="0.5" />
+        <line x1="20" y1="6" x2="20" y2="34" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="6" y1="20" x2="34" y2="20" stroke="#4b4b4b" strokeWidth="0.5" />
 
         {/* 45-degree tick marks (NE, SE, SW, NW) */}
-        <line x1="29.9" y1="10.1" x2="28.5" y2="11.5" stroke="#3a4f66" strokeWidth="0.5" />
-        <line x1="29.9" y1="29.9" x2="28.5" y2="28.5" stroke="#3a4f66" strokeWidth="0.5" />
-        <line x1="10.1" y1="29.9" x2="11.5" y2="28.5" stroke="#3a4f66" strokeWidth="0.5" />
-        <line x1="10.1" y1="10.1" x2="11.5" y2="11.5" stroke="#3a4f66" strokeWidth="0.5" />
+        <line x1="29.9" y1="10.1" x2="28.5" y2="11.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="29.9" y1="29.9" x2="28.5" y2="28.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="10.1" y1="29.9" x2="11.5" y2="28.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="10.1" y1="10.1" x2="11.5" y2="11.5" stroke="#4b4b4b" strokeWidth="0.5" />
 
         {/* #16: North arrow with brighter hover state */}
         <polygon points="20,4 17.5,18 20,16 22.5,18" fill={hovered ? '#e8c44a' : '#d4a017'} opacity={1} />

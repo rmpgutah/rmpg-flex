@@ -130,7 +130,7 @@ const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
   { type: 'k9', label: 'K9', color: '#8b5cf6' },
   { type: 'medical', label: 'Medical', color: '#ef4444' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
-  { type: 'foot', label: 'Foot Patrol', color: '#6366f1' },
+  { type: 'foot', label: 'Foot Patrol', color: '#888888' },
   { type: 'vehicle', label: 'Vehicle', color: '#666666' },
 ];
 
@@ -155,7 +155,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
   accent_color: '#d4a017',
-  header_bg_color: '#1a1a2e',
+  header_bg_color: '#1c1c1c',
 };
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {

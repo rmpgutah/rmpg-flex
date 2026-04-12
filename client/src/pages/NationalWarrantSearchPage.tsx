@@ -154,21 +154,21 @@ function coverageFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#166534'; // green-800
     case 'pending': return '#78350f'; // amber-900
-    default: return '#1f2937'; // gray-800
+    default: return '#282828'; // gray-800
   }
 }
 function coverageStroke(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#22c55e';
     case 'pending': return '#f59e0b';
-    default: return '#4b5563';
+    default: return '#545454';
   }
 }
 function coverageHoverFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#15803d';
     case 'pending': return '#92400e';
-    default: return '#374151';
+    default: return '#404040';
   }
 }
 
@@ -435,7 +435,7 @@ export default function NationalWarrantSearchPage() {
                 <span className="text-rmpg-400">Pending</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#1f2937', border: '1px solid #4b5563' }} />
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#282828', border: '1px solid #545454' }} />
                 <span className="text-rmpg-400">No Source</span>
               </span>
             </div>
@@ -705,12 +705,12 @@ function WarrantRow({ warrant }: { warrant: any }) {
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           {warrant.offense_level && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${severityBadge(warrant.offense_level)}`}>
-              {warrant.offense_level.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              {warrant.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
             </span>
           )}
           {warrant.warrant_type && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeBadge(warrant.warrant_type)}`}>
-              {warrant.warrant_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              {warrant.warrant_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
             </span>
           )}
           {warrant.court && (

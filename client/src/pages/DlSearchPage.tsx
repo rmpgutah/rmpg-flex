@@ -386,7 +386,7 @@ export default function DlSearchPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b313a' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -418,7 +418,7 @@ export default function DlSearchPage() {
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
               </div>
               {/* DL OCR Scanner */}
-              <div className="border border-[#1e2d40] rounded-sm p-3 bg-[#0c0f13] space-y-2 w-full max-w-xs">
+              <div className="border border-[#1a1a1a] rounded-sm p-3 bg-[#0c0c0c] space-y-2 w-full max-w-xs">
                 <div className="flex items-center gap-2">
                   <CreditCard size={14} className="text-[#d4a017]" />
                   <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
@@ -429,7 +429,7 @@ export default function DlSearchPage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={ocrLoading}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
                   >
                     {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                     {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
@@ -652,8 +652,8 @@ export default function DlSearchPage() {
       {/* DL Verification Result Panel */}
       {verifyResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161b21] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0c0f13]">
+          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={14} className={verifyResult.verified ? 'text-green-400' : 'text-amber-400'} />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">
@@ -697,11 +697,11 @@ export default function DlSearchPage() {
               {verifyResult.photo_url && (
                 <div className="mt-2">
                   <span className="text-[9px] text-[#556677] uppercase font-mono">Photo</span>
-                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#1e2d40] rounded-sm" />
+                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#1a1a1a] rounded-sm" />
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0c0f13]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1a1a1a] bg-[#0c0c0c]">
               {verifyResult.verified && (
                 <button
                   type="button"
@@ -715,7 +715,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setVerifyResult(null)}
-                className="px-4 py-2 bg-[#1b2128] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Close
               </button>
@@ -727,8 +727,8 @@ export default function DlSearchPage() {
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161b21] border border-[#1e2d40] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d40] bg-[#0c0f13]">
+          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
               <div className="flex items-center gap-2">
                 <CreditCard size={14} className="text-[#d4a017]" />
                 <span className="text-[12px] font-bold text-white uppercase tracking-wider">DL OCR Results</span>
@@ -767,7 +767,7 @@ export default function DlSearchPage() {
                 </div>
               ))}
               {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).length > 0 && (
-                <div className="border-t border-[#1e2d40] pt-2 mt-2">
+                <div className="border-t border-[#1a1a1a] pt-2 mt-2">
                   <div className="text-[8px] text-[#556677] uppercase tracking-wider mb-1">Additional Fields</div>
                   {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-2 text-[10px]">
@@ -778,7 +778,7 @@ export default function DlSearchPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1e2d40] bg-[#0c0f13]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1a1a1a] bg-[#0c0c0c]">
               <button
                 type="button"
                 onClick={handleCreatePersonFromOcr}
@@ -790,7 +790,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setShowOcrPreview(false)}
-                className="px-4 py-2 bg-[#1b2128] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
                 Cancel
               </button>

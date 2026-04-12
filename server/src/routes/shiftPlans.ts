@@ -286,10 +286,18 @@ router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (r
       return;
     }
 
+    // Audit 2026-04-11: client posts camelCase ShiftPlan ({shiftType: ...}),
+    // but PUT only looked at snake_case shift_type — every PUT silently
+    // dropped the shift type. Accept both.
     const fields = ['name', 'date', 'shift_type', 'assignments', 'status'];
     const bodyKeys = Object.keys(req.body);
     const setClauses: string[] = [];
     const values: any[] = [];
+
+    if (bodyKeys.includes('shiftType') && !bodyKeys.includes('shift_type')) {
+      req.body.shift_type = req.body.shiftType;
+      bodyKeys.push('shift_type');
+    }
 
     for (const f of fields) {
       if (bodyKeys.includes(f)) {

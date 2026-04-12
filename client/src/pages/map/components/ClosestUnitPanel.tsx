@@ -74,7 +74,7 @@ export default function ClosestUnitPanel({
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #2b313a60' }}
+        style={{ borderBottom: '1px solid #2b2b2b60' }}
       >
         <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: '#aaaaaa' }} />
         <span
@@ -86,7 +86,7 @@ export default function ClosestUnitPanel({
         <button type="button"
           onClick={onClose}
           aria-label="Close closest units panel"
-          className="p-0.5 hover:bg-[#1b2128] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="p-0.5 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
           style={{ borderRadius: 2 }}
         >
           <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-white" />
@@ -96,7 +96,7 @@ export default function ClosestUnitPanel({
       {/* Call Info */}
       <div
         className="px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #2b313a30', background: '#0a0a0a' }}
+        style={{ borderBottom: '1px solid #2b2b2b30', background: '#0a0a0a' }}
       >
         <div className="flex items-center gap-2 mb-1">
           <span
@@ -123,7 +123,7 @@ export default function ClosestUnitPanel({
       </div>
 
       {/* Results List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         {results.length === 0 ? (
           <div className="flex flex-col items-center text-center py-8 gap-2">
             <Navigation className="w-6 h-6" style={{ color: '#666666', opacity: 0.4 }} />
@@ -145,10 +145,10 @@ export default function ClosestUnitPanel({
             return (
               <div
                 key={unit.id}
-                className="px-3 py-2 hover:bg-[#1b2128]/30 transition-colors duration-100"
+                className="px-3 py-2 hover:bg-[#181818]/30 transition-colors duration-100"
                 style={{
-                  borderBottom: idx < results.length - 1 ? '1px solid #2b313a20' : undefined,
-                  background: idx % 2 === 0 ? '#050505' : '#111b28',
+                  borderBottom: idx < results.length - 1 ? '1px solid #2b2b2b20' : undefined,
+                  background: idx % 2 === 0 ? '#050505' : '#191919',
                 }}
               >
                 <div className="flex items-center gap-2">
@@ -284,7 +284,7 @@ export default function ClosestUnitPanel({
         className="px-3 py-1.5 text-[7px] font-bold uppercase tracking-wider shrink-0"
         style={{
           color: '#666666',
-          borderTop: '1px solid #2b313a30',
+          borderTop: '1px solid #2b2b2b30',
           background: '#0a0a0a',
           letterSpacing: '0.8px',
         }}

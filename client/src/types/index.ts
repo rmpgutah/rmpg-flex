@@ -266,12 +266,12 @@ export interface CallForService {
   location_floor?: string;
   location_room?: string;
   zone_beat?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   // Dispatch district data (from geofence auto-fill)
   dispatch_code?: string;
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
@@ -2102,7 +2102,7 @@ export interface TrespassOrder {
   linked_person_last?: string;
   linked_property_name?: string;
   notes?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
@@ -3013,8 +3013,8 @@ export interface DispatchArea {
 
 export interface DispatchSection {
   id: number;
-  section_code: string;
-  section_name: string;
+  sector_code: string;
+  sector_name: string;
   area_id?: number;
   area_code?: string;
   area_name?: string;
@@ -3032,9 +3032,9 @@ export interface DispatchZone {
   id: number;
   zone_code: string;
   zone_name: string;
-  section_id?: number;
-  section_code?: string;
-  section_name?: string;
+  sector_id?: number;
+  sector_code?: string;
+  sector_name?: string;
   color?: string;
   description?: string;
   primary_unit?: string;
@@ -3058,8 +3058,8 @@ export interface DispatchBeat {
   zone_id?: number;
   zone_code?: string;
   zone_name?: string;
-  section_code?: string;
-  section_name?: string;
+  sector_code?: string;
+  sector_name?: string;
   dispatch_code?: string;
   color?: string;
   assigned_unit?: string;

@@ -1,0 +1,70 @@
+// ============================================================
+// Test App Factory
+// Builds a minimal Express app that mirrors production routing
+// but skips the HTTP listener, WebSocket server, and background
+// schedulers. Each test file imports this to drive requests via
+// supertest.
+// ============================================================
+
+import express from 'express';
+import cors from 'cors';
+import type { Application } from 'express';
+
+/** Build a test Express app with the essential middleware + all routes. */
+export async function createTestApp(): Promise<Application> {
+  // Lazy-import route modules AFTER the test DB has been initialized.
+  // Routes call getDb() at request time, not import time, so the order
+  // matters: tests MUST call initDatabase() before hitting any route.
+  const app = express();
+
+  app.set('trust proxy', false);
+
+  app.use(cors({ origin: '*', credentials: true }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // Request ID shim (some routes read this)
+  app.use((req, _res, next) => {
+    req.headers['x-request-id'] = req.headers['x-request-id'] || 'test';
+    next();
+  });
+
+  // Import route modules — these call getDb() at request time, not import time
+  const authRoutes = (await import('../../src/routes/auth')).default;
+  const dispatchRoutes = (await import('../../src/routes/dispatch/index')).default;
+  const incidentRoutes = (await import('../../src/routes/incidents')).default;
+  const recordsRoutes = (await import('../../src/routes/records')).default;
+  const citationRoutes = (await import('../../src/routes/citations')).default;
+  const personnelRoutes = (await import('../../src/routes/personnel')).default;
+  const mapGeofenceRoutes = (await import('../../src/routes/mapGeofences')).default;
+  const warrantRoutes = (await import('../../src/routes/warrants')).default;
+  const fleetRoutes = (await import('../../src/routes/fleet')).default;
+  const hrRoutes = (await import('../../src/routes/hr')).default;
+  const courtRoutes = (await import('../../src/routes/court')).default;
+  const crmRoutes = (await import('../../src/routes/crm')).default;
+  const crmLeadsRoutes = (await import('../../src/routes/crmLeads')).default;
+
+  app.use('/api/auth', authRoutes);
+  app.use('/api/dispatch', dispatchRoutes);
+  app.use('/api/incidents', incidentRoutes);
+  app.use('/api/records', recordsRoutes);
+  app.use('/api/citations', citationRoutes);
+  app.use('/api/personnel', personnelRoutes);
+  app.use('/api/map-geofences', mapGeofenceRoutes);
+  app.use('/api/warrants', warrantRoutes);
+  app.use('/api/fleet', fleetRoutes);
+  app.use('/api/hr', hrRoutes);
+  app.use('/api/court', courtRoutes);
+  app.use('/api/crm', crmRoutes);
+  app.use('/api/crm-leads', crmLeadsRoutes);
+
+  // Error handler (multer-aware, mirrors production)
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (!res.headersSent) {
+      const status = err?.status || err?.statusCode || 500;
+      res.status(status).json({ error: err?.message || 'Internal server error' });
+    }
+  });
+
+  return app;
+}

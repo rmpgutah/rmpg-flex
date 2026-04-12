@@ -84,7 +84,7 @@ function Section({
       {/* #34: Section toggle with smooth chevron rotation */}
       <button type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 w-full text-left py-1 hover:bg-[#1b2128]/30 rounded-sm transition-colors duration-100"
+        className="flex items-center gap-1 w-full text-left py-1 hover:bg-[#181818]/30 rounded-sm transition-colors duration-100"
         aria-expanded={open}
       >
         <ChevronRight size={10} className="text-rmpg-500 transition-transform duration-200" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
@@ -118,7 +118,7 @@ export default function ThreatAssessmentPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -126,14 +126,14 @@ export default function ThreatAssessmentPanel({
             Threat Assessment
           </span>
         </div>
-        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1b2128] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close threat assessment">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#181818] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close threat assessment">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent"
+        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Action Buttons ──────────────────────────────── */}
@@ -142,7 +142,7 @@ export default function ThreatAssessmentPanel({
             onClick={onAssessCenter}
             disabled={loading}
             className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-all duration-150 hover:text-white disabled:opacity-50 active:scale-[0.97]"
-            style={{ background: '#141414', border: '1px solid #1e2a3a' }}
+            style={{ background: '#141414', border: '1px solid #282828' }}
             aria-label="Assess threat at map center"
           >
             {loading ? (
@@ -156,7 +156,7 @@ export default function ThreatAssessmentPanel({
             <button type="button"
               onClick={onClear}
               className="rounded-sm px-2 py-1.5 text-[10px] font-semibold text-rmpg-500 hover:text-rmpg-300 transition-colors"
-              style={{ background: '#141414', border: '1px solid #1e2a3a' }}
+              style={{ background: '#141414', border: '1px solid #282828' }}
             >
               Clear
             </button>
@@ -267,7 +267,7 @@ export default function ThreatAssessmentPanel({
                     <div
                       key={`hazard-${i}`}
                       className="rounded-sm p-1.5 text-[9px] font-mono"
-                      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                      style={{ background: '#050505', border: '1px solid #282828' }}
                     >
                       <div className="flex items-center gap-1 text-rmpg-300">
                         <MapPin size={9} className="text-red-400 shrink-0" />
@@ -291,7 +291,7 @@ export default function ThreatAssessmentPanel({
                   {assessment.armed_history.map((entry, i) => (
                     <div
                       key={`armed-${i}`}
-                      className="flex items-center gap-1.5 text-[9px] font-mono hover:bg-[#1b2128]/50 rounded-sm px-1 -mx-1 transition-colors duration-150"
+                      className="flex items-center gap-1.5 text-[9px] font-mono hover:bg-[#181818]/50 rounded-sm px-1 -mx-1 transition-colors duration-150"
                     >
                       <span className="led-dot" style={{ background: '#ef4444' }} />
                       <span className="text-red-300 font-semibold tabular-nums">
@@ -315,7 +315,7 @@ export default function ThreatAssessmentPanel({
                     <div
                       key={`dv-${i}`}
                       className="rounded-sm p-1.5 text-[9px] font-mono"
-                      style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                      style={{ background: '#050505', border: '1px solid #282828' }}
                     >
                       <div className="flex items-center gap-1">
                         <AlertTriangle size={9} className="text-amber-400 shrink-0" />
@@ -340,7 +340,7 @@ export default function ThreatAssessmentPanel({
                   onClick={onGetApproachRoutes}
                   disabled={loading}
                   className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-white transition-all duration-150 disabled:opacity-50 active:scale-[0.97]"
-                  style={{ background: '#141414', border: '1px solid #1e2a3a' }}
+                  style={{ background: '#141414', border: '1px solid #282828' }}
                   aria-label="Get approach routes"
                 >
                   {loading ? (
@@ -358,7 +358,7 @@ export default function ThreatAssessmentPanel({
                       <div
                         key={`route-${i}`}
                         className="rounded-sm p-1.5"
-                        style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+                        style={{ background: '#050505', border: '1px solid #282828' }}
                       >
                         <div className="flex items-center gap-1.5">
                           <Navigation

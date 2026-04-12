@@ -55,7 +55,7 @@ export interface IncidentFormData {
   domestic_violence: boolean;
   disposition: string;
   zone_beat: string;
-  section_id: string;
+  sector_id: string;
   zone_id: string;
   beat_id: string;
   responding_le_agency: string;
@@ -275,7 +275,7 @@ const EMPTY_FORM: IncidentFormData = {
   domestic_violence: false,
   disposition: '',
   zone_beat: '',
-  section_id: '',
+  sector_id: '',
   zone_id: '',
   beat_id: '',
   responding_le_agency: '',
@@ -395,7 +395,7 @@ export default function IncidentFormModal({
           domestic_violence: !!inc.domestic_violence,
           disposition: inc.disposition || '',
           zone_beat: inc.zone_beat || '',
-          section_id: inc.section_id || '',
+          sector_id: inc.sector_id || '',
           zone_id: inc.zone_id || '',
           beat_id: inc.beat_id || '',
           responding_le_agency: inc.responding_le_agency || '',
@@ -586,7 +586,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
-              <select className="select-dark mt-1" value={formData.section_id} onChange={(e) => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+              <select className="select-dark mt-1" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
                 {sectionOptions.map((s) => <option key={s} value={s}>{s} — {sectionLabels.get(s) || s}</option>)}
               </select>
@@ -595,7 +595,7 @@ export default function IncidentFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Zone ID</label>
               <select className="select-dark mt-1" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
-                {zonesForSection(formData.section_id).map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
+                {zonesForSection(formData.sector_id).map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
@@ -646,7 +646,7 @@ export default function IncidentFormModal({
                   if (district) {
                     setFormData((prev) => ({
                       ...prev,
-                      section_id: district.section_id || prev.section_id,
+                      sector_id: district.sector_id || prev.sector_id,
                       zone_id: district.zone_id || prev.zone_id,
                       beat_id: district.beat_id || prev.beat_id,
                     }));

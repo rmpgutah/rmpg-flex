@@ -122,7 +122,7 @@ export default function FleetPersonnelTab({
           <div className="flex items-center gap-3">
             {/* Avatar */}
             <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-brand-500/50 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #1a2a3a, #0a1520)' }}>
+              style={{ background: 'linear-gradient(135deg, #272727, #131313)' }}>
               <span className="text-sm font-bold font-mono text-brand-400">{getInitials(officer?.full_name)}</span>
             </div>
 
@@ -491,7 +491,7 @@ export default function FleetPersonnelTab({
         ) : (
           <div className="p-3">
             <div className="relative">
-              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #88888840, #242a32)' }} />
+              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #88888840, #242424)' }} />
               <div className="space-y-1.5">
                 {assignments.slice(0, 10).map((a) => {
                   const isActive = !a.unassigned_at;

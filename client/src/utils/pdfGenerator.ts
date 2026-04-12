@@ -565,6 +565,14 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 }
 
 /**
+ * Alias for addFieldPair — used by recordPdfGenerator for narrative-style
+ * long-text fields. Same signature: (doc, label, value, x, y, width).
+ */
+export function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
+  return addFieldPair(doc, label, value, x, y, width, maxLinesOverride);
+}
+
+/**
  * Drawn checkbox (consistent cross-platform rendering).
  * Returns X position for next element.
  */
@@ -1753,7 +1761,7 @@ interface IncidentData {
   domestic_violence?: boolean;
   disposition?: string;
   zone_beat?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   responding_le_agency?: string;
@@ -2125,7 +2133,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
     // Row 5: Dispatch Code, Section, Zone, Beat, Responding Agency, LE Case #
     const fy13 = addFieldPair(doc, 'Dispatch Code', data.dispatch_code || '', lx, y, w6);
-    const fy14 = addFieldPair(doc, 'Section', data.section_id || '', lx + w6, y, w6);
+    const fy14 = addFieldPair(doc, 'Section', data.sector_id || '', lx + w6, y, w6);
     const fy15 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w6 * 2, y, w6);
     const fy16 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w6 * 3, y, w6);
     const fy17 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx + w6 * 4, y, w6);
@@ -2204,7 +2212,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const fy5 = addFieldPair(doc, 'Dispatch Code', data.dispatch_code || '', lx + w3 * 2, y, w3);
       y = Math.max(fy3, fy4, fy5);
       // Row 3: Section, Zone, Beat
-      const fy6 = addFieldPair(doc, 'Section', data.section_id || '', lx, y, w3);
+      const fy6 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, w3);
       const fy7 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w3, y, w3);
       const fy8 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w3 * 2, y, w3);
       y = Math.max(fy6, fy7, fy8);
@@ -2965,7 +2973,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     // Row 1: Officer Name (2/5), Section (1/5), Zone (1/5), Beat (1/5)
     const w5 = ffw / 5;
     const fy1 = addFieldPair(doc, 'Officer Name', data.officer_name || '', lx, y, w5 * 2);
-    const fy2 = addFieldPair(doc, 'Section', data.section_id || '', lx + w5 * 2, y, w5);
+    const fy2 = addFieldPair(doc, 'Section', data.sector_id || '', lx + w5 * 2, y, w5);
     const fy3 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w5 * 3, y, w5);
     const fy4 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w5 * 4, y, w5);
     y = Math.max(fy1, fy2, fy3, fy4);
@@ -3256,7 +3264,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     const olFields = [
       { label: 'Officer', value: data.officer_name || '' },
       { label: 'Location', value: data.location || '' },
-      { label: 'Section ID', value: data.section_id || '' },
+      { label: 'Section ID', value: data.sector_id || '' },
       { label: 'Zone ID', value: data.zone_id || '' },
       { label: 'Beat ID', value: data.beat_id || '' },
     ];

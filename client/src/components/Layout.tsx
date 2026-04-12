@@ -731,7 +731,7 @@ export default function Layout() {
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
               background: '#0a0a0a',
-              border: '1px solid #2b313a',
+              border: '1px solid #2b2b2b',
               borderTop: '3px solid #888888',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
               WebkitAppRegion: 'no-drag',
@@ -996,7 +996,7 @@ export default function Layout() {
                     src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #3a5070', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none' }}
+                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1092,7 +1092,7 @@ export default function Layout() {
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #161b21, #1e2a1e, #161b21)',
+            background: 'linear-gradient(90deg, #141414, #1e2a1e, #141414)',
             borderBottom: '1px solid #2a3a2a',
             flexShrink: 0,
           }}
@@ -1291,7 +1291,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #161b21',
+                          borderRadius: 7, border: '1px solid #141414',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
@@ -1343,7 +1343,7 @@ export default function Layout() {
                       style={{
                         minWidth: 210,
                         background: '#141414',
-                        border: '1px solid #2a3e58',
+                        border: '1px solid #2a2a2a',
                         borderTop: '2px solid #888888',
                         boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
                       }}
@@ -1505,8 +1505,8 @@ export default function Layout() {
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
           {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-[#161b21] border border-[#2b313a] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b313a] bg-[#0c0f13]">
+          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
               <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
@@ -1516,11 +1516,11 @@ export default function Layout() {
                 {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
                   <div key={item.shortcut} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{item.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0f13] border border-[#2a3e58] text-brand-400 rounded-sm">{item.shortcut}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{item.shortcut}</kbd>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-[#2b313a] pt-3 space-y-1.5">
+              <div className="border-t border-[#2b2b2b] pt-3 space-y-1.5">
                 <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
                 {[
                   { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
@@ -1532,7 +1532,7 @@ export default function Layout() {
                 ].map(s => (
                   <div key={s.label} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{s.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0f13] border border-[#2a3e58] text-brand-400 rounded-sm">{s.keys}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{s.keys}</kbd>
                   </div>
                 ))}
               </div>
@@ -1545,8 +1545,8 @@ export default function Layout() {
       {showCommandPalette && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
           {/* 15: Command palette with top accent and deeper shadow */}
-          <div className="bg-[#161b21] border border-[#2b313a] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b313a]">
+          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
               <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
               <input
                 ref={paletteInputRef}
@@ -1563,7 +1563,7 @@ export default function Layout() {
                 placeholder="Search pages, modules..."
                 className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
               />
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0f13] border border-[#2a3e58] text-rmpg-500 rounded-sm">ESC</kbd>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-rmpg-500 rounded-sm">ESC</kbd>
             </div>
             <div className="max-h-80 overflow-y-auto scrollbar-dark">
               {paletteQuery.trim() === '' ? (
@@ -1577,7 +1577,7 @@ export default function Layout() {
                     <button type="button"
                       key={`${result.path}-${idx}`}
                       onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#2b313a]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#2b2b2b]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
                     >
                       {/* 17: Command palette results with matched text style */}
                       <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />

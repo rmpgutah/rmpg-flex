@@ -76,7 +76,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
         AI Capabilities
       </h3>
 
-      <div className="bg-[#0f1218] border border-[#1a1a2e] rounded divide-y divide-[#1a1a2e]">
+      <div className="bg-[#121212] border border-[#1c1c1c] rounded divide-y divide-[#1c1c1c]">
         {FEATURE_LIST.map(feat => {
           const enabled = (config.features as any)[feat.key] ?? false;
           const override = routingRules[feat.key]?.provider || 'auto';
@@ -86,7 +86,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
               <button
                 onClick={() => toggleFeature(feat.key)}
                 className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
-                  enabled ? 'bg-brand-600' : 'bg-[#1a1a2e]'
+                  enabled ? 'bg-brand-600' : 'bg-[#1c1c1c]'
                 }`}
                 aria-label={`Toggle ${feat.label}`}
               >
@@ -107,7 +107,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
               <select
                 value={override}
                 onChange={e => updateRouting(feat.key, e.target.value)}
-                className="bg-[#0a0a12] border border-[#1a1a2e] text-white text-[10px] rounded px-2 py-1 focus:border-brand-500 focus:outline-none shrink-0"
+                className="bg-[#0b0b0b] border border-[#1c1c1c] text-white text-[10px] rounded px-2 py-1 focus:border-brand-500 focus:outline-none shrink-0"
               >
                 <option value="auto">Auto</option>
                 <option value="groq">Groq</option>

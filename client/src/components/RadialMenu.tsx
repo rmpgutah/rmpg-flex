@@ -24,7 +24,7 @@ const SEGMENTS: MenuSegment[] = [
   { label: 'Note', icon: StickyNote, color: '#22c55e', action: 'note' },
   { label: 'Backup', icon: Shield, color: '#f97316', action: 'backup' },
   { label: 'On Scene', icon: MapPin, color: '#a855f7', action: 'onscene' },
-  { label: 'Body Cam', icon: Camera, color: '#06b6d4', action: 'bodycam' },
+  { label: 'Body Cam', icon: Camera, color: '#888888', action: 'bodycam' },
   { label: 'Arrived', icon: CheckCircle, color: '#84cc16', action: 'arrived' },
   { label: 'Supervisor', icon: UserPlus, color: '#d4a017', action: 'supervisor' },
 ];
@@ -224,7 +224,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         >
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
             {/* Center circle */}
-            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="#4b5563" strokeWidth="1" />
+            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="#545454" strokeWidth="1" />
             <text x={cx} y={cy + 3} textAnchor="middle" fill="#9ca3af" fontSize="8" fontFamily="monospace">ACTIONS</text>
             {renderSegments()}
           </svg>

@@ -60,7 +60,7 @@ const TOW_REASONS: { value: TowReason; label: string }[] = [
 const EMPTY_VIOLATION = {
   violation_type: 'other' as ViolationType, location: '', description: '',
   code_section: '', severity: 'low', fine_amount: '', compliance_deadline: '', notes: '',
-  section_id: '', zone_id: '', beat_id: '',
+  sector_id: '', zone_id: '', beat_id: '',
 };
 
 const EMPTY_TOW = {
@@ -404,7 +404,7 @@ export default function CodeEnforcementPage() {
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {activeTab === 'violations' ? (
             vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
             violations.length === 0 ? <EmptyState icon={Construction} title="No violations found" description="Try adjusting your filters or create a new one." /> :
@@ -440,8 +440,8 @@ export default function CodeEnforcementPage() {
                   <MapPin style={{ width: 9, height: 9 }} />
                   <span className="truncate">{formatAddressDisplay(v.location)}</span>
                   {v.fine_amount && !isNaN(Number(v.fine_amount)) && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
-                  {((v as any).section_id || (v as any).zone_id || (v as any).beat_id) && (
-                    <span className="font-mono text-rmpg-400">{[(v as any).section_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
+                  {((v as any).sector_id || (v as any).zone_id || (v as any).beat_id) && (
+                    <span className="font-mono text-rmpg-400">{[(v as any).sector_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
                   )}
                 </div>
               </button>
@@ -483,7 +483,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedViolation.violation_number} icon={Construction}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${VIOLATION_STATUS_COLORS[selectedViolation.status] || ''}`}>
                   {selectedViolation.status.replace(/_/g, ' ').toUpperCase()}
@@ -572,7 +572,7 @@ export default function CodeEnforcementPage() {
                   ['Severity', selectedViolation.severity ? selectedViolation.severity.charAt(0).toUpperCase() + selectedViolation.severity.slice(1) : '—'],
                   ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
-                  ['S/Z/B', [(selectedViolation as any).section_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
+                  ['S/Z/B', [(selectedViolation as any).sector_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
@@ -587,7 +587,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedTow.tow_number} icon={Truck}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${TOW_STATUS_COLORS[selectedTow.status] || ''}`}>
                   {selectedTow.status.replace(/_/g, ' ').toUpperCase()}
@@ -681,7 +681,7 @@ export default function CodeEnforcementPage() {
                 <div>
                   <label className="field-label">Section</label>
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
-                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value, zone_id: '', beat_id: ''}))}>
+                    value={vFormData.sector_id || ''} onChange={e => setVFormData(p => ({...p, sector_id: e.target.value, zone_id: '', beat_id: ''}))}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
@@ -691,7 +691,7 @@ export default function CodeEnforcementPage() {
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
                     value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
                     <option value="">—</option>
-                    {zonesForSection(vFormData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zonesForSection(vFormData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>

@@ -415,6 +415,17 @@ router.post('/persons', (req: Request, res: Response) => {
       probation_parole, probation_parole_officer, known_associates,
       emergency_contact_relationship, caution_flags,
       photo_url, flags, notes,
+      // Extended identification, medical, military, LE fields — these
+      // correspond to inputs in PersonFormModal.tsx that were previously
+      // being silently dropped by this route.
+      ncic_number, sor_number, fbi_number, state_id_number,
+      passport_number, passport_country, immigration_status,
+      disability_flags, mental_health_flags, substance_abuse, medication_notes,
+      education_level, military_branch, military_status, tribal_affiliation,
+      identifying_marks_location, tattoo_description, scar_description,
+      piercing_description, distinguishing_features,
+      email_secondary, date_last_seen, location_last_seen, alias_dob,
+      home_phone, work_phone,
     } = req.body;
 
     if (!first_name || !last_name) {
@@ -435,8 +446,24 @@ router.post('/persons', (req: Request, res: Response) => {
         phone_secondary, social_media,
         probation_parole, probation_parole_officer, known_associates,
         emergency_contact_relationship, caution_flags,
-        photo_url, flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        photo_url, flags, notes,
+        ncic_number, sor_number, fbi_number, state_id_number,
+        passport_number, passport_country, immigration_status,
+        disability_flags, mental_health_flags, substance_abuse, medication_notes,
+        education_level, military_branch, military_status, tribal_affiliation,
+        identifying_marks_location, tattoo_description, scar_description,
+        piercing_description, distinguishing_features,
+        email_secondary, date_last_seen, location_last_seen, alias_dob,
+        home_phone, work_phone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?, ?,
+        ?, ?)
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
@@ -455,6 +482,14 @@ router.post('/persons', (req: Request, res: Response) => {
       probation_parole || null, probation_parole_officer || null, known_associates || null,
       emergency_contact_relationship || null, caution_flags || null,
       photo_url || null, JSON.stringify(flags || []), notes || null,
+      ncic_number || null, sor_number || null, fbi_number || null, state_id_number || null,
+      passport_number || null, passport_country || null, immigration_status || null,
+      disability_flags || null, mental_health_flags || null, substance_abuse || null, medication_notes || null,
+      education_level || null, military_branch || null, military_status || null, tribal_affiliation || null,
+      identifying_marks_location || null, tattoo_description || null, scar_description || null,
+      piercing_description || null, distinguishing_features || null,
+      email_secondary || null, date_last_seen || null, location_last_seen || null, alias_dob || null,
+      home_phone || null, work_phone || null,
     );
 
     db.prepare(`
@@ -537,6 +572,35 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       known_associates: v => v ?? null,
       emergency_contact_relationship: v => v ?? null, caution_flags: v => v ?? null,
       photo_url: v => v ?? null, notes: v => v ?? null,
+      // Extended identification, medical, military, LE fields — added
+      // to match the full PersonFormModal input set so edits no longer
+      // silently drop values the user typed.
+      ncic_number: v => v ?? null,
+      sor_number: v => v ?? null,
+      fbi_number: v => v ?? null,
+      state_id_number: v => v ?? null,
+      passport_number: v => v ?? null,
+      passport_country: v => v ?? null,
+      immigration_status: v => v ?? null,
+      disability_flags: v => v ?? null,
+      mental_health_flags: v => v ?? null,
+      substance_abuse: v => v ?? null,
+      medication_notes: v => v ?? null,
+      education_level: v => v ?? null,
+      military_branch: v => v ?? null,
+      military_status: v => v ?? null,
+      tribal_affiliation: v => v ?? null,
+      identifying_marks_location: v => v ?? null,
+      tattoo_description: v => v ?? null,
+      scar_description: v => v ?? null,
+      piercing_description: v => v ?? null,
+      distinguishing_features: v => v ?? null,
+      email_secondary: v => v ?? null,
+      date_last_seen: v => v ?? null,
+      location_last_seen: v => v ?? null,
+      alias_dob: v => v ?? null,
+      home_phone: v => v ?? null,
+      work_phone: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -810,54 +874,108 @@ router.get('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/vehicles - Create vehicle
+// Shared fieldMap for vehicles_records — used by BOTH POST and PUT so adding
+// a new writable field only requires editing ONE place. Previously this route
+// had a hand-written INSERT with positional args, which silently dropped any
+// body field not in the destructure list. 17 fields that the client form
+// renders were being lost on every save.
+const VEHICLE_FIELD_MAP: Record<string, (v: any) => any> = {
+  plate_number: v => v ?? null,
+  state: v => v ?? null,
+  make: v => v ?? null,
+  model: v => v ?? null,
+  year: v => v ?? null,
+  color: v => v ?? null,
+  secondary_color: v => v ?? null,
+  body_style: v => v ?? null,
+  doors: v => v ?? null,
+  vin: v => v ?? null,
+  owner_person_id: v => v ?? null,
+  insurance_company: v => v ?? null,
+  insurance_policy: v => v ?? null,
+  insurance_expiry: v => v ?? null,
+  registration_expiry: v => v ?? null,
+  registration_state: v => v ?? null,
+  damage_description: v => v ?? null,
+  distinguishing_features: v => v ?? null,
+  trim: v => v ?? null,
+  engine_type: v => v ?? null,
+  fuel_type: v => v ?? null,
+  transmission: v => v ?? null,
+  drive_type: v => v ?? null,
+  tow_status: v => v ?? null,
+  tow_company: v => v ?? null,
+  tow_date: v => v ?? null,
+  tow_location: v => v ?? null,
+  plate_type: v => v ?? null,
+  commercial_vehicle: v => v ? 1 : 0,
+  hazmat: v => v ? 1 : 0,
+  odometer: v => v ?? null,
+  owner_address: v => v ?? null,
+  owner_phone: v => v ?? null,
+  owner_name: v => v ?? null,
+  owner_dl_number: v => v ?? null,
+  owner_dob: v => v ?? null,
+  primary_driver_name: v => v ?? null,
+  registered_owner: v => v ?? null,
+  lien_holder: v => v ?? null,
+  stolen_status: v => v ?? null,
+  stolen_date: v => v ?? null,
+  recovery_date: v => v ?? null,
+  title_status: v => v ?? null,
+  exterior_condition: v => v ?? null,
+  interior_condition: v => v ?? null,
+  estimated_value: v => v ?? null,
+  window_tint: v => v ?? null,
+  modifications: v => v ?? null,
+  equipment_notes: v => v ?? null,
+  vehicle_use: v => v ?? null,
+  ncic_entry_number: v => v ?? null,
+  notes: v => v ?? null,
+};
+
 router.post('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      plate_number, state, make, model, year, color, secondary_color,
-      body_style, doors, vin, owner_person_id,
-      insurance_company, insurance_policy, registration_expiry,
-      damage_description, distinguishing_features,
-      trim, engine_type, fuel_type, transmission, drive_type,
-      tow_status, tow_company, tow_date, plate_type,
-      commercial_vehicle, hazmat, odometer,
-      owner_address, owner_phone, lien_holder,
-      stolen_status, stolen_date, recovery_date,
-      flags, notes,
-    } = req.body;
+    const bodyKeys = Object.keys(req.body || {});
 
-    const result = db.prepare(`
-      INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
-        body_style, doors, vin, owner_person_id,
-        insurance_company, insurance_policy, registration_expiry,
-        damage_description, distinguishing_features,
-        trim, engine_type, fuel_type, transmission, drive_type,
-        tow_status, tow_company, tow_date, plate_type,
-        commercial_vehicle, hazmat, odometer,
-        owner_address, owner_phone, lien_holder,
-        stolen_status, stolen_date, recovery_date,
-        flags, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      plate_number || null, state || null, make || null, model || null,
-      year || null, color || null, secondary_color || null,
-      body_style || null, doors || null, vin || null, owner_person_id || null,
-      insurance_company || null, insurance_policy || null, registration_expiry || null,
-      damage_description || null, distinguishing_features || null,
-      trim || null, engine_type || null, fuel_type || null, transmission || null, drive_type || null,
-      tow_status || null, tow_company || null, tow_date || null, plate_type || null,
-      commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer || null,
-      owner_address || null, owner_phone || null, lien_holder || null,
-      stolen_status || null, stolen_date || null, recovery_date || null,
-      JSON.stringify(flags || []), notes || null,
-    );
+    // Dynamic INSERT driven by VEHICLE_FIELD_MAP — includes every key from
+    // the body that matches an allowlisted field, plus the always-present
+    // flags column (JSON-stringified) and timestamps.
+    const columns: string[] = [];
+    const placeholders: string[] = [];
+    const values: any[] = [];
 
-    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
+    for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
+      if (bodyKeys.includes(key)) {
+        columns.push(key);
+        placeholders.push('?');
+        values.push(transform(req.body[key]));
+      }
+    }
+
+    // flags is always set (defaults to empty array)
+    columns.push('flags');
+    placeholders.push('?');
+    values.push(JSON.stringify(req.body.flags || []));
+
+    columns.push('created_at');
+    placeholders.push('?');
+    values.push(localNow());
+    columns.push('updated_at');
+    placeholders.push('?');
+    values.push(localNow());
+
+    const result = db.prepare(
+      `INSERT INTO vehicles_records (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+    ).run(...values);
+
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid) as any;
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'vehicle_created', 'vehicle', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${plate_number || 'No plate'} ${make || ''} ${model || ''}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${vehicle?.plate_number || 'No plate'} ${vehicle?.make || ''} ${vehicle?.model || ''}`, req.ip || 'unknown');
 
     res.status(201).json(vehicle);
   } catch (error: any) {
@@ -876,44 +994,14 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const {
-      plate_number, state, make, model, year, color, secondary_color,
-      body_style, doors, vin, owner_person_id,
-      insurance_company, insurance_policy, registration_expiry,
-      damage_description, distinguishing_features,
-      trim, engine_type, fuel_type, transmission, drive_type,
-      tow_status, tow_company, tow_date, plate_type,
-      commercial_vehicle, hazmat, odometer,
-      owner_address, owner_phone, lien_holder,
-      stolen_status, stolen_date, recovery_date,
-      flags, notes,
-    } = req.body;
-
-    // Build dynamic SET clause — only update fields explicitly provided
+    // Build dynamic SET clause — only update fields explicitly provided.
+    // Uses the shared VEHICLE_FIELD_MAP so POST and PUT always accept the
+    // same field set; previously they diverged and PUT dropped 17 fields.
     const fields: string[] = [];
     const values: any[] = [];
     const bodyKeys = Object.keys(req.body);
 
-    const vFieldMap: Record<string, (v: any) => any> = {
-      plate_number: v => v ?? null, state: v => v ?? null, make: v => v ?? null,
-      model: v => v ?? null, year: v => v ?? null, color: v => v ?? null,
-      secondary_color: v => v ?? null, body_style: v => v ?? null, doors: v => v ?? null,
-      vin: v => v ?? null, owner_person_id: v => v ?? null,
-      insurance_company: v => v ?? null, insurance_policy: v => v ?? null,
-      registration_expiry: v => v ?? null, damage_description: v => v ?? null,
-      distinguishing_features: v => v ?? null, trim: v => v ?? null,
-      engine_type: v => v ?? null, fuel_type: v => v ?? null,
-      transmission: v => v ?? null, drive_type: v => v ?? null,
-      tow_status: v => v ?? null, tow_company: v => v ?? null,
-      tow_date: v => v ?? null, plate_type: v => v ?? null,
-      commercial_vehicle: v => v ? 1 : 0, hazmat: v => v ? 1 : 0,
-      odometer: v => v ?? null, owner_address: v => v ?? null,
-      owner_phone: v => v ?? null, lien_holder: v => v ?? null,
-      stolen_status: v => v ?? null, stolen_date: v => v ?? null,
-      recovery_date: v => v ?? null, notes: v => v ?? null,
-    };
-
-    for (const [key, transform] of Object.entries(vFieldMap)) {
+    for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
       if (bodyKeys.includes(key)) {
         fields.push(`${key} = ?`);
         values.push(transform(req.body[key]));
@@ -921,7 +1009,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
     }
     if (bodyKeys.includes('flags')) {
       fields.push('flags = ?');
-      values.push(JSON.stringify(flags ?? []));
+      values.push(JSON.stringify(req.body.flags ?? []));
     }
 
     if (fields.length > 0) {
@@ -1098,41 +1186,117 @@ router.get('/properties/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/properties - Create property
+// Shared allowlist for property POST + PUT so both accept the exact same
+// field set. Previously POST and PUT each handled a tiny subset (17 of 44
+// fields from PropertyFormModal) and silently dropped everything else,
+// including key holder info, alarm/camera details, building metadata,
+// security features, patrol settings, and after-hours contacts.
+// Audit 2026-04-11.
+const PROPERTY_FIELD_MAP: Record<string, (v: any) => any> = {
+  // Identity + location
+  client_id: v => v || null,
+  name: v => v ?? null,
+  address: v => v ?? null,
+  city: v => v ?? null,
+  state: v => v ?? null,
+  zip: v => v ?? null,
+  latitude: v => v === '' || v == null ? null : v,
+  longitude: v => v === '' || v == null ? null : v,
+  property_type: v => v ?? null,
+  is_active: v => v ? 1 : 0,
+  notes: v => v ?? null,
+  // Access + dispatch alerts
+  gate_code: v => v ?? null,
+  alarm_code: v => v ?? null,
+  emergency_contact: v => v ?? null,
+  post_orders: v => v ?? null,
+  hazard_notes: v => v ?? null,
+  access_instructions: v => v ?? null,
+  // Building metadata
+  business_type: v => v ?? null,
+  structure_type: v => v ?? null,
+  occupancy_status: v => v ?? null,
+  year_built: v => v === '' || v == null ? null : parseInt(v, 10) || null,
+  square_footage: v => v ?? null,
+  number_of_stories: v => v ?? null,
+  // Security features
+  security_features: v => v ?? null,
+  alarm_company: v => v ?? null,
+  alarm_account: v => v ?? null,
+  camera_system: v => v ?? null,
+  // Key holder
+  key_holder_name: v => v ?? null,
+  key_holder_phone: v => v ?? null,
+  key_holder_relationship: v => v ?? null,
+  owner_name: v => v ?? null,
+  owner_phone: v => v ?? null,
+  // Inspection
+  last_inspection_date: v => v ?? null,
+  inspection_status: v => v ?? null,
+  // Access routes + hazards
+  parking_info: v => v ?? null,
+  roof_access: v => v ?? null,
+  utility_shutoffs: v => v ?? null,
+  known_hazards: v => v ?? null,
+  // Contacts + schedule
+  contact_email: v => v ?? null,
+  secondary_contact_name: v => v ?? null,
+  secondary_contact_phone: v => v ?? null,
+  patrol_frequency: v => v ?? null,
+  opening_hours: v => v ?? null,
+  closing_hours: v => v ?? null,
+};
+
 router.post('/properties', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      client_id, name, address, city, state, zip, latitude, longitude, property_type,
-      gate_code, alarm_code, emergency_contact, post_orders, hazard_notes,
-      access_instructions, is_active, notes,
-    } = req.body;
+    const bodyKeys = Object.keys(req.body || {});
 
-    if (!client_id) {
+    if (!req.body.client_id) {
       res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' });
       return;
     }
-    if (!name || !address) {
+    if (!req.body.name || !req.body.address) {
       res.status(400).json({ error: 'name and address are required', code: 'NAME_AND_ADDRESS_ARE' });
       return;
     }
 
-    const result = db.prepare(`
-      INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
-        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      client_id, name, address, city || null, state || null, zip || null,
-      latitude || null, longitude || null,
-      property_type || null, gate_code || null, alarm_code || null,
-      emergency_contact || null, post_orders || null, hazard_notes || null,
-      access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1, notes || null,
-    );
+    // Dynamic INSERT driven by PROPERTY_FIELD_MAP — persists every field
+    // present in the body instead of hand-copying 17 of them.
+    const columns: string[] = [];
+    const placeholders: string[] = [];
+    const values: any[] = [];
 
-    // Activity log
+    for (const [key, transform] of Object.entries(PROPERTY_FIELD_MAP)) {
+      if (bodyKeys.includes(key)) {
+        columns.push(key);
+        placeholders.push('?');
+        values.push(transform(req.body[key]));
+      }
+    }
+
+    // Default is_active=1 when not explicitly provided (matches prior behaviour)
+    if (!bodyKeys.includes('is_active')) {
+      columns.push('is_active');
+      placeholders.push('?');
+      values.push(1);
+    }
+
+    columns.push('created_at');
+    placeholders.push('?');
+    values.push(localNow());
+    columns.push('updated_at');
+    placeholders.push('?');
+    values.push(localNow());
+
+    const result = db.prepare(
+      `INSERT INTO properties (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+    ).run(...values);
+
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'property_created', 'property', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created property: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created property: ${req.body.name}`, req.ip || 'unknown');
 
     const property = db.prepare(`
       SELECT p.*, c.name as client_name
@@ -1254,6 +1418,42 @@ router.get('/evidence', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/evidence/:id - Update evidence
+// Shared allowlist for evidence POST + PUT. Previously POST handled 20
+// fields and PUT handled 20 — but EvidenceFormModal collects 27, so
+// location_found, condition, quantity, is_biological, narcotics_flag,
+// and temperature_sensitive were silently dropped on both create and
+// update. Audit 2026-04-11.
+const EVIDENCE_FIELD_MAP: Record<string, (v: any) => any> = {
+  incident_id: v => v || null,
+  description: v => v ?? null,
+  evidence_type: v => v ?? null,
+  category: v => v ?? null,
+  storage_location: v => v ?? null,
+  collected_date: v => v ?? null,
+  packaging_type: v => v ?? null,
+  serial_number: v => v ?? null,
+  brand: v => v ?? null,
+  model: v => v ?? null,
+  estimated_value: v => v ?? null,
+  dimensions: v => v ?? null,
+  weight: v => v ?? null,
+  photo_taken: v => v ? 1 : 0,
+  lab_submitted: v => v ? 1 : 0,
+  lab_case_number: v => v ?? null,
+  lab_name: v => v ?? null,
+  disposal_method: v => v ?? null,
+  disposal_date: v => v ?? null,
+  disposal_authorized_by: v => v ?? null,
+  notes: v => v ?? null,
+  // Previously silent-dropped (audit 2026-04-11)
+  location_found: v => v ?? null,
+  condition: v => v ?? null,
+  quantity: v => v === '' || v == null ? null : parseInt(v, 10) || null,
+  is_biological: v => v ? 1 : 0,
+  narcotics_flag: v => v ? 1 : 0,
+  temperature_sensitive: v => v ? 1 : 0,
+};
+
 router.put('/evidence/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -1263,24 +1463,13 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
       return;
     }
 
-    // Build dynamic SET clause — only update fields explicitly provided
+    // Build dynamic SET clause — uses shared EVIDENCE_FIELD_MAP so POST
+    // and PUT always accept the same field set.
     const eFields: string[] = [];
     const eValues: any[] = [];
     const eBodyKeys = Object.keys(req.body);
 
-    const eFieldMap: Record<string, (v: any) => any> = {
-      description: v => v ?? null, evidence_type: v => v ?? null,
-      storage_location: v => v ?? null, collected_date: v => v ?? null,
-      category: v => v ?? null, packaging_type: v => v ?? null,
-      serial_number: v => v ?? null, brand: v => v ?? null, model: v => v ?? null,
-      estimated_value: v => v ?? null, dimensions: v => v ?? null, weight: v => v ?? null,
-      photo_taken: v => v ? 1 : 0, lab_submitted: v => v ? 1 : 0,
-      lab_case_number: v => v ?? null, lab_name: v => v ?? null,
-      disposal_method: v => v ?? null, disposal_date: v => v ?? null,
-      disposal_authorized_by: v => v ?? null, notes: v => v ?? null,
-    };
-
-    for (const [key, transform] of Object.entries(eFieldMap)) {
+    for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
       if (eBodyKeys.includes(key)) {
         eFields.push(`${key} = ?`);
         eValues.push(transform(req.body[key]));
@@ -1984,24 +2173,16 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       return;
     }
 
-    // Build dynamic SET clause — only update fields explicitly provided
+    // Build dynamic SET clause — uses the shared PROPERTY_FIELD_MAP so POST
+    // and PUT always accept the exact same field set. Previously this PUT
+    // only handled 17 of the 44 fields PropertyFormModal collects, so
+    // ~27 fields (key holder, alarm company, camera system, building
+    // metadata, patrol frequency, etc.) were silently dropped on edit.
     const pFields: string[] = [];
     const pValues: any[] = [];
     const pBodyKeys = Object.keys(req.body);
 
-    const pFieldMap: Record<string, (v: any) => any> = {
-      name: v => v ?? null, address: v => v ?? null,
-      city: v => v ?? null, state: v => v ?? null, zip: v => v ?? null,
-      latitude: v => v ?? null, longitude: v => v ?? null,
-      property_type: v => v ?? null, gate_code: v => v ?? null,
-      alarm_code: v => v ?? null, emergency_contact: v => v ?? null,
-      post_orders: v => v ?? null, hazard_notes: v => v ?? null,
-      access_instructions: v => v ?? null, notes: v => v ?? null,
-      is_active: v => v ? 1 : 0,
-      client_id: v => v || null,
-    };
-
-    for (const [key, transform] of Object.entries(pFieldMap)) {
+    for (const [key, transform] of Object.entries(PROPERTY_FIELD_MAP)) {
       if (pBodyKeys.includes(key)) {
         pFields.push(`${key} = ?`);
         pValues.push(transform(req.body[key]));
@@ -2103,15 +2284,9 @@ router.post('/properties/:id/unarchive', (req: Request, res: Response) => {
 router.post('/evidence', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      incident_id, description, evidence_type, storage_location,
-      collected_date, packaging_type, dimensions, weight,
-      photo_taken, lab_submitted, lab_case_number, lab_name,
-      disposal_method, disposal_date, disposal_authorized_by,
-      serial_number, brand, model, estimated_value, category, notes
-    } = req.body;
+    const bodyKeys = Object.keys(req.body || {});
 
-    if (!description || !evidence_type) {
+    if (!req.body.description || !req.body.evidence_type) {
       res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
       return;
     }
@@ -2129,30 +2304,30 @@ router.post('/evidence', (req: Request, res: Response) => {
     }
     const evidenceNumber = `EV-${currentYear}-${String(nextNum).padStart(5, '0')}`;
 
-    const result = db.prepare(`
-      INSERT INTO evidence (
-        evidence_number, incident_id, description, evidence_type, storage_location, collected_by,
-        collected_date, packaging_type, dimensions, weight,
-        photo_taken, lab_submitted, lab_case_number, lab_name,
-        disposal_method, disposal_date, disposal_authorized_by,
-        serial_number, brand, model, estimated_value, category, notes
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      evidenceNumber, incident_id || null, description, evidence_type,
-      storage_location || null, req.user!.userId,
-      collected_date || null, packaging_type || null, dimensions || null, weight || null,
-      photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
-      disposal_method || null, disposal_date || null, disposal_authorized_by || null,
-      serial_number || null, brand || null, model || null, estimated_value || null, category || null,
-      notes || null
-    );
+    // Dynamic INSERT driven by EVIDENCE_FIELD_MAP — persists every field
+    // present in the body (including location_found/condition/quantity/
+    // is_biological/narcotics_flag/temperature_sensitive, which were
+    // previously silent-dropped).
+    const columns: string[] = ['evidence_number', 'collected_by'];
+    const placeholders: string[] = ['?', '?'];
+    const values: any[] = [evidenceNumber, req.user!.userId];
 
-    // Activity log
+    for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
+      if (bodyKeys.includes(key)) {
+        columns.push(key);
+        placeholders.push('?');
+        values.push(transform(req.body[key]));
+      }
+    }
+
+    const result = db.prepare(
+      `INSERT INTO evidence (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+    ).run(...values);
+
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'evidence_created', 'evidence', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created evidence: ${evidenceNumber} - ${description}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created evidence: ${evidenceNumber} - ${req.body.description}`, req.ip || 'unknown');
 
     const created = db.prepare(`
       SELECT e.*, i.incident_number, u.full_name as collected_by_name
@@ -2471,35 +2646,41 @@ router.post('/persons/:id/criminal-history', (req: Request, res: Response) => {
 router.put('/criminal-history/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      record_type, offense, offense_level, statute, case_number,
-      agency, jurisdiction, offense_date, disposition, disposition_date,
-      sentence, source, notes,
-    } = req.body;
-
-    db.prepare(`
-      UPDATE criminal_history SET
-        record_type = COALESCE(?, record_type),
-        offense = COALESCE(?, offense),
-        offense_level = ?,
-        statute = ?,
-        case_number = ?,
-        agency = ?,
-        jurisdiction = ?,
-        offense_date = ?,
-        disposition = ?,
-        disposition_date = ?,
-        sentence = ?,
-        source = ?,
-        notes = ?,
-        updated_at = datetime('now','localtime')
-      WHERE id = ?
-    `).run(
-      record_type, offense, offense_level || null, statute || null,
-      case_number || null, agency || null, jurisdiction || null,
-      offense_date || null, disposition || null, disposition_date || null,
-      sentence || null, source || null, notes || null, req.params.id,
-    );
+    // Audit 2026-04-11: previous handler hard-overwrote every column with
+    // its current request value, including any field the form omitted —
+    // so editing one field would null out all the others. Switched to a
+    // dynamic SET clause that only updates keys actually present in the
+    // request body.
+    const fieldMap: Record<string, (v: any) => any> = {
+      record_type: v => v ?? null,
+      offense: v => v ?? null,
+      offense_level: v => v ?? null,
+      statute: v => v ?? null,
+      case_number: v => v ?? null,
+      agency: v => v ?? null,
+      jurisdiction: v => v ?? null,
+      offense_date: v => v ?? null,
+      disposition: v => v ?? null,
+      disposition_date: v => v ?? null,
+      sentence: v => v ?? null,
+      source: v => v ?? null,
+      notes: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const values: any[] = [];
+    for (const [key, transform] of Object.entries(fieldMap)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        sets.push(`${key} = ?`);
+        values.push(transform(req.body[key]));
+      }
+    }
+    if (sets.length === 0) {
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
+      return;
+    }
+    sets.push("updated_at = datetime('now','localtime')");
+    values.push(req.params.id);
+    db.prepare(`UPDATE criminal_history SET ${sets.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -3306,12 +3487,15 @@ router.post('/persons/:id/photo', (req: Request, res: Response) => {
     }
 
     const now = localNow();
-    db.prepare('UPDATE persons SET photo = ?, updated_at = ? WHERE id = ?').run(photo, now, id);
+    // Write to photo_url (the column the rest of the app reads). The
+    // legacy `photo` column existed but nothing reads it, so prior writes
+    // were silently invisible. Audit 2026-04-11.
+    db.prepare('UPDATE persons SET photo_url = ?, updated_at = ? WHERE id = ?').run(photo, now, id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'photo_uploaded', 'person', ?, ?, ?)`).run(
       req.user!.userId, id, 'Person photo uploaded', req.ip || 'unknown');
 
-    res.json({ success: true });
+    res.json({ success: true, photo_url: photo });
   } catch (error: any) {
     console.error('Photo upload error:', error);
     res.status(500).json({ error: 'Failed to photo upload', code: 'PHOTO_UPLOAD_ERROR' });
@@ -3894,11 +4078,29 @@ router.get('/evidence/:id/temperature', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════
 // UPGRADE 1: Person Alias Tracking
 // ════════════════════════════════════════════════════════════
-try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, alias_name TEXT NOT NULL, alias_type TEXT DEFAULT 'aka', notes TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+// Audit 2026-04-11: the original module-load `try { getDb(); ... }`
+// silently failed because getDb() throws before initDatabase() runs, so
+// the table was never created and every alias write threw "no such table:
+// person_aliases". Switched to a lazy idempotent creator called from each
+// handler.
+function ensurePersonAliasesTable(db: any) {
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS person_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+      alias_name TEXT NOT NULL,
+      alias_type TEXT DEFAULT 'aka',
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )`
+  ).run();
+}
 
 router.get('/persons/:id/aliases', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAliasesTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const aliases = db.prepare('SELECT pa.*, u.full_name as created_by_name FROM person_aliases pa LEFT JOIN users u ON pa.created_by = u.id WHERE pa.person_id = ? ORDER BY pa.created_at DESC').all(req.params.id);
@@ -3909,6 +4111,7 @@ router.get('/persons/:id/aliases', (req: Request, res: Response) => {
 router.post('/persons/:id/aliases', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAliasesTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const { alias_name, alias_type, notes } = req.body;
@@ -3923,6 +4126,7 @@ router.post('/persons/:id/aliases', (req: Request, res: Response) => {
 router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAliasesTable(db);
     const alias = db.prepare('SELECT * FROM person_aliases WHERE id = ? AND person_id = ?').get(req.params.aliasId, req.params.id) as any;
     if (!alias) { res.status(404).json({ error: 'Alias not found', code: 'ALIAS_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_aliases WHERE id = ?').run(req.params.aliasId);
@@ -3934,34 +4138,13 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 2: Known Associates
 // ════════════════════════════════════════════════════════════
-try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_associates (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, associate_person_id INTEGER REFERENCES persons(id) ON DELETE SET NULL, associate_name TEXT NOT NULL, relationship_type TEXT DEFAULT 'associate', notes TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+// Audit 2026-04-11: removed dead module-load CREATE TABLE that defined a
+// stale schema (associate_person_id/associate_name) different from the
+// authoritative one in database.ts (associate_id). The IF NOT EXISTS made
+// it a no-op against an already-created table; the only effect was a
+// silent error in the try/catch at module load. The real schema lives in
+// database.ts and is used by the handlers above.
 
-router.get('/persons/:id/associates', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
-    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
-    const associates = db.prepare(`SELECT pa.*, p.first_name as assoc_first, p.last_name as assoc_last, p.photo_url as assoc_photo, p.dob as assoc_dob, p.flags as assoc_flags FROM person_associates pa LEFT JOIN persons p ON pa.associate_person_id = p.id WHERE pa.person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
-    const reverseAssociates = db.prepare(`SELECT pa.*, p.first_name as owner_first, p.last_name as owner_last, p.photo_url as owner_photo FROM person_associates pa LEFT JOIN persons p ON pa.person_id = p.id WHERE pa.associate_person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
-    res.json({ data: { associates, reverse_associates: reverseAssociates } });
-  } catch (error: any) { console.error('Get associates error:', error); res.status(500).json({ error: 'Failed to get associates', code: 'GET_ASSOCIATES_ERROR' }); }
-});
-
-router.post('/persons/:id/associates', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
-    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
-    const { associate_person_id, associate_name, relationship_type, notes } = req.body;
-    if (!associate_name?.trim() && !associate_person_id) { res.status(400).json({ error: 'associate_name or associate_person_id required', code: 'MISSING_ASSOCIATE' }); return; }
-    let name = associate_name || '';
-    if (associate_person_id && !name) { const ap = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(associate_person_id) as any; if (ap) name = `${ap.first_name} ${ap.last_name}`; }
-    const now = localNow();
-    const result = db.prepare('INSERT INTO person_associates (person_id, associate_person_id, associate_name, relationship_type, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.params.id, associate_person_id || null, name, relationship_type || 'associate', notes || null, req.user!.userId, now);
-    auditLog(req, 'CREATE', 'person_associate', Number(result.lastInsertRowid), `Added associate "${name}" to person #${req.params.id}`);
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
-  } catch (error: any) { console.error('Create associate error:', error); res.status(500).json({ error: 'Failed to create associate', code: 'CREATE_ASSOCIATE_ERROR' }); }
-});
 
 router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
   try {
@@ -3977,11 +4160,32 @@ router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 3: Last Known Address Tracking
 // ════════════════════════════════════════════════════════════
-try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_address_history (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, address TEXT NOT NULL, city TEXT, state TEXT, zip TEXT, address_type TEXT DEFAULT 'residential', source TEXT DEFAULT 'manual', verified INTEGER DEFAULT 0, effective_from TEXT, effective_to TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+// Audit 2026-04-11: same module-load init failure as person_aliases.
+// Switched to a lazy idempotent creator.
+function ensurePersonAddressHistoryTable(db: any) {
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS person_address_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+      address TEXT NOT NULL,
+      city TEXT,
+      state TEXT,
+      zip TEXT,
+      address_type TEXT DEFAULT 'residential',
+      source TEXT DEFAULT 'manual',
+      verified INTEGER DEFAULT 0,
+      effective_from TEXT,
+      effective_to TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )`
+  ).run();
+}
 
 router.get('/persons/:id/addresses', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAddressHistoryTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const addresses = db.prepare('SELECT pah.*, u.full_name as created_by_name FROM person_address_history pah LEFT JOIN users u ON pah.created_by = u.id WHERE pah.person_id = ? ORDER BY pah.effective_from DESC, pah.created_at DESC').all(req.params.id);
@@ -3992,6 +4196,7 @@ router.get('/persons/:id/addresses', (req: Request, res: Response) => {
 router.post('/persons/:id/addresses', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAddressHistoryTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const { address, city, state, zip, address_type, source, effective_from } = req.body;

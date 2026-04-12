@@ -166,7 +166,7 @@ export default function AIPromptWorkshopPanel() {
       )}
 
       {/* Prompt Sandbox */}
-      <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-4">
+      <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
         <h3 className="text-sm font-semibold text-white">Prompt Sandbox</h3>
 
         <div className="space-y-3">
@@ -177,7 +177,7 @@ export default function AIPromptWorkshopPanel() {
               value={systemPrompt}
               onChange={e => setSystemPrompt(e.target.value)}
               placeholder="You are a law enforcement AI assistant..."
-              className="w-full px-3 py-2 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-none"
+              className="w-full px-3 py-2 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-none"
             />
           </div>
 
@@ -188,7 +188,7 @@ export default function AIPromptWorkshopPanel() {
               value={userMessage}
               onChange={e => setUserMessage(e.target.value)}
               placeholder="Summarize this incident report..."
-              className="w-full px-3 py-2 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-none"
+              className="w-full px-3 py-2 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-none"
             />
           </div>
 
@@ -200,7 +200,7 @@ export default function AIPromptWorkshopPanel() {
                 min={0} max={2} step={0.05}
                 value={tempOverride ?? 0.7}
                 onChange={e => setTempOverride(parseFloat(e.target.value))}
-                className="w-24 h-1 bg-[#1a3550] rounded appearance-none cursor-pointer accent-blue-500"
+                className="w-24 h-1 bg-[#303030] rounded appearance-none cursor-pointer accent-blue-500"
               />
               <span className="text-[10px] text-blue-400 font-mono w-8">{tempOverride?.toFixed(2) ?? '—'}</span>
               {tempOverride !== null && (
@@ -220,7 +220,7 @@ export default function AIPromptWorkshopPanel() {
               <button
                 onClick={runCompare}
                 disabled={running || comparing || (!systemPrompt.trim() && !userMessage.trim())}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#1a3550] text-gray-300 rounded hover:bg-[#2a4560] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#303030] text-gray-300 rounded hover:bg-[#404040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {comparing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCompare className="w-3 h-3" />}
                 Compare
@@ -231,7 +231,7 @@ export default function AIPromptWorkshopPanel() {
 
         {/* Single response */}
         {response && (
-          <div className="bg-[#0c0f13] border border-[#1a3550] rounded p-3 space-y-2">
+          <div className="bg-[#0c0c0c] border border-[#303030] rounded p-3 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-gray-500">Response</span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-600/20 text-blue-400 rounded">{response.latencyMs}ms</span>
@@ -247,7 +247,7 @@ export default function AIPromptWorkshopPanel() {
               const baseTemp = tempOverride ?? 0.7;
               const label = i === 0 ? `Temp ${Math.max(0, baseTemp - 0.1).toFixed(2)}` : `Temp ${Math.min(2, baseTemp + 0.3).toFixed(2)}`;
               return (
-                <div key={i} className="bg-[#0c0f13] border border-[#1a3550] rounded p-3 space-y-2">
+                <div key={i} className="bg-[#0c0c0c] border border-[#303030] rounded p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-gray-500">{label}</span>
                     <span className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-600/20 text-blue-400 rounded">{r.latencyMs}ms</span>
@@ -261,13 +261,13 @@ export default function AIPromptWorkshopPanel() {
       </div>
 
       {/* Template Library */}
-      <div className="bg-[#161b21] border border-[#1a3550] rounded p-4 space-y-4">
+      <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white">Template Library</h3>
           <select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
-            className="px-2 py-1 bg-[#0c0f13] border border-[#1a3550] rounded text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+            className="px-2 py-1 bg-[#0c0c0c] border border-[#303030] rounded text-xs text-gray-300 focus:outline-none focus:border-blue-500"
           >
             {CATEGORIES.map(c => (
               <option key={c} value={c}>{c === 'all' ? 'All Categories' : c.charAt(0).toUpperCase() + c.slice(1)}</option>
@@ -278,16 +278,16 @@ export default function AIPromptWorkshopPanel() {
         {filteredTemplates.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto">
             {filteredTemplates.map(t => (
-              <div key={t.id} className="bg-[#0c0f13] border border-[#1a3550] rounded p-3 space-y-2">
+              <div key={t.id} className="bg-[#0c0c0c] border border-[#303030] rounded p-3 space-y-2">
                 {editingId === t.id ? (
                   <div className="space-y-2">
                     <input
                       type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                      className="w-full px-2 py-1 bg-[#161b21] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                      className="w-full px-2 py-1 bg-[#141414] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-blue-500"
                     />
                     <select
                       value={editCategory} onChange={e => setEditCategory(e.target.value)}
-                      className="w-full px-2 py-1 bg-[#161b21] border border-[#1a3550] rounded text-gray-300 text-xs focus:outline-none"
+                      className="w-full px-2 py-1 bg-[#141414] border border-[#303030] rounded text-gray-300 text-xs focus:outline-none"
                     >
                       {CATEGORIES.filter(c => c !== 'all').map(c => (
                         <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
@@ -302,7 +302,7 @@ export default function AIPromptWorkshopPanel() {
                   <>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-white truncate flex-1">{t.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-[#1a3550] text-gray-400 rounded shrink-0">{(t.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#303030] text-gray-400 rounded shrink-0">{(t.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
                     <p className="text-[10px] text-gray-600 line-clamp-2">{t.system_prompt.slice(0, 80)}{t.system_prompt.length > 80 ? '...' : ''}</p>
                     <div className="flex gap-2 pt-1">
@@ -329,15 +329,15 @@ export default function AIPromptWorkshopPanel() {
 
         {/* Save as template */}
         {showSaveForm ? (
-          <div className="flex items-center gap-2 pt-2 border-t border-[#1a3550]">
+          <div className="flex items-center gap-2 pt-2 border-t border-[#303030]">
             <input
               type="text" value={saveName} onChange={e => setSaveName(e.target.value)}
               placeholder="Template name..."
-              className="flex-1 px-3 py-1.5 bg-[#0c0f13] border border-[#1a3550] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500"
+              className="flex-1 px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-blue-500"
             />
             <select
               value={saveCategory} onChange={e => setSaveCategory(e.target.value)}
-              className="px-2 py-1.5 bg-[#0c0f13] border border-[#1a3550] rounded text-gray-300 text-xs focus:outline-none"
+              className="px-2 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-gray-300 text-xs focus:outline-none"
             >
               {CATEGORIES.filter(c => c !== 'all').map(c => (
                 <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
@@ -351,7 +351,7 @@ export default function AIPromptWorkshopPanel() {
           </div>
         ) : (
           <button onClick={() => setShowSaveForm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#1a3550] text-gray-300 rounded hover:bg-[#2a4560] transition-colors">
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#303030] text-gray-300 rounded hover:bg-[#404040] transition-colors">
             <Save className="w-3 h-3" /> Save as Template
           </button>
         )}

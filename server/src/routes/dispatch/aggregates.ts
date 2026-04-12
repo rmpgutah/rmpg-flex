@@ -1032,11 +1032,11 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
     let query = 'SELECT * FROM dispatch_districts';
     const params: any[] = [];
     if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
-      query += ` WHERE zone_name LIKE ? ESCAPE '\\' OR beat_name LIKE ? ESCAPE '\\' OR section_name LIKE ? ESCAPE '\\'`;
+      query += ` WHERE zone_name LIKE ? ESCAPE '\\' OR beat_name LIKE ? ESCAPE '\\' OR sector_name LIKE ? ESCAPE '\\'`;
       const s = `%${escapeLike(search)}%`;
       params.push(s, s, s);
     }
-    query += ' ORDER BY section_id, zone_id, beat_id LIMIT ?';
+    query += ' ORDER BY sector_id, zone_id, beat_id LIMIT ?';
     params.push(limit);
 
     const districts = db.prepare(query).all(...params);
@@ -1139,11 +1139,11 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       res.json({
         found: true,
         exact,
-        section_id: district.section_id,
+        sector_id: district.sector_id,
         zone_id: district.zone_name,
         beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
         dispatch_code: district.dispatch_code,
-        section_name: district.section_name,
+        sector_name: district.sector_name,
         zone_name: district.zone_name,
         beat_name: district.beat_name,
         beat_descriptor: district.beat_descriptor,
@@ -1153,7 +1153,7 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       res.json({
         found: true,
         exact,
-        section_id: beat.district_letter,
+        sector_id: beat.district_letter,
         zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
         beat_id: beat.beat_id,
       });
@@ -1194,15 +1194,15 @@ router.post('/districts/reload-geofence', requireRole('admin', 'manager'), (req:
 router.post('/districts', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
-    if (!section_id?.trim() || !zone_id?.trim() || !beat_id?.trim() || !section_name?.trim() || !zone_name?.trim() || !beat_name?.trim()) {
-      res.status(400).json({ error: 'section_id, zone_id, beat_id, section_name, zone_name, beat_name are required', code: 'MISSING_FIELDS' });
+    const { sector_id, zone_id, beat_id, dispatch_code, sector_name, zone_name, beat_name, beat_descriptor } = req.body;
+    if (!sector_id?.trim() || !zone_id?.trim() || !beat_id?.trim() || !sector_name?.trim() || !zone_name?.trim() || !beat_name?.trim()) {
+      res.status(400).json({ error: 'sector_id, zone_id, beat_id, sector_name, zone_name, beat_name are required', code: 'MISSING_FIELDS' });
       return;
     }
-    const code = dispatch_code?.trim() || `${section_id.trim()}-${zone_id.trim()}/${beat_id.trim()}`;
+    const code = dispatch_code?.trim() || `${sector_id.trim()}-${zone_id.trim()}/${beat_id.trim()}`;
     const existing = db.prepare('SELECT id FROM dispatch_districts WHERE dispatch_code = ?').get(code);
     if (existing) { res.status(409).json({ error: 'Duplicate dispatch code', code: 'DUPLICATE_DISTRICT' }); return; }
-    const result = db.prepare('INSERT INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(section_id.trim(), zone_id.trim(), beat_id.trim(), code, section_name.trim(), zone_name.trim(), beat_name.trim(), beat_descriptor?.trim() || null);
+    const result = db.prepare('INSERT INTO dispatch_districts (sector_id, zone_id, beat_id, dispatch_code, sector_name, zone_name, beat_name, beat_descriptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(sector_id.trim(), zone_id.trim(), beat_id.trim(), code, sector_name.trim(), zone_name.trim(), beat_name.trim(), beat_descriptor?.trim() || null);
     auditLog(req, 'CREATE' as any, 'dispatch_district' as any, result.lastInsertRowid as number, `Created district ${code}`);
     res.status(201).json({ success: true, id: result.lastInsertRowid, dispatch_code: code });
   } catch (error: any) { console.error('[Dispatch] district create error:', error?.message); res.status(500).json({ error: 'Failed to create district', code: 'DISTRICT_CREATE_ERROR' }); }
@@ -1216,8 +1216,8 @@ router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
     if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
-    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
-    db.prepare('UPDATE dispatch_districts SET section_id = COALESCE(?, section_id), zone_id = COALESCE(?, zone_id), beat_id = COALESCE(?, beat_id), dispatch_code = COALESCE(?, dispatch_code), section_name = COALESCE(?, section_name), zone_name = COALESCE(?, zone_name), beat_name = COALESCE(?, beat_name), beat_descriptor = COALESCE(?, beat_descriptor) WHERE id = ?').run(section_id || null, zone_id || null, beat_id || null, dispatch_code || null, section_name || null, zone_name || null, beat_name || null, beat_descriptor ?? null, id);
+    const { sector_id, zone_id, beat_id, dispatch_code, sector_name, zone_name, beat_name, beat_descriptor } = req.body;
+    db.prepare('UPDATE dispatch_districts SET sector_id = COALESCE(?, sector_id), zone_id = COALESCE(?, zone_id), beat_id = COALESCE(?, beat_id), dispatch_code = COALESCE(?, dispatch_code), sector_name = COALESCE(?, sector_name), zone_name = COALESCE(?, zone_name), beat_name = COALESCE(?, beat_name), beat_descriptor = COALESCE(?, beat_descriptor) WHERE id = ?').run(sector_id || null, zone_id || null, beat_id || null, dispatch_code || null, sector_name || null, zone_name || null, beat_name || null, beat_descriptor ?? null, id);
     auditLog(req, 'UPDATE' as any, 'dispatch_district' as any, id, `Updated district ${existing.dispatch_code}`);
     res.json({ success: true });
   } catch (error: any) { console.error('[Dispatch] district update error:', error?.message); res.status(500).json({ error: 'Failed to update district', code: 'DISTRICT_UPDATE_ERROR' }); }
@@ -1959,96 +1959,6 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
   }
 });
 
-// ════════════════════════════════════════════════════════════
-// DISPATCH QUEUE — Officer assignment queue with priority sorting
-// Shows pending/unassigned calls sorted by priority + age
-// ════════════════════════════════════════════════════════════
-
-router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-
-    // Pending calls needing assignment (no units or status=pending)
-    const pending = db.prepare(`
-      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status,
-        c.location_address, c.caller_name, c.description,
-        c.section_id, c.zone_id, c.beat_id, c.dispatch_code,
-        c.latitude, c.longitude, c.created_at,
-        c.assigned_unit_ids,
-        ROUND((julianday('now') - julianday(c.created_at)) * 1440) as wait_minutes
-      FROM calls_for_service c
-      WHERE c.status IN ('pending', 'dispatched')
-      ORDER BY
-        CASE c.priority WHEN 'P1' THEN 0 WHEN 'P2' THEN 1 WHEN 'P3' THEN 2 WHEN 'P4' THEN 3 ELSE 4 END,
-        c.created_at ASC
-      LIMIT 100
-    `).all() as any[];
-
-    // Available units for assignment
-    const availableUnits = db.prepare(`
-      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
-        u.current_call_id, u.last_status_change,
-        usr.first_name, usr.last_name, usr.badge_number
-      FROM units u
-      LEFT JOIN users usr ON usr.id = u.officer_id
-      WHERE u.status = 'available'
-      ORDER BY u.call_sign
-    `).all() as any[];
-
-    // Units currently dispatched (for workload view)
-    const busyUnits = db.prepare(`
-      SELECT u.id, u.call_sign, u.status, u.current_call_id,
-        c.call_number as current_call_number, c.incident_type as current_call_type,
-        c.priority as current_call_priority,
-        usr.first_name, usr.last_name
-      FROM units u
-      LEFT JOIN calls_for_service c ON c.id = u.current_call_id
-      LEFT JOIN users usr ON usr.id = u.officer_id
-      WHERE u.status IN ('dispatched', 'enroute', 'onscene')
-      ORDER BY CASE u.status WHEN 'onscene' THEN 0 WHEN 'enroute' THEN 1 WHEN 'dispatched' THEN 2 ELSE 3 END
-    `).all() as any[];
-
-    // Nearest unit recommendations for each pending call
-    const recommendations: Record<string, any[]> = {};
-    for (const call of pending) {
-      if (call.latitude && call.longitude && availableUnits.length > 0) {
-        const nearest = availableUnits
-          .filter((u: any) => u.latitude && u.longitude)
-          .map((u: any) => {
-            const dlat = (call.latitude - u.latitude) * 111;
-            const dlng = (call.longitude - u.longitude) * 85;
-            return { ...u, distance_km: Math.sqrt(dlat * dlat + dlng * dlng) };
-          })
-          .sort((a: any, b: any) => a.distance_km - b.distance_km)
-          .slice(0, 3);
-        recommendations[call.id] = nearest;
-      }
-    }
-
-    // Stats
-    const p1Count = pending.filter((c: any) => c.priority === 'P1').length;
-    const p2Count = pending.filter((c: any) => c.priority === 'P2').length;
-    const avgWait = pending.length > 0 ? Math.round(pending.reduce((sum: number, c: any) => sum + (c.wait_minutes || 0), 0) / pending.length) : 0;
-
-    res.json({
-      pending,
-      available_units: availableUnits,
-      busy_units: busyUnits,
-      recommendations,
-      stats: {
-        pending_count: pending.length,
-        p1_count: p1Count,
-        p2_count: p2Count,
-        available_unit_count: availableUnits.length,
-        busy_unit_count: busyUnits.length,
-        avg_wait_minutes: avgWait,
-      },
-    });
-  } catch (err: any) {
-    console.error('[Dispatch] queue error:', err?.message);
-    res.status(500).json({ error: 'Failed to load dispatch queue' });
-  }
-});
 
 // POST /api/dispatch/queue/assign — Quick-assign unit to call from queue
 router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {

@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0a0e14' }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0d0d0d' }}>
       <div className="w-full max-w-sm">
         <div
           className="panel-beveled bg-surface-base relative overflow-hidden"
@@ -50,8 +50,8 @@ export default function ForgotPasswordPage() {
             <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
             <span>PASSWORD RESET</span>
             <div className="ml-auto flex items-center gap-1">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #3a5070' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>&#9633;</div>
             </div>
           </div>
 
@@ -99,7 +99,7 @@ export default function ForgotPasswordPage() {
                     disabled={loading || !email.trim()}
                     className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     style={{
-                      background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                      background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                       border: '1px solid rgba(136, 136, 136, 0.5)',
                       borderRadius: '2px',
                     }}
@@ -133,7 +133,7 @@ export default function ForgotPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b313a' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b2b2b' }}>
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors"

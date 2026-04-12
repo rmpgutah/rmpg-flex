@@ -13,7 +13,7 @@ export type RGBColor = readonly [number, number, number];
 export const COLOR = {
   // Text hierarchy
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
-  TEXT_SECONDARY:  [74, 85, 104]    as const,  // Helvetica labels (#4a5568)
+  TEXT_SECONDARY:  [74, 85, 104]    as const,  // Helvetica labels (#545454)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
@@ -27,7 +27,7 @@ export const COLOR = {
 
   // Backgrounds — lighter, modern government-form style
   BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#2d3748 dark blue-gray)
+  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#363636 dark blue-gray)
   BG_TABLE_HDR:    [70, 75, 88]     as const,  // Table column header (slate)
 
   // Financial
@@ -200,6 +200,18 @@ export function getThirdWidth(doc: jsPDF): number {
 /** One-quarter width for 4-column layouts (with 2mm gaps) */
 export function getQuarterWidth(doc: jsPDF): number {
   return (getContentWidth(doc) - 2 * SPACING.CONTENT_INSET - 3 * SPACING.MD) / 4;
+}
+
+/** Approximate line height for a given font size (mm). PDF points: 1 pt = 0.3528 mm.
+ *  Standard line height is 1.2× font size. */
+export function getLineHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 1.2;
+}
+
+/** Approximate cap height (height of capital letters) for a given font size (mm).
+ *  Cap height is typically ~70% of font size in points, converted to mm. */
+export function getCapHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 0.7;
 }
 
 /** Generate proportional column X positions from ratio array */

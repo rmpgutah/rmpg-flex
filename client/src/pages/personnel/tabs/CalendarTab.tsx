@@ -94,7 +94,7 @@ export default function CalendarTab() {
                 const dayShifts = day ? shiftsByDate[String(day)] || [] : [];
                 return (
                   <div key={di} className={`min-h-[60px] p-1 border-r border-rmpg-800 last:border-r-0 ${
-                    day ? 'bg-surface-sunken' : 'bg-[#0a0d12]'
+                    day ? 'bg-surface-sunken' : 'bg-[#0d0d0d]'
                   } ${isToday(day || 0) ? 'ring-1 ring-inset ring-brand-500' : ''}`}>
                     {day && (
                       <>

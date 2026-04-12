@@ -124,7 +124,7 @@ function mapDbCall(row: any): CallForService {
     location_floor: row.location_floor || undefined,
     location_room: row.location_room || undefined,
     zone_beat: row.zone_beat || undefined,
-    section_id: row.section_id || undefined,
+    sector_id: row.sector_id || undefined,
     zone_id: row.zone_id || undefined,
     beat_id: row.beat_id || undefined,
     // Subject/threat info
@@ -279,7 +279,7 @@ export default function DispatchPage() {
         location_floor: ed.location_floor,
         location_room: ed.location_room,
         zone_beat: ed.zone_beat,
-        section_id: ed.section_id,
+        sector_id: ed.sector_id,
         zone_id: ed.zone_id,
         beat_id: ed.beat_id,
         weapons_involved: ed.weapons_involved,
@@ -813,7 +813,7 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
-        section_id: callData.section_id ?? null,
+        sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
         weapons_involved: callData.weapons_involved || null,
@@ -1140,7 +1140,7 @@ export default function DispatchPage() {
       location_floor: selectedCall.location_floor || '',
       location_room: selectedCall.location_room || '',
       zone_beat: selectedCall.zone_beat || '',
-      section_id: selectedCall.section_id || '',
+      sector_id: selectedCall.sector_id || '',
       zone_id: selectedCall.zone_id || '',
       beat_id: selectedCall.beat_id || '',
       weapons_involved: selectedCall.weapons_involved || '',
@@ -1201,7 +1201,7 @@ export default function DispatchPage() {
         location_floor: editData.location_floor,
         location_room: editData.location_room,
         zone_beat: editData.zone_beat,
-        section_id: editData.section_id,
+        sector_id: editData.sector_id,
         zone_id: editData.zone_id,
         beat_id: editData.beat_id,
         weapons_involved: editData.weapons_involved,
@@ -1615,7 +1615,7 @@ export default function DispatchPage() {
                   minWidth: '200px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#182840',
+                  background: '#262626',
                   border: '1px solid #484848',
                   borderRadius: 0,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
@@ -2253,7 +2253,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── EXTENDED DETAILS (edit mode shows all, view mode shows populated) ─── */}
-                {(isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.section_id || selectedCall.zone_id || selectedCall.beat_id) && (
+                {(isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.sector_id || selectedCall.zone_id || selectedCall.beat_id) && (
                   <div className="border-t border-rmpg-600 pt-3 mb-3">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <MapPin className="w-3 h-3" /> Location Details
@@ -2264,7 +2264,7 @@ export default function DispatchPage() {
                         <div><label className="text-[9px] text-rmpg-400">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
-                        <div><label className="text-[9px] text-rmpg-400">Section ID</label><input type="text" className="input-dark text-xs" value={editData.section_id} onChange={(e) => updateEditField('section_id', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-rmpg-400">Section ID</label><input type="text" className="input-dark text-xs" value={editData.sector_id} onChange={(e) => updateEditField('sector_id', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Zone ID</label><input type="text" className="input-dark text-xs" value={editData.zone_id} onChange={(e) => updateEditField('zone_id', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Beat ID</label><input type="text" className="input-dark text-xs" value={editData.beat_id} onChange={(e) => updateEditField('beat_id', e.target.value)} /></div>
                       </div>
@@ -2274,7 +2274,7 @@ export default function DispatchPage() {
                         {selectedCall.location_building && <span className="text-rmpg-200"><span className="text-rmpg-400">Bldg:</span> {selectedCall.location_building}</span>}
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
-                        {selectedCall.section_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.section_id}</span>}
+                        {selectedCall.sector_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.sector_id}</span>}
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id}</span>}
                         {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {selectedCall.beat_id}</span>}
                       </div>

@@ -954,7 +954,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
       const result = db.prepare(`
         INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
           location_address, property_id, latitude, longitude, narrative, officer_id,
-          zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
+          zone_beat, sector_id, zone_id, beat_id, domestic_violence, weapons_involved,
           injuries)
         VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -969,7 +969,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
         fullNarrative,
         req.user!.userId,
         call.zone_beat || null,
-        call.section_id || null,
+        call.sector_id || null,
         call.zone_id || null,
         call.beat_id || null,
         call.domestic_violence ?? 0,

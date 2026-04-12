@@ -1158,26 +1158,26 @@ export default function WarrantsPage() {
       </div>
 
       {/* ---- STATS BAR ---- */}
-      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#2b313a] text-[10px] font-mono flex-wrap">
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b313a]">
+      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#2b2b2b] text-[10px] font-mono flex-wrap">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
           <span className={`led-dot ${(dashStats?.activeWarrants || 0) > 0 ? 'led-red' : 'led-off'}`} />
           <span className="text-rmpg-400">ACTIVE</span>
           <span className={`font-bold tabular-nums ${(dashStats?.activeWarrants || 0) > 0 ? 'text-red-400' : 'text-rmpg-300'}`}>
             {dashStats?.activeWarrants ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b313a]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
           <span className={`led-dot ${(dashStats?.hitsToday || 0) > 0 ? 'led-amber animate-led-blink' : 'led-off'}`} />
           <span className="text-rmpg-400">HITS TODAY</span>
           <span className={`font-bold tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-rmpg-300'}`}>
             {dashStats?.hitsToday ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b313a]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
           <span className="text-rmpg-400">FLAGGED</span>
           <span className="font-bold tabular-nums text-rmpg-300">{dashStats?.personsFlagged ?? '-'}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b313a]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
           <span className={`led-dot ${(dashStats?.sourcesOnline || 0) > 0 ? 'led-green' : 'led-off'}`} />
           <span className="text-rmpg-400">SOURCES</span>
           <span className={`font-bold tabular-nums ${(dashStats?.sourcesOnline || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -1197,7 +1197,7 @@ export default function WarrantsPage() {
           TAB 1: DASHBOARD
          ================================================================ */}
       {activeTab === 'dashboard' && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
           <div className="p-4 space-y-4">
             {/* Quick Search */}
             <div className="relative">
@@ -1285,7 +1285,7 @@ export default function WarrantsPage() {
                   </div>
                 </div>
 
-                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                   {feedLoading ? (
                     <div className="flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading feed...
@@ -1333,7 +1333,7 @@ export default function WarrantsPage() {
                   Priority Warrants
                 </h2>
 
-                <div className="space-y-2 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+                <div className="space-y-2 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                   {priorityLoading ? (
                     <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...
@@ -1478,7 +1478,7 @@ export default function WarrantsPage() {
             )}
 
             {/* Table */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
               {loading ? (
                 <div className="flex items-center justify-center h-full text-rmpg-400">
                   <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading warrants...
@@ -1528,7 +1528,7 @@ export default function WarrantsPage() {
                 </div>
               ) : (
                 <table className="table-dark">
-                  <thead className="sticky top-0 z-10 bg-[#0c0f13]">
+                  <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
                     <tr>
                       {(isGodMode || isAdminOrManager) && (
                         <th style={{ width: 30 }}>
@@ -1551,7 +1551,7 @@ export default function WarrantsPage() {
                       <tr
                         key={w.id}
                         onClick={() => fetchWarrantDetail(w.id)}
-                        className={`cursor-pointer hover:bg-[#1b2128]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
+                        className={`cursor-pointer hover:bg-[#181818]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
                         {(isGodMode || isAdminOrManager) && (
                           <td onClick={e => e.stopPropagation()}>
@@ -1620,7 +1620,7 @@ export default function WarrantsPage() {
 
           {/* RIGHT: Warrant Detail */}
           <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
-            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#2b313a] bg-[var(--grid-header-bg)]`}>
+            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#2b2b2b] bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
               <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Warrant Detail</span>
               <span className="flex-1" />
@@ -1663,7 +1663,7 @@ export default function WarrantsPage() {
             </div>
 
             {selectedWarrant ? (
-              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4 space-y-4">
+              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
                 {/* Header */}
                 <div className="panel-beveled p-4">
                   <div className="flex items-start justify-between mb-3">
@@ -2296,7 +2296,7 @@ export default function WarrantsPage() {
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
       {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {/* Coverage Section */}
             {coverageLoading ? (
@@ -2418,7 +2418,7 @@ export default function WarrantsPage() {
                     </summary>
                     <div className="mt-3 overflow-x-auto">
                       <table className="table-dark text-[10px] w-full">
-                        <thead className="sticky top-0 z-10 bg-[#0c0f13]">
+                        <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
                           <tr>
                             <th className="text-left px-2 py-1">Source</th>
                             <th className="text-left px-2 py-1">State</th>
@@ -2432,7 +2432,7 @@ export default function WarrantsPage() {
                         </thead>
                         <tbody>
                           {coverageSources.map(src => (
-                            <tr key={src.source_key} className="border-t border-rmpg-800/50 hover:bg-[#1b2128]/30 transition-colors">
+                            <tr key={src.source_key} className="border-t border-rmpg-800/50 hover:bg-[#181818]/30 transition-colors">
                               <td className="px-2 py-1 font-mono text-rmpg-300">{src.source_key}</td>
                               <td className="px-2 py-1">{src.state}</td>
                               <td className="px-2 py-1 text-rmpg-400">{src.county || '-'}</td>
@@ -2568,7 +2568,7 @@ export default function WarrantsPage() {
                 <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading profile...
               </div>
             ) : personProfile ? (
-              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent p-4 space-y-4">
+              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
                 {/* Person header */}
                 <div className="panel-beveled p-4 flex items-start gap-3">
                   {personProfile.person.photo_url ? (
@@ -2758,7 +2758,7 @@ export default function WarrantsPage() {
                       onFocus={() => setShowPersonDropdown(true)}
                     />
                     {showPersonDropdown && personResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto scrollbar-thin scrollbar-thumb-[#2b313a] scrollbar-track-transparent bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
+                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
                         {personResults.map((p) => (
                           <button
                             key={p.id}
@@ -2923,11 +2923,11 @@ export default function WarrantsPage() {
       {utahDetailWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setUtahDetailWarrant(null)}>
           <div
-            className="bg-[#0c0f13] border border-[#2b313a] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b313a] bg-[#161b21]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b] bg-[#141414]">
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <span className="text-base font-bold text-white truncate">
                   {utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}
@@ -2948,10 +2948,10 @@ export default function WarrantsPage() {
             <div className="p-4 space-y-4">
               {/* SUBJECT INFORMATION */}
               <div>
-                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Subject Information</span>
                 </div>
-                <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Full Name</span>
@@ -2975,10 +2975,10 @@ export default function WarrantsPage() {
 
               {/* WARRANT DETAILS */}
               <div>
-                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Warrant Details</span>
                 </div>
-                <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     {(utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id) && (
                       <div>
@@ -3032,10 +3032,10 @@ export default function WarrantsPage() {
               {/* COURT INFORMATION */}
               {(utahDetailWarrant.court_name || utahDetailWarrant.case_id || utahDetailWarrant.issue_date) && (
                 <div>
-                  <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                  <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
                     <span className="text-[10px] font-bold text-white uppercase tracking-widest">Court Information</span>
                   </div>
-                  <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
+                  <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                       {utahDetailWarrant.court_name && (
                         <div>
@@ -3066,10 +3066,10 @@ export default function WarrantsPage() {
 
               {/* SOURCE / VERIFICATION */}
               <div>
-                <div className="bg-[#2a3e58] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Source / Verification</span>
                 </div>
-                <div className="border border-t-0 border-[#2b313a] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Data Source</span>
@@ -3095,7 +3095,7 @@ export default function WarrantsPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#2b313a] bg-[#161b21] flex-wrap">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#2b2b2b] bg-[#141414] flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"

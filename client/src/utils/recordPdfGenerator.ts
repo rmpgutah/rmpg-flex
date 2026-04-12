@@ -127,12 +127,12 @@ export interface CallPdfData {
   location_floor?: string;
   location_room?: string;
   zone_beat?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   dispatch_code?: string;
   // District names (green columns — shown on PDF header)
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
@@ -934,7 +934,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
 
     const distFields = [
-      { label: 'SECTION', value: data.section_name || 'N/A' },
+      { label: 'SECTION', value: data.sector_name || 'N/A' },
       { label: 'ZONE', value: data.zone_name || 'N/A' },
       { label: 'BEAT', value: data.beat_id || 'N/A' },
       { label: 'AREA', value: data.beat_descriptor || 'N/A' },
@@ -1081,7 +1081,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Building', value: data.location_building || '' },
         { label: 'Floor', value: data.location_floor || '' },
         { label: 'Suite/Room', value: data.location_room || '' },
-        { label: 'Section ID', value: data.section_id || '' },
+        { label: 'Section ID', value: data.sector_id || '' },
         { label: 'Zone ID', value: data.zone_id || '' },
         { label: 'Beat ID', value: data.beat_id || '' },
       ];

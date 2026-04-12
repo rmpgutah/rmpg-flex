@@ -244,7 +244,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       incident_type, priority, caller_name, caller_phone, caller_relationship, caller_address,
       location_address, property_id, latitude, longitude, description, notes, source,
       cross_street, location_building, location_floor, location_room, zone_beat,
-      section_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
+      sector_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
       weapons_involved, injuries_reported, num_subjects, num_victims,
       subject_description, vehicle_description, direction_of_travel,
       scene_safety, weather_conditions, lighting_conditions,
@@ -397,7 +397,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier dispatch districts ──
     let autoZoneBeat = zone_beat || null;
-    let autoSectionId = section_id || null;
+    let autoSectionId = sector_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
     let autoDispatchCode: string | null = requestDispatchCode || null;
@@ -417,11 +417,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           ).get(beat.city_code, beat.district_letter) as any;
 
           if (district) {
-            if (!autoSectionId) autoSectionId = district.section_id;
+            if (!autoSectionId) autoSectionId = district.sector_id;
             if (!autoZoneId) autoZoneId = district.zone_id;
             if (!autoBeatId) autoBeatId = district.beat_id;
             autoDispatchCode = district.dispatch_code;
-            autoSectionName = district.section_name;
+            autoSectionName = district.sector_name;
             autoZoneName = district.zone_name;
             autoBeatName = district.beat_name;
             autoBeatDescriptor = district.beat_descriptor;
@@ -438,11 +438,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up district table
     if (autoSectionId && autoZoneId && autoBeatId && !autoDispatchCode) {
       const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
+        'SELECT * FROM dispatch_districts WHERE sector_id = ? AND zone_id = ? AND beat_id = ?'
       ).get(autoSectionId, autoZoneId, autoBeatId) as any;
       if (districtMatch) {
         autoDispatchCode = districtMatch.dispatch_code;
-        if (!autoSectionName) autoSectionName = districtMatch.section_name;
+        if (!autoSectionName) autoSectionName = districtMatch.sector_name;
         if (!autoZoneName) autoZoneName = districtMatch.zone_name;
         if (!autoBeatName) autoBeatName = districtMatch.beat_name;
         if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
@@ -513,11 +513,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         location_floor: location_floor || null,
         location_room: location_room || null,
         zone_beat: autoZoneBeat,
-        section_id: autoSectionId,
+        sector_id: autoSectionId,
         zone_id: autoZoneId,
         beat_id: autoBeatId,
         dispatch_code: autoDispatchCode,
-        section_name: autoSectionName,
+        sector_name: autoSectionName,
         zone_name: autoZoneName,
         beat_name: autoBeatName,
         beat_descriptor: autoBeatDescriptor,
@@ -953,7 +953,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       weapons_involved, injuries_reported, num_subjects,
       subject_description, vehicle_description, direction_of_travel,
       case_number, case_id,
-      source, caller_address, zone_beat, section_id, zone_id, beat_id, responding_officer, secondary_type,
+      source, caller_address, zone_beat, sector_id, zone_id, beat_id, responding_officer, secondary_type,
       contact_method, scene_safety, weather_conditions, lighting_conditions,
       num_victims, alcohol_involved, drugs_involved, domestic_violence,
       supervisor_notified, le_notified, le_agency, le_case_number,
@@ -984,7 +984,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
 
     // ── Auto-fill Beat / Zone / Sector when coords change + 3-Tier lookup ──
     let autoZoneBeat = zone_beat;
-    let autoSectionId = section_id;
+    let autoSectionId = sector_id;
     let autoZoneId = zone_id;
     let autoBeatId = beat_id;
     const effectiveLat = latitude !== undefined ? latitude : call.latitude;
@@ -1003,11 +1003,11 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
           if (district) {
             if (autoBeatId === undefined && !call.beat_id) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
             if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_name;
-            if (autoSectionId === undefined && !call.section_id) autoSectionId = district.section_id;
+            if (autoSectionId === undefined && !call.sector_id) autoSectionId = district.sector_id;
           } else {
             if (autoBeatId === undefined && !call.beat_id) autoBeatId = beat.beat_id;
             if (autoZoneId === undefined && !call.zone_id) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
-            if (autoSectionId === undefined && !call.section_id) autoSectionId = beat.district_letter;
+            if (autoSectionId === undefined && !call.sector_id) autoSectionId = beat.district_letter;
           }
 
           // If coords explicitly changed, always update beat data
@@ -1021,7 +1021,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
             if (districtForce) {
               autoBeatId = autoBeatId !== undefined ? autoBeatId : `${districtForce.beat_name} — ${districtForce.beat_descriptor}`;
               autoZoneId = autoZoneId !== undefined ? autoZoneId : districtForce.zone_name;
-              autoSectionId = autoSectionId !== undefined ? autoSectionId : districtForce.section_id;
+              autoSectionId = autoSectionId !== undefined ? autoSectionId : districtForce.sector_id;
             } else {
               autoBeatId = autoBeatId !== undefined ? autoBeatId : beat.beat_id;
               autoZoneId = autoZoneId !== undefined ? autoZoneId : `${beat.city} ${beat.district_letter}${beat.beat_number}`;
@@ -1123,21 +1123,21 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('source', source);
     addField('caller_address', caller_address);
     addField('zone_beat', autoZoneBeat);
-    addField('section_id', autoSectionId);
+    addField('sector_id', autoSectionId);
     addField('zone_id', autoZoneId);
     addField('beat_id', autoBeatId);
 
     // Auto-resolve dispatch_code + district names from S/Z/B IDs
-    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.section_id;
+    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.sector_id;
     const finalZoneId = autoZoneId !== undefined ? autoZoneId : call.zone_id;
     const finalBeatId = autoBeatId !== undefined ? autoBeatId : call.beat_id;
     if (finalSectionId && finalZoneId && finalBeatId) {
       const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
+        'SELECT * FROM dispatch_districts WHERE sector_id = ? AND zone_id = ? AND beat_id = ?'
       ).get(finalSectionId, finalZoneId, finalBeatId) as any;
       if (districtMatch) {
         addField('dispatch_code', districtMatch.dispatch_code);
-        addField('section_name', districtMatch.section_name);
+        addField('sector_name', districtMatch.sector_name);
         addField('zone_name', districtMatch.zone_name);
         addField('beat_name', districtMatch.beat_name);
         addField('beat_descriptor', districtMatch.beat_descriptor);
@@ -1443,7 +1443,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
         pso_service_type, pso_billing_code, pso_authorization,
         pso_service_windows,
         process_service_type, process_served_to, process_served_address,
-        dispatch_code, section_id, section_name, zone_id, zone_name,
+        dispatch_code, sector_id, sector_name, zone_id, zone_name,
         beat_id, beat_name, beat_descriptor, contract_id,
         num_subjects, num_victims, direction_of_travel,
         subject_description, vehicle_description,
@@ -1488,7 +1488,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
       parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
       parentCall.pso_service_windows,
       parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
-      parentCall.dispatch_code, parentCall.section_id, parentCall.section_name, parentCall.zone_id, parentCall.zone_name,
+      parentCall.dispatch_code, parentCall.sector_id, parentCall.sector_name, parentCall.zone_id, parentCall.zone_name,
       parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
       parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
       parentCall.subject_description, parentCall.vehicle_description,

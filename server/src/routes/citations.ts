@@ -272,7 +272,10 @@ router.post('/', (req: Request, res: Response) => {
       court_address,
       notes,
       // Spillman Flex extended fields
-      section_id, zone_id, beat_id, zone_beat, latitude, longitude,
+      // Accept both section_id (form) and sector_id (legacy) — audit 2026-04-11.
+      // Form sends section_id; column is section_id; sector_id was a vestigial
+      // alias that silently dropped the form value.
+      section_id, sector_id, zone_id, beat_id, zone_beat, latitude, longitude,
       vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
       speed_recorded, speed_limit, radar_type, bac_level,
       bond_amount, bond_type,
@@ -365,7 +368,7 @@ router.post('/', (req: Request, res: Response) => {
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
-        ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?
       )
@@ -379,7 +382,8 @@ router.post('/', (req: Request, res: Response) => {
       issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
       court_date || null, court_name || null, court_address || null,
       notes || null, created_at, now,
-      section_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
+      // Prefer section_id (form sends this); fall back to legacy sector_id alias
+      section_id || sector_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
       vehicle_vin || null, vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
       speed_recorded ?? null, speed_limit ?? null, radar_type || null, bac_level ?? null,
       bond_amount ?? null, bond_type || null,
@@ -460,6 +464,8 @@ router.put('/:id', (req: Request, res: Response) => {
       court_address: v => v ?? null,
       notes: v => v ?? null,
       section_id: v => v ?? null,
+      // sector_id is a legacy alias accepted for compatibility (audit 2026-04-11)
+      sector_id: v => v ?? null,
       zone_id: v => v ?? null,
       beat_id: v => v ?? null,
       zone_beat: v => v ?? null,

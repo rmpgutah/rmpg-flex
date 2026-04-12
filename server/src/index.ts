@@ -102,6 +102,15 @@ import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
 
+// ─── Trust Proxy ─────────────────────────────────────
+// Production runs behind nginx on localhost (browser → nginx:443 → Express:3001).
+// Nginx sets X-Forwarded-For / X-Forwarded-Proto headers. Without trust proxy,
+// express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every request
+// because it can't identify the real client. Value `1` = trust exactly one hop
+// (nginx), which is correct for this topology. `true` would be insecure (accepts
+// any number of hops, which allows X-Forwarded-For header spoofing).
+app.set('trust proxy', 1);
+
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
 if (config.isProduction || config.ssl.enabled) {
@@ -424,7 +433,8 @@ app.use(express.static(clientDistPath, {
 }));
 
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('/{*path}', (req, res) => {
+// Express 5 requires named wildcards — '*' alone throws "Missing parameter name"
+app.get('/*splat', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {
