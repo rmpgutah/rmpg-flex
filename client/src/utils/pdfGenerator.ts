@@ -607,7 +607,7 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   doc.text(safeLabel, x + boxSize + 1.5, y);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  return x + boxSize + 1.5 + doc.getTextWidth(safeLabel) + 5;
+  return x + boxSize + 1.5 + doc.getTextWidth(safeLabel) + 3;
 }
 
 /**
@@ -1992,8 +1992,9 @@ function addIncidentAlertBadges(
   if (cleanFlags.length === 0) return y;
 
   const cols = 3;
+  const cbRowH = 4.5; // Must exceed checkbox boxSize (3.2mm) + clearance
   const rows = Math.ceil(cleanFlags.length / cols);
-  y = checkPageBreak(doc, y, 8 + rows * (SPACING.LG + 0.5), priority);
+  y = checkPageBreak(doc, y, 8 + rows * cbRowH, priority);
 
   const sec = openAutoSection(doc, label, y);
   y = sec.contentY + 1;
@@ -2004,7 +2005,7 @@ function addIncidentAlertBadges(
     row.forEach((flag, colIdx) => {
       addCheckboxField(doc, flag, true, lx + colIdx * colW, y);
     });
-    y += SPACING.LG + 0.5;
+    y += cbRowH;
   }
 
   return closeAutoSection(doc, sec.sectionY, y - 1.2, undefined, sec.sectionPage);
@@ -2292,6 +2293,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   { const sec = openAutoSection(doc, 'Operational Flags', y); y = sec.contentY;
     y += 1;
     const flagW = ffw / 6;
+    const flagRowH = 4.5; // Must exceed checkbox boxSize (3.2mm) + label clearance
     // Row 1
     let fx = lx;
     fx = addCheckboxField(doc, 'Injuries', !!data.injuries_reported, fx, y);
@@ -2300,7 +2302,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     fx = lx + flagW * 3; fx = addCheckboxField(doc, 'DV', !!data.domestic_violence, fx, y);
     fx = lx + flagW * 4; fx = addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, fx, y);
     addCheckboxField(doc, 'Juvenile', !!data.juvenile_involved, lx + flagW * 5, y);
-    y += SPACING.LG;
+    y += flagRowH;
     // Row 2
     addCheckboxField(doc, 'Felony I/P', !!data.felony_in_progress, lx, y);
     addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, lx + flagW, y);
@@ -2308,15 +2310,21 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     addCheckboxField(doc, 'Hazmat', !!data.hazmat, lx + flagW * 3, y);
     addCheckboxField(doc, 'Weapons', !!data.weapons_involved, lx + flagW * 4, y);
     addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, lx + flagW * 5, y);
-    y += SPACING.LG;
+    y += flagRowH;
     // Row 3
     addCheckboxField(doc, 'K9 Req', !!data.k9_requested, lx, y);
     addCheckboxField(doc, 'EMS Req', !!data.ems_requested, lx + flagW, y);
     addCheckboxField(doc, 'Fire Req', !!data.fire_requested, lx + flagW * 2, y);
-    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, lx + flagW * 3, y);
-    addCheckboxField(doc, 'Evidence', !!data.evidence_collected, lx + flagW * 4, y);
-    addCheckboxField(doc, 'Photos', !!data.photos_taken, lx + flagW * 5, y);
-    y += SPACING.LG;
+    addCheckboxField(doc, 'Sup Notified', !!data.supervisor_notified, lx + flagW * 3, y);
+    addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW * 4, y);
+    addCheckboxField(doc, 'Trespass', !!data.trespass_issued, lx + flagW * 5, y);
+    y += flagRowH;
+    // Row 4
+    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, lx, y);
+    addCheckboxField(doc, 'Evidence', !!data.evidence_collected, lx + flagW, y);
+    addCheckboxField(doc, 'Photos', !!data.photos_taken, lx + flagW * 2, y);
+    addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, lx + flagW * 3, y);
+    y += flagRowH;
     // Row 4
     addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, lx, y);
     addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW, y);
