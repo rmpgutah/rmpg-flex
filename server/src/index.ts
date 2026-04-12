@@ -424,7 +424,7 @@ app.use(express.static(clientDistPath, {
 }));
 
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {

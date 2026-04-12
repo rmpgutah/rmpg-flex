@@ -1476,6 +1476,7 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'caller_address', 'TEXT');
   addCol('calls_for_service', 'zone_beat', 'TEXT');
   addCol('calls_for_service', 'section_id', 'TEXT');
+  addCol('calls_for_service', 'sector_id', 'TEXT');
   addCol('calls_for_service', 'zone_id', 'TEXT');
   addCol('calls_for_service', 'beat_id', 'TEXT');
   addCol('calls_for_service', 'cross_street', 'TEXT');
@@ -1679,6 +1680,7 @@ function migrateSchema(): void {
   addCol('incidents', 'disposition', 'TEXT');
   addCol('incidents', 'zone_beat', 'TEXT');
   addCol('incidents', 'section_id', 'TEXT');
+  addCol('incidents', 'sector_id', 'TEXT');
   addCol('incidents', 'zone_id', 'TEXT');
   addCol('incidents', 'beat_id', 'TEXT');
   addCol('incidents', 'responding_le_agency', 'TEXT');
@@ -3039,8 +3041,42 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
+  // ── SECTIONS → SECTORS Phase 2a: Backfill sector_id from section_id ─
+  // Safe, idempotent backfill. Runs every startup but only copies rows
+  // where sector_id is NULL, so it's a no-op after the first run.
+  try {
+    db.prepare("UPDATE calls_for_service SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+    db.prepare("UPDATE incidents SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+  } catch { /* columns may not exist on very old DBs — ignore */ }
+
+  // ── SECTIONS → SECTORS Phase 2a: Dual-write triggers ────────
+  // Mirror section_id → sector_id on every INSERT/UPDATE so future writes
+  // keep both columns in sync without touching application code. Triggers
+  // are idempotent via IF NOT EXISTS and safe to drop later in Phase 2b.
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS trg_calls_for_service_sector_mirror
+        AFTER INSERT ON calls_for_service
+        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
+        BEGIN UPDATE calls_for_service SET sector_id = NEW.section_id WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS trg_calls_for_service_sector_mirror_upd
+        AFTER UPDATE OF section_id ON calls_for_service
+        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
+        BEGIN UPDATE calls_for_service SET sector_id = NEW.section_id WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS trg_incidents_sector_mirror
+        AFTER INSERT ON incidents
+        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
+        BEGIN UPDATE incidents SET sector_id = NEW.section_id WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS trg_incidents_sector_mirror_upd
+        AFTER UPDATE OF section_id ON incidents
+        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
+        BEGIN UPDATE incidents SET sector_id = NEW.section_id WHERE id = NEW.id; END;
+    `);
+  } catch { /* older SQLite may not support — backfill still works */ }
+
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');
+  addCol('citations', 'sector_id', 'TEXT');
   addCol('citations', 'zone_id', 'TEXT');
   addCol('citations', 'beat_id', 'TEXT');
   addCol('citations', 'zone_beat', 'TEXT');
@@ -3079,6 +3115,21 @@ function migrateSchema(): void {
   addCol('citations', 'sentence', 'TEXT');
   addCol('citations', 'disposition_date', 'TEXT');
   addCol('citations', 'case_id', 'INTEGER');
+
+  // SECTIONS → SECTORS Phase 2a: citations backfill + trigger
+  try {
+    db.prepare("UPDATE citations SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS trg_citations_sector_mirror
+        AFTER INSERT ON citations
+        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
+        BEGIN UPDATE citations SET sector_id = NEW.section_id WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS trg_citations_sector_mirror_upd
+        AFTER UPDATE OF section_id ON citations
+        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
+        BEGIN UPDATE citations SET sector_id = NEW.section_id WHERE id = NEW.id; END;
+    `);
+  } catch { /* ignore */ }
 
   // Citation violations — multiple violations per citation
   try {
