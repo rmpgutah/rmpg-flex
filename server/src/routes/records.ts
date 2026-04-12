@@ -188,6 +188,34 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (re
   }
 });
 
+// POST /api/records/persons/check-duplicates - Check for duplicate persons before creating
+router.post('/persons/check-duplicates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { first_name, last_name, dob } = req.body;
+    if (!first_name?.trim() || !last_name?.trim()) {
+      res.status(400).json({ error: 'first_name and last_name are required', code: 'MISSING_NAME_FIELDS' });
+      return;
+    }
+    const fn = first_name.trim(), ln = last_name.trim();
+    const params: any[] = [ln, fn];
+    let dobClause = '';
+    if (dob) { dobClause = ' OR p.dob = ?'; params.push(dob); }
+    const matches = db.prepare(`
+      SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.phone, p.photo_url
+      FROM persons p
+      WHERE p.archived_at IS NULL
+        AND LOWER(p.last_name) = LOWER(?)
+        AND (LOWER(p.first_name) = LOWER(?)${dobClause})
+      ORDER BY p.last_name, p.first_name LIMIT 10
+    `).all(...params);
+    res.json({ matches });
+  } catch (error: any) {
+    console.error('Check duplicates error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to check duplicates', code: 'CHECK_DUPLICATES_ERROR' });
+  }
+});
+
 // GET /api/records/persons/:id - Get person details
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
@@ -1294,6 +1322,53 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Get vehicle incidents error:', error);
     res.status(500).json({ error: 'Failed to get vehicle incidents', code: 'GET_VEHICLE_INCIDENTS_ERROR' });
+  }
+});
+
+// GET /api/records/evidence/export - Export evidence as CSV
+router.get('/evidence/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { archived } = req.query;
+    let archiveFilter = 'AND e.archived_at IS NULL';
+    if (archived === 'true') archiveFilter = 'AND e.archived_at IS NOT NULL';
+    else if (archived === 'all') archiveFilter = '';
+
+    const rows = db.prepare(`
+      SELECT e.evidence_number, e.description, e.evidence_type, e.status,
+        e.storage_location, e.collected_date, e.category, e.serial_number,
+        e.brand, e.model, e.estimated_value, e.condition, e.notes, e.created_at,
+        COALESCE(u.full_name, '') as collected_by_name,
+        COALESCE(i.incident_number, '') as incident_number
+      FROM evidence e
+      LEFT JOIN users u ON e.collected_by = u.id
+      LEFT JOIN incidents i ON e.incident_id = i.id
+      WHERE 1=1 ${archiveFilter}
+      ORDER BY e.created_at DESC
+      LIMIT 1000
+    `).all();
+
+    sendCsv(res, 'evidence_export.csv', [
+      { key: 'evidence_number', header: 'Evidence Number' },
+      { key: 'incident_number', header: 'Incident Number' },
+      { key: 'description', header: 'Description' },
+      { key: 'evidence_type', header: 'Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'storage_location', header: 'Storage Location' },
+      { key: 'collected_by_name', header: 'Collected By' },
+      { key: 'collected_date', header: 'Collected Date' },
+      { key: 'category', header: 'Category' },
+      { key: 'serial_number', header: 'Serial Number' },
+      { key: 'brand', header: 'Brand' },
+      { key: 'model', header: 'Model' },
+      { key: 'estimated_value', header: 'Estimated Value' },
+      { key: 'condition', header: 'Condition' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export evidence error:', error);
+    res.status(500).json({ error: 'Failed to export evidence', code: 'EXPORT_EVIDENCE_ERROR' });
   }
 });
 
@@ -4356,6 +4431,303 @@ router.post('/plate-check', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[Plate Check] Error:', err);
     res.status(500).json({ error: 'Plate check failed', code: 'PLATE_CHECK_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// ADVANCED SEARCH FEATURES
+// ════════════════════════════════════════════════════════════
+
+// POST /api/records/compound-search - NCIC-style multi-field search
+router.post('/compound-search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const {
+      first_name, last_name, dob_start, dob_end, gender, race,
+      height_min, height_max, weight_min, weight_max,
+      hair_color, eye_color, build, scars_marks_tattoos,
+      address, city, state, zip, plate, flags,
+      limit: rawLimit,
+    } = req.body;
+
+    const limitNum = Math.min(Math.max(parseInt(rawLimit, 10) || 50, 1), 200);
+    const conditions: string[] = ['p.archived_at IS NULL'];
+    const params: any[] = [];
+
+    if (first_name) { conditions.push('LOWER(p.first_name) LIKE LOWER(?)'); params.push(`%${first_name}%`); }
+    if (last_name) { conditions.push('LOWER(p.last_name) LIKE LOWER(?)'); params.push(`%${last_name}%`); }
+    if (dob_start && dob_end) { conditions.push('p.dob BETWEEN ? AND ?'); params.push(dob_start, dob_end); }
+    else if (dob_start) { conditions.push('p.dob >= ?'); params.push(dob_start); }
+    else if (dob_end) { conditions.push('p.dob <= ?'); params.push(dob_end); }
+    if (gender) { conditions.push('LOWER(p.gender) = LOWER(?)'); params.push(gender); }
+    if (race) { conditions.push('LOWER(p.race) = LOWER(?)'); params.push(race); }
+    if (height_min) { conditions.push('CAST(p.height AS INTEGER) >= ?'); params.push(parseInt(height_min, 10)); }
+    if (height_max) { conditions.push('CAST(p.height AS INTEGER) <= ?'); params.push(parseInt(height_max, 10)); }
+    if (weight_min) { conditions.push('CAST(p.weight AS INTEGER) >= ?'); params.push(parseInt(weight_min, 10)); }
+    if (weight_max) { conditions.push('CAST(p.weight AS INTEGER) <= ?'); params.push(parseInt(weight_max, 10)); }
+    if (hair_color) { conditions.push('LOWER(p.hair_color) = LOWER(?)'); params.push(hair_color); }
+    if (eye_color) { conditions.push('LOWER(p.eye_color) = LOWER(?)'); params.push(eye_color); }
+    if (build) { conditions.push('LOWER(p.build) = LOWER(?)'); params.push(build); }
+    if (scars_marks_tattoos) { conditions.push('LOWER(p.scars_marks_tattoos) LIKE LOWER(?)'); params.push(`%${scars_marks_tattoos}%`); }
+    if (address) { conditions.push('LOWER(p.address) LIKE LOWER(?)'); params.push(`%${address}%`); }
+    if (city) { conditions.push('LOWER(p.city) LIKE LOWER(?)'); params.push(`%${city}%`); }
+    if (state) { conditions.push('LOWER(p.state) = LOWER(?)'); params.push(state); }
+    if (zip) { conditions.push('p.zip LIKE ?'); params.push(`${zip}%`); }
+    if (flags && Array.isArray(flags)) {
+      for (const f of flags) { conditions.push('p.flags LIKE ?'); params.push(`%${f}%`); }
+    }
+
+    let plateJoin = '';
+    if (plate) {
+      plateJoin = 'JOIN vehicles_records v ON v.owner_person_id = p.id';
+      conditions.push('LOWER(v.plate_number) LIKE LOWER(?)');
+      params.push(`%${plate}%`);
+    }
+
+    params.push(limitNum);
+    const results = db.prepare(`
+      SELECT DISTINCT p.id, p.first_name, p.last_name, p.dob, p.gender, p.race,
+        p.height, p.weight, p.hair_color, p.eye_color, p.build,
+        p.address, p.city, p.state, p.zip, p.phone, p.flags, p.photo_url,
+        (SELECT COUNT(*) FROM vehicles_records vr WHERE vr.owner_person_id = p.id) as vehicle_count
+      FROM persons p ${plateJoin}
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY p.last_name, p.first_name LIMIT ?
+    `).all(...params);
+
+    const total = db.prepare(`
+      SELECT COUNT(DISTINCT p.id) as cnt FROM persons p ${plateJoin}
+      WHERE ${conditions.join(' AND ')}
+    `).get(...params.slice(0, -1)) as any;
+
+    res.json({ results, total: total?.cnt || results.length });
+  } catch (error: any) {
+    console.error('Compound search error:', error?.message || 'Unknown');
+    res.status(500).json({ error: 'Compound search failed', code: 'COMPOUND_SEARCH_ERROR' });
+  }
+});
+
+// GET /api/records/universal-search - Search across all record types
+router.get('/universal-search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q, limit: rawLimit } = req.query;
+    if (!q || (q as string).length < 2) {
+      res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'SEARCH_QUERY_TOO_SHORT' });
+      return;
+    }
+    const term = `%${q}%`;
+    const perType = Math.max(Math.min(parseInt(rawLimit as string, 10) || 10, 25), 1);
+    const results: Record<string, any[]> = {};
+
+    // Persons
+    try { results.persons = db.prepare(`SELECT id, first_name, last_name, dob, address, phone, photo_url, 'person' as entity_type FROM persons WHERE archived_at IS NULL AND ((first_name || ' ' || last_name) LIKE ? OR address LIKE ? OR phone LIKE ? OR email LIKE ?) ORDER BY last_name, first_name LIMIT ?`).all(term, term, term, term, perType); } catch { results.persons = []; }
+
+    // Vehicles
+    try { results.vehicles = db.prepare(`SELECT id, plate_number, state, make, model, year, color, vin, 'vehicle' as entity_type FROM vehicles_records WHERE archived_at IS NULL AND (plate_number LIKE ? OR vin LIKE ? OR (make || ' ' || model) LIKE ?) ORDER BY created_at DESC LIMIT ?`).all(term, term, term, perType); } catch { results.vehicles = []; }
+
+    // Properties
+    try { results.properties = db.prepare(`SELECT id, name, address, 'property' as entity_type FROM properties WHERE archived_at IS NULL AND (name LIKE ? OR address LIKE ?) ORDER BY name LIMIT ?`).all(term, term, perType); } catch { results.properties = []; }
+
+    // Evidence
+    try { results.evidence = db.prepare(`SELECT id, evidence_number, description, evidence_type, status, 'evidence' as entity_type FROM evidence WHERE archived_at IS NULL AND (evidence_number LIKE ? OR description LIKE ? OR serial_number LIKE ?) ORDER BY created_at DESC LIMIT ?`).all(term, term, term, perType); } catch { results.evidence = []; }
+
+    // Incidents
+    try { results.incidents = db.prepare(`SELECT id, incident_number, incident_type, status, location_address, 'incident' as entity_type FROM incidents WHERE incident_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ? ORDER BY created_at DESC LIMIT ?`).all(term, term, term, perType); } catch { results.incidents = []; }
+
+    // Calls for service
+    try { results.calls = db.prepare(`SELECT id, call_number, incident_type, status, location_address, caller_name, 'call' as entity_type FROM calls_for_service WHERE call_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ? OR caller_name LIKE ? ORDER BY created_at DESC LIMIT ?`).all(term, term, term, term, perType); } catch { results.calls = []; }
+
+    // Citations
+    try { results.citations = db.prepare(`SELECT id, citation_number, person_name, violation_description, status, 'citation' as entity_type FROM citations WHERE citation_number LIKE ? OR person_name LIKE ? OR violation_description LIKE ? ORDER BY created_at DESC LIMIT ?`).all(term, term, term, perType); } catch { results.citations = []; }
+
+    // Warrants
+    try { results.warrants = db.prepare(`SELECT w.id, w.warrant_number, w.charge_description, w.status, w.type, COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name, 'warrant' as entity_type FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id WHERE w.warrant_number LIKE ? OR w.charge_description LIKE ? OR (p.first_name || ' ' || p.last_name) LIKE ? ORDER BY w.created_at DESC LIMIT ?`).all(term, term, term, perType); } catch { results.warrants = []; }
+
+    // Cases
+    try { results.cases = db.prepare(`SELECT id, case_number, title, status, 'case' as entity_type FROM cases WHERE case_number LIKE ? OR title LIKE ? ORDER BY created_at DESC LIMIT ?`).all(term, term, perType); } catch { results.cases = []; }
+
+    const totalResults = Object.values(results).reduce((sum, arr) => sum + arr.length, 0);
+    res.json({ results, total_results: totalResults, query: q });
+  } catch (error: any) {
+    console.error('Universal search error:', error?.message || 'Unknown');
+    res.status(500).json({ error: 'Universal search failed', code: 'UNIVERSAL_SEARCH_ERROR' });
+  }
+});
+
+// GET /api/records/persons/:id/dossier - Complete person intelligence package
+router.get('/persons/:id/dossier', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const personId = parseInt(req.params.id, 10);
+    if (isNaN(personId)) { res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }); return; }
+
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+
+    const dossier: Record<string, any> = { person };
+
+    // Vehicles owned
+    try { dossier.vehicles = db.prepare('SELECT * FROM vehicles_records WHERE owner_person_id = ? ORDER BY created_at DESC').all(personId); } catch { dossier.vehicles = []; }
+
+    // Citations
+    try { dossier.citations = db.prepare('SELECT * FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 50').all(personId); } catch { dossier.citations = []; }
+
+    // Warrants
+    try { dossier.warrants = db.prepare('SELECT * FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC').all(personId); } catch { dossier.warrants = []; }
+
+    // Criminal history
+    try { dossier.criminal_history = db.prepare('SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC').all(personId); } catch { dossier.criminal_history = []; }
+
+    // Field interviews
+    try { dossier.field_interviews = db.prepare('SELECT * FROM field_interviews WHERE person_id = ? ORDER BY created_at DESC LIMIT 25').all(personId); } catch { dossier.field_interviews = []; }
+
+    // Calls linked via call_persons
+    try { dossier.calls = db.prepare('SELECT c.* FROM calls_for_service c JOIN call_persons cp ON cp.call_id = c.id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 25').all(personId); } catch { dossier.calls = []; }
+
+    // Incidents linked via incident_persons or officer_id
+    try { dossier.incidents = db.prepare('SELECT DISTINCT i.* FROM incidents i LEFT JOIN incident_persons ip ON ip.incident_id = i.id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 25').all(personId); } catch { dossier.incidents = []; }
+
+    // Record links
+    try { dossier.record_links = db.prepare("SELECT * FROM record_links WHERE (source_type = 'person' AND source_id = ?) OR (target_type = 'person' AND target_id = ?) ORDER BY created_at DESC").all(personId, personId); } catch { dossier.record_links = []; }
+
+    // Aliases
+    try { dossier.aliases = db.prepare('SELECT * FROM person_aliases WHERE person_id = ?').all(personId); } catch { dossier.aliases = []; }
+
+    // Associates
+    try { dossier.associates = db.prepare('SELECT * FROM person_associates WHERE person_id = ? OR associate_person_id = ?').all(personId, personId); } catch { dossier.associates = []; }
+
+    // Addresses
+    try { dossier.addresses = db.prepare('SELECT * FROM person_addresses WHERE person_id = ? ORDER BY is_primary DESC').all(personId); } catch { dossier.addresses = []; }
+
+    // Arrest records
+    try { dossier.arrests = db.prepare('SELECT a.* FROM arrest_records a JOIN arrest_cross_links acl ON acl.arrest_id = a.id WHERE acl.person_id = ? ORDER BY a.arrest_date DESC LIMIT 25').all(personId); } catch { dossier.arrests = []; }
+
+    // Summary / risk assessment
+    const activeWarrants = (dossier.warrants || []).filter((w: any) => w.status === 'active').length;
+    const crimCount = (dossier.criminal_history || []).length;
+    const hasFlags = person.flags ? JSON.parse(person.flags || '[]') : [];
+    let riskLevel: string = 'low';
+    if (activeWarrants > 0 || hasFlags.includes('armed_dangerous') || hasFlags.includes('sex_offender')) riskLevel = 'critical';
+    else if (crimCount > 5 || hasFlags.includes('gang_affiliation') || hasFlags.includes('officer_caution')) riskLevel = 'high';
+    else if (crimCount > 2 || dossier.arrests.length > 0) riskLevel = 'medium';
+
+    dossier.summary = {
+      total_vehicles: dossier.vehicles.length,
+      total_citations: dossier.citations.length,
+      active_warrants: activeWarrants,
+      total_warrants: dossier.warrants.length,
+      criminal_records: crimCount,
+      total_calls: dossier.calls.length,
+      total_incidents: dossier.incidents.length,
+      total_arrests: dossier.arrests.length,
+      total_field_interviews: dossier.field_interviews.length,
+      risk_level: riskLevel,
+    };
+
+    // Audit the dossier pull
+    try {
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dossier_viewed', 'person', ?, ?, ?)`).run(
+        req.user!.userId, personId, `Dossier pulled for ${person.first_name} ${person.last_name}`, req.ip || 'unknown'
+      );
+    } catch { /* non-critical */ }
+
+    res.json(dossier);
+  } catch (error: any) {
+    console.error('Dossier error:', error?.message || 'Unknown');
+    res.status(500).json({ error: 'Failed to generate dossier', code: 'DOSSIER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// SAVED SEARCHES CRUD
+// ════════════════════════════════════════════════════════════
+
+// Ensure saved_searches table exists
+try { const db = getDb(); db.prepare('CREATE TABLE IF NOT EXISTS saved_searches (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, name TEXT NOT NULL, search_type TEXT NOT NULL DEFAULT \'compound\', criteria TEXT NOT NULL, is_shared INTEGER DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)').run(); } catch { /* already exists */ }
+
+// GET /api/records/saved-searches - List user's saved searches + shared
+router.get('/saved-searches', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const searches = db.prepare(`
+      SELECT ss.*, u.full_name as created_by_name
+      FROM saved_searches ss
+      LEFT JOIN users u ON ss.user_id = u.id
+      WHERE ss.user_id = ? OR ss.is_shared = 1
+      ORDER BY ss.updated_at DESC
+    `).all(req.user!.userId);
+    res.json({ data: searches });
+  } catch (error: any) {
+    console.error('List saved searches error:', error?.message || 'Unknown');
+    res.status(500).json({ error: 'Failed to list saved searches', code: 'LIST_SAVED_SEARCHES_ERROR' });
+  }
+});
+
+// POST /api/records/saved-searches - Create a saved search
+router.post('/saved-searches', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, search_type, criteria, is_shared } = req.body;
+    if (!name?.trim()) { res.status(400).json({ error: 'name is required', code: 'MISSING_NAME' }); return; }
+    if (!criteria || typeof criteria !== 'object') { res.status(400).json({ error: 'criteria must be a valid object', code: 'INVALID_CRITERIA' }); return; }
+    const now = localNow();
+    const result = db.prepare('INSERT INTO saved_searches (user_id, name, search_type, criteria, is_shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      req.user!.userId, name.trim(), search_type || 'compound', JSON.stringify(criteria), is_shared ? 1 : 0, now, now
+    );
+    const created = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(created);
+  } catch (error: any) {
+    console.error('Create saved search error:', error?.message || 'Unknown');
+    res.status(500).json({ error: 'Failed to create saved search', code: 'CREATE_SAVED_SEARCH_ERROR' });
+  }
+});
+
+// PUT /api/records/saved-searches/:id - Update a saved search
+router.put('/saved-searches/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'Saved search not found', code: 'NOT_FOUND' }); return; }
+    if (existing.user_id !== req.user!.userId && req.user?.role !== 'admin') {
+      res.status(403).json({ error: 'Only the owner or admin can update this search', code: 'FORBIDDEN' });
+      return;
+    }
+    const { name, criteria, is_shared } = req.body;
+    const updates: string[] = ['updated_at = ?'];
+    const params: any[] = [localNow()];
+    if (name !== undefined) { updates.push('name = ?'); params.push(name.trim()); }
+    if (criteria !== undefined) { updates.push('criteria = ?'); params.push(JSON.stringify(criteria)); }
+    if (is_shared !== undefined) { updates.push('is_shared = ?'); params.push(is_shared ? 1 : 0); }
+    params.push(id);
+    db.prepare(`UPDATE saved_searches SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    const updated = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(id);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update saved search error:', error?.message || 'Unknown');
+    res.status(500).json({ error: 'Failed to update saved search', code: 'UPDATE_SAVED_SEARCH_ERROR' });
+  }
+});
+
+// DELETE /api/records/saved-searches/:id - Delete a saved search
+router.delete('/saved-searches/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
+    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'Saved search not found', code: 'NOT_FOUND' }); return; }
+    if (existing.user_id !== req.user!.userId && req.user?.role !== 'admin') {
+      res.status(403).json({ error: 'Only the owner or admin can delete this search', code: 'FORBIDDEN' });
+      return;
+    }
+    db.prepare('DELETE FROM saved_searches WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete saved search error:', error?.message || 'Unknown');
+    res.status(500).json({ error: 'Failed to delete saved search', code: 'DELETE_SAVED_SEARCH_ERROR' });
   }
 });
 
