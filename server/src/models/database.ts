@@ -1877,6 +1877,28 @@ function migrateSchema(): void {
   addCol('properties', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
   addCol('properties', 'updated_at', 'TEXT');
   addCol('properties', 'notes', 'TEXT');
+  // Extended property fields — building details, security, key holder, owner, inspection, site
+  addCol('properties', 'business_type', 'TEXT');
+  addCol('properties', 'structure_type', 'TEXT');
+  addCol('properties', 'occupancy_status', 'TEXT');
+  addCol('properties', 'year_built', 'TEXT');
+  addCol('properties', 'square_footage', 'TEXT');
+  addCol('properties', 'number_of_stories', 'TEXT');
+  addCol('properties', 'security_features', 'TEXT');
+  addCol('properties', 'alarm_company', 'TEXT');
+  addCol('properties', 'alarm_account', 'TEXT');
+  addCol('properties', 'camera_system', 'TEXT');
+  addCol('properties', 'roof_access', 'TEXT');
+  addCol('properties', 'key_holder_name', 'TEXT');
+  addCol('properties', 'key_holder_phone', 'TEXT');
+  addCol('properties', 'key_holder_relationship', 'TEXT');
+  addCol('properties', 'owner_name', 'TEXT');
+  addCol('properties', 'owner_phone', 'TEXT');
+  addCol('properties', 'last_inspection_date', 'TEXT');
+  addCol('properties', 'inspection_status', 'TEXT');
+  addCol('properties', 'parking_info', 'TEXT');
+  addCol('properties', 'utility_shutoffs', 'TEXT');
+  addCol('properties', 'known_hazards', 'TEXT');
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema

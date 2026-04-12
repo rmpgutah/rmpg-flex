@@ -2162,6 +2162,28 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       access_instructions: v => v ?? null, notes: v => v ?? null,
       is_active: v => v ? 1 : 0,
       client_id: v => v || null,
+      // Extended property fields — building, security, key holder, owner, inspection, site
+      business_type: v => v ?? null,
+      structure_type: v => v ?? null,
+      occupancy_status: v => v ?? null,
+      year_built: v => v ?? null,
+      square_footage: v => v ?? null,
+      number_of_stories: v => v ?? null,
+      security_features: v => v ?? null,
+      alarm_company: v => v ?? null,
+      alarm_account: v => v ?? null,
+      camera_system: v => v ?? null,
+      roof_access: v => v ?? null,
+      key_holder_name: v => v ?? null,
+      key_holder_phone: v => v ?? null,
+      key_holder_relationship: v => v ?? null,
+      owner_name: v => v ?? null,
+      owner_phone: v => v ?? null,
+      last_inspection_date: v => v ?? null,
+      inspection_status: v => v ?? null,
+      parking_info: v => v ?? null,
+      utility_shutoffs: v => v ?? null,
+      known_hazards: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {
