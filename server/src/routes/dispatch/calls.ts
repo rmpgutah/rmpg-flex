@@ -1132,17 +1132,30 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     const finalZoneId = autoZoneId !== undefined ? autoZoneId : call.zone_id;
     const finalBeatId = autoBeatId !== undefined ? autoBeatId : call.beat_id;
     if (finalSectionId && finalZoneId && finalBeatId) {
-      const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE sector_id = ? AND zone_id = ? AND beat_id = ?'
-      ).get(finalSectionId, finalZoneId, finalBeatId) as any;
-      if (districtMatch) {
-        addField('dispatch_code', districtMatch.dispatch_code);
-        addField('sector_name', districtMatch.sector_name);
-        addField('zone_name', districtMatch.zone_name);
-        addField('beat_name', districtMatch.beat_name);
-        addField('beat_descriptor', districtMatch.beat_descriptor);
-      } else {
-        // Build dispatch_code from IDs even without a district record
+      // NOTE: the dispatch_districts table was dropped in the 2026-04-11 geography
+      // rebuild (see database.ts:2769). Readers that weren't converted to the new
+      // 4-tier schema must fall back gracefully or every call update will 500. The
+      // adjacent lat/lng auto-enrich block above (lines 992-1032) uses the same
+      // local try/catch pattern. Follow-up ticket should port this to read
+      // dispatch_beats JOIN dispatch_zones JOIN dispatch_sectors.
+      try {
+        const districtMatch = db.prepare(
+          'SELECT * FROM dispatch_districts WHERE sector_id = ? AND zone_id = ? AND beat_id = ?'
+        ).get(finalSectionId, finalZoneId, finalBeatId) as any;
+        if (districtMatch) {
+          addField('dispatch_code', districtMatch.dispatch_code);
+          addField('sector_name', districtMatch.sector_name);
+          addField('zone_name', districtMatch.zone_name);
+          addField('beat_name', districtMatch.beat_name);
+          addField('beat_descriptor', districtMatch.beat_descriptor);
+        } else {
+          // Build dispatch_code from IDs even without a district record
+          addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
+        }
+      } catch (districtErr) {
+        // Table missing (post-geography-rebuild) or query error — synthesize
+        // the dispatch_code from IDs and skip the cached name enrichment.
+        console.error('[Calls] District enrichment failed (non-critical):', districtErr instanceof Error ? districtErr.message : districtErr);
         addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
       }
     } else if ((finalSectionId || finalZoneId) && !call.dispatch_code) {
