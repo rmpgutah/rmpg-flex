@@ -346,12 +346,22 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           zoneId = beat.city_code || '';
           sectionId = beat.district_letter || '';
           zoneBeat = beat.beat_code || '';
-          // Lookup dispatch district for full names
-          const district = db.prepare('SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ? LIMIT 1').get(zoneId, beatId) as any;
-          if (district) {
-            sectionId = district.sector_id || sectionId;
-            dispatchCode = district.dispatch_code || '';
-          }
+          // Lookup geography tables for full names
+          try {
+            const district = db.prepare(`
+              SELECT db2.beat_code, dz.zone_code, ds.sector_code
+              FROM dispatch_beats db2
+              JOIN dispatch_zones dz ON dz.id = db2.zone_id
+              JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+              WHERE db2.beat_code = ? LIMIT 1
+            `).get(beat.beat_code) as any;
+            if (district) {
+              sectionId = district.sector_code || sectionId;
+              zoneId = district.zone_code || zoneId;
+              beatId = district.beat_code || beatId;
+              dispatchCode = district.beat_code || '';
+            }
+          } catch { /* geography tables not populated */ }
         }
       } catch { /* geofence not configured */ }
     }
