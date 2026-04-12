@@ -2904,13 +2904,33 @@ router.post('/:id/damage-reports', (req: Request, res: Response) => {
 router.put('/damage-reports/:reportId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { repair_status, repair_cost, insurance_claim_number } = req.body;
-    const now = localNow();
-    const sets: string[] = ['updated_at = ?'];
-    const vals: any[] = [now];
-    if (repair_status) { sets.push('repair_status = ?'); vals.push(repair_status); }
-    if (repair_cost !== undefined) { sets.push('repair_cost = ?'); vals.push(repair_cost); }
-    if (insurance_claim_number !== undefined) { sets.push('insurance_claim_number = ?'); vals.push(insurance_claim_number); }
+    // Audit 2026-04-11: previous handler only accepted 3 fields. Users
+    // could not correct typos in description, severity, photos, repair
+    // estimate, or any other column. Expanded to the full editable set.
+    const fieldMap: Record<string, (v: any) => any> = {
+      damage_date: v => v ?? null,
+      damage_type: v => v ?? null,
+      location_on_vehicle: v => v ?? null,
+      severity: v => v ?? null,
+      description: v => v ?? null,
+      repair_estimate: v => v ?? null,
+      repair_status: v => v ?? null,
+      repair_cost: v => v ?? null,
+      insurance_claim_number: v => v ?? null,
+      photos: v => Array.isArray(v) ? JSON.stringify(v) : (v ?? null),
+      status: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const [key, transform] of Object.entries(fieldMap)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        sets.push(`${key} = ?`);
+        vals.push(transform(req.body[key]));
+      }
+    }
+    if (sets.length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }); return; }
+    sets.push('updated_at = ?');
+    vals.push(localNow());
     vals.push(req.params.reportId);
     db.prepare(`UPDATE fleet_damage_reports SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });

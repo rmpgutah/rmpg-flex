@@ -26,6 +26,7 @@ import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
+import ConnectionsGraphPanel from '../../components/ConnectionsGraphPanel';
 import CriminalHistorySection from '../../components/CriminalHistorySection';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
 import PersonHistoryPanel from '../../components/PersonHistoryPanel';
@@ -910,6 +911,12 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Client Links (standalone component) ──── */}
         <PersonClientLinks
+          personId={selectedPerson.id}
+          personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
+        />
+
+        {/* ── Connections Graph (visual node map) ──── */}
+        <ConnectionsGraphPanel
           personId={selectedPerson.id}
           personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
         />

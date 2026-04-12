@@ -1482,8 +1482,6 @@ function migrateSchema(): void {
     const cols = db.prepare('PRAGMA table_info(calls_for_service)').all() as any[];
     const hasOld = cols.some((c) => c.name === 'section_id');
     if (hasOld) {
-      // Both columns now exist (sector_id added above). Copy data then drop the old column.
-      // SQLite doesn't support DROP COLUMN until 3.35 — use UPDATE to copy then leave old in place.
       db.prepare('UPDATE calls_for_service SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
       console.log('[migrate] calls_for_service.section_id -> sector_id (data copied)');
     }
@@ -3099,6 +3097,25 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
+  // ── SECTIONS → SECTORS Phase 2a: Backfill sector_id from section_id ─
+  // Safe, idempotent backfill. Runs every startup but only copies rows
+  // where sector_id is NULL, so it's a no-op after the first run.
+  try {
+    db.prepare("UPDATE calls_for_service SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+    db.prepare("UPDATE incidents SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+  } catch { /* columns may not exist on very old DBs — ignore */ }
+
+  // ── SECTIONS → SECTORS Phase 2b: Drop obsolete dual-write triggers ──
+  // Phase 2a triggers mirrored section_id → sector_id during the rename
+  // transition. Now that all code uses sector_id natively, these triggers
+  // are obsolete and crash on fresh DBs (section_id column doesn't exist).
+  try {
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror_upd').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
+  } catch { /* ignore */ }
+
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');  // legacy
   addCol('citations', 'sector_id', 'TEXT');
@@ -3150,6 +3167,13 @@ function migrateSchema(): void {
   addCol('citations', 'sentence', 'TEXT');
   addCol('citations', 'disposition_date', 'TEXT');
   addCol('citations', 'case_id', 'INTEGER');
+
+  // SECTIONS → SECTORS Phase 2b: citations backfill + drop obsolete triggers
+  try {
+    db.prepare("UPDATE citations SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror_upd').run();
+  } catch { /* ignore */ }
 
   // Citation violations — multiple violations per citation
   try {

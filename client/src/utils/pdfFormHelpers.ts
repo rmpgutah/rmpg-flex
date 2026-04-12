@@ -306,7 +306,7 @@ export function drawCheckboxGrid(
     const rawLabel = items[i].code
       ? `${items[i].code} = ${items[i].label}`
       : items[i].label;
-    const labelText = sanitizePdfText(rawLabel);
+    const labelText = sanitizePdfText(rawLabel).toUpperCase();
 
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
@@ -365,12 +365,12 @@ export function drawCodeReferenceTable(
     doc.setFont('courier', 'bold');
     doc.setFontSize(4.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(sanitizePdfText(codes[i].code || ''), cellX + 1, curY + 2.3);
+    doc.text(sanitizePdfText(codes[i].code || '').toUpperCase(), cellX + 1, curY + 2.3);
 
     doc.setFont('courier', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(sanitizePdfText(`= ${codes[i].description || ''}`), cellX + 5.5, curY + 2.3, {
+    doc.text(sanitizePdfText(`= ${codes[i].description || ''}`).toUpperCase(), cellX + 5.5, curY + 2.3, {
       maxWidth: colW - 7,
     });
   }
