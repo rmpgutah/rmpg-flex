@@ -527,7 +527,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
   const baseBoxH = useReadableText ? 3.2 : 2.6;
-  const displayText = isEmpty ? 'N/A' : useReadableText ? sanitized : sanitized.toUpperCase();
+  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);

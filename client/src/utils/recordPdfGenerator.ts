@@ -954,7 +954,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('courier', 'bold');
       doc.setFontSize(dValSize);
       doc.setTextColor(255, 255, 255);
-      doc.text(sanitizePdfText(f.value), fx, barY + 6.5);
+      doc.text(sanitizePdfText(f.value).toUpperCase(), fx, barY + 6.5);
       colX += fw;
     });
 
