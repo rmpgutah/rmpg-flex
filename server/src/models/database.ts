@@ -3193,6 +3193,10 @@ function migrateSchema(): void {
     addCol(tbl, 'pso_service_type', 'TEXT');        // patrol, standing_post, escort, process_service, alarm_response, event_security
     addCol(tbl, 'pso_billing_code', 'TEXT');
     addCol(tbl, 'pso_authorization', 'TEXT');        // auth/PO number from client
+    addCol(tbl, 'pso_72hr_deadline', 'TEXT');         // ISO timestamp: 72hr re-dispatch deadline after clear/close
+    addCol(tbl, 'pso_72hr_notified', 'TEXT');         // 'overdue'|'resolved'|NULL — tracks 72hr notification state
+    addCol(tbl, 'pso_service_windows', 'TEXT');       // JSON: {early_morning,daytime,evening,weekend} compliance
+    addCol(tbl, 'responding_vehicle_id', 'INTEGER');  // FK to fleet_vehicles — responding unit's vehicle
   }
   // Process service specific — must exist on BOTH calls_for_service AND incidents
   // Bug: incidents POST route INSERTs these columns but they were only added to
@@ -4307,6 +4311,32 @@ function migrateSchema(): void {
 
   // ── Feature 23: Per-user notification sound toggle ──
   // Stored in user_preferences table with pref_key='notification_sounds_enabled'
+
+  // ── PSO visit history — tracks each dispatch attempt's timestamps + service windows ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS call_visit_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      visit_number INTEGER NOT NULL,
+      status TEXT,
+      dispatched_at TEXT,
+      enroute_at TEXT,
+      onscene_at TEXT,
+      cleared_at TEXT,
+      closed_at TEXT,
+      assigned_units TEXT,
+      responding_vehicle_id INTEGER,
+      starting_mileage REAL,
+      ending_mileage REAL,
+      disposition TEXT,
+      note TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      time_window TEXT,
+      is_weekend INTEGER DEFAULT 0
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_call_visit_call ON call_visit_history(call_id)').run();
 
   // ── Ensure call_persons junction table exists (used by dispatch person linking) ──
   db.exec(`

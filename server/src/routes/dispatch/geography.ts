@@ -88,8 +88,10 @@ router.delete('/geography/areas/:id', requireRole('admin'), (req: Request, res: 
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    db.prepare('UPDATE dispatch_sectors SET area_id = NULL WHERE area_id = ?').run(id);
-    db.prepare('DELETE FROM dispatch_areas WHERE id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('UPDATE dispatch_sectors SET area_id = NULL WHERE area_id = ?').run(id);
+      db.prepare('DELETE FROM dispatch_areas WHERE id = ?').run(id);
+    })();
     auditLog(req, 'DELETE', 'dispatch_areas', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete area' }); }
@@ -173,8 +175,10 @@ router.delete('/geography/sectors/:id', requireRole('admin'), (req: Request, res
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    db.prepare('UPDATE dispatch_zones SET sector_id = NULL WHERE sector_id = ?').run(id);
-    db.prepare('DELETE FROM dispatch_sectors WHERE id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('UPDATE dispatch_zones SET sector_id = NULL WHERE sector_id = ?').run(id);
+      db.prepare('DELETE FROM dispatch_sectors WHERE id = ?').run(id);
+    })();
     auditLog(req, 'DELETE', 'dispatch_sectors', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete sector' }); }
@@ -250,8 +254,10 @@ router.delete('/geography/zones/:id', requireRole('admin'), (req: Request, res: 
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    db.prepare('UPDATE dispatch_beats SET zone_id = NULL WHERE zone_id = ?').run(id);
-    db.prepare('DELETE FROM dispatch_zones WHERE id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('UPDATE dispatch_beats SET zone_id = NULL WHERE zone_id = ?').run(id);
+      db.prepare('DELETE FROM dispatch_zones WHERE id = ?').run(id);
+    })();
     auditLog(req, 'DELETE', 'dispatch_zones', id, '');
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete zone' }); }
