@@ -195,7 +195,7 @@ function createTables(): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       call_sign TEXT UNIQUE NOT NULL,
       officer_id INTEGER,
-      status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty')),
+      status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service')),
       latitude REAL,
       longitude REAL,
       vehicle_id TEXT,
@@ -4449,8 +4449,35 @@ function migrateSchema(): void {
   addCol('warrants', 'external_source_key', 'TEXT');
   addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
 
-  // ── dispatch_units mileage column ──
-  addCol('dispatch_units', 'mileage', 'REAL');
+  // ── units mileage + GPS source columns ──
+  addCol('units', 'mileage', 'REAL');
+  addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
+  addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
+
+  // ── units: add 'out_of_service' to CHECK constraint (production fix) ──
+  try {
+    const uInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='units'").get() as { sql: string } | undefined;
+    if (uInfo && !uInfo.sql.includes('out_of_service')) {
+      db.pragma('foreign_keys = OFF');
+      const cols = db.prepare("PRAGMA table_info(units)").all() as any[];
+      const colDefs = cols.map((c: any) => {
+        if (c.name === 'status') {
+          return `status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service'))`;
+        }
+        let def = `${c.name} ${c.type}`;
+        if (c.notnull) def += ' NOT NULL';
+        if (c.dflt_value != null) def += ` DEFAULT ${c.dflt_value}`;
+        if (c.pk) def += ' PRIMARY KEY AUTOINCREMENT';
+        return def;
+      }).join(', ');
+      const colNames = cols.map((c: any) => c.name).join(', ');
+      db.prepare(`CREATE TABLE units_new (${colDefs})`).run();
+      db.prepare(`INSERT INTO units_new (${colNames}) SELECT ${colNames} FROM units`).run();
+      db.prepare('DROP TABLE units').run();
+      db.prepare('ALTER TABLE units_new RENAME TO units').run();
+      db.pragma('foreign_keys = ON');
+    }
+  } catch (e) { console.warn('[DB] units CHECK migration skipped:', e instanceof Error ? e.message : e); }
 
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
