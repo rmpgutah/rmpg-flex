@@ -17,6 +17,7 @@ import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
+import FileAttachments from '../components/FileAttachments';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
@@ -1166,6 +1167,11 @@ export default function CaseManagementPage() {
                   </div>
                 </div>
               )}
+
+              {/* File Attachments */}
+              <div className="panel-beveled p-3 bg-surface-base">
+                <FileAttachments entityType="case" entityId={String(selected.id)} />
+              </div>
             </div>
           </>
         ) : (

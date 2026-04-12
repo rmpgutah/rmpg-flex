@@ -37,7 +37,9 @@ import ExportButton from '../components/ExportButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WarrantBadge from '../components/WarrantBadge';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import LinkedRecordsSection from '../components/LinkedRecordsSection';
+import FileAttachments from '../components/FileAttachments';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
@@ -1850,6 +1852,18 @@ export default function WarrantsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Linked Records */}
+                <LinkedRecordsSection
+                  entityType="warrant"
+                  entityId={String(selectedWarrant.id)}
+                  onOpenLinkModal={() => {}}
+                />
+
+                {/* File Attachments */}
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <FileAttachments entityType="warrant" entityId={String(selectedWarrant.id)} />
+                </div>
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-rmpg-400">
