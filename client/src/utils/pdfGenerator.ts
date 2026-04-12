@@ -105,8 +105,11 @@ export function getActiveBranding(): PdfBranding { return activeBranding; }
  * These fonts only support Latin-1 (ISO-8859-1). Unicode arrows, em-dashes, curly quotes,
  * etc. have zero width in font metrics, causing justification to spread text wildly.
  */
+/** Null-safe string converter for PDF field values (CLAUDE.md gotcha #32) */
+export const safeStr = (v: any): string => (v == null) ? '' : String(v);
+
 export function sanitizePdfText(text: string): string {
-  if (!text) return text;
+  if (!text) return '';
   return text
     .replace(/\u2192/g, '->')    // → right arrow
     .replace(/\u2190/g, '<-')    // ← left arrow

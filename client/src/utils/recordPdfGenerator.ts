@@ -3775,9 +3775,9 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     topBanner: true,
     rows: [
       { cells: [
-        { label: 'TOTAL SCANS', value: String(data.scanActivity.totalScans), ratio: 1, align: 'center' },
-        { label: 'WARRANTS FOUND', value: String(data.scanActivity.totalFound), ratio: 1, align: 'center', valueBold: true },
-        { label: 'WARRANTS CLEARED', value: String(data.scanActivity.totalCleared), ratio: 1, align: 'center' },
+        { label: 'TOTAL SCANS', value: String(data.scanActivity?.totalScans ?? 0), ratio: 1, align: 'center' },
+        { label: 'WARRANTS FOUND', value: String(data.scanActivity?.totalFound ?? 0), ratio: 1, align: 'center', valueBold: true },
+        { label: 'WARRANTS CLEARED', value: String(data.scanActivity?.totalCleared ?? 0), ratio: 1, align: 'center' },
       ]},
     ],
     y,
