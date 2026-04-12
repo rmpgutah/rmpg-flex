@@ -1382,6 +1382,7 @@ function createTables(): void {
   `);
 
   // ─── PANIC ALERTS TABLE ────────────────────────────
+  // Uses db.prepare().run() pattern per CLAUDE.md Gotcha #42
   db.prepare(`
     CREATE TABLE IF NOT EXISTS panic_alerts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1403,6 +1404,7 @@ function createTables(): void {
       resolution_notes TEXT,
       responder_unit_ids TEXT DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
       FOREIGN KEY (acknowledged_by) REFERENCES users(id),
