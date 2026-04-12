@@ -1692,6 +1692,11 @@ export type WSMessageType =
   | 'panic_alert'
   | 'panic_audio'
   | 'panic_audio_response'
+  | 'panic_acknowledged'
+  | 'panic_resolved'
+  | 'panic_cancelled'
+  | 'panic_false_alarm'
+  | 'panic_escalated'
   | 'dispatch_update'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
