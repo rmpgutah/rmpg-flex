@@ -579,21 +579,25 @@ export function addNarrativeField(doc: jsPDF, label: string, value: string, x: n
 export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x: number, y: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const boxSize = 3;
+  const boxSize = 3.2;
+  const boxY = y - 1.8;
+
+  // Outer border (always drawn for checkbox shape)
+  doc.setDrawColor(80, 80, 85);
+  doc.setLineWidth(0.3);
+  doc.rect(x, boxY, boxSize, boxSize);
 
   if (checked) {
-    // Filled dark square with white checkmark
-    doc.setFillColor(40, 40, 40);
-    doc.rect(x, y - 1.5, boxSize, boxSize, 'F');
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(BORDER.CHECK_MARK);
-    doc.line(x + 0.5, y + 0.0, x + 1.2, y + 1.0);
-    doc.line(x + 1.2, y + 1.0, x + 2.5, y - 1.0);
-  } else {
-    // Empty box with border
-    doc.setDrawColor(...COLOR.TEXT_SECONDARY);
-    doc.setLineWidth(BORDER.CHECKBOX);
-    doc.rect(x, y - 1.5, boxSize, boxSize);
+    // Light fill + bold dark checkmark
+    doc.setFillColor(230, 245, 230);
+    doc.rect(x + 0.15, boxY + 0.15, boxSize - 0.3, boxSize - 0.3, 'F');
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.7);
+    // Check mark: short down-stroke then long up-stroke
+    const cx = x + boxSize / 2;
+    const cy = boxY + boxSize / 2;
+    doc.line(cx - 1.0, cy - 0.1, cx - 0.2, cy + 0.8);
+    doc.line(cx - 0.2, cy + 0.8, cx + 1.1, cy - 0.9);
   }
 
   doc.setFont('courier', 'normal');
