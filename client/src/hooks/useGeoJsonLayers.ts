@@ -127,6 +127,19 @@ const ASSIGNED_STYLE = {
   strokeWeight: 2,
 };
 
+// ── Municipality color palette (hash-based for 257 municipalities) ──
+const MUNI_COLORS = [
+  '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
+  '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#06b6d4', '#e11d48',
+  '#84cc16', '#6366f1', '#d946ef', '#0ea5e9', '#facc15', '#fb923c',
+];
+
+function getMuniColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  return MUNI_COLORS[Math.abs(hash) % MUNI_COLORS.length];
+}
+
 // ── Section color palette (12 distinct hues for beat sections) ──
 
 export const SECTION_COLORS: Record<string, string> = {
@@ -342,6 +355,15 @@ export function useGeoJsonLayers({
           }
         }
 
+        // For municipality layer: use hash-based per-municipality color
+        if (cfg.id === 'municipality' && !isSelected && !isAssigned) {
+          const name = feature.getProperty('NAME') as string;
+          if (name) {
+            const mc = getMuniColor(name);
+            baseStyle = { ...cfg.style, fillColor: mc, strokeColor: mc, fillOpacity: 0.10, strokeOpacity: 0.5 };
+          }
+        }
+
         const activeStyle = isSelected ? SELECTION_STYLE : isAssigned ? ASSIGNED_STYLE : baseStyle;
 
         return {
@@ -529,6 +551,31 @@ export function useGeoJsonLayers({
             fontWeight: 'bold',
             fontFamily: 'JetBrains Mono, Courier New, monospace',
           },
+          clickable: false,
+          zIndex: 0,
+        });
+        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
+        labelMarkersRef.current[cfg.id].push(marker);
+      });
+    }
+
+    // ── Municipality label overlays — show municipality names at polygon centroids ──
+    if (cfg.id === 'municipality') {
+      dataLayer.forEach((feature) => {
+        const name = feature.getProperty('NAME') as string;
+        if (!name) return;
+        const geom = feature.getGeometry();
+        if (!geom) return;
+        let latSum = 0, lngSum = 0, pointCount = 0;
+        geom.forEachLatLng((latLng) => { latSum += latLng.lat(); lngSum += latLng.lng(); pointCount++; });
+        if (pointCount === 0) return;
+        const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
+        const mc = getMuniColor(name);
+        const marker = new google.maps.Marker({
+          position: centroid,
+          map,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+          label: { text: name.toUpperCase(), color: mc, fontSize: '8px', fontWeight: 'bold', fontFamily: 'JetBrains Mono, Courier New, monospace' },
           clickable: false,
           zIndex: 0,
         });
