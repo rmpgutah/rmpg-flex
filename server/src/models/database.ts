@@ -4239,16 +4239,18 @@ function migrateSchema(): void {
   // ── Feature 8: Evidence temperature tracking ──
   addCol('evidence', 'storage_temperature', 'REAL');
   addCol('evidence', 'is_biological', 'INTEGER DEFAULT 0');
-  db.exec(`
+  addCol('evidence', 'narcotics_flag', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'temperature_sensitive', 'INTEGER DEFAULT 0');
+  db.prepare(`
     CREATE TABLE IF NOT EXISTS evidence_temperature_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       evidence_id INTEGER NOT NULL REFERENCES evidence(id) ON DELETE CASCADE,
       temperature REAL NOT NULL,
       recorded_by INTEGER REFERENCES users(id),
       recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_evidence_temp_logs ON evidence_temperature_logs(evidence_id);
-  `);
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_evidence_temp_logs ON evidence_temperature_logs(evidence_id)`).run();
 
   // ── Feature 9: Incident weather at time ──
   addCol('incidents', 'weather_conditions', 'TEXT');

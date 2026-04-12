@@ -611,10 +611,11 @@ export interface Evidence {
   evidence_number: string;
   incident_id?: string;
   incident_number?: string;
-  type: string;
+  evidence_type: string;
   description: string;
   location_found: string;
   collected_by: string;
+  collected_by_name?: string;
   collected_at: string;
   storage_location: string;
   chain_of_custody: CustodyEntry[];
@@ -641,6 +642,9 @@ export interface Evidence {
   is_biological?: boolean;
   narcotics_flag?: boolean;
   temperature_sensitive?: boolean;
+  retention_until?: string;
+  disposition?: string;
+  archived_at?: string;
   created_at: string;
   updated_at: string;
 }
