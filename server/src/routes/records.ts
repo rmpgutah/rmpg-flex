@@ -1193,6 +1193,9 @@ router.post('/properties', (req: Request, res: Response) => {
       client_id, name, address, city, state, zip, latitude, longitude, property_type,
       gate_code, alarm_code, emergency_contact, post_orders, hazard_notes,
       access_instructions, is_active, notes,
+      business_type, structure_type, occupancy_status, year_built, square_footage,
+      number_of_stories, security_features, key_holder_name, key_holder_phone,
+      key_holder_relationship, owner_name, owner_phone, last_inspection_date,
     } = req.body;
 
     if (!client_id) {
@@ -1206,14 +1209,22 @@ router.post('/properties', (req: Request, res: Response) => {
 
     const result = db.prepare(`
       INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
-        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes,
+        business_type, structure_type, occupancy_status, year_built, square_footage,
+        number_of_stories, security_features, key_holder_name, key_holder_phone,
+        key_holder_relationship, owner_name, owner_phone, last_inspection_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
       latitude || null, longitude || null,
       property_type || null, gate_code || null, alarm_code || null,
       emergency_contact || null, post_orders || null, hazard_notes || null,
       access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1, notes || null,
+      business_type || null, structure_type || null, occupancy_status || null,
+      year_built || null, square_footage || null, number_of_stories || null,
+      security_features || null, key_holder_name || null, key_holder_phone || null,
+      key_holder_relationship || null, owner_name || null, owner_phone || null,
+      last_inspection_date || null,
     );
 
     // Activity log
@@ -2087,6 +2098,13 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       access_instructions: v => v ?? null, notes: v => v ?? null,
       is_active: v => v ? 1 : 0,
       client_id: v => v || null,
+      business_type: v => v ?? null, structure_type: v => v ?? null,
+      occupancy_status: v => v ?? null, year_built: v => v ?? null,
+      square_footage: v => v ?? null, number_of_stories: v => v ?? null,
+      security_features: v => v ?? null, key_holder_name: v => v ?? null,
+      key_holder_phone: v => v ?? null, key_holder_relationship: v => v ?? null,
+      owner_name: v => v ?? null, owner_phone: v => v ?? null,
+      last_inspection_date: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {
@@ -2196,7 +2214,8 @@ router.post('/evidence', (req: Request, res: Response) => {
       collected_date, packaging_type, dimensions, weight,
       photo_taken, lab_submitted, lab_case_number, lab_name,
       disposal_method, disposal_date, disposal_authorized_by,
-      serial_number, brand, model, estimated_value, category, notes
+      serial_number, brand, model, estimated_value, category, notes,
+      location_found, condition, quantity, is_biological,
     } = req.body;
 
     if (!description || !evidence_type) {
@@ -2223,9 +2242,10 @@ router.post('/evidence', (req: Request, res: Response) => {
         collected_date, packaging_type, dimensions, weight,
         photo_taken, lab_submitted, lab_case_number, lab_name,
         disposal_method, disposal_date, disposal_authorized_by,
-        serial_number, brand, model, estimated_value, category, notes
+        serial_number, brand, model, estimated_value, category, notes,
+        location_found, condition, quantity, is_biological
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       evidenceNumber, incident_id || null, description, evidence_type,
       storage_location || null, req.user!.userId,
@@ -2233,7 +2253,8 @@ router.post('/evidence', (req: Request, res: Response) => {
       photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
       serial_number || null, brand || null, model || null, estimated_value || null, category || null,
-      notes || null
+      notes || null,
+      location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0
     );
 
     // Activity log

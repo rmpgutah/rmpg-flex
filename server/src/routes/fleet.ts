@@ -866,6 +866,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       registration_expiry,
       equipment,
       notes,
+      status,
     } = req.body;
 
     if (!vehicle_number) {
@@ -882,13 +883,16 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 
     const equipmentJson = Array.isArray(equipment) ? JSON.stringify(equipment) : (equipment || '[]');
 
+    const validStatuses = ['in_service', 'out_of_service', 'maintenance', 'retired'];
+    const safeStatus = status && validStatuses.includes(status) ? status : 'in_service';
+
     const result = db.prepare(`
       INSERT INTO fleet_vehicles (
         vehicle_number, make, model, year, color, vin,
         plate_number, plate_state, current_mileage, next_service_mileage,
         insurance_expiry, registration_expiry, equipment, notes,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       vehicle_number,
       make || null,
@@ -904,6 +908,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       registration_expiry || null,
       equipmentJson,
       notes || null,
+      safeStatus,
       localNow(),
       localNow()
     );
