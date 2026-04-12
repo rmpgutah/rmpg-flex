@@ -3092,30 +3092,16 @@ function migrateSchema(): void {
     db.prepare("UPDATE incidents SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
   } catch { /* columns may not exist on very old DBs — ignore */ }
 
-  // ── SECTIONS → SECTORS Phase 2a: Dual-write triggers ────────
-  // Mirror section_id → sector_id on every INSERT/UPDATE so future writes
-  // keep both columns in sync without touching application code. Triggers
-  // are idempotent via IF NOT EXISTS and safe to drop later in Phase 2b.
+  // ── SECTIONS → SECTORS Phase 2b: Drop obsolete dual-write triggers ──
+  // Phase 2a triggers mirrored section_id → sector_id during the rename
+  // transition. Now that all code uses sector_id natively, these triggers
+  // are obsolete and crash on fresh DBs (section_id column doesn't exist).
   try {
-    db.exec(`
-      CREATE TRIGGER IF NOT EXISTS trg_calls_for_service_sector_mirror
-        AFTER INSERT ON calls_for_service
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
-        BEGIN UPDATE calls_for_service SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_calls_for_service_sector_mirror_upd
-        AFTER UPDATE OF section_id ON calls_for_service
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
-        BEGIN UPDATE calls_for_service SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_incidents_sector_mirror
-        AFTER INSERT ON incidents
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
-        BEGIN UPDATE incidents SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_incidents_sector_mirror_upd
-        AFTER UPDATE OF section_id ON incidents
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
-        BEGIN UPDATE incidents SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-    `);
-  } catch { /* older SQLite may not support — backfill still works */ }
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror_upd').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
+  } catch { /* ignore */ }
 
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');  // legacy
@@ -3169,19 +3155,11 @@ function migrateSchema(): void {
   addCol('citations', 'disposition_date', 'TEXT');
   addCol('citations', 'case_id', 'INTEGER');
 
-  // SECTIONS → SECTORS Phase 2a: citations backfill + trigger
+  // SECTIONS → SECTORS Phase 2b: citations backfill + drop obsolete triggers
   try {
     db.prepare("UPDATE citations SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
-    db.exec(`
-      CREATE TRIGGER IF NOT EXISTS trg_citations_sector_mirror
-        AFTER INSERT ON citations
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
-        BEGIN UPDATE citations SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_citations_sector_mirror_upd
-        AFTER UPDATE OF section_id ON citations
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
-        BEGIN UPDATE citations SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-    `);
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror_upd').run();
   } catch { /* ignore */ }
 
   // Citation violations — multiple violations per citation
