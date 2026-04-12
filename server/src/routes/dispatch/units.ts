@@ -326,6 +326,8 @@ router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', '
 
     db.prepare('UPDATE units SET mileage = ?, updated_at = ? WHERE id = ?')
       .run(mileageNum, localNow(), unitId);
+    const updated = db.prepare('SELECT * FROM units WHERE id = ?').get(unitId);
+    if (updated) broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });

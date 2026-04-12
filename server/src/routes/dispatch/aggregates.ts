@@ -1994,7 +1994,7 @@ router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'disp
 
     // Broadcast
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: call.status === 'pending' ? 'dispatched' : call.status } });
-    broadcastUnitUpdate({ action: 'unit_status', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
 
     res.json({ success: true, call_number: call.call_number, unit_call_sign: unit.call_sign });
   } catch (err: any) {
@@ -2039,7 +2039,7 @@ router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 
 
     auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, JSON.stringify({ unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) }));
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: 'dispatched' } });
-    broadcastUnitUpdate({ action: 'unit_status', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
 
     res.json({ success: true, call_number: call.call_number, unit_call_sign: nearest.call_sign, distance_km: parseFloat(minDist.toFixed(2)) });
   } catch (err: any) {
