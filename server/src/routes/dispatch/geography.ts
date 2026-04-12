@@ -585,42 +585,45 @@ router.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'of
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
     const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-    // Call counts by section
+    // Call counts by sector (JOIN to get name from lookup table)
     const sectionStats = db.prepare(`
-      SELECT sector_id as code, sector_name as name,
+      SELECT c.sector_id as code, COALESCE(ds.name, c.sector_id) as name,
         COUNT(*) as total_calls,
-        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_calls,
-        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2_calls,
-        SUM(CASE WHEN status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls,
-        AVG(CASE WHEN dispatched_at IS NOT NULL AND enroute_at IS NOT NULL
-          THEN (julianday(enroute_at) - julianday(dispatched_at)) * 86400 END) as avg_response_sec
-      FROM calls_for_service
-      WHERE created_at >= ? AND sector_id IS NOT NULL AND sector_id != ''
-      GROUP BY sector_id, sector_name
+        SUM(CASE WHEN c.priority = 'P1' THEN 1 ELSE 0 END) as p1_calls,
+        SUM(CASE WHEN c.priority = 'P2' THEN 1 ELSE 0 END) as p2_calls,
+        SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls,
+        AVG(CASE WHEN c.dispatched_at IS NOT NULL AND c.enroute_at IS NOT NULL
+          THEN (julianday(c.enroute_at) - julianday(c.dispatched_at)) * 86400 END) as avg_response_sec
+      FROM calls_for_service c
+      LEFT JOIN dispatch_sectors ds ON ds.sector_code = c.sector_id
+      WHERE c.created_at >= ? AND c.sector_id IS NOT NULL AND c.sector_id != ''
+      GROUP BY c.sector_id
       ORDER BY total_calls DESC
     `).all(cutoff);
 
-    // Call counts by zone
+    // Call counts by zone (JOIN to get name from lookup table)
     const zoneStats = db.prepare(`
-      SELECT zone_id as code, zone_name as name, sector_id,
+      SELECT c.zone_id as code, COALESCE(dz.name, c.zone_id) as name, c.sector_id,
         COUNT(*) as total_calls,
-        SUM(CASE WHEN status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls,
-        AVG(CASE WHEN dispatched_at IS NOT NULL AND enroute_at IS NOT NULL
-          THEN (julianday(enroute_at) - julianday(dispatched_at)) * 86400 END) as avg_response_sec
-      FROM calls_for_service
-      WHERE created_at >= ? AND zone_id IS NOT NULL AND zone_id != ''
-      GROUP BY zone_id, zone_name
+        SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls,
+        AVG(CASE WHEN c.dispatched_at IS NOT NULL AND c.enroute_at IS NOT NULL
+          THEN (julianday(c.enroute_at) - julianday(c.dispatched_at)) * 86400 END) as avg_response_sec
+      FROM calls_for_service c
+      LEFT JOIN dispatch_zones dz ON dz.zone_code = c.zone_id
+      WHERE c.created_at >= ? AND c.zone_id IS NOT NULL AND c.zone_id != ''
+      GROUP BY c.zone_id
       ORDER BY total_calls DESC
     `).all(cutoff);
 
-    // Call counts by beat
+    // Call counts by beat (JOIN to get name from lookup table)
     const beatStats = db.prepare(`
-      SELECT beat_id as code, beat_name as name, zone_id,
+      SELECT c.beat_id as code, COALESCE(db2.name, c.beat_id) as name, c.zone_id,
         COUNT(*) as total_calls,
-        SUM(CASE WHEN status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls
-      FROM calls_for_service
-      WHERE created_at >= ? AND beat_id IS NOT NULL AND beat_id != ''
-      GROUP BY beat_id, beat_name
+        SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls
+      FROM calls_for_service c
+      LEFT JOIN dispatch_beats db2 ON db2.beat_code = c.beat_id
+      WHERE c.created_at >= ? AND c.beat_id IS NOT NULL AND c.beat_id != ''
+      GROUP BY c.beat_id
       ORDER BY total_calls DESC
     `).all(cutoff);
 
