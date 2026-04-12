@@ -654,7 +654,7 @@ export interface CustodyEntry {
   timestamp: string;
 }
 
-export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident';
+export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident' | 'warrant';
 
 export interface RecordLink {
   id: string;
