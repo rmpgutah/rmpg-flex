@@ -6035,6 +6035,7 @@ export default function DispatchPage() {
               call_number: c.call_number,
               status: c.status,
             })),
+            currentUser: user?.full_name || user?.username || 'Dispatch',
           }}
           onAction={(action: CommandAction) => {
             switch (action.type) {

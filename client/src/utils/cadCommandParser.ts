@@ -123,6 +123,7 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
 export interface CadContext {
   units: Array<{ id: string; call_sign: string; status: string; current_call_id?: string }>;
   calls: Array<{ id: string; call_number: string; status: string }>;
+  currentUser?: string;
 }
 
 // ─── Fuzzy Matching ──────────────────────────────────────────
@@ -267,8 +268,8 @@ export async function executeCommand(
 
       try {
         await apiFetch(`/dispatch/units/${unit.id}/mileage`, {
-          method: 'POST',
-          body: JSON.stringify({ type: mileageType, mileage: mileageVal }),
+          method: 'PUT',
+          body: JSON.stringify({ mileage: mileageVal }),
         });
         return {
           success: true,
@@ -505,9 +506,19 @@ export async function executeCommand(
       }
 
       try {
-        await apiFetch(`/dispatch/calls/${call.id}/notes`, {
-          method: 'POST',
-          body: JSON.stringify({ content: noteText }),
+        // Fetch current call to get existing notes, then append
+        const current = await apiFetch<any>(`/dispatch/calls/${call.id}`);
+        let existingNotes: any[] = [];
+        try { existingNotes = JSON.parse(current.notes || '[]'); } catch { /* start fresh */ }
+        existingNotes.push({
+          id: String(Date.now()),
+          author: ctx.currentUser || 'Dispatch',
+          text: noteText,
+          timestamp: new Date().toISOString(),
+        });
+        await apiFetch(`/dispatch/calls/${call.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ notes: JSON.stringify(existingNotes) }),
         });
         return {
           success: true,
