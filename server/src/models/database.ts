@@ -156,7 +156,7 @@ function createTables(): void {
       longitude REAL,
       description TEXT,
       notes TEXT,
-      source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
+      source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
       assigned_unit_ids TEXT DEFAULT '[]',
       dispatcher_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -1551,7 +1551,7 @@ function migrateSchema(): void {
           longitude REAL,
           description TEXT,
           notes TEXT,
-          source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
+          source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
           assigned_unit_ids TEXT DEFAULT '[]',
           dispatcher_id INTEGER,
           created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -4500,6 +4500,29 @@ function migrateSchema(): void {
       db.pragma('foreign_keys = ON');
     }
   } catch (e) { console.warn('[DB] units CHECK migration skipped:', e instanceof Error ? e.message : e); }
+
+  // ── calls_for_service: add 'intake','servemanager' to source CHECK constraint ──
+  for (const tbl of ['calls_for_service', 'incidents']) {
+    try {
+      const info = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='${tbl}'`).get() as { sql: string } | undefined;
+      if (info && !info.sql.includes("'intake'")) {
+        db.pragma('foreign_keys = OFF');
+        const newSql = info.sql
+          .replace(new RegExp(`CREATE TABLE ${tbl}`, 'i'), `CREATE TABLE ${tbl}_new`)
+          .replace(
+            /CHECK\(source IN \([^)]+\)\)/i,
+            "CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other'))"
+          );
+        const cols = db.prepare(`PRAGMA table_info(${tbl})`).all() as any[];
+        const colNames = cols.map((c: any) => c.name).join(', ');
+        db.prepare(newSql).run();
+        db.prepare(`INSERT INTO ${tbl}_new (${colNames}) SELECT ${colNames} FROM ${tbl}`).run();
+        db.prepare(`DROP TABLE ${tbl}`).run();
+        db.prepare(`ALTER TABLE ${tbl}_new RENAME TO ${tbl}`).run();
+        db.pragma('foreign_keys = ON');
+      }
+    } catch (e) { console.warn(`[DB] ${tbl} source CHECK migration skipped:`, e instanceof Error ? e.message : e); }
+  }
 
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
