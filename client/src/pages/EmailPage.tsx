@@ -639,6 +639,22 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 // blob: URLs inherit the parent page origin, allowing external images.
 // Scripts blocked via CSP meta tag. Images explicitly allowed.
 // ============================================================
+/** Rewrite external image URLs to go through our server-side proxy.
+ *  This bypasses referrer/origin checks on government and corporate image servers. */
+function proxyEmailImages(html: string): string {
+  const token = localStorage.getItem('rmpg_token') || '';
+  // Rewrite src="http..." on img tags to go through /api/email/image-proxy
+  return html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*["'])(https?:\/\/[^"']+)(["'])/gi,
+    (_match, before, url, after) => {
+      // Skip data: URLs and already-proxied URLs
+      if (url.startsWith('data:') || url.includes('/api/email/image-proxy')) return _match;
+      const proxyUrl = `/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
+      return `${before}${proxyUrl}${after}`;
+    }
+  );
+}
+
 const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
   ({ bodyHtml, onLoad }, ref) => {
     const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
@@ -646,12 +662,14 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
       const sanitized = bodyHtml
         .replace(/<script[\s\S]*?<\/script>/gi, '')
         .replace(/\bon\w+\s*=/gi, 'data-blocked=');
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="default-src * data: blob: 'unsafe-inline'; script-src 'none'; object-src 'none';"><style>
+      // Proxy all external images through our server
+      const proxied = proxyEmailImages(sanitized);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
         body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
         a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
         pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
-      </style></head><body>${sanitized}</body></html>`;
+      </style></head><body>${proxied}</body></html>`;
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       setBlobUrl(url);
