@@ -390,7 +390,7 @@ export default function MapPage() {
   useEffect(() => {
     let cancelled = false;
     apiFetch<any[]>('/dispatch/districts').then((districts) => {
-      if (cancelled || !districts) return;
+      if (cancelled || !Array.isArray(districts) || districts.length === 0) return;
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
       for (const d of districts) {

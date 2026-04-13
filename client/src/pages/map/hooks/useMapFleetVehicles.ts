@@ -84,13 +84,13 @@ function createVehicleMarkerElement(vehicle: FleetVehicle): HTMLDivElement {
       position: absolute;
       top: -4px;
       left: 50%;
-      transform: translateX(-50%) rotate(${vehicle.gps_heading}deg);
+      transform: translateX(-50%) rotate(${vehicle.gps_heading || 0}deg);
+      transform-origin: center bottom;
       width: 0;
       height: 0;
       border-left: 4px solid transparent;
       border-right: 4px solid transparent;
       border-bottom: 8px solid ${color};
-      transform-origin: center bottom;
     `;
     el.appendChild(arrow);
   }
