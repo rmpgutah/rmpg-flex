@@ -934,4 +934,149 @@ router.get('/gps/speed-stats', requireRole('admin', 'manager', 'supervisor'), (r
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// SPEED ZONES CRUD
+// ═══════════════════════════════════════════════════════════════════════
+
+// GET /api/dispatch/gps/speed-zones — List all speed zones
+router.get('/gps/speed-zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM speed_zones ORDER BY name').all();
+    res.json(rows);
+  } catch (error: any) {
+    console.error('[GPS] speed-zones list error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to fetch speed zones', code: 'GPS_SPEED_ZONES_ERROR' });
+  }
+});
+
+// POST /api/dispatch/gps/speed-zones — Create a new speed zone
+router.post('/gps/speed-zones', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, speed_limit_mph, polygon_coords, zone_type, active_hours } = req.body;
+
+    if (!name || speed_limit_mph == null || !polygon_coords) {
+      res.status(400).json({ error: 'name, speed_limit_mph, and polygon_coords are required', code: 'MISSING_FIELDS' });
+      return;
+    }
+
+    // Validate polygon_coords is a valid JSON array with >= 3 points
+    let coords: any[];
+    try {
+      coords = typeof polygon_coords === 'string' ? JSON.parse(polygon_coords) : polygon_coords;
+      if (!Array.isArray(coords) || coords.length < 3) {
+        res.status(400).json({ error: 'polygon_coords must be an array with at least 3 points', code: 'INVALID_POLYGON' });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: 'polygon_coords must be valid JSON', code: 'INVALID_JSON' });
+      return;
+    }
+
+    const coordsStr = typeof polygon_coords === 'string' ? polygon_coords : JSON.stringify(polygon_coords);
+
+    const result = db.prepare(`
+      INSERT INTO speed_zones (name, speed_limit_mph, polygon_coords, zone_type, active_hours, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      String(name),
+      Number(speed_limit_mph),
+      coordsStr,
+      zone_type ? String(zone_type) : 'custom',
+      active_hours ? String(active_hours) : null,
+      req.user!.userId
+    );
+
+    auditLog(req, 'CREATE', 'speed_zone', Number(result.lastInsertRowid), null, { name, speed_limit_mph });
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('[GPS] speed-zones create error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to create speed zone', code: 'GPS_SPEED_ZONE_CREATE_ERROR' });
+  }
+});
+
+// PUT /api/dispatch/gps/speed-zones/:id — Update a speed zone
+router.put('/gps/speed-zones/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid zone ID', code: 'INVALID_ID' });
+      return;
+    }
+
+    const { name, speed_limit_mph, polygon_coords, zone_type, active_hours, is_active } = req.body;
+
+    // Build dynamic SET clause for partial update
+    const sets: string[] = [];
+    const params: any[] = [];
+
+    if (name !== undefined) { sets.push('name = ?'); params.push(String(name)); }
+    if (speed_limit_mph !== undefined) { sets.push('speed_limit_mph = ?'); params.push(Number(speed_limit_mph)); }
+    if (polygon_coords !== undefined) {
+      // Validate polygon_coords
+      let coords: any[];
+      try {
+        coords = typeof polygon_coords === 'string' ? JSON.parse(polygon_coords) : polygon_coords;
+        if (!Array.isArray(coords) || coords.length < 3) {
+          res.status(400).json({ error: 'polygon_coords must be an array with at least 3 points', code: 'INVALID_POLYGON' });
+          return;
+        }
+      } catch {
+        res.status(400).json({ error: 'polygon_coords must be valid JSON', code: 'INVALID_JSON' });
+        return;
+      }
+      sets.push('polygon_coords = ?');
+      params.push(typeof polygon_coords === 'string' ? polygon_coords : JSON.stringify(polygon_coords));
+    }
+    if (zone_type !== undefined) { sets.push('zone_type = ?'); params.push(String(zone_type)); }
+    if (active_hours !== undefined) { sets.push('active_hours = ?'); params.push(active_hours ? String(active_hours) : null); }
+    if (is_active !== undefined) { sets.push('is_active = ?'); params.push(is_active ? 1 : 0); }
+
+    if (sets.length === 0) {
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS' });
+      return;
+    }
+
+    params.push(id);
+    const result = db.prepare(`UPDATE speed_zones SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'Speed zone not found', code: 'NOT_FOUND' });
+      return;
+    }
+
+    auditLog(req, 'UPDATE', 'speed_zone', id, null, { fields: Object.keys(req.body) });
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('[GPS] speed-zones update error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to update speed zone', code: 'GPS_SPEED_ZONE_UPDATE_ERROR' });
+  }
+});
+
+// DELETE /api/dispatch/gps/speed-zones/:id — Delete a speed zone (admin only)
+router.delete('/gps/speed-zones/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid zone ID', code: 'INVALID_ID' });
+      return;
+    }
+
+    const result = db.prepare('DELETE FROM speed_zones WHERE id = ?').run(id);
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'Speed zone not found', code: 'NOT_FOUND' });
+      return;
+    }
+
+    auditLog(req, 'DELETE', 'speed_zone', id, null, null);
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('[GPS] speed-zones delete error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to delete speed zone', code: 'GPS_SPEED_ZONE_DELETE_ERROR' });
+  }
+});
+
 export default router;
