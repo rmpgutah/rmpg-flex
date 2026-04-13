@@ -716,15 +716,12 @@ router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor
 // ═════════════════════════════════════════════════════════════
 // OwnTracks / Traccar Webhook — Background GPS from iPhone/Android
 // ═════════════════════════════════════════════════════════════
-// OwnTracks sends JSON payloads to this endpoint from the background.
-// Auth: Bearer token stored in system_config as 'owntracks_webhook_token'.
-// Each device is mapped to a unit via 'tid' (tracker ID) → call_sign.
-//
-// OwnTracks payload: { _type: 'location', lat, lon, acc, vel, alt, batt, tid, tst, ... }
-// Traccar payload:   { id, deviceId, latitude, longitude, speed, course, accuracy, ... }
+// Separate router mounted WITHOUT JWT auth in index.ts.
+// Uses own bearer token from system_config 'owntracks_webhook_token'.
 // ═════════════════════════════════════════════════════════════
+export const owntracksWebhookRouter = Router();
 
-router.post('/gps/owntracks', (req: Request, res: Response) => {
+owntracksWebhookRouter.post('/gps/owntracks', (req: Request, res: Response) => {
   try {
     const db = getDb();
 

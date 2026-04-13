@@ -328,6 +328,9 @@ app.use(liveBroadcast);
 
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
+// OwnTracks/Traccar GPS webhook — own bearer token auth, bypasses JWT
+import { owntracksWebhookRouter } from './routes/dispatch/gps';
+app.use('/api/dispatch', owntracksWebhookRouter);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/records', recordsRoutes);
