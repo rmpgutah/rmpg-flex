@@ -71,6 +71,7 @@ const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
   { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
   { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
   { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_generative_language_key', label: 'Generative Language API (Gemini)', desc: 'AI-powered narrative generation, report summarization, CAD command intelligence', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
 ];
 
 const THIRD_PARTY_KEYS: ApiKeyConfig[] = [

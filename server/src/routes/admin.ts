@@ -1799,6 +1799,7 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'google_places_api_key',
   'google_cloud_vision_key',
   'google_cloud_speech_key',
+  'google_generative_language_key',
   // Law Enforcement / Government
   'ncic_api_key',
   'utah_dps_api_key',
