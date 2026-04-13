@@ -876,9 +876,12 @@ function setNotificationsEnabled(enabled: boolean) {
 async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
-  if (Notification.permission === 'denied') return false;
-  const result = await Notification.requestPermission();
-  return result === 'granted';
+  try {
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  } catch {
+    return (Notification.permission as string) === 'granted';
+  }
 }
 
 function showDesktopNotification(title: string, body: string) {
@@ -2124,7 +2127,7 @@ export default function EmailPage() {
               const newState = !notificationsOn;
               if (newState) {
                 const granted = await requestNotificationPermission();
-                if (!granted) { showSnackbar('Notifications blocked by browser', 'error'); return; }
+                if (!granted) { showSnackbar('Notifications blocked — click the lock icon in the address bar → Allow notifications, then reload', 'error'); return; }
               }
               setNotificationsEnabled(newState);
               setNotificationsOn(newState);
