@@ -790,4 +790,148 @@ router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// SPEED VIOLATION ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════
+
+// GET /api/dispatch/gps/speed-violations — List speed violations with filters
+router.get('/gps/speed-violations', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 24, 1), 168);
+    const officerId = req.query.officer_id ? parseInt(req.query.officer_id as string, 10) : null;
+    const unacknowledged = req.query.unacknowledged as string;
+
+    const conditions: string[] = [
+      `sv.recorded_at >= datetime('now','localtime','-${hours} hours')`
+    ];
+    const params: any[] = [];
+
+    if (officerId && !isNaN(officerId)) {
+      conditions.push('sv.officer_id = ?');
+      params.push(officerId);
+    }
+    if (unacknowledged === 'true') {
+      conditions.push('sv.acknowledged_by IS NULL');
+    } else if (unacknowledged === 'false') {
+      conditions.push('sv.acknowledged_by IS NOT NULL');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const rows = db.prepare(`
+      SELECT sv.*, u.full_name as ack_by_name
+      FROM speed_violations sv
+      LEFT JOIN users u ON sv.acknowledged_by = u.id
+      ${whereClause}
+      ORDER BY sv.recorded_at DESC
+      LIMIT 500
+    `).all(...params);
+
+    res.json(rows);
+  } catch (error: any) {
+    console.error('[GPS] speed-violations error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to fetch speed violations', code: 'GPS_SPEED_VIOLATIONS_ERROR' });
+  }
+});
+
+// PATCH /api/dispatch/gps/speed-violations/:id/acknowledge — Acknowledge a speed violation
+router.patch('/gps/speed-violations/:id/acknowledge', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid violation ID', code: 'INVALID_ID' });
+      return;
+    }
+
+    const notes = req.body.notes ? String(req.body.notes).slice(0, 500) : null;
+
+    const result = db.prepare(`
+      UPDATE speed_violations
+      SET acknowledged_by = ?, acknowledged_at = datetime('now','localtime'), notes = COALESCE(?, notes)
+      WHERE id = ? AND acknowledged_by IS NULL
+    `).run(req.user!.userId, notes, id);
+
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'Violation not found or already acknowledged', code: 'NOT_FOUND_OR_ACKNOWLEDGED' });
+      return;
+    }
+
+    auditLog(req, 'ACKNOWLEDGE', 'speed_violation', id, null, { notes });
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('[GPS] speed-violation acknowledge error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to acknowledge speed violation', code: 'GPS_SPEED_ACK_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/speed-stats — Aggregated speed statistics per officer
+router.get('/gps/speed-stats', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 168);
+    const officerId = req.query.officer_id ? parseInt(req.query.officer_id as string, 10) : null;
+    const hoursStr = `-${hours} hours`;
+
+    let officerFilter = '';
+    const params: any[] = [hoursStr];
+    if (officerId && !isNaN(officerId)) {
+      officerFilter = 'AND b.officer_id = ?';
+      params.push(officerId);
+    }
+
+    // Main aggregate query
+    const stats = db.prepare(`
+      SELECT
+        b.officer_id,
+        u.full_name as officer_name,
+        u.badge_number,
+        un.call_sign,
+        COUNT(*) as points_count,
+        MAX(b.speed * 2.23694) as max_speed_mph,
+        AVG(b.speed * 2.23694) as avg_speed_mph,
+        SUM(CASE WHEN b.speed * 2.23694 > 80 THEN 1 ELSE 0 END) as points_over_limit,
+        (SELECT COUNT(*) FROM speed_violations sv
+         WHERE sv.officer_id = b.officer_id
+         AND sv.recorded_at >= datetime('now','localtime', ?)) as violations_count
+      FROM gps_breadcrumbs b
+      LEFT JOIN users u ON b.officer_id = u.id
+      LEFT JOIN units un ON b.unit_id = un.id
+      WHERE b.recorded_at >= datetime('now','localtime', ?)
+        AND b.speed IS NOT NULL AND b.speed > 0.2
+        ${officerFilter}
+      GROUP BY b.officer_id
+      ORDER BY max_speed_mph DESC
+    `).all(hoursStr, ...params);
+
+    // Secondary query for p95 speed per officer
+    const officerIds = (stats as any[]).map((s: any) => s.officer_id).filter(Boolean);
+    const result = (stats as any[]).map((s: any) => {
+      let p95_speed_mph = null;
+      if (s.officer_id && s.points_count > 0) {
+        const p95Params: any[] = [hoursStr, s.officer_id];
+        const speeds = db.prepare(`
+          SELECT speed * 2.23694 as speed_mph
+          FROM gps_breadcrumbs
+          WHERE recorded_at >= datetime('now','localtime', ?)
+            AND officer_id = ?
+            AND speed IS NOT NULL AND speed > 0.2
+          ORDER BY speed DESC
+        `).all(...p95Params) as any[];
+        const p95Index = Math.floor(speeds.length * 0.05);
+        if (speeds.length > 0) {
+          p95_speed_mph = speeds[Math.min(p95Index, speeds.length - 1)].speed_mph;
+        }
+      }
+      return { ...s, p95_speed_mph };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('[GPS] speed-stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to fetch speed stats', code: 'GPS_SPEED_STATS_ERROR' });
+  }
+});
+
 export default router;
