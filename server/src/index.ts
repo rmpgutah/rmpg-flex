@@ -326,11 +326,13 @@ app.get('/api/system-status', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
+// ─── OwnTracks/Traccar GPS webhook — BEFORE all other routes (own auth, no JWT) ───
+import { owntracksWebhookRouter } from './routes/dispatch/gps';
+app.use('/api/dispatch/gps', owntracksWebhookRouter);
+app.use('/owntracks', owntracksWebhookRouter);  // Short path for OwnTracks app (appends /{user}/{device})
+
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
-// OwnTracks/Traccar GPS webhook — own bearer token auth, bypasses JWT
-import { owntracksWebhookRouter } from './routes/dispatch/gps';
-app.use('/api/dispatch', owntracksWebhookRouter);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/records', recordsRoutes);

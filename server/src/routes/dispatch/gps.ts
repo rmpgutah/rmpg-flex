@@ -721,7 +721,11 @@ router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor
 // ═════════════════════════════════════════════════════════════
 export const owntracksWebhookRouter = Router();
 
-owntracksWebhookRouter.post('/gps/owntracks', (req: Request, res: Response) => {
+// Handle all OwnTracks POST paths:
+//   /api/dispatch/gps/owntracks           (direct)
+//   /owntracks                             (short path)
+//   /owntracks/:user/:device               (OwnTracks appends /{user}/{device})
+const owntracksHandler = (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -884,6 +888,13 @@ owntracksWebhookRouter.post('/gps/owntracks', (req: Request, res: Response) => {
     console.error('[GPS] OwnTracks webhook error:', error?.message || error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
-});
+};
+
+owntracksWebhookRouter.post('/owntracks', owntracksHandler);
+owntracksWebhookRouter.post('/owntracks/:user', owntracksHandler);
+owntracksWebhookRouter.post('/owntracks/:user/:device', owntracksHandler);
+owntracksWebhookRouter.post('/', owntracksHandler);                    // /owntracks (mounted at /owntracks)
+owntracksWebhookRouter.post('/:user', owntracksHandler);               // /owntracks/:user
+owntracksWebhookRouter.post('/:user/:device', owntracksHandler);       // /owntracks/:user/:device
 
 export default router;
