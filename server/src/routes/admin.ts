@@ -1805,13 +1805,28 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'utah_dps_api_key',
   'utah_courts_api_key',
   'fbi_wanted_api_key',
+  // Free / Open Source
+  'openweathermap_api_key',
+  'mapbox_api_key',
+  'nominatim_api_key',
+  'opencage_api_key',
+  'ipinfo_api_key',
+  'virustotal_api_key',
+  'abuseipdb_api_key',
+  'shodan_api_key',
+  // Notifications
+  'twilio_api_key',
+  'twilio_account_sid',
+  'sendgrid_api_key',
+  'pushover_api_key',
+  'ntfy_topic_key',
   // Data Services
   'openmeteo_api_key',
   'clearpath_gps_api_key',
-  'twilio_api_key',
-  'sendgrid_api_key',
   'microbilt_client_id',
   'microbilt_client_secret',
+  'nhtsa_api_key',
+  'fcc_api_key',
 ];
 
 function encryptValue(plaintext: string): string {

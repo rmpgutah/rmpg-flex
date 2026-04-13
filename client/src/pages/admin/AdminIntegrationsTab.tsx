@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
-  Shield, Database,
+  Shield, Database, Bell, Unlock,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -86,13 +86,32 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
   { key: 'fbi_wanted_api_key', label: 'FBI Wanted API', desc: 'FBI Most Wanted list integration for warrant cross-referencing' },
 ];
 
-const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
-  { key: 'openmeteo_api_key', label: 'Open-Meteo / Weather', desc: 'Weather conditions for dispatch calls, incident reports, and scene documentation' },
-  { key: 'clearpath_gps_api_key', label: 'ClearPathGPS', desc: 'Fleet GPS tracking — vehicle positions, speed, geofence alerts' },
+const FREE_OPEN_APIS: ApiKeyConfig[] = [
+  { key: 'openweathermap_api_key', label: 'OpenWeatherMap', desc: 'Free tier: 1000 calls/day — current weather, forecasts, alerts for dispatch scene conditions', formatHint: '32-character hex key from openweathermap.org' },
+  { key: 'mapbox_api_key', label: 'Mapbox', desc: 'Free tier: 50k loads/month — satellite imagery, routing, isochrones, offline maps', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com' },
+  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback when Google quota exceeded (email as key)' },
+  { key: 'opencage_api_key', label: 'OpenCage Geocoder', desc: 'Free tier: 2500 calls/day — reverse geocoding, address parsing, timezone lookup' },
+  { key: 'ipinfo_api_key', label: 'IPinfo', desc: 'Free tier: 50k/month — IP geolocation for login audit, session tracking, threat intel' },
+  { key: 'virustotal_api_key', label: 'VirusTotal', desc: 'Free tier: 4 lookups/min — file hash checks, URL scanning for evidence/forensics' },
+  { key: 'abuseipdb_api_key', label: 'AbuseIPDB', desc: 'Free tier: 1000/day — check IP addresses against abuse database for security monitoring' },
+  { key: 'shodan_api_key', label: 'Shodan', desc: 'Free tier: limited — internet-connected device search for OSINT/investigations' },
+];
+
+const NOTIFICATION_KEYS: ApiKeyConfig[] = [
   { key: 'twilio_api_key', label: 'Twilio SMS / Voice', desc: 'SMS notifications, automated phone alerts, 2FA verification codes', pattern: /^SK[a-f0-9]{32}$/, formatHint: 'Twilio API key — starts with SK, 34 characters' },
+  { key: 'twilio_account_sid', label: 'Twilio Account SID', desc: 'Twilio account identifier (paired with API key above)', pattern: /^AC[a-f0-9]{32}$/, formatHint: 'Starts with AC, 34 characters' },
   { key: 'sendgrid_api_key', label: 'SendGrid Email', desc: 'Transactional email delivery — court reminders, serve deadlines, report distribution', pattern: /^SG\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'SendGrid key — starts with SG.' },
+  { key: 'pushover_api_key', label: 'Pushover', desc: 'Free app — push notifications to officer phones for panic alerts, warrant hits, court reminders' },
+  { key: 'ntfy_topic_key', label: 'ntfy.sh Topic', desc: 'Free open-source push notifications — no account required, self-hostable' },
+];
+
+const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
+  { key: 'openmeteo_api_key', label: 'Open-Meteo / Weather', desc: 'Completely free — weather conditions for dispatch calls, incident reports, scene documentation' },
+  { key: 'clearpath_gps_api_key', label: 'ClearPathGPS', desc: 'Fleet GPS tracking — vehicle positions, speed, geofence alerts' },
   { key: 'microbilt_client_id', label: 'MicroBilt Client ID', desc: 'Skip tracing — person search, address history, phone lookups' },
   { key: 'microbilt_client_secret', label: 'MicroBilt Client Secret', desc: 'MicroBilt API authentication secret (paired with Client ID above)' },
+  { key: 'nhtsa_api_key', label: 'NHTSA Vehicle API', desc: 'Free — VIN decoding, vehicle recalls, crash ratings, complaints (no key required but rate-limited)' },
+  { key: 'fcc_api_key', label: 'FCC Broadband / ULS', desc: 'Free — radio license lookups, broadband coverage maps for communication planning' },
 ];
 
 function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: React.ReactNode; keys: ApiKeyConfig[] }) {
@@ -514,10 +533,16 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       {/* ── Law Enforcement / Government APIs ── */}
       <ApiKeyPanel title="Law Enforcement / Government" icon={<Shield className="w-4 h-4 text-red-400" />} keys={LAW_ENFORCEMENT_KEYS} />
 
-      {/* ── Data Services & Third-Party ── */}
-      <ApiKeyPanel title="Data Services & Third-Party" icon={<Database className="w-4 h-4 text-cyan-400" />} keys={DATA_SERVICE_KEYS} />
+      {/* ── Free / Open Source APIs ── */}
+      <ApiKeyPanel title="Free / Open Source APIs" icon={<Unlock className="w-4 h-4 text-green-400" />} keys={FREE_OPEN_APIS} />
 
-      {/* ── Third-Party RapidAPI Keys ── */}
+      {/* ── Notifications ── */}
+      <ApiKeyPanel title="Notifications & Messaging" icon={<Bell className="w-4 h-4 text-amber-400" />} keys={NOTIFICATION_KEYS} />
+
+      {/* ── Data Services ── */}
+      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-cyan-400" />} keys={DATA_SERVICE_KEYS} />
+
+      {/* ── RapidAPI Keys ── */}
       <ApiKeyPanel title="RapidAPI Keys" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
 
       {/* ── API Keys Panel ── */}
