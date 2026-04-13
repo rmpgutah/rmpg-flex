@@ -585,6 +585,9 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
         time: row.recorded_at,
         road_name: row.road_name || null,
         intersection: row.nearest_intersection || null,
+        accel_mps2: null as number | null,
+        is_hard_brake: false,
+        is_rapid_accel: false,
       };
 
       const trailPts = trails[row.unit_id].points;
@@ -607,6 +610,14 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       const dtSec    = Math.max((curTime - prevTime) / 1000, 0.5); // floor at 0.5s to avoid /0
 
       if (dist / dtSec > MAX_SPEED) continue; // impossible jump — skip
+
+      // ── Acceleration calculation ──
+      if (trailPts.length >= 1 && prev.speed != null && pt.speed != null) {
+        const accel = (pt.speed - prev.speed) / dtSec;
+        pt.accel_mps2 = Math.round(accel * 100) / 100;
+        pt.is_hard_brake = accel < -4;
+        pt.is_rapid_accel = accel > 3;
+      }
 
       trailPts.push(pt);
     }
@@ -1076,6 +1087,340 @@ router.delete('/gps/speed-zones/:id', requireRole('admin'), (req: Request, res: 
   } catch (error: any) {
     console.error('[GPS] speed-zones delete error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete speed zone', code: 'GPS_SPEED_ZONE_DELETE_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/pursuit-segments — Auto-detect high-speed pursuit sequences
+// Scans breadcrumbs for consecutive points where speed >= 60 mph (26.8 m/s).
+// Groups them into segments per unit with distance, duration, and speed stats.
+router.get('/gps/pursuit-segments', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    const unitIdFilter = req.query.unit_id ? parseInt(req.query.unit_id as string, 10) : null;
+
+    const PURSUIT_SPEED_MPS = 26.8; // ~60 mph
+    const MIN_POINTS = 3;
+
+    // Haversine distance in meters
+    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6_371_000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    let query = `
+      SELECT unit_id, call_sign, latitude, longitude, speed, heading, recorded_at
+      FROM gps_breadcrumbs
+      WHERE recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND speed IS NOT NULL AND speed > 0
+    `;
+    const params: any[] = [hours];
+
+    if (unitIdFilter != null && !isNaN(unitIdFilter)) {
+      query += ' AND unit_id = ?';
+      params.push(unitIdFilter);
+    }
+
+    query += ' ORDER BY unit_id, recorded_at ASC LIMIT 50000';
+
+    const rows = db.prepare(query).all(...params) as any[];
+
+    // Group by unit
+    const byUnit: Record<number, any[]> = {};
+    for (const row of rows) {
+      if (!byUnit[row.unit_id]) byUnit[row.unit_id] = [];
+      byUnit[row.unit_id].push(row);
+    }
+
+    const segments: any[] = [];
+
+    for (const [unitIdStr, points] of Object.entries(byUnit)) {
+      const unitId = parseInt(unitIdStr, 10);
+      let currentSegment: any[] = [];
+
+      const flushSegment = () => {
+        if (currentSegment.length >= MIN_POINTS) {
+          let totalDistM = 0;
+          let maxSpeed = 0;
+          let speedSum = 0;
+
+          for (let i = 0; i < currentSegment.length; i++) {
+            const p = currentSegment[i];
+            const speedMps = p.speed || 0;
+            if (speedMps > maxSpeed) maxSpeed = speedMps;
+            speedSum += speedMps;
+            if (i > 0) {
+              const prev = currentSegment[i - 1];
+              totalDistM += haversineM(prev.latitude, prev.longitude, p.latitude, p.longitude);
+            }
+          }
+
+          segments.push({
+            unit_id: unitId,
+            call_sign: currentSegment[0].call_sign,
+            start_time: currentSegment[0].recorded_at,
+            end_time: currentSegment[currentSegment.length - 1].recorded_at,
+            point_count: currentSegment.length,
+            max_speed_mph: Math.round(maxSpeed * 2.23694 * 10) / 10,
+            avg_speed_mph: Math.round((speedSum / currentSegment.length) * 2.23694 * 10) / 10,
+            distance_miles: Math.round((totalDistM / 1609.344) * 100) / 100,
+            points: currentSegment.map(p => ({
+              lat: p.latitude,
+              lng: p.longitude,
+              speed: p.speed,
+              heading: p.heading,
+              time: p.recorded_at,
+            })),
+          });
+        }
+        currentSegment = [];
+      };
+
+      for (const pt of points) {
+        if (pt.speed >= PURSUIT_SPEED_MPS) {
+          currentSegment.push(pt);
+        } else {
+          flushSegment();
+        }
+      }
+      // Flush any trailing segment
+      flushSegment();
+    }
+
+    res.set('Cache-Control', 'private, max-age=10');
+    res.json(segments);
+  } catch (error: any) {
+    console.error('[GPS] pursuit-segments error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to detect pursuit segments', code: 'GPS_PURSUIT_SEGMENTS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/speed-heatmap — Grid-based speed aggregation for heatmap rendering
+// Groups breadcrumbs into lat/lng grid cells and returns average/max speed per cell.
+router.get('/gps/speed-heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    const gridSize = Math.min(Math.max(parseFloat(req.query.grid_size as string) || 0.002, 0.0005), 0.01);
+
+    const rows = db.prepare(`
+      SELECT
+        ROUND(latitude / ? ) * ? AS grid_lat,
+        ROUND(longitude / ?) * ? AS grid_lng,
+        AVG(speed * 2.23694) AS avg_speed,
+        MAX(speed * 2.23694) AS max_speed,
+        COUNT(*) AS point_count
+      FROM gps_breadcrumbs
+      WHERE recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND speed IS NOT NULL AND speed > 0.2
+      GROUP BY grid_lat, grid_lng
+      HAVING point_count >= 3
+      ORDER BY avg_speed DESC
+      LIMIT 5000
+    `).all(gridSize, gridSize, gridSize, gridSize, hours) as any[];
+
+    const result = rows.map(r => ({
+      grid_lat: r.grid_lat,
+      grid_lng: r.grid_lng,
+      avg_speed: Math.round(r.avg_speed * 10) / 10,
+      max_speed: Math.round(r.max_speed * 10) / 10,
+      point_count: r.point_count,
+    }));
+
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(result);
+  } catch (error: any) {
+    console.error('[GPS] speed-heatmap error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to generate speed heatmap', code: 'GPS_SPEED_HEATMAP_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/zone-speed-stats — Speed statistics per dispatch beat
+// Classifies breadcrumbs into dispatch beats using point-in-polygon and aggregates speed stats.
+router.get('/gps/zone-speed-stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+
+    // Load beats with polygon data, joined with zone and sector names
+    const beats = db.prepare(`
+      SELECT b.id AS beat_id, b.name AS beat_name, b.code AS beat_code,
+             b.polygon_coords,
+             z.name AS zone_name, s.name AS sector_name
+      FROM dispatch_beats b
+      LEFT JOIN dispatch_zones z ON b.zone_id = z.id
+      LEFT JOIN dispatch_sectors s ON z.sector_id = s.id
+      WHERE b.polygon_coords IS NOT NULL AND b.polygon_coords != ''
+    `).all() as any[];
+
+    // Parse polygon coords for each beat
+    const beatPolygons: { beat: any; polygon: { lat: number; lng: number }[] }[] = [];
+    for (const beat of beats) {
+      try {
+        const coords = JSON.parse(beat.polygon_coords);
+        if (Array.isArray(coords) && coords.length >= 3) {
+          beatPolygons.push({ beat, polygon: coords });
+        }
+      } catch { /* skip beats with invalid polygon data */ }
+    }
+
+    // Fetch breadcrumbs
+    const breadcrumbs = db.prepare(`
+      SELECT latitude, longitude, speed
+      FROM gps_breadcrumbs
+      WHERE recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND speed IS NOT NULL AND speed > 0.2
+      ORDER BY recorded_at DESC
+      LIMIT 50000
+    `).all(hours) as any[];
+
+    // Classify each breadcrumb into a beat and aggregate
+    const beatStats: Record<number, { speeds: number[]; beat: any }> = {};
+
+    for (const bc of breadcrumbs) {
+      for (const { beat, polygon } of beatPolygons) {
+        if (pointInPolygon(bc.latitude, bc.longitude, polygon)) {
+          if (!beatStats[beat.beat_id]) {
+            beatStats[beat.beat_id] = { speeds: [], beat };
+          }
+          beatStats[beat.beat_id].speeds.push(bc.speed * 2.23694); // m/s -> mph
+          break; // point can only be in one beat
+        }
+      }
+    }
+
+    // Calculate stats per beat
+    const result = Object.values(beatStats).map(({ speeds, beat }) => {
+      speeds.sort((a, b) => a - b);
+      const sum = speeds.reduce((s, v) => s + v, 0);
+      const p95Idx = Math.min(Math.floor(speeds.length * 0.95), speeds.length - 1);
+
+      return {
+        beat_id: beat.beat_id,
+        beat_name: beat.beat_name,
+        beat_code: beat.beat_code,
+        zone_name: beat.zone_name,
+        sector_name: beat.sector_name,
+        avg_speed_mph: Math.round((sum / speeds.length) * 10) / 10,
+        max_speed_mph: Math.round(speeds[speeds.length - 1] * 10) / 10,
+        p95_speed_mph: Math.round(speeds[p95Idx] * 10) / 10,
+        point_count: speeds.length,
+      };
+    });
+
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(result);
+  } catch (error: any) {
+    console.error('[GPS] zone-speed-stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to generate zone speed stats', code: 'GPS_ZONE_SPEED_STATS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/coverage-timeline — Beat coverage over time intervals
+// Shows how many unique units visited each beat per time interval, plus average speed.
+router.get('/gps/coverage-timeline', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    const intervalMin = Math.min(Math.max(parseInt(req.query.interval as string, 10) || 30, 10), 120);
+
+    // Load beats with polygon data
+    const beats = db.prepare(`
+      SELECT b.id AS beat_id, b.name AS beat_name, b.code AS beat_code, b.polygon_coords
+      FROM dispatch_beats b
+      WHERE b.polygon_coords IS NOT NULL AND b.polygon_coords != ''
+    `).all() as any[];
+
+    const beatPolygons: { beatId: number; beatName: string; beatCode: string; polygon: { lat: number; lng: number }[] }[] = [];
+    for (const beat of beats) {
+      try {
+        const coords = JSON.parse(beat.polygon_coords);
+        if (Array.isArray(coords) && coords.length >= 3) {
+          beatPolygons.push({ beatId: beat.beat_id, beatName: beat.beat_name, beatCode: beat.beat_code, polygon: coords });
+        }
+      } catch { /* skip */ }
+    }
+
+    // Fetch breadcrumbs with unit_id and timestamp
+    const breadcrumbs = db.prepare(`
+      SELECT unit_id, latitude, longitude, speed, recorded_at
+      FROM gps_breadcrumbs
+      WHERE recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+      ORDER BY recorded_at ASC
+      LIMIT 50000
+    `).all(hours) as any[];
+
+    // Build time intervals
+    const now = new Date();
+    const startTime = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    const intervalMs = intervalMin * 60 * 1000;
+    const intervals: { start: string; end: string; beats: Record<number, { unit_ids: Set<number>; speeds: number[] }> }[] = [];
+
+    for (let t = startTime.getTime(); t < now.getTime(); t += intervalMs) {
+      intervals.push({
+        start: new Date(t).toISOString(),
+        end: new Date(t + intervalMs).toISOString(),
+        beats: {},
+      });
+    }
+
+    // Classify each breadcrumb into an interval and beat
+    for (const bc of breadcrumbs) {
+      const bcTime = new Date(bc.recorded_at).getTime();
+      const intervalIdx = Math.floor((bcTime - startTime.getTime()) / intervalMs);
+      if (intervalIdx < 0 || intervalIdx >= intervals.length) continue;
+
+      const interval = intervals[intervalIdx];
+
+      for (const { beatId, polygon } of beatPolygons) {
+        if (pointInPolygon(bc.latitude, bc.longitude, polygon)) {
+          if (!interval.beats[beatId]) {
+            interval.beats[beatId] = { unit_ids: new Set(), speeds: [] };
+          }
+          interval.beats[beatId].unit_ids.add(bc.unit_id);
+          if (bc.speed != null && bc.speed > 0.2) {
+            interval.beats[beatId].speeds.push(bc.speed * 2.23694);
+          }
+          break;
+        }
+      }
+    }
+
+    // Format response
+    const result = intervals.map(interval => ({
+      start: interval.start,
+      end: interval.end,
+      beats: Object.entries(interval.beats).map(([beatIdStr, data]) => {
+        const beatId = parseInt(beatIdStr, 10);
+        const beatInfo = beatPolygons.find(b => b.beatId === beatId);
+        const avgSpeed = data.speeds.length > 0
+          ? Math.round((data.speeds.reduce((s, v) => s + v, 0) / data.speeds.length) * 10) / 10
+          : 0;
+        return {
+          beat_id: beatId,
+          beat_name: beatInfo?.beatName || '',
+          beat_code: beatInfo?.beatCode || '',
+          unique_units: data.unit_ids.size,
+          avg_speed_mph: avgSpeed,
+        };
+      }),
+    }));
+
+    res.set('Cache-Control', 'private, max-age=60');
+    res.json({ intervals: result, total_beats: beatPolygons.length });
+  } catch (error: any) {
+    console.error('[GPS] coverage-timeline error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to generate coverage timeline', code: 'GPS_COVERAGE_TIMELINE_ERROR' });
   }
 });
 
