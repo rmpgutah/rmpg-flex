@@ -870,6 +870,13 @@ export default function DispatchPage() {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+      } else if (data.action === 'unit_position_update' && data.unit) {
+        // Update unit position + speed_mph from GPS broadcast
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id)
+          ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude, speed_mph: data.unit.speed_mph }
+          : u)));
+      } else if (data.action === 'unit_updated' && data.unit) {
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
       } else if (data.action === 'unit_created' && data.unit) {
         setUnits((prev) => {
           if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
@@ -927,7 +934,16 @@ export default function DispatchPage() {
       fetchData({ silent: true });
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
+    const unsubSpeed = subscribe('speed:alert', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.unit && data?.speed_mph) {
+        const severity = data.severity === 'critical' ? 'error' : 'warning';
+        addToast(`🚨 ${data.label || 'SPEED ALERT'}: Unit ${data.unit} at ${data.speed_mph} mph${data.current_call_number ? ` on ${data.current_call_number}` : ''}`, severity);
+        announceSpeedAdvisory(data.unit, data.speed_mph);
+      }
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared

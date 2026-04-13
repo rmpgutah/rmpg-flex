@@ -240,9 +240,17 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
     insertMany(validPoints);
 
+    // Compute speed in MPH from latest point (m/s → mph)
+    const latestSpeedMph = latest.speed != null && Number.isFinite(latest.speed)
+      ? Math.round(latest.speed * 2.23694 * 10) / 10
+      : null;
+
     // Broadcast ONLY when live position was actually updated (avoids flickering on dispatch map)
     if (shouldUpdateLive) {
-      broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
+      broadcastUnitUpdate({
+        action: 'unit_position_update',
+        unit: { ...updated, speed_mph: latestSpeedMph },
+      });
     }
 
     // ── Check geofences for the latest point ──
@@ -272,6 +280,26 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
         }
       }
     } catch (geoErr) { console.error('[GPS] Geofence check error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
+
+    // ── Speed Alert — broadcast when unit exceeds threshold ──
+    const SPEED_ALERT_MPH = 80;
+    const SPEED_PURSUIT_MPH = 100;
+    if (latestSpeedMph != null && latestSpeedMph >= SPEED_ALERT_MPH) {
+      const severity = latestSpeedMph >= SPEED_PURSUIT_MPH ? 'critical' : 'warning';
+      const label = latestSpeedMph >= SPEED_PURSUIT_MPH ? 'PURSUIT SPEED' : 'HIGH SPEED';
+      broadcastAlert({
+        type: 'speed:alert',
+        severity,
+        unit: updated?.call_sign || unit.call_sign,
+        unit_id: unit.id,
+        speed_mph: latestSpeedMph,
+        label,
+        latitude: latest.lat,
+        longitude: latest.lng,
+        officer_name: updated?.officer_name || null,
+        current_call_number: updated?.call_number || null,
+      });
+    }
 
     const pointsCapped = pointsReceived > 60 ? pointsReceived - 60 : 0;
     const pointsInvalid = points.length - validPoints.length;

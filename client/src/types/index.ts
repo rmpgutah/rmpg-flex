@@ -1776,7 +1776,10 @@ export type WSMessageType =
   | 'serve_created'
   // Radio events (for cross-integration)
   // Security
-  | 'security:updated';
+  | 'security:updated'
+  // Speed tracking
+  | 'speed:alert'
+  | 'geofence:alert';
 
 export interface WSMessage {
   type: WSMessageType;
