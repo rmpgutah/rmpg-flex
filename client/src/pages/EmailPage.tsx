@@ -635,35 +635,30 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 }
 
 // ============================================================
-// Email Body Frame — renders HTML email via srcdoc with sandbox permissions
-// srcdoc + sandbox="allow-same-origin allow-popups" lets external images load
-// while blocking scripts and form submissions for security.
+// Email Body Frame — renders HTML email in a blob: URL iframe
+// blob: URLs inherit the parent page origin, allowing external images.
+// Scripts blocked via CSP meta tag. Images explicitly allowed.
 // ============================================================
 const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
   ({ bodyHtml, onLoad }, ref) => {
-    const srcdoc = React.useMemo(() => {
-      // Sanitize: strip <script> tags + inline event handlers
+    const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+    React.useEffect(() => {
       const sanitized = bodyHtml
         .replace(/<script[\s\S]*?<\/script>/gi, '')
         .replace(/\bon\w+\s*=/gi, 'data-blocked=');
-      return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="default-src * data: blob: 'unsafe-inline'; script-src 'none'; object-src 'none';"><style>
         body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; display: inline-block; } table { border-collapse: collapse; max-width: 100%; }
+        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
         pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
       </style></head><body>${sanitized}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+      return () => URL.revokeObjectURL(url);
     }, [bodyHtml]);
-    return (
-      <iframe
-        ref={ref}
-        srcDoc={srcdoc}
-        sandbox="allow-same-origin allow-popups"
-        onLoad={onLoad}
-        className="w-full border-0"
-        style={{ minHeight: 200 }}
-        title="Email body"
-      />
-    );
+    if (!blobUrl) return null;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
   }
 );
 EmailBodyFrame.displayName = 'EmailBodyFrame';
