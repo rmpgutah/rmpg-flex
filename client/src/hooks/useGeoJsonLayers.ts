@@ -157,12 +157,12 @@ export function getSectionColor(sectionId: string): string {
   return SECTION_COLOR_FALLBACKS[Math.abs(hash) % SECTION_COLOR_FALLBACKS.length];
 }
 
-/** Per-city color — 24 high-contrast hues for distinct city boundaries on the map */
+/** Per-city color — 24 muted hues for subtle city boundaries on dark map */
 const CITY_COLORS = [
-  '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
-  '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#06b6d4', '#e11d48',
-  '#84cc16', '#6366f1', '#d946ef', '#0ea5e9', '#facc15', '#fb923c',
-  '#2dd4bf', '#f472b6', '#a3e635', '#818cf8', '#fbbf24', '#38bdf8',
+  '#4a9e6e', '#5a7fb5', '#b85c5c', '#b8923e', '#8a6aaf', '#b06a8a',
+  '#3a9a8a', '#b07a4a', '#7a6aaf', '#3a8a6a', '#3a8aaa', '#a04a5a',
+  '#6a9a3a', '#5a5aaf', '#9a4aaf', '#3a7aaa', '#aa9a3a', '#b07a4a',
+  '#4aaa8a', '#a06a8a', '#7aaa4a', '#6a6aaf', '#aa8a3a', '#4a8aaa',
 ];
 
 export function getCityColor(cityCode: string): string {
@@ -304,7 +304,7 @@ export function useGeoJsonLayers({
       const cColor = getCityColor(cityCode);
       for (const [distLetter, entry] of zoneMap) {
         lookup.set(`${cityCode}::${distLetter}`, {
-          style: { ...beatCfg.style, fillColor: cColor, strokeColor: cColor, fillOpacity: 0.18, strokeOpacity: 0.75, strokeWeight: 1.5 },
+          style: { ...beatCfg.style, fillColor: cColor, strokeColor: cColor, fillOpacity: 0.12, strokeOpacity: 0.5, strokeWeight: 1 },
           entry,
         });
       }
@@ -370,7 +370,7 @@ export function useGeoJsonLayers({
           // Fallback: color by city_code even without district map data
           if (baseStyle === cfg.style && cityCode) {
             const cc = getCityColor(cityCode);
-            baseStyle = { ...cfg.style, fillColor: cc, strokeColor: cc, fillOpacity: 0.18, strokeOpacity: 0.75, strokeWeight: 1.5 };
+            baseStyle = { ...cfg.style, fillColor: cc, strokeColor: cc, fillOpacity: 0.12, strokeOpacity: 0.5, strokeWeight: 1 };
           }
         }
 
