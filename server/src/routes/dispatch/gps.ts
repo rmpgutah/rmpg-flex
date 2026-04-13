@@ -585,6 +585,9 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
         time: row.recorded_at,
         road_name: row.road_name || null,
         intersection: row.nearest_intersection || null,
+        accel_mps2: null as number | null,
+        is_hard_brake: false,
+        is_rapid_accel: false,
       };
 
       const trailPts = trails[row.unit_id].points;
@@ -607,6 +610,14 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       const dtSec    = Math.max((curTime - prevTime) / 1000, 0.5); // floor at 0.5s to avoid /0
 
       if (dist / dtSec > MAX_SPEED) continue; // impossible jump — skip
+
+      // ── Acceleration calculation ──
+      if (trailPts.length >= 1 && prev.speed != null && pt.speed != null) {
+        const accel = (pt.speed - prev.speed) / dtSec;
+        pt.accel_mps2 = Math.round(accel * 100) / 100;
+        pt.is_hard_brake = accel < -4;
+        pt.is_rapid_accel = accel > 3;
+      }
 
       trailPts.push(pt);
     }
@@ -1076,6 +1087,118 @@ router.delete('/gps/speed-zones/:id', requireRole('admin'), (req: Request, res: 
   } catch (error: any) {
     console.error('[GPS] speed-zones delete error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete speed zone', code: 'GPS_SPEED_ZONE_DELETE_ERROR' });
+  }
+});
+
+// GET /api/dispatch/gps/pursuit-segments — Auto-detect high-speed pursuit sequences
+// Scans breadcrumbs for consecutive points where speed >= 60 mph (26.8 m/s).
+// Groups them into segments per unit with distance, duration, and speed stats.
+router.get('/gps/pursuit-segments', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    const unitIdFilter = req.query.unit_id ? parseInt(req.query.unit_id as string, 10) : null;
+
+    const PURSUIT_SPEED_MPS = 26.8; // ~60 mph
+    const MIN_POINTS = 3;
+
+    // Haversine distance in meters
+    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6_371_000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    let query = `
+      SELECT unit_id, call_sign, latitude, longitude, speed, heading, recorded_at
+      FROM gps_breadcrumbs
+      WHERE recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND speed IS NOT NULL AND speed > 0
+    `;
+    const params: any[] = [hours];
+
+    if (unitIdFilter != null && !isNaN(unitIdFilter)) {
+      query += ' AND unit_id = ?';
+      params.push(unitIdFilter);
+    }
+
+    query += ' ORDER BY unit_id, recorded_at ASC LIMIT 50000';
+
+    const rows = db.prepare(query).all(...params) as any[];
+
+    // Group by unit
+    const byUnit: Record<number, any[]> = {};
+    for (const row of rows) {
+      if (!byUnit[row.unit_id]) byUnit[row.unit_id] = [];
+      byUnit[row.unit_id].push(row);
+    }
+
+    const segments: any[] = [];
+
+    for (const [unitIdStr, points] of Object.entries(byUnit)) {
+      const unitId = parseInt(unitIdStr, 10);
+      let currentSegment: any[] = [];
+
+      const flushSegment = () => {
+        if (currentSegment.length >= MIN_POINTS) {
+          let totalDistM = 0;
+          let maxSpeed = 0;
+          let speedSum = 0;
+
+          for (let i = 0; i < currentSegment.length; i++) {
+            const p = currentSegment[i];
+            const speedMps = p.speed || 0;
+            if (speedMps > maxSpeed) maxSpeed = speedMps;
+            speedSum += speedMps;
+            if (i > 0) {
+              const prev = currentSegment[i - 1];
+              totalDistM += haversineM(prev.latitude, prev.longitude, p.latitude, p.longitude);
+            }
+          }
+
+          segments.push({
+            unit_id: unitId,
+            call_sign: currentSegment[0].call_sign,
+            start_time: currentSegment[0].recorded_at,
+            end_time: currentSegment[currentSegment.length - 1].recorded_at,
+            point_count: currentSegment.length,
+            max_speed_mph: Math.round(maxSpeed * 2.23694 * 10) / 10,
+            avg_speed_mph: Math.round((speedSum / currentSegment.length) * 2.23694 * 10) / 10,
+            distance_miles: Math.round((totalDistM / 1609.344) * 100) / 100,
+            points: currentSegment.map(p => ({
+              lat: p.latitude,
+              lng: p.longitude,
+              speed: p.speed,
+              heading: p.heading,
+              time: p.recorded_at,
+            })),
+          });
+        }
+        currentSegment = [];
+      };
+
+      for (const pt of points) {
+        if (pt.speed >= PURSUIT_SPEED_MPS) {
+          currentSegment.push(pt);
+        } else {
+          flushSegment();
+        }
+      }
+      // Flush any trailing segment
+      flushSegment();
+    }
+
+    res.set('Cache-Control', 'private, max-age=10');
+    res.json(segments);
+  } catch (error: any) {
+    console.error('[GPS] pursuit-segments error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to detect pursuit segments', code: 'GPS_PURSUIT_SEGMENTS_ERROR' });
   }
 });
 
