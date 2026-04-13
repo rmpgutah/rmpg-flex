@@ -63,12 +63,42 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
         if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return null;
         return { latitude: loc.lat, longitude: loc.lng };
       }
-      return null;
+      // Google failed or returned no results — try Nominatim fallback
+      return geocodeWithNominatim(address);
     } finally {
       clearTimeout(timeout);
     }
   } catch (err) {
-    console.error('[geocode] Error geocoding address:', err);
+    console.error('[geocode] Google geocode error, trying Nominatim fallback:', err);
+    return geocodeWithNominatim(address);
+  }
+}
+
+/**
+ * Free geocoding fallback via OpenStreetMap Nominatim.
+ * No API key required. Rate limit: 1 req/sec (enforced by MIN_GEOCODE_INTERVAL_MS).
+ * Usage policy: https://operations.osmfoundation.org/policies/nominatim/
+ */
+async function geocodeWithNominatim(address: string): Promise<GeocodeResult | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=us`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'RMPG-Flex-CAD/5.7 (rmpgutah.us)' },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+        return { latitude: parseFloat(data[0].lat), longitude: parseFloat(data[0].lon) };
+      }
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
     return null;
   }
 }
