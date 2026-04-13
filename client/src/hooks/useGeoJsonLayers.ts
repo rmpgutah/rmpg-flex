@@ -505,12 +505,20 @@ export function useGeoJsonLayers({
     }));
 
     // ── Beat label overlays — show dispatch codes at polygon centroids ──
-    if (cfg.id === 'beat' && beatDistrictMapRef.current) {
+    if (cfg.id === 'beat') {
       dataLayer.forEach((feature) => {
         const cityCode = feature.getProperty('city_code') as string;
         const distLetter = feature.getProperty('district_letter') as string;
-        const entry = lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter);
-        if (!entry) return;
+        const beatCode = feature.getProperty('beat_code') as string;
+        if (!cityCode) return;
+
+        // Try district map lookup, fall back to GeoJSON properties
+        const entry = beatDistrictMapRef.current
+          ? lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter)
+          : null;
+        const labelText = entry
+          ? (entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`)
+          : (beatCode || `${cityCode}-${distLetter}`);
 
         // Calculate polygon centroid
         const geom = feature.getGeometry();
@@ -530,10 +538,10 @@ export function useGeoJsonLayers({
           map,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
-            scale: 0, // invisible icon — we only want the label
+            scale: 0,
           },
           label: {
-            text: entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`,
+            text: labelText,
             color: labelColor,
             fontSize: '9px',
             fontWeight: 'bold',
@@ -542,7 +550,6 @@ export function useGeoJsonLayers({
           clickable: false,
           zIndex: 1,
         });
-        // Store label markers for cleanup
         if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
         labelMarkersRef.current[cfg.id].push(marker);
       });
