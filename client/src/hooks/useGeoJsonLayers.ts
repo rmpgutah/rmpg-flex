@@ -78,7 +78,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'beat.geojson',
     visible: true,
     selectable: true,
-    style: { fillColor: '#22c55e', fillOpacity: 0.08, strokeColor: '#22c55e', strokeOpacity: 0.45, strokeWeight: 1 },
+    style: { fillColor: '#22c55e', fillOpacity: 0.20, strokeColor: '#22c55e', strokeOpacity: 0.6, strokeWeight: 1.2 },
     labelProp: 'beat_code',
     featureKeyProp: 'beat_code',
     detailProps: ['city', 'beat_id', 'district_letter', 'beat_number'],
@@ -157,12 +157,12 @@ export function getSectionColor(sectionId: string): string {
   return SECTION_COLOR_FALLBACKS[Math.abs(hash) % SECTION_COLOR_FALLBACKS.length];
 }
 
-/** Per-city color — 24 muted hues for subtle city boundaries on dark map */
+/** Per-city color — 24 medium-bright hues visible on dark map tiles */
 const CITY_COLORS = [
-  '#4a9e6e', '#5a7fb5', '#b85c5c', '#b8923e', '#8a6aaf', '#b06a8a',
-  '#3a9a8a', '#b07a4a', '#7a6aaf', '#3a8a6a', '#3a8aaa', '#a04a5a',
-  '#6a9a3a', '#5a5aaf', '#9a4aaf', '#3a7aaa', '#aa9a3a', '#b07a4a',
-  '#4aaa8a', '#a06a8a', '#7aaa4a', '#6a6aaf', '#aa8a3a', '#4a8aaa',
+  '#4ade80', '#60a5fa', '#f87171', '#fbbf24', '#c084fc', '#f472b6',
+  '#2dd4bf', '#fb923c', '#a78bfa', '#34d399', '#22d3ee', '#fb7185',
+  '#a3e635', '#818cf8', '#e879f9', '#38bdf8', '#fde047', '#fdba74',
+  '#5eead4', '#f9a8d4', '#bef264', '#93c5fd', '#fcd34d', '#7dd3fc',
 ];
 
 export function getCityColor(cityCode: string): string {
@@ -304,7 +304,7 @@ export function useGeoJsonLayers({
       const cColor = getCityColor(cityCode);
       for (const [distLetter, entry] of zoneMap) {
         lookup.set(`${cityCode}::${distLetter}`, {
-          style: { ...beatCfg.style, fillColor: cColor, strokeColor: cColor, fillOpacity: 0.12, strokeOpacity: 0.5, strokeWeight: 1 },
+          style: { ...beatCfg.style, fillColor: cColor, strokeColor: cColor, fillOpacity: 0.22, strokeOpacity: 0.65, strokeWeight: 1.2 },
           entry,
         });
       }
@@ -684,8 +684,8 @@ export function useGeoJsonLayers({
         // Also toggle label markers visibility with zoom
         const labels = labelMarkersRef.current[cfg.id];
         if (labels) {
-          // Only show labels at zoom 12+ (readable size)
-          const showLabels = visible && zoom >= 12;
+          // Show labels at zoom 10+ (same as beat layer minZoom)
+          const showLabels = visible && zoom >= 10;
           for (const m of labels) m.setMap(showLabels ? map : null);
         }
       }
