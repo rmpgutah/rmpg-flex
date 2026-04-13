@@ -36,42 +36,17 @@ interface GeocodeResult {
  * Returns { latitude, longitude } or null if geocoding fails.
  */
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
-  const apiKey = getGoogleMapsApiKey();
-  if (!apiKey || !address.trim()) return null;
-  // [FIX 56] Validate address length to avoid sending huge payloads
+  if (!address.trim()) return null;
   if (address.length > 500) return null;
 
-  // [FIX 57] Enforce rate limit between API calls
+  // Rate limit
   const now = Date.now();
   const wait = MIN_GEOCODE_INTERVAL_MS - (now - lastGeocodeFetchMs);
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   lastGeocodeFetchMs = Date.now();
 
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-    // [FIX 58] Add AbortController timeout to prevent hanging requests
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) return null;
-
-      const data = await res.json();
-      if (data.status === 'OK' && data.results?.length > 0) {
-        const loc = data.results[0].geometry?.location;
-        // [FIX 59] Null-check geometry.location before accessing lat/lng
-        if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return null;
-        return { latitude: loc.lat, longitude: loc.lng };
-      }
-      // Google failed or returned no results — try Nominatim fallback
-      return geocodeWithNominatim(address);
-    } finally {
-      clearTimeout(timeout);
-    }
-  } catch (err) {
-    console.error('[geocode] Google geocode error, trying Nominatim fallback:', err);
-    return geocodeWithNominatim(address);
-  }
+  // Primary: Nominatim (free, no API key needed)
+  return geocodeWithNominatim(address);
 }
 
 /**
@@ -108,31 +83,26 @@ async function geocodeWithNominatim(address: string): Promise<GeocodeResult | nu
  * Returns the formatted address string or null if reverse geocoding fails.
  */
 export async function reverseGeocodeAddress(lat: number, lng: number): Promise<string | null> {
-  const apiKey = getGoogleMapsApiKey();
-  if (!apiKey) return null;
-  // [FIX 60] Validate coordinate ranges before making API call
   if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
 
+  // Primary: Nominatim reverse geocoding (free)
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
-    // [FIX 61] Add timeout to reverse geocode fetch
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
     try {
-      const res = await fetch(url, { signal: controller.signal });
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'RMPG-Flex-CAD/5.7 (rmpgutah.us)' },
+      });
       if (!res.ok) return null;
-
       const data = await res.json();
-      if (data.status === 'OK' && data.results?.length > 0) {
-        return data.results[0].formatted_address || null;
-      }
-      return null;
+      return data.display_name || null;
     } finally {
       clearTimeout(timeout);
     }
-  } catch (err) {
-    console.error('[geocode] Error reverse-geocoding:', err);
+  } catch {
     return null;
   }
 }
@@ -153,59 +123,36 @@ export interface DetailedGeocodeResult {
  * intersection data in secondary results.
  */
 export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<DetailedGeocodeResult | null> {
-  const apiKey = getGoogleMapsApiKey();
-  if (!apiKey) return null;
-  // [FIX 62] Validate coordinates for detailed reverse geocode
   if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
 
+  // Primary: Nominatim reverse geocoding with address details (free)
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address|route|intersection&key=${apiKey}`;
-    // [FIX 63] Add timeout to detailed reverse geocode fetch
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
-    let res;
     try {
-      res = await fetch(url, { signal: controller.signal });
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'RMPG-Flex-CAD/5.7 (rmpgutah.us)' },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.display_name) return null;
+
+      const addr = data.address || {};
+      const road_name = addr.road || addr.highway || addr.pedestrian || null;
+      // Nominatim doesn't provide intersection directly — approximate from nearby road
+      const nearest_intersection = addr.neighbourhood || addr.suburb || null;
+
+      return {
+        formatted_address: data.display_name,
+        road_name,
+        nearest_intersection,
+      };
     } finally {
       clearTimeout(timeout);
     }
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    if (data.status !== 'OK' || !data.results?.length) return null;
-
-    const primary = data.results[0];
-    const formatted_address = primary.formatted_address || '';
-
-    // Extract road name from address_components
-    let road_name: string | null = null;
-    for (const comp of (primary.address_components || [])) {
-      if (comp.types?.includes('route')) {
-        road_name = comp.long_name;
-        break;
-      }
-    }
-
-    // Look for intersection in secondary results
-    let nearest_intersection: string | null = null;
-    for (const result of data.results) {
-      if (result.types?.includes('intersection')) {
-        nearest_intersection = result.formatted_address;
-        break;
-      }
-      // Also check address_components for intersection type
-      for (const comp of (result.address_components || [])) {
-        if (comp.types?.includes('intersection')) {
-          nearest_intersection = comp.long_name;
-          break;
-        }
-      }
-      if (nearest_intersection) break;
-    }
-
-    return { formatted_address, road_name, nearest_intersection };
-  } catch (err) {
-    console.error('[geocode] Error in detailed reverse geocode:', err);
+  } catch {
     return null;
   }
 }
