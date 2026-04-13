@@ -2669,6 +2669,18 @@ export default function DispatchPage() {
                 )}
               </div>
 
+              {/* Disposition prompt — appears when Clear is tapped */}
+              {dispositionPromptCallId === selectedCall.id && (
+                <div className="px-2">
+                  <DispositionPrompt
+                    callNumber={selectedCall.call_number}
+                    dispositionCodes={dispositionCodes}
+                    onConfirm={handleConfirmClear}
+                    onCancel={() => setDispositionPromptCallId(null)}
+                  />
+                </div>
+              )}
+
               {/* Key info fields */}
               <div className="space-y-2">
                 <div className="panel-inset p-3">
