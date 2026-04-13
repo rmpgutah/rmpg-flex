@@ -128,6 +128,9 @@ import AdvancedHeatmapPanel from './components/AdvancedHeatmapPanel';
 import WeatherPanel from './components/WeatherPanel';
 import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
 import { useAnalysisSummary } from './hooks/useAnalysisSummary';
+import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
+import SpeedGraphOverlay from './components/SpeedGraphOverlay';
+import CoverageTimeline from './components/CoverageTimeline';
 
 // ============================================================
 // Constants
@@ -182,6 +185,18 @@ const speedToColor = (mps: number | null): string => {
   if (mph < 35) return '#eab308';   // City — yellow
   if (mph < 55) return '#f97316';   // Arterial — orange
   return '#ef4444';                 // Highway/pursuit — red
+};
+
+// Acceleration-to-color mapping for breadcrumb accel mode (m/s² → hex)
+const accelToColor = (accelMps2: number | null): string => {
+  if (accelMps2 == null) return '#666666';
+  if (accelMps2 < -4) return '#dc2626';   // hard brake
+  if (accelMps2 < -2) return '#f97316';   // decel
+  if (accelMps2 < -0.5) return '#eab308'; // mild decel
+  if (accelMps2 < 0.5) return '#22c55e';  // steady
+  if (accelMps2 < 2) return '#84cc16';    // mild accel
+  if (accelMps2 < 3) return '#f97316';    // accel
+  return '#fbbf24';                         // rapid accel
 };
 
 // Unit status to color for breadcrumb status mode
@@ -312,8 +327,12 @@ export default function MapPage() {
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status'>('unit');
+  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
+  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
+
+  // Speed analytics integration
+  const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
   const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
@@ -323,6 +342,7 @@ export default function MapPage() {
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
   const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
+  const playbackSpeedLabelRef = useRef<google.maps.InfoWindow | null>(null);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -1550,6 +1570,8 @@ export default function MapPage() {
     breadcrumbMarkersRef.current = [];
     breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
     breadcrumbArrowsRef.current = [];
+    speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+    speedAlertMarkersRef.current = [];
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
@@ -1591,6 +1613,8 @@ export default function MapPage() {
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current = [];
 
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
@@ -1614,6 +1638,15 @@ export default function MapPage() {
               segColor = speedToColor(p1.speed);
             } else if (breadcrumbColorMode === 'status') {
               segColor = statusToColor(p1.status);
+            } else if (breadcrumbColorMode === 'accel') {
+              // Compute inline acceleration between consecutive points
+              const dt = (new Date(p2.time).getTime() - new Date(p1.time).getTime()) / 1000;
+              if (dt > 0 && p1.speed != null && p2.speed != null) {
+                const accel = (p2.speed - p1.speed) / dt;
+                segColor = accelToColor(accel);
+              } else {
+                segColor = accelToColor(null);
+              }
             } else {
               segColor = unitColor;
             }
@@ -1640,7 +1673,7 @@ export default function MapPage() {
                 path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                 scale: 2.5,
                 rotation: pt.heading,
-                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : unitColor,
+                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor,
                 fillOpacity: 0.3 + freshness * 0.5,
                 strokeColor: '#fff',
                 strokeWeight: 0.5,
@@ -1658,7 +1691,16 @@ export default function MapPage() {
             let dotColor: string;
             if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
             else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
-            else dotColor = unitColor;
+            else if (breadcrumbColorMode === 'accel') {
+              // Compute accel from prev point
+              if (ptIdx > 0) {
+                const prev = trail.points[ptIdx - 1];
+                const dt = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+                if (dt > 0 && pt.speed != null && prev.speed != null) {
+                  dotColor = accelToColor((pt.speed - prev.speed) / dt);
+                } else { dotColor = accelToColor(null); }
+              } else { dotColor = accelToColor(null); }
+            } else dotColor = unitColor;
 
             const dot = new google.maps.Circle({
               center: { lat: pt.lat, lng: pt.lng },
@@ -1678,23 +1720,89 @@ export default function MapPage() {
               const locationRow = pt.road_name
                 ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
                 : '';
+
+              // Compute acceleration and distance from previous point
+              let accelHtml = '';
+              let distHtml = '';
+              if (ptIdx > 0) {
+                const prev = trail.points[ptIdx - 1];
+                const dtSec = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+                // Distance (Haversine approx)
+                const dLat = (pt.lat - prev.lat) * Math.PI / 180;
+                const dLng = (pt.lng - prev.lng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(pt.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+                const distM = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                distHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Distance</td><td style="color:#e0e0e0">${Math.round(distM)}m from last ping (${dtSec.toFixed(1)}s)</td></tr>`;
+                // Acceleration
+                if (dtSec > 0 && pt.speed != null && prev.speed != null) {
+                  const accelVal = (pt.speed - prev.speed) / dtSec;
+                  const accelColor = accelToColor(accelVal);
+                  const arrow = accelVal >= 0 ? '\u2191' : '\u2193';
+                  const sign = accelVal >= 0 ? '+' : '';
+                  accelHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accel</td><td style="color:${accelColor};font-weight:bold">${arrow} ${sign}${accelVal.toFixed(1)} m/s\u00B2</td></tr>`;
+                }
+              }
+
+              // GPS quality badge
+              const acc = pt.accuracy;
+              let gpsLabel = 'N/A'; let gpsColor = '#666666';
+              if (acc != null) {
+                if (acc < 10) { gpsLabel = 'GPS'; gpsColor = '#22c55e'; }
+                else if (acc < 30) { gpsLabel = 'GOOD'; gpsColor = '#3b82f6'; }
+                else if (acc < 100) { gpsLabel = 'FAIR'; gpsColor = '#eab308'; }
+                else { gpsLabel = 'POOR'; gpsColor = '#ef4444'; }
+              }
+              const gpsRow = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">GPS</td><td><span style="font-size:9px;font-weight:bold;color:${gpsColor};padding:0 4px;border:1px solid ${gpsColor}40;border-radius:2px">${gpsLabel}</span> ${acc != null ? `\u00B1${Math.round(acc)}m` : ''}</td></tr>`;
+
+              // Heading compass
+              const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+              const headingDir = pt.heading != null ? dirs[Math.round(pt.heading / 45) % 8] : '';
+              const headingCompass = pt.heading != null
+                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0"><span style="display:inline-block;transform:rotate(${Math.round(pt.heading)}deg);font-size:13px">\u2191</span> ${headingDir} (${Math.round(pt.heading)}\u00B0)</td></tr>`
+                : `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">\u2014</td></tr>`;
+
+              // Mini speed sparkline SVG (surrounding ~20 points)
+              const sparkStart = Math.max(0, ptIdx - 10);
+              const sparkEnd = Math.min(trail.points.length, ptIdx + 10);
+              const sparkPoints = trail.points.slice(sparkStart, sparkEnd);
+              let sparkSvg = '';
+              if (sparkPoints.length > 2) {
+                const maxSpd = Math.max(...sparkPoints.map(p => (p.speed ?? 0) * 2.237), 10);
+                const svgW = 180; const svgH = 36;
+                const coords = sparkPoints.map((p, i) => {
+                  const x = (i / (sparkPoints.length - 1)) * svgW;
+                  const y = svgH - ((p.speed ?? 0) * 2.237 / maxSpd) * (svgH - 4) - 2;
+                  return `${x.toFixed(1)},${y.toFixed(1)}`;
+                });
+                const highlightIdx = ptIdx - sparkStart;
+                const hx = sparkPoints.length > 1 ? (highlightIdx / (sparkPoints.length - 1)) * svgW : svgW / 2;
+                const hy = svgH - (((sparkPoints[highlightIdx]?.speed ?? 0) * 2.237) / maxSpd) * (svgH - 4) - 2;
+                sparkSvg = `<svg width="${svgW}" height="${svgH}" style="display:block;margin:4px 0">` +
+                  `<polyline points="${coords.join(' ')}" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>` +
+                  `<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="3" fill="#fbbf24" stroke="#fff" stroke-width="1"/>` +
+                  `</svg>`;
+              }
+
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:240px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
                   <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
-                    ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
+                    ${escapeHtml(trail.call_sign)} \u2014 ${escapeHtml(trail.officer_name || 'Unknown')}
                   </div>
                   <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
                   ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
                   <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
+                  ${sparkSvg}
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMph(pt.speed)}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeadingDir(pt.heading)}</td></tr>
+                    ${accelHtml}
+                    ${headingCompass}
                     ${locationRow}
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
+                    ${distHtml}
+                    ${gpsRow}
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} — ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
+                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} \u2014 ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
                   </table>
                 </div>
               `;
@@ -1704,6 +1812,33 @@ export default function MapPage() {
             });
 
             breadcrumbMarkersRef.current.push(dot);
+          });
+        });
+
+        // Speed alert triangle markers (>= 80 mph)
+        speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+        speedAlertMarkersRef.current = [];
+        trails.forEach((trail) => {
+          trail.points.forEach((pt) => {
+            const mph = pt.speed != null ? pt.speed * 2.237 : 0;
+            if (mph >= 80) {
+              const marker = new google.maps.Marker({
+                position: { lat: pt.lat, lng: pt.lng },
+                map,
+                icon: {
+                  path: 'M 0,-8 L 7,5 L -7,5 Z',
+                  scale: 1.4,
+                  fillColor: '#dc2626',
+                  fillOpacity: 0.9,
+                  strokeColor: '#fbbf24',
+                  strokeWeight: 1.5,
+                },
+                label: { text: '!', color: '#fff', fontSize: '9px', fontWeight: 'bold' },
+                title: `Speed alert: ${Math.round(mph)} mph — ${trail.call_sign}`,
+                zIndex: 5000,
+              });
+              speedAlertMarkersRef.current.push(marker);
+            }
           });
         });
       } catch {
@@ -1723,6 +1858,8 @@ export default function MapPage() {
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current = [];
     };
   }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
 
@@ -1747,14 +1884,19 @@ export default function MapPage() {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 5,
           rotation: pt.heading || 0,
-          fillColor: '#00ff88',
+          fillColor: speedToColor(pt.speed),
           fillOpacity: 1,
           strokeColor: '#fff',
           strokeWeight: 2,
         },
         zIndex: 9999,
-        title: `${trail.call_sign} — Playback`,
+        title: `${trail.call_sign} \u2014 Playback`,
       });
+    }
+
+    // Create speed label InfoWindow
+    if (!playbackSpeedLabelRef.current) {
+      playbackSpeedLabelRef.current = new google.maps.InfoWindow({ disableAutoPan: true });
     }
 
     let currentIdx = playbackIdx;
@@ -1762,6 +1904,7 @@ export default function MapPage() {
       if (currentIdx >= trail.points.length) {
         setIsPlaying(false);
         setPlaybackIdx(trail.points.length - 1);
+        if (playbackSpeedLabelRef.current) playbackSpeedLabelRef.current.close();
         return;
       }
 
@@ -1772,18 +1915,30 @@ export default function MapPage() {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 5,
           rotation: pt.heading || 0,
-          fillColor: '#00ff88',
+          fillColor: speedToColor(pt.speed),
           fillOpacity: 1,
           strokeColor: '#fff',
           strokeWeight: 2,
         });
       }
 
+      // Floating speed readout above playback marker
+      if (playbackSpeedLabelRef.current) {
+        const mphStr = pt.speed != null ? `${(pt.speed * 2.237).toFixed(0)} mph` : '\u2014';
+        playbackSpeedLabelRef.current.setContent(
+          `<div style="font-family:monospace;font-size:12px;font-weight:900;color:${speedToColor(pt.speed)};background:#0d0d0d;padding:2px 6px;border-radius:3px;border:1px solid #282828;white-space:nowrap">${mphStr}</div>`
+        );
+        playbackSpeedLabelRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+        playbackSpeedLabelRef.current.open(map);
+      }
+
       setPlaybackIdx(currentIdx);
       currentIdx++;
 
-      // Speed: base 200ms per point, divided by playback speed multiplier
-      const delay = 200 / playbackSpeed;
+      // Speed-proportional playback: faster vehicle = faster animation
+      const ptSpeed = pt.speed != null ? pt.speed * 2.237 : 10;
+      const speedFactor = Math.max(ptSpeed / 30, 0.2);
+      const delay = (200 / playbackSpeed) / speedFactor;
       playbackAnimRef.current = window.setTimeout(step, delay) as unknown as number;
     };
 
@@ -1797,15 +1952,193 @@ export default function MapPage() {
     };
   }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
 
-  // Cleanup playback marker when playback unit changes or stops
+  // Cleanup playback marker and speed label when playback unit changes or stops
   useEffect(() => {
     if (playbackUnit == null) {
       if (playbackMarkerRef.current) {
         playbackMarkerRef.current.setMap(null);
         playbackMarkerRef.current = null;
       }
+      if (playbackSpeedLabelRef.current) {
+        playbackSpeedLabelRef.current.close();
+        playbackSpeedLabelRef.current = null;
+      }
     }
   }, [playbackUnit]);
+
+  // ============================================================
+  // Speed Heatmap Layer (grid rectangles)
+  // ============================================================
+
+  const heatmapRectsRef = useRef<google.maps.Rectangle[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    heatmapRectsRef.current.forEach((r) => r.setMap(null));
+    heatmapRectsRef.current = [];
+
+    if (!speedAnalytics.showSpeedHeatmap || speedAnalytics.heatmapCells.length === 0) return;
+
+    const GRID_SIZE = 0.002; // ~200m grid cells
+    speedAnalytics.heatmapCells.forEach((cell) => {
+      const rect = new google.maps.Rectangle({
+        bounds: {
+          north: cell.grid_lat + GRID_SIZE,
+          south: cell.grid_lat,
+          east: cell.grid_lng + GRID_SIZE,
+          west: cell.grid_lng,
+        },
+        fillColor: speedToColor(cell.avg_speed / 2.237), // convert mph to m/s for speedToColor
+        fillOpacity: Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5),
+        strokeColor: speedToColor(cell.avg_speed / 2.237),
+        strokeWeight: 0.5,
+        strokeOpacity: 0.3,
+        map,
+        clickable: false,
+        zIndex: 50,
+      });
+      heatmapRectsRef.current.push(rect);
+    });
+
+    return () => {
+      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current = [];
+    };
+  }, [speedAnalytics.showSpeedHeatmap, speedAnalytics.heatmapCells, mapLoaded]);
+
+  // ============================================================
+  // Pursuit Corridor Polylines
+  // ============================================================
+
+  const pursuitLinesRef = useRef<google.maps.Polyline[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    pursuitLinesRef.current.forEach((l) => l.setMap(null));
+    pursuitLinesRef.current = [];
+
+    if (speedAnalytics.pursuitSegments.length === 0) return;
+
+    speedAnalytics.pursuitSegments.forEach((seg) => {
+      if (seg.points.length < 2) return;
+      const line = new google.maps.Polyline({
+        path: seg.points.map((p) => ({ lat: p.lat, lng: p.lng })),
+        geodesic: true,
+        strokeColor: '#dc2626',
+        strokeOpacity: 0.8,
+        strokeWeight: 6,
+        map,
+        zIndex: 100,
+      });
+      pursuitLinesRef.current.push(line);
+    });
+
+    return () => {
+      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current = [];
+    };
+  }, [speedAnalytics.pursuitSegments, mapLoaded]);
+
+  // ============================================================
+  // Speed Zone Polygons
+  // ============================================================
+
+  const speedZonePolysRef = useRef<google.maps.Polygon[]>([]);
+  const speedZoneLabelsRef = useRef<google.maps.Marker[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current = [];
+      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    speedZonePolysRef.current.forEach((p) => p.setMap(null));
+    speedZonePolysRef.current = [];
+    speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+    speedZoneLabelsRef.current = [];
+
+    if (speedAnalytics.speedZones.length === 0) return;
+
+    const ZONE_TYPE_COLORS: Record<string, string> = {
+      school: '#eab308',
+      residential: '#22c55e',
+      highway: '#f97316',
+      construction: '#ef4444',
+      parking: '#6b7280',
+    };
+
+    speedAnalytics.speedZones.forEach((zone) => {
+      if (!zone.is_active || !zone.polygon_coords) return;
+      try {
+        const coords: { lat: number; lng: number }[] = JSON.parse(zone.polygon_coords);
+        if (coords.length < 3) return;
+
+        const zoneColor = ZONE_TYPE_COLORS[zone.zone_type] || '#888888';
+        const poly = new google.maps.Polygon({
+          paths: coords,
+          fillColor: zoneColor,
+          fillOpacity: 0.15,
+          strokeColor: zoneColor,
+          strokeWeight: 2,
+          strokeOpacity: 0.6,
+          map,
+          zIndex: 60,
+          clickable: false,
+        });
+        speedZonePolysRef.current.push(poly);
+
+        // Centroid label
+        const cLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
+        const cLng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
+        const label = new google.maps.Marker({
+          position: { lat: cLat, lng: cLng },
+          map,
+          icon: {
+            path: 'M 0,0',
+            scale: 0,
+          },
+          label: {
+            text: `${zone.speed_limit_mph} mph`,
+            color: zoneColor,
+            fontSize: '9px',
+            fontWeight: 'bold',
+            className: 'speed-zone-label',
+          },
+          clickable: false,
+          zIndex: 61,
+        });
+        speedZoneLabelsRef.current.push(label);
+      } catch {
+        // Invalid polygon_coords JSON
+      }
+    });
+
+    return () => {
+      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current = [];
+      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current = [];
+    };
+  }, [speedAnalytics.speedZones, mapLoaded]);
 
   // ============================================================
   // GPS Self-Position Marker
@@ -3022,7 +3355,7 @@ export default function MapPage() {
                   {/* Color mode selector */}
                   <div className="flex items-center gap-1">
                     <Palette className="w-2.5 h-2.5 text-rmpg-400" />
-                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status'], ['accel', 'Accel']] as const).map(([mode, label]) => (
                       <button
                         key={mode}
                         onClick={() => setBreadcrumbColorMode(mode)}
@@ -3036,16 +3369,40 @@ export default function MapPage() {
                       </button>
                     ))}
                   </div>
-                  {/* Speed color legend */}
+                  {/* Speed color legend — interactive 8-band with toggles */}
                   {breadcrumbColorMode === 'speed' && (
+                    <div className="flex flex-wrap items-center gap-1 pl-1">
+                      {[
+                        { color: '#666666', label: '0', key: 'stationary' },
+                        { color: '#999999', label: '<3', key: 'walking' },
+                        { color: '#22c55e', label: '3-25', key: 'residential' },
+                        { color: '#84cc16', label: '25-35', key: 'city' },
+                        { color: '#eab308', label: '35-45', key: 'arterial' },
+                        { color: '#f97316', label: '45-55', key: 'highway' },
+                        { color: '#ef4444', label: '55-75', key: 'freeway' },
+                        { color: '#dc2626', label: '75+', key: 'pursuit' },
+                      ].map((band) => (
+                        <button key={band.key}
+                          onClick={() => speedAnalytics.setSpeedBandToggles(prev => ({ ...prev, [band.key]: !(prev[band.key] ?? true) }))}
+                          className="flex items-center gap-0.5 cursor-pointer"
+                          style={{ opacity: (speedAnalytics.speedBandToggles[band.key] ?? true) ? 1 : 0.3 }}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ background: band.color }} />
+                          <span className="text-[7px] text-rmpg-400 font-mono">{band.label}</span>
+                        </button>
+                      ))}
+                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
+                    </div>
+                  )}
+                  {/* Accel color legend */}
+                  {breadcrumbColorMode === 'accel' && (
                     <div className="flex items-center gap-1.5 pl-1">
-                      {[['#22c55e', '<15'], ['#eab308', '15-35'], ['#f97316', '35-55'], ['#ef4444', '55+']].map(([color, label]) => (
+                      {[['#dc2626', 'Brake'], ['#eab308', 'Decel'], ['#22c55e', 'Steady'], ['#84cc16', 'Accel'], ['#fbbf24', 'Hard']].map(([color, label]) => (
                         <span key={label} className="flex items-center gap-0.5">
                           <span className="w-2 h-2 rounded-full" style={{ background: color }} />
                           <span className="text-[7px] text-rmpg-400 font-mono">{label}</span>
                         </span>
                       ))}
-                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
                     </div>
                   )}
                   {/* Playback controls */}
@@ -3145,6 +3502,85 @@ export default function MapPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Speed Analytics ── */}
+            {showBreadcrumbs && (
+              <div className="border-t border-rmpg-700 p-1.5">
+                <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Speed Analytics</div>
+
+                {/* Violations badge */}
+                {speedAnalytics.unacknowledgedCount > 0 && (
+                  <div className="flex items-center gap-2 px-2 py-1 mb-1 bg-red-900/20 border border-red-800/30 rounded-sm">
+                    <AlertTriangle className="w-3 h-3 text-red-400" />
+                    <span className="text-[9px] text-red-400 font-mono font-bold flex-1">
+                      {speedAnalytics.unacknowledgedCount} speed violation{speedAnalytics.unacknowledgedCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* Speed Heatmap toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowSpeedHeatmap(!speedAnalytics.showSpeedHeatmap)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showSpeedHeatmap ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showSpeedHeatmap ? <Eye className="w-3 h-3 text-orange-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <Gauge className="w-3 h-3" />
+                  <span className="flex-1 text-left">Speed Heatmap</span>
+                </button>
+
+                {/* Zone Stats toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowZoneStats(!speedAnalytics.showZoneStats)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showZoneStats ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showZoneStats ? <Eye className="w-3 h-3 text-cyan-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <BarChart3 className="w-3 h-3" />
+                  <span className="flex-1 text-left">Zone Speed Stats</span>
+                </button>
+
+                {/* Zone Stats collapsible table */}
+                {speedAnalytics.showZoneStats && speedAnalytics.zoneSpeedStats.length > 0 && (
+                  <div className="ml-2 mt-1 max-h-32 overflow-y-auto">
+                    <table className="w-full text-[8px] font-mono">
+                      <thead>
+                        <tr className="text-rmpg-500">
+                          <th className="text-left px-1 py-0.5">Zone</th>
+                          <th className="text-right px-1 py-0.5">Avg</th>
+                          <th className="text-right px-1 py-0.5">Max</th>
+                          <th className="text-right px-1 py-0.5">P95</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {speedAnalytics.zoneSpeedStats.slice(0, 15).map((z) => (
+                          <tr key={z.beat_id} className="text-rmpg-300 hover:bg-surface-raised">
+                            <td className="px-1 py-0.5 truncate max-w-[80px]" title={z.beat_name}>{z.beat_code}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.avg_speed_mph / 2.237) }}>{z.avg_speed_mph.toFixed(0)}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.max_speed_mph / 2.237) }}>{z.max_speed_mph.toFixed(0)}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.p95_speed_mph / 2.237) }}>{z.p95_speed_mph.toFixed(0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Coverage Timeline toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showCoverageTimeline ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showCoverageTimeline ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <Clock className="w-3 h-3" />
+                  <span className="flex-1 text-left">Coverage Timeline</span>
+                </button>
+              </div>
+            )}
 
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
@@ -4468,6 +4904,26 @@ export default function MapPage() {
           />
         )}
 
+        {/* Speed Graph Overlay */}
+        {speedAnalytics.speedGraphUnit != null && (
+          <SpeedGraphOverlay
+            unitId={speedAnalytics.speedGraphUnit}
+            callSign={playbackTrails.find(t => t.unit_id === speedAnalytics.speedGraphUnit)?.call_sign || ''}
+            hours={breadcrumbHours}
+            onClose={() => speedAnalytics.setSpeedGraphUnit(null)}
+            playbackIdx={playbackUnit === speedAnalytics.speedGraphUnit ? playbackIdx : undefined}
+          />
+        )}
+
+        {/* Coverage Timeline */}
+        {speedAnalytics.showCoverageTimeline && (
+          <CoverageTimeline
+            data={speedAnalytics.coverageTimeline.length > 0 ? { intervals: speedAnalytics.coverageTimeline, total_beats: 719 } : null}
+            expanded={speedAnalytics.showCoverageTimeline}
+            onToggle={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
+          />
+        )}
+
         {/* ── Weather / Environment Panel ── */}
         {!isMobile && showEnvironmentInfo && (
           <div className="absolute top-2 z-30" style={{ right: showThreatAssessment || showSafetyDashboard ? 320 : 8, maxWidth: 320, willChange: 'contents' }}>
@@ -5380,7 +5836,7 @@ export default function MapPage() {
                       ))}
                     </div>
                     <div className="flex gap-1">
-                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status'], ['accel', 'Accel']] as const).map(([mode, label]) => (
                         <button
                           key={mode}
                           onClick={() => setBreadcrumbColorMode(mode)}
