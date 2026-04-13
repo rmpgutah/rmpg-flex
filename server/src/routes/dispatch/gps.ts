@@ -256,6 +256,113 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       });
     }
 
+    // ── Speed violation detection ──
+    try {
+      const latestSpeedMph = latest.speed != null ? latest.speed * 2.23694 : 0;
+      let speedLimitMph = 80;
+
+      // Check if point falls within any active speed zone
+      const speedZones = db.prepare('SELECT * FROM speed_zones WHERE is_active = 1').all() as any[];
+      for (const zone of speedZones) {
+        let zoneCoords: any;
+        try {
+          zoneCoords = JSON.parse(zone.polygon_coords);
+        } catch {
+          continue;
+        }
+        if (!Array.isArray(zoneCoords) || zoneCoords.length < 3) continue;
+
+        // Check active_hours window if defined
+        if (zone.active_hours) {
+          try {
+            const windows = JSON.parse(zone.active_hours) as Array<{ start_hour: number; start_min: number; end_hour: number; end_min: number }>;
+            const now = new Date(localNow());
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const inWindow = windows.some((w) => {
+              const startMin = w.start_hour * 60 + w.start_min;
+              const endMin = w.end_hour * 60 + w.end_min;
+              if (startMin <= endMin) {
+                return currentMinutes >= startMin && currentMinutes < endMin;
+              }
+              // Overnight window (e.g. 22:00 - 06:00)
+              return currentMinutes >= startMin || currentMinutes < endMin;
+            });
+            if (!inWindow) continue;
+          } catch {
+            // If active_hours JSON is invalid, treat zone as always active
+          }
+        }
+
+        if (pointInPolygon(latest.lat, latest.lng, zoneCoords)) {
+          speedLimitMph = Math.min(speedLimitMph, zone.speed_limit_mph);
+        }
+      }
+
+      if (latestSpeedMph > speedLimitMph) {
+        const overageMph = latestSpeedMph - speedLimitMph;
+        const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString().replace('T', ' ').slice(0, 19);
+
+        // Check for an active (unacknowledged) violation for this unit within last 60 seconds
+        const existing = db.prepare(`
+          SELECT id, speed_mph, overage_mph, duration_seconds, recorded_at
+          FROM speed_violations
+          WHERE unit_id = ? AND acknowledged_by IS NULL AND recorded_at >= ?
+          ORDER BY id DESC LIMIT 1
+        `).get(unit.id, sixtySecondsAgo) as any;
+
+        if (existing) {
+          // Extend existing violation: update duration and keep max speed values
+          const elapsedSec = Math.round((Date.now() - new Date(existing.recorded_at).getTime()) / 1000);
+          db.prepare(`
+            UPDATE speed_violations
+            SET speed_mps = MAX(speed_mps, ?),
+                speed_mph = MAX(speed_mph, ?),
+                overage_mph = MAX(overage_mph, ?),
+                duration_seconds = ?,
+                latitude = ?, longitude = ?
+            WHERE id = ?
+          `).run(
+            latest.speed ?? 0, latestSpeedMph, overageMph,
+            Math.max(existing.duration_seconds, elapsedSec),
+            latest.lat, latest.lng, existing.id,
+          );
+        } else {
+          // Insert new violation
+          db.prepare(`
+            INSERT INTO speed_violations (
+              unit_id, officer_id, call_sign, officer_name, badge_number,
+              speed_mps, speed_mph, speed_limit_mph, overage_mph,
+              latitude, longitude, current_call_id, current_call_number, recorded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+          `).run(
+            unit.id, req.user!.userId,
+            updated?.call_sign ?? unit.call_sign,
+            updated?.officer_name ?? null,
+            updated?.badge_number ?? null,
+            latest.speed ?? 0, latestSpeedMph, speedLimitMph, overageMph,
+            latest.lat, latest.lng,
+            updated?.current_call_id ?? null,
+            updated?.call_number ?? null,
+          );
+
+          // Broadcast speed violation alert
+          broadcastAlert({
+            type: 'speed_violation',
+            unit: updated?.call_sign ?? unit.call_sign,
+            officer_name: updated?.officer_name ?? null,
+            badge_number: updated?.badge_number ?? null,
+            speed_mph: Math.round(latestSpeedMph),
+            speed_limit_mph: speedLimitMph,
+            overage_mph: Math.round(overageMph),
+            latitude: latest.lat,
+            longitude: latest.lng,
+          });
+        }
+      }
+    } catch (speedErr) {
+      console.error('[GPS] Speed violation check error (non-critical):', speedErr instanceof Error ? speedErr.message : speedErr);
+    }
+
     // ── Check geofences for the latest point ──
     try {
       const geofences = db.prepare('SELECT * FROM geofences WHERE is_active = 1').all() as any[];
