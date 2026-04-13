@@ -1812,10 +1812,18 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   // Notifications
   'twilio_api_key', 'twilio_account_sid', 'sendgrid_api_key', 'pushover_api_key',
   'ntfy_topic_key', 'slack_webhook_url', 'discord_webhook_url', 'telegram_bot_token',
+  // AI / ML
+  'openai_api_key', 'anthropic_api_key', 'replicate_api_key', 'huggingface_api_key',
+  'deepgram_api_key', 'assemblyai_api_key',
+  // Cloud Storage
+  'aws_access_key_id', 'aws_secret_access_key', 'aws_s3_bucket',
+  'backblaze_key_id', 'backblaze_app_key', 'cloudflare_api_key', 'wasabi_access_key',
   // Data Services
   'openmeteo_api_key', 'clearpath_gps_api_key', 'microbilt_client_id', 'microbilt_client_secret',
   'nhtsa_api_key', 'fcc_api_key', 'here_api_key', 'what3words_api_key',
   'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
+  // RapidAPI & Third-Party
+  'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
 ];
 
 function encryptValue(plaintext: string): string {

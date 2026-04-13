@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
-  Shield, Database, Bell, Unlock,
+  Shield, Database, Bell, Unlock, Cloud, Cpu,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -74,9 +74,32 @@ const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
   { key: 'google_generative_language_key', label: 'Generative Language API (Gemini)', desc: 'AI-powered narrative generation, report summarization, CAD command intelligence', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
 ];
 
+const AI_ML_KEYS: ApiKeyConfig[] = [
+  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4 / GPT-4o — narrative generation, report writing, evidence analysis', pattern: /^sk-[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk-' },
+  { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-' },
+  { key: 'replicate_api_key', label: 'Replicate', desc: 'Free tier — open-source AI models, image generation, facial similarity search' },
+  { key: 'huggingface_api_key', label: 'Hugging Face', desc: 'Free tier — NLP models, text classification, entity extraction for reports', pattern: /^hf_[A-Za-z0-9]+$/, formatHint: 'Starts with hf_' },
+  { key: 'deepgram_api_key', label: 'Deepgram', desc: 'Free tier: $200 credit — real-time speech-to-text, body camera transcription' },
+  { key: 'assemblyai_api_key', label: 'AssemblyAI', desc: 'Free tier: 100hrs — audio transcription, speaker diarization for interviews' },
+];
+
+const CLOUD_STORAGE_KEYS: ApiKeyConfig[] = [
+  { key: 'aws_access_key_id', label: 'AWS Access Key ID', desc: 'S3 storage — evidence files, body camera video, backup archives', pattern: /^AKIA[A-Z0-9]{16}$/, formatHint: 'Starts with AKIA, 20 characters' },
+  { key: 'aws_secret_access_key', label: 'AWS Secret Access Key', desc: 'AWS authentication secret (paired with Access Key ID above)' },
+  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage' },
+  { key: 'backblaze_key_id', label: 'Backblaze B2 Key ID', desc: 'Free tier: 10GB — low-cost evidence archival, database backups' },
+  { key: 'backblaze_app_key', label: 'Backblaze B2 App Key', desc: 'Backblaze authentication (paired with Key ID above)' },
+  { key: 'cloudflare_api_key', label: 'Cloudflare', desc: 'Free tier — CDN, DDoS protection, DNS management, R2 object storage' },
+  { key: 'wasabi_access_key', label: 'Wasabi Access Key', desc: 'S3-compatible hot storage — no egress fees, evidence and video archival' },
+];
+
 const THIRD_PARTY_KEYS: ApiKeyConfig[] = [
   { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
   { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
+  { key: 'plate_recognizer_api_key', label: 'Plate Recognizer', desc: 'Free tier: 2500/month — automatic license plate recognition from photos/video' },
+  { key: 'roboflow_api_key', label: 'Roboflow', desc: 'Free tier: 10k inferences — weapon detection, vehicle classification from camera feeds' },
+  { key: 'carjam_api_key', label: 'CarJam / VINAudit', desc: 'Vehicle history reports — title, accident, theft, odometer for investigations' },
+  { key: 'spokeo_api_key', label: 'Spokeo / BeenVerified', desc: 'People search — reverse phone, address history, social profiles for skip tracing' },
 ];
 
 const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
@@ -562,11 +585,17 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       {/* ── Notifications ── */}
       <ApiKeyPanel title="Notifications & Messaging" icon={<Bell className="w-4 h-4 text-amber-400" />} keys={NOTIFICATION_KEYS} />
 
+      {/* ── AI / Machine Learning ── */}
+      <ApiKeyPanel title="AI / Machine Learning" icon={<Cpu className="w-4 h-4 text-purple-400" />} keys={AI_ML_KEYS} />
+
+      {/* ── Cloud Storage & Infrastructure ── */}
+      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-sky-400" />} keys={CLOUD_STORAGE_KEYS} />
+
       {/* ── Data Services ── */}
       <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-cyan-400" />} keys={DATA_SERVICE_KEYS} />
 
-      {/* ── RapidAPI Keys ── */}
-      <ApiKeyPanel title="RapidAPI Keys" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
+      {/* ── RapidAPI & Third-Party ── */}
+      <ApiKeyPanel title="RapidAPI & Third-Party" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
 
       {/* ── API Keys Panel ── */}
       <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
