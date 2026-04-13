@@ -430,8 +430,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     // Notes: structured JSON array (matches dispatch call note format)
     const noteEntries: Array<{ id: string; author: string; text: string; timestamp: string }> = [];
-    // Case details note
-    const caseNotes = extractCaseNotes(courtDocketText || allText);
+    // Case details note (caseNotes already extracted above)
     if (caseNotes) {
       noteEntries.push({ id: String(Date.now()), author: 'Serve Intake', text: caseNotes, timestamp: now });
     }
