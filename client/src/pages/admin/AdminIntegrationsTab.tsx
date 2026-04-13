@@ -44,14 +44,24 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ── Third-Party API Keys Panel ──────────────────────────────
-// Lets admins set RapidAPI keys for Lead Generation, DL OCR, etc.
-const THIRD_PARTY_KEYS = [
+// ── Reusable API Key Panel ────────────────────────────────────
+// Generic panel for managing encrypted API keys via PUT /api/admin/third-party-keys
+interface ApiKeyConfig { key: string; label: string; desc: string }
+
+const THIRD_PARTY_KEYS: ApiKeyConfig[] = [
   { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
   { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
-] as const;
+];
 
-function ThirdPartyApiKeysPanel() {
+const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
+  { key: 'google_maps_api_key', label: 'Maps JavaScript API', desc: 'Client-side map rendering — used by Map page, dispatch overlays, beat polygons' },
+  { key: 'google_maps_server_key', label: 'Geocoding / Directions API', desc: 'Server-side address resolution, route optimization, reverse geocoding' },
+  { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms' },
+  { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning' },
+  { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio' },
+];
+
+function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: React.ReactNode; keys: ApiKeyConfig[] }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -67,7 +77,7 @@ function ThirdPartyApiKeysPanel() {
         setConfigured(map);
       } catch {
         // Endpoint may not exist yet — check individually
-        for (const { key } of THIRD_PARTY_KEYS) {
+        for (const { key } of keyConfigs) {
           try {
             const resp = await apiFetch<{ configured: boolean }>(`/admin/third-party-keys/${key}`);
             setConfigured(prev => ({ ...prev, [key]: resp.configured }));
@@ -107,11 +117,11 @@ function ThirdPartyApiKeysPanel() {
   return (
     <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
-        <Key className="w-4 h-4 text-brand-400" />
-        <h2 className="text-sm font-semibold text-rmpg-300">Third-Party API Keys</h2>
+        {icon}
+        <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
-        {THIRD_PARTY_KEYS.map(({ key, label, desc }) => (
+        {keyConfigs.map(({ key, label, desc }) => (
           <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -455,8 +465,11 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
         )}
       </div>
 
+      {/* ── Google Cloud Console Keys ── */}
+      <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-blue-400" />} keys={GOOGLE_CLOUD_KEYS} />
+
       {/* ── Third-Party RapidAPI Keys ── */}
-      <ThirdPartyApiKeysPanel />
+      <ApiKeyPanel title="Third-Party API Keys" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
 
       {/* ── API Keys Panel ── */}
       <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
