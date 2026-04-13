@@ -83,7 +83,13 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
   { key: 'ncic_api_key', label: 'NCIC / NLETS Gateway', desc: 'National Crime Information Center — warrant checks, stolen vehicle lookups, person queries' },
   { key: 'utah_dps_api_key', label: 'Utah DPS / BCI', desc: 'Utah Department of Public Safety — criminal history, sex offender registry, driver records' },
   { key: 'utah_courts_api_key', label: 'Utah Courts Xchange', desc: 'Court case search, docket lookups, hearing schedules' },
-  { key: 'fbi_wanted_api_key', label: 'FBI Wanted API', desc: 'FBI Most Wanted list integration for warrant cross-referencing' },
+  { key: 'fbi_wanted_api_key', label: 'FBI Wanted API', desc: 'FBI Most Wanted list — free, no key required but slot reserved for future auth' },
+  { key: 'dea_api_key', label: 'DEA ARCOS / Diversion', desc: 'Drug Enforcement Administration — controlled substance tracking, diversion reports' },
+  { key: 'usms_api_key', label: 'US Marshals Service', desc: 'Federal fugitive warrants, sex offender registry, witness protection coordination' },
+  { key: 'atf_api_key', label: 'ATF eTrace / FFL', desc: 'Firearms tracing, Federal Firearms Licensee lookups, explosives permits' },
+  { key: 'interpol_api_key', label: 'INTERPOL Red Notice', desc: 'Free — international wanted persons, stolen documents, stolen vehicles' },
+  { key: 'nsopw_api_key', label: 'NSOPW (Sex Offender)', desc: 'Free — National Sex Offender Public Website search API' },
+  { key: 'ofac_api_key', label: 'OFAC / SDN List', desc: 'Free — Treasury sanctions list, specially designated nationals for financial investigations' },
 ];
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
@@ -95,6 +101,14 @@ const FREE_OPEN_APIS: ApiKeyConfig[] = [
   { key: 'virustotal_api_key', label: 'VirusTotal', desc: 'Free tier: 4 lookups/min — file hash checks, URL scanning for evidence/forensics' },
   { key: 'abuseipdb_api_key', label: 'AbuseIPDB', desc: 'Free tier: 1000/day — check IP addresses against abuse database for security monitoring' },
   { key: 'shodan_api_key', label: 'Shodan', desc: 'Free tier: limited — internet-connected device search for OSINT/investigations' },
+  { key: 'have_i_been_pwned_key', label: 'Have I Been Pwned', desc: 'Free tier: breach lookups — check if officer/suspect emails appear in data breaches' },
+  { key: 'censys_api_key', label: 'Censys', desc: 'Free tier: 250/month — internet host/certificate search for OSINT, infrastructure recon' },
+  { key: 'hunter_io_api_key', label: 'Hunter.io', desc: 'Free tier: 25/month — email finder, domain search for skip tracing and investigations' },
+  { key: 'numverify_api_key', label: 'NumVerify', desc: 'Free tier: 100/month — phone number validation, carrier lookup, line type detection' },
+  { key: 'abstract_api_key', label: 'AbstractAPI (Phone/Email)', desc: 'Free tier: 100/month — phone validation, email verification, IP geolocation bundle' },
+  { key: 'whoisxml_api_key', label: 'WhoisXML / RDAP', desc: 'Free tier: 500/month — domain WHOIS lookup, DNS records, reverse IP for cyber investigations' },
+  { key: 'urlscan_api_key', label: 'urlscan.io', desc: 'Free tier: 50/day — scan and analyze suspicious URLs, phishing detection for evidence' },
+  { key: 'emailrep_api_key', label: 'EmailRep.io', desc: 'Free — email reputation scoring, breach history, social profile links for OSINT' },
 ];
 
 const NOTIFICATION_KEYS: ApiKeyConfig[] = [
@@ -103,6 +117,9 @@ const NOTIFICATION_KEYS: ApiKeyConfig[] = [
   { key: 'sendgrid_api_key', label: 'SendGrid Email', desc: 'Transactional email delivery — court reminders, serve deadlines, report distribution', pattern: /^SG\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'SendGrid key — starts with SG.' },
   { key: 'pushover_api_key', label: 'Pushover', desc: 'Free app — push notifications to officer phones for panic alerts, warrant hits, court reminders' },
   { key: 'ntfy_topic_key', label: 'ntfy.sh Topic', desc: 'Free open-source push notifications — no account required, self-hostable' },
+  { key: 'slack_webhook_url', label: 'Slack Webhook', desc: 'Incoming webhook — post dispatch alerts, shift changes, BOLO updates to a Slack channel' },
+  { key: 'discord_webhook_url', label: 'Discord Webhook', desc: 'Incoming webhook — post alerts and notifications to a Discord channel' },
+  { key: 'telegram_bot_token', label: 'Telegram Bot', desc: 'Free — send alerts via Telegram bot to officer group chats' },
 ];
 
 const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
@@ -110,8 +127,14 @@ const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
   { key: 'clearpath_gps_api_key', label: 'ClearPathGPS', desc: 'Fleet GPS tracking — vehicle positions, speed, geofence alerts' },
   { key: 'microbilt_client_id', label: 'MicroBilt Client ID', desc: 'Skip tracing — person search, address history, phone lookups' },
   { key: 'microbilt_client_secret', label: 'MicroBilt Client Secret', desc: 'MicroBilt API authentication secret (paired with Client ID above)' },
-  { key: 'nhtsa_api_key', label: 'NHTSA Vehicle API', desc: 'Free — VIN decoding, vehicle recalls, crash ratings, complaints (no key required but rate-limited)' },
+  { key: 'nhtsa_api_key', label: 'NHTSA Vehicle API', desc: 'Free — VIN decoding, vehicle recalls, crash ratings, complaints' },
   { key: 'fcc_api_key', label: 'FCC Broadband / ULS', desc: 'Free — radio license lookups, broadband coverage maps for communication planning' },
+  { key: 'here_api_key', label: 'HERE Maps', desc: 'Free tier: 250k/month — routing, traffic, fleet telematics, geocoding alternative' },
+  { key: 'what3words_api_key', label: 'what3words', desc: 'Free tier: 1000/month — 3-word address system for precise location sharing in the field' },
+  { key: 'plaid_api_key', label: 'Plaid', desc: 'Financial investigations — bank account verification, transaction monitoring' },
+  { key: 'clearbit_api_key', label: 'Clearbit', desc: 'Free tier: 50/month — company/person enrichment for skip tracing and background checks' },
+  { key: 'pipl_api_key', label: 'Pipl', desc: 'People search — social profiles, emails, phones, addresses for investigations' },
+  { key: 'towerdata_api_key', label: 'TowerData', desc: 'Email intelligence — identity verification, email-to-name resolution for OSINT' },
 ];
 
 function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: React.ReactNode; keys: ApiKeyConfig[] }) {
