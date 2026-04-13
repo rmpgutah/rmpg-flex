@@ -1789,6 +1789,7 @@ router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Resp
 // ═════════════════════════════════════════════════════════════
 
 const ALLOWED_THIRD_PARTY_KEYS = [
+  // RapidAPI
   'lead_gen_rapidapi_key',
   'dl_ocr_rapidapi_key',
   'plate_check_rapidapi_key',
@@ -1798,6 +1799,18 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'google_places_api_key',
   'google_cloud_vision_key',
   'google_cloud_speech_key',
+  // Law Enforcement / Government
+  'ncic_api_key',
+  'utah_dps_api_key',
+  'utah_courts_api_key',
+  'fbi_wanted_api_key',
+  // Data Services
+  'openmeteo_api_key',
+  'clearpath_gps_api_key',
+  'twilio_api_key',
+  'sendgrid_api_key',
+  'microbilt_client_id',
+  'microbilt_client_secret',
 ];
 
 function encryptValue(plaintext: string): string {

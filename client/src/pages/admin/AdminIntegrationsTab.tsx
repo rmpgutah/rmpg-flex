@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
+  Shield, Database,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -46,19 +47,51 @@ function timeAgo(dateStr: string): string {
 
 // ── Reusable API Key Panel ────────────────────────────────────
 // Generic panel for managing encrypted API keys via PUT /api/admin/third-party-keys
-interface ApiKeyConfig { key: string; label: string; desc: string }
+interface ApiKeyConfig {
+  key: string;
+  label: string;
+  desc: string;
+  /** Regex pattern the key must match, or null for no validation */
+  pattern?: RegExp;
+  /** Human-readable format hint shown below the input */
+  formatHint?: string;
+}
 
-const THIRD_PARTY_KEYS: ApiKeyConfig[] = [
-  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
-  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
-];
+function validateKey(value: string, config: ApiKeyConfig): string | null {
+  if (!value.trim()) return null;
+  if (config.pattern && !config.pattern.test(value.trim())) {
+    return config.formatHint || 'Invalid key format';
+  }
+  return null; // valid
+}
 
 const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
-  { key: 'google_maps_api_key', label: 'Maps JavaScript API', desc: 'Client-side map rendering — used by Map page, dispatch overlays, beat polygons' },
-  { key: 'google_maps_server_key', label: 'Geocoding / Directions API', desc: 'Server-side address resolution, route optimization, reverse geocoding' },
-  { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms' },
-  { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning' },
-  { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio' },
+  { key: 'google_maps_api_key', label: 'Maps JavaScript API', desc: 'Client-side map rendering — used by Map page, dispatch overlays, beat polygons', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_maps_server_key', label: 'Geocoding / Directions API', desc: 'Server-side address resolution, route optimization, reverse geocoding', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+];
+
+const THIRD_PARTY_KEYS: ApiKeyConfig[] = [
+  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
+  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
+];
+
+const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
+  { key: 'ncic_api_key', label: 'NCIC / NLETS Gateway', desc: 'National Crime Information Center — warrant checks, stolen vehicle lookups, person queries' },
+  { key: 'utah_dps_api_key', label: 'Utah DPS / BCI', desc: 'Utah Department of Public Safety — criminal history, sex offender registry, driver records' },
+  { key: 'utah_courts_api_key', label: 'Utah Courts Xchange', desc: 'Court case search, docket lookups, hearing schedules' },
+  { key: 'fbi_wanted_api_key', label: 'FBI Wanted API', desc: 'FBI Most Wanted list integration for warrant cross-referencing' },
+];
+
+const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
+  { key: 'openmeteo_api_key', label: 'Open-Meteo / Weather', desc: 'Weather conditions for dispatch calls, incident reports, and scene documentation' },
+  { key: 'clearpath_gps_api_key', label: 'ClearPathGPS', desc: 'Fleet GPS tracking — vehicle positions, speed, geofence alerts' },
+  { key: 'twilio_api_key', label: 'Twilio SMS / Voice', desc: 'SMS notifications, automated phone alerts, 2FA verification codes', pattern: /^SK[a-f0-9]{32}$/, formatHint: 'Twilio API key — starts with SK, 34 characters' },
+  { key: 'sendgrid_api_key', label: 'SendGrid Email', desc: 'Transactional email delivery — court reminders, serve deadlines, report distribution', pattern: /^SG\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'SendGrid key — starts with SG.' },
+  { key: 'microbilt_client_id', label: 'MicroBilt Client ID', desc: 'Skip tracing — person search, address history, phone lookups' },
+  { key: 'microbilt_client_secret', label: 'MicroBilt Client Secret', desc: 'MicroBilt API authentication secret (paired with Client ID above)' },
 ];
 
 function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: React.ReactNode; keys: ApiKeyConfig[] }) {
@@ -66,6 +99,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     // Check which keys are configured
@@ -90,6 +124,12 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const handleSave = async (configKey: string) => {
     const value = values[configKey]?.trim();
     if (!value) return;
+    const cfg = keyConfigs.find(k => k.key === configKey);
+    if (cfg) {
+      const err = validateKey(value, cfg);
+      if (err) { setErrors(prev => ({ ...prev, [configKey]: err })); return; }
+    }
+    setErrors(prev => ({ ...prev, [configKey]: null }));
     setSaving(configKey);
     try {
       await apiFetch('/admin/third-party-keys', {
@@ -121,7 +161,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
-        {keyConfigs.map(({ key, label, desc }) => (
+        {keyConfigs.map(({ key, label, desc, formatHint }) => (
           <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -173,6 +213,8 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                 </button>
               )}
             </div>
+            {errors[key] && <div className="text-[10px] text-red-400 font-medium">⚠ {errors[key]}</div>}
+            {formatHint && !errors[key] && <div className="text-[9px] text-rmpg-600 italic">{formatHint}</div>}
             <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>
           </div>
         ))}
@@ -468,8 +510,14 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       {/* ── Google Cloud Console Keys ── */}
       <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-blue-400" />} keys={GOOGLE_CLOUD_KEYS} />
 
+      {/* ── Law Enforcement / Government APIs ── */}
+      <ApiKeyPanel title="Law Enforcement / Government" icon={<Shield className="w-4 h-4 text-red-400" />} keys={LAW_ENFORCEMENT_KEYS} />
+
+      {/* ── Data Services & Third-Party ── */}
+      <ApiKeyPanel title="Data Services & Third-Party" icon={<Database className="w-4 h-4 text-cyan-400" />} keys={DATA_SERVICE_KEYS} />
+
       {/* ── Third-Party RapidAPI Keys ── */}
-      <ApiKeyPanel title="Third-Party API Keys" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
+      <ApiKeyPanel title="RapidAPI Keys" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
 
       {/* ── API Keys Panel ── */}
       <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
