@@ -12,6 +12,8 @@ const GPS_SOURCE_PRIORITY: Record<string, number> = {
   browser: 1,       // legacy fallback
   browser_mobile: 2,
   clearpathgps: 3,
+  owntracks: 4,     // phone background GPS — most reliable, always-on
+  traccar: 4,       // alternative background tracker
 };
 const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
 
@@ -708,6 +710,172 @@ router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor
   } catch (error: any) {
     console.error('[GPS] units-with-trails error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to units-with-trails', code: 'GPS_UNITSWITHTRAILS_ERROR' });
+  }
+});
+
+// ═════════════════════════════════════════════════════════════
+// OwnTracks / Traccar Webhook — Background GPS from iPhone/Android
+// ═════════════════════════════════════════════════════════════
+// OwnTracks sends JSON payloads to this endpoint from the background.
+// Auth: Bearer token stored in system_config as 'owntracks_webhook_token'.
+// Each device is mapped to a unit via 'tid' (tracker ID) → call_sign.
+//
+// OwnTracks payload: { _type: 'location', lat, lon, acc, vel, alt, batt, tid, tst, ... }
+// Traccar payload:   { id, deviceId, latitude, longitude, speed, course, accuracy, ... }
+// ═════════════════════════════════════════════════════════════
+
+router.post('/gps/owntracks', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // ── Auth: verify bearer token against stored webhook token ──
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) {
+      res.status(401).json({ error: 'Bearer token required' });
+      return;
+    }
+
+    // Check token against system_config (plain or encrypted)
+    const storedRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'owntracks_webhook_token' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value?: string } | undefined;
+    if (!storedRow?.config_value) {
+      res.status(403).json({ error: 'OwnTracks webhook not configured — set owntracks_webhook_token in Admin → Integrations' });
+      return;
+    }
+
+    // Compare plain token (not encrypted — this is a shared secret, not a third-party API key)
+    if (token !== storedRow.config_value) {
+      res.status(403).json({ error: 'Invalid webhook token' });
+      return;
+    }
+
+    const body = req.body;
+    if (!body || typeof body !== 'object') {
+      res.json([]); // OwnTracks expects empty array on non-location messages
+      return;
+    }
+
+    // ── Determine payload format ──
+    let lat: number, lng: number, accuracy: number | null = null, heading: number | null = null;
+    let speed: number | null = null, battery: number | null = null;
+    let trackerId: string = '', timestamp: string | null = null;
+    let source: string = 'owntracks';
+
+    if (body._type === 'location' || (body.lat && body.lon)) {
+      // OwnTracks format
+      lat = Number(body.lat);
+      lng = Number(body.lon);
+      accuracy = body.acc != null ? Number(body.acc) : null;
+      speed = body.vel != null ? Number(body.vel) / 3.6 : null; // km/h → m/s
+      heading = body.cog != null ? Number(body.cog) : null;
+      battery = body.batt != null ? Number(body.batt) : null;
+      trackerId = body.tid || '';
+      timestamp = body.tst ? new Date(body.tst * 1000).toISOString() : null;
+      source = 'owntracks';
+    } else if (body.latitude != null && body.longitude != null) {
+      // Traccar / generic format
+      lat = Number(body.latitude);
+      lng = Number(body.longitude);
+      accuracy = body.accuracy != null ? Number(body.accuracy) : null;
+      speed = body.speed != null ? Number(body.speed) : null; // already m/s
+      heading = body.course != null ? Number(body.course) : (body.bearing != null ? Number(body.bearing) : null);
+      trackerId = body.id || body.deviceId || '';
+      timestamp = body.deviceTime || body.fixTime || body.serverTime || null;
+      source = 'traccar';
+    } else {
+      // Not a location message — OwnTracks sends transitions, waypoints, etc.
+      res.json([]);
+      return;
+    }
+
+    if (!isValidCoordinate(lat, lng)) {
+      res.status(400).json({ error: 'Invalid coordinates' });
+      return;
+    }
+
+    // ── Map tracker ID to unit ──
+    // Look up unit by call_sign matching the tracker ID, or by owntracks_tid column
+    let unit = db.prepare(
+      "SELECT id, call_sign, status, officer_id FROM units WHERE call_sign = ? OR call_sign LIKE ?"
+    ).get(trackerId, `%${trackerId}`) as any;
+
+    if (!unit) {
+      // Try the owntracks_tid mapping table
+      const mapping = db.prepare(
+        "SELECT unit_id FROM owntracks_device_map WHERE tracker_id = ? LIMIT 1"
+      ).get(trackerId) as any;
+      if (mapping) {
+        unit = db.prepare('SELECT id, call_sign, status, officer_id FROM units WHERE id = ?').get(mapping.unit_id);
+      }
+    }
+
+    if (!unit) {
+      res.status(404).json({ error: `No unit mapped to tracker ID "${trackerId}". Add mapping in Admin or set call_sign to match.` });
+      return;
+    }
+
+    const now = localNow();
+    const gpsSource = source;
+    const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 4;
+
+    // GPS source priority check
+    const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
+    const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
+    const updatedAtMs = currentGps?.gps_updated_at ? new Date(currentGps.gps_updated_at).getTime() : NaN;
+    const currentAge = !isNaN(updatedAtMs) ? Date.now() - updatedAtMs : Infinity;
+    const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
+
+    if (shouldUpdateLive) {
+      db.prepare('UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ? WHERE id = ?')
+        .run(lat, lng, gpsSource, now, unit.id);
+    }
+
+    // Fetch full unit for broadcast
+    const updated = db.prepare(`
+      SELECT u.*, usr.full_name as officer_name, usr.badge_number
+      FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.id = ?
+    `).get(unit.id) as any;
+
+    // Insert breadcrumb
+    db.prepare(`
+      INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
+        unit_status, call_sign, officer_name, badge_number, gps_source, recorded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))
+    `).run(
+      unit.id, unit.officer_id, lat, lng, accuracy, heading, speed,
+      updated?.status || unit.status, updated?.call_sign || unit.call_sign,
+      updated?.officer_name || null, updated?.badge_number || null,
+      gpsSource, timestamp,
+    );
+
+    // Broadcast
+    const speedMph = speed != null && Number.isFinite(speed) ? Math.round(speed * 2.23694 * 10) / 10 : null;
+    if (shouldUpdateLive) {
+      broadcastUnitUpdate({ action: 'unit_position_update', unit: { ...updated, speed_mph: speedMph } });
+    }
+
+    // Speed alert
+    if (speedMph != null && speedMph >= 80) {
+      broadcastAlert({
+        type: 'speed:alert',
+        severity: speedMph >= 100 ? 'critical' : 'warning',
+        label: speedMph >= 100 ? 'PURSUIT SPEED' : 'HIGH SPEED',
+        unit: updated?.call_sign || unit.call_sign,
+        unit_id: unit.id,
+        speed_mph: speedMph,
+        latitude: lat, longitude: lng,
+        officer_name: updated?.officer_name || null,
+      });
+    }
+
+    // OwnTracks expects empty JSON array response
+    res.json([]);
+  } catch (error: any) {
+    console.error('[GPS] OwnTracks webhook error:', error?.message || error);
+    res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
 

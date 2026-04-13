@@ -4467,6 +4467,18 @@ function migrateSchema(): void {
   addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
   addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
 
+  // ── OwnTracks / Traccar device-to-unit mapping table ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS owntracks_device_map (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tracker_id TEXT NOT NULL UNIQUE,
+      unit_id INTEGER NOT NULL,
+      device_name TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (unit_id) REFERENCES units(id)
+    )
+  `).run();
+
   // ── units: add 'out_of_service' to CHECK constraint (production fix) ──
   try {
     const uInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='units'").get() as { sql: string } | undefined;

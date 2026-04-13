@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
-  Shield, Database, Bell, Unlock, Cloud, Cpu,
+  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -113,6 +113,11 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
   { key: 'interpol_api_key', label: 'INTERPOL Red Notice', desc: 'Free — international wanted persons, stolen documents, stolen vehicles' },
   { key: 'nsopw_api_key', label: 'NSOPW (Sex Offender)', desc: 'Free — National Sex Offender Public Website search API' },
   { key: 'ofac_api_key', label: 'OFAC / SDN List', desc: 'Free — Treasury sanctions list, specially designated nationals for financial investigations' },
+];
+
+const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
+  { key: 'owntracks_webhook_token', label: 'OwnTracks Webhook Token', desc: 'Shared secret for OwnTracks iPhone/Android background GPS → POST /api/dispatch/gps/owntracks' },
+  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'Shared secret for Traccar Client background GPS (same endpoint, auto-detected format)' },
 ];
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
@@ -572,6 +577,9 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+
+      {/* ── GPS Background Tracking ── */}
+      <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
 
       {/* ── Google Cloud Console Keys ── */}
       <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-blue-400" />} keys={GOOGLE_CLOUD_KEYS} />
