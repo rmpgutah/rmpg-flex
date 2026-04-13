@@ -725,24 +725,34 @@ owntracksWebhookRouter.post('/gps/owntracks', (req: Request, res: Response) => {
   try {
     const db = getDb();
 
-    // ── Auth: verify bearer token against stored webhook token ──
+    // ── Auth: accept Bearer token OR HTTP Basic Auth (OwnTracks sends Basic) ──
     const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    let token = '';
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7).trim();
+    } else if (authHeader.startsWith('Basic ')) {
+      // OwnTracks sends Basic auth — password field is the token
+      try {
+        const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
+        // Format: "username:password" — we use the password as the token
+        const colonIdx = decoded.indexOf(':');
+        token = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : decoded;
+      } catch { /* invalid base64 */ }
+    }
     if (!token) {
-      res.status(401).json({ error: 'Bearer token required' });
+      res.status(401).json({ error: 'Authentication required — use Basic auth (password = webhook token) or Bearer token' });
       return;
     }
 
-    // Check token against system_config (plain or encrypted)
+    // Check token against system_config
     const storedRow = db.prepare(
       "SELECT config_value FROM system_config WHERE config_key = 'owntracks_webhook_token' AND is_active = 1 LIMIT 1"
     ).get() as { config_value?: string } | undefined;
     if (!storedRow?.config_value) {
-      res.status(403).json({ error: 'OwnTracks webhook not configured — set owntracks_webhook_token in Admin → Integrations' });
+      res.status(403).json({ error: 'OwnTracks webhook not configured — set token in Admin → Integrations' });
       return;
     }
 
-    // Compare plain token (not encrypted — this is a shared secret, not a third-party API key)
     if (token !== storedRow.config_value) {
       res.status(403).json({ error: 'Invalid webhook token' });
       return;
