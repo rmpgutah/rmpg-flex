@@ -20,6 +20,22 @@ import {
 import { sendEmail } from './emailSender';
 import { renderEmailMarkdown } from './emailMarkdown';
 import { evaluateRulesForEmail } from './emailRuleEngine';
+import { extractEntityReferences } from './emailAutoLinker';
+
+function isAllowlistedSender(fromAddr: string): boolean {
+  try {
+    const raw = getConfigValue('email_autolink_allowlist') || '[]';
+    const domains: string[] = JSON.parse(raw);
+    const addr = (fromAddr || '').toLowerCase();
+    return domains.some(d => {
+      const dom = d.toLowerCase();
+      if (dom.startsWith('.')) return addr.endsWith(dom);
+      return addr.endsWith('@' + dom) || addr.endsWith('.' + dom);
+    });
+  } catch {
+    return false;
+  }
+}
 import { auditLogSystem } from './auditLogger';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -142,6 +158,26 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
       await evaluateRulesForEmail(db, id);
     } catch (err: any) {
       console.warn(`[EmailPoller] Rule eval failed for email #${id}:`, err.message);
+    }
+
+    // Auto-link inbound from allowlisted senders to existing CAD/RMS entities.
+    try {
+      const row = db.prepare(
+        `SELECT graph_id, from_address, subject,
+           COALESCE((SELECT body_text FROM email_cache_fts WHERE rowid = ec.id),'') as body_text
+         FROM email_cache ec WHERE ec.id = ?`
+      ).get(id) as any;
+      if (row && isAllowlistedSender(row.from_address)) {
+        const refs = extractEntityReferences(row.subject || '', row.body_text || '');
+        for (const ref of refs) {
+          db.prepare(
+            `INSERT INTO email_links (email_graph_id, entity_type, entity_id, auto_linked, created_at)
+             VALUES (?,?,?,1,?)`
+          ).run(row.graph_id, ref.type, ref.id, localNow());
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[EmailPoller] Auto-link failed for email #${id}:`, err.message);
     }
   }
 

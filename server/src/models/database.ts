@@ -3724,6 +3724,18 @@ function migrateSchema(): void {
   )`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_email ON email_links(email_graph_id)`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_entity ON email_links(entity_type, entity_id)`).run();
+  addCol('email_links', 'auto_linked', 'INTEGER DEFAULT 0');
+
+  // Seed email auto-link allowlist + tip-line folder config if missing.
+  const existingAllowlist = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_autolink_allowlist'`).get();
+  if (!existingAllowlist) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`)
+      .run('email_autolink_allowlist', JSON.stringify(['rmpgutah.us', '.gov', '.state.ut.us', 'ut.gov', 'slco.org']));
+  }
+  const existingTipFolder = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_tip_line_folder_id'`).get();
+  if (!existingTipFolder) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_folder_id', '');
+  }
 
   db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_emails (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
