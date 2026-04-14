@@ -25,7 +25,7 @@
     "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "csv-stringify": "^6.7.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "^17.3.1",
     "edge-tts-universal": "^1.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
