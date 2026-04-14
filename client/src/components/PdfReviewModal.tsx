@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormSchema, SchemaSection, FieldSpec, LabeledField } from '../utils/pdf/v2/engine/types';
+import { renderPdfV2 } from '../utils/pdf/v2';
 
 export type CommitKind = 'download' | 'attach' | 'email' | 'print';
 
@@ -27,6 +28,33 @@ export function PdfReviewModal<T extends Record<string, any>>({
   open, schema, initialData, onClose, onCommit,
 }: Props<T>) {
   const [data, setData] = useState<T>(initialData);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(async () => {
+      try {
+        const doc = await renderPdfV2(schema, data);
+        const blob = doc.output('blob') as Blob;
+        const url = URL.createObjectURL(blob);
+        const prev = blobUrlRef.current;
+        blobUrlRef.current = url;
+        setBlobUrl(url);
+        if (prev) URL.revokeObjectURL(prev);
+      } catch (err) {
+        console.error('[pdf-v2] preview render failed', err);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [data, schema, open]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
+  }, []);
+
   if (!open) return null;
 
   return (
@@ -47,7 +75,9 @@ export function PdfReviewModal<T extends Record<string, any>>({
             })}
           </div>
           <div className="overflow-y-auto p-4">
-            <div className="text-gray-400 italic">Preview coming in Task 14</div>
+            {blobUrl
+              ? <iframe title="pdf-preview" src={blobUrl} className="w-full h-full border-0" />
+              : <div className="text-gray-400 italic">Rendering preview…</div>}
           </div>
         </div>
         <footer className="flex justify-between items-center px-4 py-2 border-t border-[#222]">

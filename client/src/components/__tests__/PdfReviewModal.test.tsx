@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PdfReviewModal } from '../PdfReviewModal';
 import type { FormSchema } from '../../utils/pdf/v2/engine/types';
@@ -55,5 +55,29 @@ describe('PdfReviewModal', () => {
     await userEvent.type(input, 'Smith');
     await userEvent.click(screen.getByText('Commit: Download'));
     expect(onCommit).toHaveBeenCalledWith({ name: 'Smith' }, 'download');
+  });
+
+  it('renders a live PDF iframe after the debounce window', async () => {
+    // Stub URL.createObjectURL since jsdom doesn't implement it
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    URL.revokeObjectURL = vi.fn();
+
+    try {
+      render(
+        <PdfReviewModal open schema={schema} initialData={{ name: 'Jones' }}
+          onClose={() => {}} onCommit={() => {}} />
+      );
+
+      const iframe = await screen.findByTitle('pdf-preview', {}, { timeout: 2000 });
+      expect(iframe).toBeInTheDocument();
+      await waitFor(() => {
+        expect(iframe.getAttribute('src')).toBe('blob:mock-url');
+      });
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
   });
 });
