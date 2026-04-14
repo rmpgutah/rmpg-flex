@@ -959,9 +959,68 @@ export default function MapPage() {
       try {
         apiKey = await getGoogleMapsApiKey();
       } catch {
-        // No Google API key — trigger the OfflineMapFallback (Leaflet)
-        if (!cancelled) {
-          setMapError('offline');
+        // No Google API key — load Leaflet with CartoDB tiles instead
+        if (!cancelled && mapRef.current) {
+          try {
+            const L = await import('leaflet');
+            await import('leaflet/dist/leaflet.css');
+
+            let savedCenter = DEFAULT_CENTER;
+            let savedZoom = 12;
+            try {
+              const sc = localStorage.getItem('rmpg_map_center');
+              const sz = localStorage.getItem('rmpg_map_zoom');
+              if (sc) savedCenter = JSON.parse(sc);
+              if (sz) savedZoom = parseInt(sz, 10) || 12;
+            } catch { /* use defaults */ }
+
+            const leafletMap = L.map(mapRef.current, {
+              center: [savedCenter.lat, savedCenter.lng],
+              zoom: savedZoom,
+              zoomControl: false,
+              attributionControl: false,
+            });
+            L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', {
+              maxZoom: 20,
+            }).addTo(leafletMap);
+
+            // Save center/zoom on move
+            leafletMap.on('moveend', () => {
+              try {
+                const c = leafletMap.getCenter();
+                localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
+                localStorage.setItem('rmpg_map_zoom', String(leafletMap.getZoom()));
+              } catch { /* quota */ }
+            });
+
+            // Load beat GeoJSON overlay
+            try {
+              const beatResp = await fetch('/geojson/beat.geojson');
+              if (beatResp.ok) {
+                const beatData = await beatResp.json();
+                L.geoJSON(beatData, {
+                  style: (feature) => {
+                    const cityCode = feature?.properties?.city_code || '';
+                    let hash = 0;
+                    for (let i = 0; i < cityCode.length; i++) hash = ((hash << 5) - hash + cityCode.charCodeAt(i)) | 0;
+                    const colors = ['#4ade80','#60a5fa','#f87171','#fbbf24','#c084fc','#f472b6','#2dd4bf','#fb923c','#a78bfa','#34d399','#22d3ee','#fb7185'];
+                    const color = colors[Math.abs(hash) % colors.length];
+                    return { color, weight: 1.2, opacity: 0.65, fillColor: color, fillOpacity: 0.22 };
+                  },
+                  onEachFeature: (feature, layer) => {
+                    const bc = feature.properties?.beat_code || '';
+                    if (bc) layer.bindTooltip(bc, { permanent: true, direction: 'center', className: 'beat-label-tooltip' });
+                  },
+                }).addTo(leafletMap);
+              }
+            } catch { /* beat geojson not available */ }
+
+            setMapLoaded(true);
+            devLog('[MapPage] Leaflet fallback map loaded (no Google API key)');
+          } catch (leafletErr) {
+            console.error('[MapPage] Leaflet fallback failed:', leafletErr);
+            setMapError('Map failed to load. No Google API key configured and Leaflet fallback failed.');
+          }
         }
         return;
       }
