@@ -199,6 +199,8 @@ export default function OfflineMapFallback({
 
     mapRef.current = map;
     firstPositionRef.current = false;
+    // Leaflet needs invalidateSize after DOM attachment to calculate dimensions
+    setTimeout(() => map.invalidateSize(), 100);
     setIsReady(true);
 
     return () => {
