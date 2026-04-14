@@ -19,6 +19,7 @@ import {
 } from './msGraphClient';
 import { sendEmail } from './emailSender';
 import { renderEmailMarkdown } from './emailMarkdown';
+import { auditLogSystem } from './auditLogger';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -260,15 +261,34 @@ async function processScheduledEmails(): Promise<void> {
       if (sent.ok) {
         db.prepare("UPDATE scheduled_emails SET status = 'sent', sent_at = ? WHERE id = ?").run(localNow(), email.id);
         console.log(`[EmailPoller] Scheduled email #${email.id} sent to ${toList.join(', ')} via ${sent.transport}`);
+        auditLogSystem(
+          'SCHEDULED_DELIVERED' as any,
+          'email' as any,
+          `scheduled:${email.id}`,
+          JSON.stringify({ to: toList, subject: email.subject, transport: sent.transport, messageId: sent.messageId || null }),
+        );
       } else {
         const errMsg = `Send failed: ${sent.reason} — ${sent.detail}`;
         db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?").run(errMsg, email.id);
         console.error(`[EmailPoller] Scheduled email #${email.id} ${errMsg}`);
+        auditLogSystem(
+          'SCHEDULED_FAILED' as any,
+          'email' as any,
+          `scheduled:${email.id}`,
+          errMsg,
+        );
       }
     } catch (err: any) {
+      const errMsg = err.message || 'Unknown error';
       db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?")
-        .run(err.message || 'Unknown error', email.id);
+        .run(errMsg, email.id);
       console.error(`[EmailPoller] Scheduled email #${email.id} failed:`, err.message);
+      auditLogSystem(
+        'SCHEDULED_FAILED' as any,
+        'email' as any,
+        `scheduled:${email.id}`,
+        errMsg,
+      );
     }
   }
 }
