@@ -529,6 +529,50 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/messages/search', async (req: Request, res: Response) => {
+  const db = getDb();
+  const q = String(req.query.q || '').trim();
+  const folder = req.query.folder ? String(req.query.folder) : '';
+  const from = req.query.from ? String(req.query.from) : '';
+  const after = req.query.after ? String(req.query.after) : '';
+  const before = req.query.before ? String(req.query.before) : '';
+  const flagged = req.query.flagged === '1';
+  const hasAttachment = req.query.has_attachment === '1';
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '25'), 10)));
+  const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10));
+
+  if (!q && !folder && !from && !after && !before && !flagged && !hasAttachment) {
+    return res.json({ results: [], total: 0 });
+  }
+
+  const where: string[] = [];
+  const params: any[] = [];
+  if (q.length >= 2) {
+    // Sanitize FTS query — drop quote/special chars that break MATCH syntax
+    const safeQ = q.replace(/["']/g, ' ').replace(/[^\w\s*]/g, ' ').trim();
+    if (safeQ) {
+      where.push('ec.id IN (SELECT rowid FROM email_cache_fts WHERE email_cache_fts MATCH ?)');
+      params.push(safeQ);
+    }
+  }
+  if (folder) { where.push('ec.folder_id = ?'); params.push(folder); }
+  if (from)   { where.push('ec.from_address LIKE ?'); params.push(`%${from}%`); }
+  if (after)  { where.push('ec.received_at >= ?'); params.push(after); }
+  if (before) { where.push('ec.received_at <= ?'); params.push(before); }
+  if (flagged) where.push('ec.is_flagged = 1');
+  if (hasAttachment) where.push('ec.has_attachments = 1');
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM email_cache ec ${whereSql}`).get(...params) as any).c;
+  const rows = db.prepare(
+    `SELECT ec.id, ec.graph_id, ec.subject, ec.from_address, ec.from_name, ec.body_preview, ec.received_at, ec.folder_id, ec.is_read, ec.is_flagged, ec.has_attachments
+     FROM email_cache ec ${whereSql}
+     ORDER BY ec.received_at DESC LIMIT ? OFFSET ?`
+  ).all(...params, limit, offset);
+
+  res.json({ results: rows, total, limit, offset });
+});
+
 // GET /api/email/messages/:id — Full message with body
 router.get('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
