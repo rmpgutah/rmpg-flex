@@ -5,6 +5,7 @@ import {
   ExternalLink, Shield, Clock, Wifi, WifiOff, Send,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import AdminEmailRulesTab from './AdminEmailRulesTab';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -24,6 +25,7 @@ interface EmailStatus {
 }
 
 export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props) {
+  const [subTab, setSubTab] = useState<'config' | 'rules'>('config');
   const [status, setStatus] = useState<EmailStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -201,6 +203,25 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
   return (
     <div className="space-y-4">
+      {/* ─── Sub-tab nav ─── */}
+      <div className="flex gap-2 border-b border-[#222]">
+        <button
+          onClick={() => setSubTab('config')}
+          className={`px-3 py-1 text-xs ${subTab === 'config' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-gray-400'}`}
+        >
+          CONFIG
+        </button>
+        <button
+          onClick={() => setSubTab('rules')}
+          className={`px-3 py-1 text-xs ${subTab === 'rules' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-gray-400'}`}
+        >
+          RULES
+        </button>
+      </div>
+
+      {subTab === 'rules' && <AdminEmailRulesTab />}
+      {subTab === 'config' && <>
+
       {error && (
         <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -446,6 +467,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </button>
         </div>
       </div>
+      </>}
     </div>
   );
 }
