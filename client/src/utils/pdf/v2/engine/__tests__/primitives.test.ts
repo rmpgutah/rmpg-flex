@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import jsPDF from 'jspdf';
 import { LayoutEngine } from '../layout';
 import { Primitives } from '../primitives';
-import type { LabeledField, CheckboxField, NarrativeField, TableField } from '../types';
+import type { LabeledField, CheckboxField, NarrativeField, TableField, SignatureField } from '../types';
 
 describe('Primitives — labeledField', () => {
   let doc: jsPDF; let layout: LayoutEngine; let prims: Primitives;
@@ -124,6 +124,31 @@ describe('Primitives — table', () => {
       accessor: d => d.rows,
     };
     prims.table(spec, { rows: [] });
+    expect(layout.cursorY).toBeGreaterThan(60);
+  });
+});
+
+describe('Primitives — signature', () => {
+  let doc: jsPDF; let layout: LayoutEngine; let prims: Primitives;
+  beforeEach(() => {
+    doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    layout = new LayoutEngine(doc, { topMargin: 60, bottomMargin: 50, leftMargin: 40, rightMargin: 40 });
+    prims = new Primitives(doc, layout);
+  });
+
+  it('renders a signature block with printed name and date', () => {
+    const spec: SignatureField<{ sig: { image?: string; printedName?: string; date?: string } }> = {
+      kind: 'signature', label: 'Officer', accessor: d => d.sig,
+    };
+    prims.signature(spec, { sig: { printedName: 'JONES', date: '2026-04-14' } });
+    expect(layout.cursorY).toBeGreaterThan(60);
+  });
+
+  it('renders empty signature block when accessor returns undefined', () => {
+    const spec: SignatureField<{ sig?: any }> = {
+      kind: 'signature', label: 'Officer', accessor: d => d.sig,
+    };
+    prims.signature(spec, {});
     expect(layout.cursorY).toBeGreaterThan(60);
   });
 });

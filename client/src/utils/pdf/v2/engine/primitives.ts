@@ -165,8 +165,39 @@ export class Primitives {
     }
   }
 
-  // Task 6 replaces this stub
-  signature<T>(_spec: SignatureField<T>, _data: T): void { this.layout.advance(40); }
+  signature<T>(spec: SignatureField<T>, data: T): void {
+    const blockHeight = 50;
+    this.layout.pageBreakIfNeeded(blockHeight);
+    const x = this.layout.leftX;
+    const y = this.layout.cursorY;
+    const sigData = spec.accessor(data);
+    const sigWidth = 180;
+
+    this.doc.setFont('helvetica', 'normal');
+    this.doc.setFontSize(7);
+    this.doc.setTextColor(100, 100, 100);
+    this.doc.text(spec.label.toUpperCase(), x, y);
+
+    this.doc.setDrawColor(0, 0, 0);
+    this.doc.setLineWidth(0.5);
+    this.doc.line(x, y + 28, x + sigWidth, y + 28);
+
+    if (sigData?.image?.startsWith('data:image/')) {
+      try {
+        this.doc.addImage(sigData.image, 'PNG', x + 2, y + 8, sigWidth - 4, 18);
+      } catch {
+        /* ignore malformed image */
+      }
+    }
+
+    this.doc.setFontSize(9);
+    this.doc.setTextColor(0, 0, 0);
+    this.doc.text(`Printed name: ${sigData?.printedName ?? ''}`, x, y + 40);
+    this.doc.text(`Date: ${sigData?.date ?? ''}`, x + sigWidth + 20, y + 28);
+    this.doc.line(x + sigWidth + 20, y + 28, x + sigWidth + 140, y + 28);
+
+    this.layout.advance(blockHeight);
+  }
 }
 
 export { widthUnits };
