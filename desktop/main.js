@@ -333,8 +333,8 @@ async function createMainWindow() {
   // Also handle the newer permission-check API (Electron 20+)
   mainWindow.webContents.session.setPermissionCheckHandler(
     (_webContents, permission) => {
-      if (permission === 'geolocation') return true;
-      return false;
+      const allowed = ['geolocation', 'notifications', 'media'];
+      return allowed.includes(permission);
     }
   );
 

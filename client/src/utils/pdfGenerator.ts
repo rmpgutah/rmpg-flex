@@ -509,7 +509,7 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 2.0;        // Height reserved for label above value
+  const labelH = 2.3;        // Height reserved for label above value
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
@@ -561,7 +561,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 0.2; // label + box + small gap
+  return y + labelH + boxH + 0.4; // label + box + row gap
 }
 
 /**
@@ -579,21 +579,25 @@ export function addNarrativeField(doc: jsPDF, label: string, value: string, x: n
 export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x: number, y: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const boxSize = 3;
+  const boxSize = 3.2;
+  const boxY = y - 1.8;
+
+  // Outer border (always drawn for checkbox shape)
+  doc.setDrawColor(80, 80, 85);
+  doc.setLineWidth(0.3);
+  doc.rect(x, boxY, boxSize, boxSize);
 
   if (checked) {
-    // Filled dark square with white checkmark
-    doc.setFillColor(40, 40, 40);
-    doc.rect(x, y - 1.5, boxSize, boxSize, 'F');
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(BORDER.CHECK_MARK);
-    doc.line(x + 0.5, y + 0.0, x + 1.2, y + 1.0);
-    doc.line(x + 1.2, y + 1.0, x + 2.5, y - 1.0);
-  } else {
-    // Empty box with border
-    doc.setDrawColor(...COLOR.TEXT_SECONDARY);
-    doc.setLineWidth(BORDER.CHECKBOX);
-    doc.rect(x, y - 1.5, boxSize, boxSize);
+    // Light fill + bold dark checkmark
+    doc.setFillColor(230, 245, 230);
+    doc.rect(x + 0.15, boxY + 0.15, boxSize - 0.3, boxSize - 0.3, 'F');
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.7);
+    // Check mark: short down-stroke then long up-stroke
+    const cx = x + boxSize / 2;
+    const cy = boxY + boxSize / 2;
+    doc.line(cx - 1.0, cy - 0.1, cx - 0.2, cy + 0.8);
+    doc.line(cx - 0.2, cy + 0.8, cx + 1.1, cy - 0.9);
   }
 
   doc.setFont('courier', 'normal');
@@ -1988,8 +1992,9 @@ function addIncidentAlertBadges(
   if (cleanFlags.length === 0) return y;
 
   const cols = 3;
+  const cbRowH = 4.5; // Must exceed checkbox boxSize (3.2mm) + clearance
   const rows = Math.ceil(cleanFlags.length / cols);
-  y = checkPageBreak(doc, y, 8 + rows * (SPACING.LG + 0.5), priority);
+  y = checkPageBreak(doc, y, 8 + rows * cbRowH, priority);
 
   const sec = openAutoSection(doc, label, y);
   y = sec.contentY + 1;
@@ -2000,7 +2005,7 @@ function addIncidentAlertBadges(
     row.forEach((flag, colIdx) => {
       addCheckboxField(doc, flag, true, lx + colIdx * colW, y);
     });
-    y += SPACING.LG + 0.5;
+    y += cbRowH;
   }
 
   return closeAutoSection(doc, sec.sectionY, y - 1.2, undefined, sec.sectionPage);
@@ -2288,6 +2293,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   { const sec = openAutoSection(doc, 'Operational Flags', y); y = sec.contentY;
     y += 1;
     const flagW = ffw / 6;
+    const flagRowH = 4.5; // Must exceed checkbox boxSize (3.2mm) + label clearance
     // Row 1
     let fx = lx;
     fx = addCheckboxField(doc, 'Injuries', !!data.injuries_reported, fx, y);
@@ -2296,7 +2302,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     fx = lx + flagW * 3; fx = addCheckboxField(doc, 'DV', !!data.domestic_violence, fx, y);
     fx = lx + flagW * 4; fx = addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, fx, y);
     addCheckboxField(doc, 'Juvenile', !!data.juvenile_involved, lx + flagW * 5, y);
-    y += SPACING.LG;
+    y += flagRowH;
     // Row 2
     addCheckboxField(doc, 'Felony I/P', !!data.felony_in_progress, lx, y);
     addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, lx + flagW, y);
@@ -2304,15 +2310,21 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     addCheckboxField(doc, 'Hazmat', !!data.hazmat, lx + flagW * 3, y);
     addCheckboxField(doc, 'Weapons', !!data.weapons_involved, lx + flagW * 4, y);
     addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, lx + flagW * 5, y);
-    y += SPACING.LG;
+    y += flagRowH;
     // Row 3
     addCheckboxField(doc, 'K9 Req', !!data.k9_requested, lx, y);
     addCheckboxField(doc, 'EMS Req', !!data.ems_requested, lx + flagW, y);
     addCheckboxField(doc, 'Fire Req', !!data.fire_requested, lx + flagW * 2, y);
-    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, lx + flagW * 3, y);
-    addCheckboxField(doc, 'Evidence', !!data.evidence_collected, lx + flagW * 4, y);
-    addCheckboxField(doc, 'Photos', !!data.photos_taken, lx + flagW * 5, y);
-    y += SPACING.LG;
+    addCheckboxField(doc, 'Sup Notified', !!data.supervisor_notified, lx + flagW * 3, y);
+    addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW * 4, y);
+    addCheckboxField(doc, 'Trespass', !!data.trespass_issued, lx + flagW * 5, y);
+    y += flagRowH;
+    // Row 4
+    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, lx, y);
+    addCheckboxField(doc, 'Evidence', !!data.evidence_collected, lx + flagW, y);
+    addCheckboxField(doc, 'Photos', !!data.photos_taken, lx + flagW * 2, y);
+    addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, lx + flagW * 3, y);
+    y += flagRowH;
     // Row 4
     addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, lx, y);
     addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW, y);
@@ -3241,6 +3253,21 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'PSO Service Type', (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
       y = Math.max(yL, yR); }
+    if ((data as any).attorney_name || (data as any).client_name || (data as any).jurisdiction) {
+      const tw = ffw / 3;
+      const a1 = addFieldPair(doc, 'Attorney', (data as any).attorney_name || '', lx, y, tw);
+      const a2 = addFieldPair(doc, 'Client', (data as any).client_name || '', lx + tw, y, tw);
+      const a3 = addFieldPair(doc, 'Jurisdiction', (data as any).jurisdiction || '', lx + 2 * tw, y, tw);
+      y = Math.max(a1, a2, a3);
+    }
+    if ((data as any).deadline || (data as any).time_window) {
+      const dl1 = addFieldPair(doc, 'Deadline', (data as any).deadline || '', lx, y, hfw);
+      const dl2 = addFieldPair(doc, 'Time Window', (data as any).time_window || '', rx, y, hfw);
+      y = Math.max(dl1, dl2);
+    }
+    if ((data as any).service_instructions) {
+      y = addFieldPair(doc, 'Service Instructions', (data as any).service_instructions, lx, y, ffw);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

@@ -1789,9 +1789,43 @@ router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Resp
 // ═════════════════════════════════════════════════════════════
 
 const ALLOWED_THIRD_PARTY_KEYS = [
+  // RapidAPI
   'lead_gen_rapidapi_key',
   'dl_ocr_rapidapi_key',
   'plate_check_rapidapi_key',
+  // Google Cloud Console
+  'google_maps_api_key',
+  'google_maps_server_key',
+  'google_places_api_key',
+  'google_cloud_vision_key',
+  'google_cloud_speech_key',
+  'google_generative_language_key',
+  // Law Enforcement / Government
+  'ncic_api_key', 'utah_dps_api_key', 'utah_courts_api_key', 'fbi_wanted_api_key',
+  'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key',
+  'nsopw_api_key', 'ofac_api_key',
+  // Free / Open Source
+  'openweathermap_api_key', 'mapbox_api_key', 'nominatim_api_key', 'opencage_api_key',
+  'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
+  'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
+  'abstract_api_key', 'whoisxml_api_key', 'urlscan_api_key', 'emailrep_api_key',
+  // Notifications
+  'twilio_api_key', 'twilio_account_sid', 'sendgrid_api_key', 'pushover_api_key',
+  'ntfy_topic_key', 'slack_webhook_url', 'discord_webhook_url', 'telegram_bot_token',
+  // AI / ML
+  'openai_api_key', 'anthropic_api_key', 'replicate_api_key', 'huggingface_api_key',
+  'deepgram_api_key', 'assemblyai_api_key',
+  // Cloud Storage
+  'aws_access_key_id', 'aws_secret_access_key', 'aws_s3_bucket',
+  'backblaze_key_id', 'backblaze_app_key', 'cloudflare_api_key', 'wasabi_access_key',
+  // Data Services
+  'openmeteo_api_key', 'clearpath_gps_api_key', 'microbilt_client_id', 'microbilt_client_secret',
+  'nhtsa_api_key', 'fcc_api_key', 'here_api_key', 'what3words_api_key',
+  'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
+  // RapidAPI & Third-Party
+  'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
+  // GPS Webhooks
+  'owntracks_webhook_token', 'traccar_webhook_token',
 ];
 
 function encryptValue(plaintext: string): string {

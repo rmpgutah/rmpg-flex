@@ -596,7 +596,7 @@ router.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'of
 
     // Call counts by sector (JOIN to get name from lookup table)
     const sectionStats = db.prepare(`
-      SELECT c.sector_id as code, COALESCE(ds.name, c.sector_id) as name,
+      SELECT c.sector_id as code, COALESCE(ds.sector_name, c.sector_id) as name,
         COUNT(*) as total_calls,
         SUM(CASE WHEN c.priority = 'P1' THEN 1 ELSE 0 END) as p1_calls,
         SUM(CASE WHEN c.priority = 'P2' THEN 1 ELSE 0 END) as p2_calls,
@@ -612,7 +612,7 @@ router.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'of
 
     // Call counts by zone (JOIN to get name from lookup table)
     const zoneStats = db.prepare(`
-      SELECT c.zone_id as code, COALESCE(dz.name, c.zone_id) as name, c.sector_id,
+      SELECT c.zone_id as code, COALESCE(dz.zone_name, c.zone_id) as name, c.sector_id,
         COUNT(*) as total_calls,
         SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls,
         AVG(CASE WHEN c.dispatched_at IS NOT NULL AND c.enroute_at IS NOT NULL
@@ -626,7 +626,7 @@ router.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'of
 
     // Call counts by beat (JOIN to get name from lookup table)
     const beatStats = db.prepare(`
-      SELECT c.beat_id as code, COALESCE(db2.name, c.beat_id) as name, c.zone_id,
+      SELECT c.beat_id as code, COALESCE(db2.beat_name, c.beat_id) as name, c.zone_id,
         COUNT(*) as total_calls,
         SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls
       FROM calls_for_service c

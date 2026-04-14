@@ -407,29 +407,42 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const fullName = `${name.first}${name.middle ? ' ' + name.middle : ''} ${name.last}`;
     const subjectDesc = `${fullName}${dob ? ', DOB ' + dob : ''}`;
 
-    // description = serve instructions, cleaned + summarized for dispatch display
-    const cleanText = (s: string): string => s
-      .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/^\s+|\s+$/g, '');
-    const summarizeInstructions = (raw: string): string => {
-      if (!raw || !raw.trim()) return '';
-      const cleaned = cleanText(raw);
-      // Collapse newlines into single spaces for dispatch display
-      const single = cleaned.replace(/\n+/g, ' ');
-      // Truncate to 500 chars at a word boundary
-      if (single.length <= 500) return single;
-      const cut = single.slice(0, 500);
-      const lastSpace = cut.lastIndexOf(' ');
-      return (lastSpace > 400 ? cut.slice(0, lastSpace) : cut) + '…';
-    };
-    const instructionsText = summarizeInstructions(instructions || '');
-    const descParts = instructionsText ||
-      `SERVE ${docs ? docs.toUpperCase() : 'DOCUMENTS'} TO ${fullName.toUpperCase()} AT ${(address || 'LISTED ADDRESS').toUpperCase()}${dueDate ? ` — DUE ${dueDate}` : ''}`;
+    // ── Build structured description for dispatch display ──
+    const docType = docs ? docs.toUpperCase() : 'DOCUMENTS';
+    const processType = /complaint/i.test(docs) ? 'complaint'
+      : /subpoena/i.test(docs) ? 'subpoena'
+      : /eviction|unlawful detainer/i.test(docs) ? 'eviction'
+      : /restraining|protective/i.test(docs) ? 'restraining_order'
+      : 'summons';
+    const deadlineStr = dueDate || '';
 
-    // notes = case reference details (court, plaintiff, attorney, documents)
-    const notesParts = caseNotes || '';
+    // Description: structured dispatch summary
+    const descLines: string[] = [];
+    descLines.push(`SERVE ${docType} TO ${fullName.toUpperCase()}`);
+    if (address) descLines.push(`AT ${address.toUpperCase()}`);
+    if (deadlineStr) descLines.push(`DUE: ${deadlineStr}`);
+    if (instructions) {
+      const cleaned = instructions.replace(/\r\n/g, ' ').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+      descLines.push(`INSTRUCTIONS: ${cleaned.length > 400 ? cleaned.slice(0, 400) + '...' : cleaned}`);
+    }
+    if (serviceWindows) descLines.push(`SERVICE WINDOWS: ${serviceWindows}`);
+    const descParts = descLines.join('\n');
+
+    // Notes: structured JSON array (matches dispatch call note format)
+    const noteEntries: Array<{ id: string; author: string; text: string; timestamp: string }> = [];
+    // Case details note (caseNotes already extracted above)
+    if (caseNotes) {
+      noteEntries.push({ id: String(Date.now()), author: 'Serve Intake', text: caseNotes, timestamp: now });
+    }
+    // Instructions note (full, untruncated)
+    if (instructions && instructions.length > 50) {
+      noteEntries.push({ id: String(Date.now() + 1), author: 'Serve Intake', text: `Service Instructions: ${instructions}`, timestamp: now });
+    }
+    // Plaintiff/client info
+    if (plaintiff) {
+      noteEntries.push({ id: String(Date.now() + 2), author: 'Serve Intake', text: `Plaintiff: ${plaintiff.replace(/\n/g, ' ').trim()}`, timestamp: now });
+    }
+    const notesParts = noteEntries.length > 0 ? JSON.stringify(noteEntries) : null;
 
     // Auto-generate call number
     const year = new Date().getFullYear().toString().slice(-2);
@@ -441,9 +454,13 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     }
     const callNumber = `${year}-CFS${String(seq).padStart(5, '0')}`;
 
+    // Determine caller info from document (attorney or client)
+    const callerName = attorney.name || plaintiff.replace(/\n/g, ' ').trim() || 'Process Service Client';
+    const callerPhone = attorney.phone || '';
+
     const callResult = db.prepare(`
       INSERT INTO calls_for_service (
-        call_number, incident_type, priority, status,
+        call_number, case_number, incident_type, priority, status,
         caller_name, caller_phone, caller_relationship, caller_address,
         location_address, property_id, latitude, longitude,
         weather_conditions, lighting_conditions,
@@ -455,9 +472,10 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         pso_attempt_number, pso_service_windows,
         process_service_type, process_served_to, process_served_address,
         process_attempts, client_id, contract_id,
+        secondary_type, contact_method,
         created_at, updated_at
       ) VALUES (
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
@@ -469,21 +487,23 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         ?, ?,
         ?, ?, ?,
         ?, ?, ?,
+        ?, ?,
         ?, ?
       )
     `).run(
-      callNumber, 'pso_client_request', 'P4', 'pending',
-      'ICU Investigations, LLC', '(435) 986-1200', 'client', clientAddress || null,
+      callNumber, caseNumber || null, 'pso_client_request', 'P4', 'pending',
+      callerName, callerPhone, 'client', clientAddress || null,
       address || 'Unknown', propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null,
       sectionId || null, zoneId || null, beatId || null, zoneBeat || null, dispatchCode || null,
-      descParts, notesParts || null, 'intake', userId,
+      descParts, notesParts, 'intake', userId,
       subjectDesc,
-      attorney.name || null, attorney.phone || null, attorney.email || null,
+      attorney.name || callerName, attorney.phone || null, attorney.email || null,
       'process_service', fee || null, jobNumber || null,
       1, serviceWindows || null,
-      'summons', fullName, address || null,
+      processType, fullName, address || null,
       0, client_id || 1, jobNumber || null,
+      docType, 'email',
       now, now
     );
     const callId = callResult.lastInsertRowid as number;
@@ -493,7 +513,30 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)').run(callId, personId, 'involved', userId, now);
     } catch { /* already linked */ }
 
-    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, JSON.stringify({ person_id: personId, property_id: propertyId, job_number: jobNumber }));
+    // 6. Auto-create serve queue entry for the process server
+    let serveQueueId: number | null = null;
+    try {
+      const addrMatch = address ? address.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/) : null;
+      const sqResult = db.prepare(`
+        INSERT INTO serve_queue (
+          call_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
+          recipient_lat, recipient_lng, document_type, case_number, court_name,
+          client_name, attorney_name, priority, deadline, service_instructions, notes,
+          sm_job_id, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        callId, fullName, address || null,
+        addrMatch ? addrMatch[1].trim() : null, addrMatch ? addrMatch[2] : 'UT', addrMatch ? addrMatch[3] : null,
+        latitude, longitude,
+        processType, caseNumber || null, court || null,
+        plaintiff.replace(/\n/g, ' ').trim() || null, attorney.name || null,
+        'normal', deadlineStr || null, instructions || null, caseNotes || null,
+        jobNumber || null, 'pending', now, now
+      );
+      serveQueueId = sqResult.lastInsertRowid as number;
+    } catch (sqErr) { console.error('[ServeIntake] Serve queue creation error (non-fatal):', sqErr instanceof Error ? sqErr.message : sqErr); }
+
+    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, JSON.stringify({ person_id: personId, property_id: propertyId, serve_queue_id: serveQueueId, job_number: jobNumber }));
 
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 
@@ -503,10 +546,15 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       property_id: propertyId,
       call_id: callId,
       call_number: callNumber,
+      serve_queue_id: serveQueueId,
       latitude, longitude,
       weather: weatherConditions || null,
       lighting: lightingConditions || null,
-      extracted: { name, dob, address, plaintiff, court, docs, instructions, jobNumber, caseNumber, dueDate, attorney, fee },
+      extracted: {
+        name, dob, address, plaintiff, court, docs, instructions,
+        jobNumber, caseNumber, dueDate, attorney, fee,
+        processType, serviceWindows, deadlineStr,
+      },
     });
   } catch (err: any) {
     console.error('[ServeIntake] Error:', err?.message);

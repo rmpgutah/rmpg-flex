@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
+  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -44,18 +45,132 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ── Third-Party API Keys Panel ──────────────────────────────
-// Lets admins set RapidAPI keys for Lead Generation, DL OCR, etc.
-const THIRD_PARTY_KEYS = [
-  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
-  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
-] as const;
+// ── Reusable API Key Panel ────────────────────────────────────
+// Generic panel for managing encrypted API keys via PUT /api/admin/third-party-keys
+interface ApiKeyConfig {
+  key: string;
+  label: string;
+  desc: string;
+  /** Regex pattern the key must match, or null for no validation */
+  pattern?: RegExp;
+  /** Human-readable format hint shown below the input */
+  formatHint?: string;
+}
 
-function ThirdPartyApiKeysPanel() {
+function validateKey(value: string, config: ApiKeyConfig): string | null {
+  if (!value.trim()) return null;
+  if (config.pattern && !config.pattern.test(value.trim())) {
+    return config.formatHint || 'Invalid key format';
+  }
+  return null; // valid
+}
+
+const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
+  { key: 'google_maps_api_key', label: 'Maps JavaScript API', desc: 'Client-side map rendering — used by Map page, dispatch overlays, beat polygons', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_maps_server_key', label: 'Geocoding / Directions API', desc: 'Server-side address resolution, route optimization, reverse geocoding', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+  { key: 'google_generative_language_key', label: 'Generative Language API (Gemini)', desc: 'AI-powered narrative generation, report summarization, CAD command intelligence', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+];
+
+const AI_ML_KEYS: ApiKeyConfig[] = [
+  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4 / GPT-4o — narrative generation, report writing, evidence analysis', pattern: /^sk-[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk-' },
+  { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-' },
+  { key: 'replicate_api_key', label: 'Replicate', desc: 'Free tier — open-source AI models, image generation, facial similarity search' },
+  { key: 'huggingface_api_key', label: 'Hugging Face', desc: 'Free tier — NLP models, text classification, entity extraction for reports', pattern: /^hf_[A-Za-z0-9]+$/, formatHint: 'Starts with hf_' },
+  { key: 'deepgram_api_key', label: 'Deepgram', desc: 'Free tier: $200 credit — real-time speech-to-text, body camera transcription' },
+  { key: 'assemblyai_api_key', label: 'AssemblyAI', desc: 'Free tier: 100hrs — audio transcription, speaker diarization for interviews' },
+];
+
+const CLOUD_STORAGE_KEYS: ApiKeyConfig[] = [
+  { key: 'aws_access_key_id', label: 'AWS Access Key ID', desc: 'S3 storage — evidence files, body camera video, backup archives', pattern: /^AKIA[A-Z0-9]{16}$/, formatHint: 'Starts with AKIA, 20 characters' },
+  { key: 'aws_secret_access_key', label: 'AWS Secret Access Key', desc: 'AWS authentication secret (paired with Access Key ID above)' },
+  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage' },
+  { key: 'backblaze_key_id', label: 'Backblaze B2 Key ID', desc: 'Free tier: 10GB — low-cost evidence archival, database backups' },
+  { key: 'backblaze_app_key', label: 'Backblaze B2 App Key', desc: 'Backblaze authentication (paired with Key ID above)' },
+  { key: 'cloudflare_api_key', label: 'Cloudflare', desc: 'Free tier — CDN, DDoS protection, DNS management, R2 object storage' },
+  { key: 'wasabi_access_key', label: 'Wasabi Access Key', desc: 'S3-compatible hot storage — no egress fees, evidence and video archival' },
+];
+
+const THIRD_PARTY_KEYS: ApiKeyConfig[] = [
+  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
+  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
+  { key: 'plate_recognizer_api_key', label: 'Plate Recognizer', desc: 'Free tier: 2500/month — automatic license plate recognition from photos/video' },
+  { key: 'roboflow_api_key', label: 'Roboflow', desc: 'Free tier: 10k inferences — weapon detection, vehicle classification from camera feeds' },
+  { key: 'carjam_api_key', label: 'CarJam / VINAudit', desc: 'Vehicle history reports — title, accident, theft, odometer for investigations' },
+  { key: 'spokeo_api_key', label: 'Spokeo / BeenVerified', desc: 'People search — reverse phone, address history, social profiles for skip tracing' },
+];
+
+const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
+  { key: 'ncic_api_key', label: 'NCIC / NLETS Gateway', desc: 'National Crime Information Center — warrant checks, stolen vehicle lookups, person queries' },
+  { key: 'utah_dps_api_key', label: 'Utah DPS / BCI', desc: 'Utah Department of Public Safety — criminal history, sex offender registry, driver records' },
+  { key: 'utah_courts_api_key', label: 'Utah Courts Xchange', desc: 'Court case search, docket lookups, hearing schedules' },
+  { key: 'fbi_wanted_api_key', label: 'FBI Wanted API', desc: 'FBI Most Wanted list — free, no key required but slot reserved for future auth' },
+  { key: 'dea_api_key', label: 'DEA ARCOS / Diversion', desc: 'Drug Enforcement Administration — controlled substance tracking, diversion reports' },
+  { key: 'usms_api_key', label: 'US Marshals Service', desc: 'Federal fugitive warrants, sex offender registry, witness protection coordination' },
+  { key: 'atf_api_key', label: 'ATF eTrace / FFL', desc: 'Firearms tracing, Federal Firearms Licensee lookups, explosives permits' },
+  { key: 'interpol_api_key', label: 'INTERPOL Red Notice', desc: 'Free — international wanted persons, stolen documents, stolen vehicles' },
+  { key: 'nsopw_api_key', label: 'NSOPW (Sex Offender)', desc: 'Free — National Sex Offender Public Website search API' },
+  { key: 'ofac_api_key', label: 'OFAC / SDN List', desc: 'Free — Treasury sanctions list, specially designated nationals for financial investigations' },
+];
+
+const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
+  { key: 'owntracks_webhook_token', label: 'OwnTracks Webhook Token', desc: 'Shared secret for OwnTracks iPhone/Android background GPS → POST /api/dispatch/gps/owntracks' },
+  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'Shared secret for Traccar Client background GPS (same endpoint, auto-detected format)' },
+];
+
+const FREE_OPEN_APIS: ApiKeyConfig[] = [
+  { key: 'openweathermap_api_key', label: 'OpenWeatherMap', desc: 'Free tier: 1000 calls/day — current weather, forecasts, alerts for dispatch scene conditions', formatHint: '32-character hex key from openweathermap.org' },
+  { key: 'mapbox_api_key', label: 'Mapbox', desc: 'Free tier: 50k loads/month — satellite imagery, routing, isochrones, offline maps', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com' },
+  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback when Google quota exceeded (email as key)' },
+  { key: 'opencage_api_key', label: 'OpenCage Geocoder', desc: 'Free tier: 2500 calls/day — reverse geocoding, address parsing, timezone lookup' },
+  { key: 'ipinfo_api_key', label: 'IPinfo', desc: 'Free tier: 50k/month — IP geolocation for login audit, session tracking, threat intel' },
+  { key: 'virustotal_api_key', label: 'VirusTotal', desc: 'Free tier: 4 lookups/min — file hash checks, URL scanning for evidence/forensics' },
+  { key: 'abuseipdb_api_key', label: 'AbuseIPDB', desc: 'Free tier: 1000/day — check IP addresses against abuse database for security monitoring' },
+  { key: 'shodan_api_key', label: 'Shodan', desc: 'Free tier: limited — internet-connected device search for OSINT/investigations' },
+  { key: 'have_i_been_pwned_key', label: 'Have I Been Pwned', desc: 'Free tier: breach lookups — check if officer/suspect emails appear in data breaches' },
+  { key: 'censys_api_key', label: 'Censys', desc: 'Free tier: 250/month — internet host/certificate search for OSINT, infrastructure recon' },
+  { key: 'hunter_io_api_key', label: 'Hunter.io', desc: 'Free tier: 25/month — email finder, domain search for skip tracing and investigations' },
+  { key: 'numverify_api_key', label: 'NumVerify', desc: 'Free tier: 100/month — phone number validation, carrier lookup, line type detection' },
+  { key: 'abstract_api_key', label: 'AbstractAPI (Phone/Email)', desc: 'Free tier: 100/month — phone validation, email verification, IP geolocation bundle' },
+  { key: 'whoisxml_api_key', label: 'WhoisXML / RDAP', desc: 'Free tier: 500/month — domain WHOIS lookup, DNS records, reverse IP for cyber investigations' },
+  { key: 'urlscan_api_key', label: 'urlscan.io', desc: 'Free tier: 50/day — scan and analyze suspicious URLs, phishing detection for evidence' },
+  { key: 'emailrep_api_key', label: 'EmailRep.io', desc: 'Free — email reputation scoring, breach history, social profile links for OSINT' },
+];
+
+const NOTIFICATION_KEYS: ApiKeyConfig[] = [
+  { key: 'twilio_api_key', label: 'Twilio SMS / Voice', desc: 'SMS notifications, automated phone alerts, 2FA verification codes', pattern: /^SK[a-f0-9]{32}$/, formatHint: 'Twilio API key — starts with SK, 34 characters' },
+  { key: 'twilio_account_sid', label: 'Twilio Account SID', desc: 'Twilio account identifier (paired with API key above)', pattern: /^AC[a-f0-9]{32}$/, formatHint: 'Starts with AC, 34 characters' },
+  { key: 'sendgrid_api_key', label: 'SendGrid Email', desc: 'Transactional email delivery — court reminders, serve deadlines, report distribution', pattern: /^SG\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'SendGrid key — starts with SG.' },
+  { key: 'pushover_api_key', label: 'Pushover', desc: 'Free app — push notifications to officer phones for panic alerts, warrant hits, court reminders' },
+  { key: 'ntfy_topic_key', label: 'ntfy.sh Topic', desc: 'Free open-source push notifications — no account required, self-hostable' },
+  { key: 'slack_webhook_url', label: 'Slack Webhook', desc: 'Incoming webhook — post dispatch alerts, shift changes, BOLO updates to a Slack channel' },
+  { key: 'discord_webhook_url', label: 'Discord Webhook', desc: 'Incoming webhook — post alerts and notifications to a Discord channel' },
+  { key: 'telegram_bot_token', label: 'Telegram Bot', desc: 'Free — send alerts via Telegram bot to officer group chats' },
+];
+
+const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
+  { key: 'openmeteo_api_key', label: 'Open-Meteo / Weather', desc: 'Completely free — weather conditions for dispatch calls, incident reports, scene documentation' },
+  { key: 'clearpath_gps_api_key', label: 'ClearPathGPS', desc: 'Fleet GPS tracking — vehicle positions, speed, geofence alerts' },
+  { key: 'microbilt_client_id', label: 'MicroBilt Client ID', desc: 'Skip tracing — person search, address history, phone lookups' },
+  { key: 'microbilt_client_secret', label: 'MicroBilt Client Secret', desc: 'MicroBilt API authentication secret (paired with Client ID above)' },
+  { key: 'nhtsa_api_key', label: 'NHTSA Vehicle API', desc: 'Free — VIN decoding, vehicle recalls, crash ratings, complaints' },
+  { key: 'fcc_api_key', label: 'FCC Broadband / ULS', desc: 'Free — radio license lookups, broadband coverage maps for communication planning' },
+  { key: 'here_api_key', label: 'HERE Maps', desc: 'Free tier: 250k/month — routing, traffic, fleet telematics, geocoding alternative' },
+  { key: 'what3words_api_key', label: 'what3words', desc: 'Free tier: 1000/month — 3-word address system for precise location sharing in the field' },
+  { key: 'plaid_api_key', label: 'Plaid', desc: 'Financial investigations — bank account verification, transaction monitoring' },
+  { key: 'clearbit_api_key', label: 'Clearbit', desc: 'Free tier: 50/month — company/person enrichment for skip tracing and background checks' },
+  { key: 'pipl_api_key', label: 'Pipl', desc: 'People search — social profiles, emails, phones, addresses for investigations' },
+  { key: 'towerdata_api_key', label: 'TowerData', desc: 'Email intelligence — identity verification, email-to-name resolution for OSINT' },
+];
+
+function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: React.ReactNode; keys: ApiKeyConfig[] }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     // Check which keys are configured
@@ -67,7 +182,7 @@ function ThirdPartyApiKeysPanel() {
         setConfigured(map);
       } catch {
         // Endpoint may not exist yet — check individually
-        for (const { key } of THIRD_PARTY_KEYS) {
+        for (const { key } of keyConfigs) {
           try {
             const resp = await apiFetch<{ configured: boolean }>(`/admin/third-party-keys/${key}`);
             setConfigured(prev => ({ ...prev, [key]: resp.configured }));
@@ -80,6 +195,12 @@ function ThirdPartyApiKeysPanel() {
   const handleSave = async (configKey: string) => {
     const value = values[configKey]?.trim();
     if (!value) return;
+    const cfg = keyConfigs.find(k => k.key === configKey);
+    if (cfg) {
+      const err = validateKey(value, cfg);
+      if (err) { setErrors(prev => ({ ...prev, [configKey]: err })); return; }
+    }
+    setErrors(prev => ({ ...prev, [configKey]: null }));
     setSaving(configKey);
     try {
       await apiFetch('/admin/third-party-keys', {
@@ -107,11 +228,11 @@ function ThirdPartyApiKeysPanel() {
   return (
     <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
-        <Key className="w-4 h-4 text-brand-400" />
-        <h2 className="text-sm font-semibold text-rmpg-300">Third-Party API Keys</h2>
+        {icon}
+        <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
-        {THIRD_PARTY_KEYS.map(({ key, label, desc }) => (
+        {keyConfigs.map(({ key, label, desc, formatHint }) => (
           <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -163,6 +284,8 @@ function ThirdPartyApiKeysPanel() {
                 </button>
               )}
             </div>
+            {errors[key] && <div className="text-[10px] text-red-400 font-medium">⚠ {errors[key]}</div>}
+            {formatHint && !errors[key] && <div className="text-[9px] text-rmpg-600 italic">{formatHint}</div>}
             <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>
           </div>
         ))}
@@ -455,8 +578,32 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
         )}
       </div>
 
-      {/* ── Third-Party RapidAPI Keys ── */}
-      <ThirdPartyApiKeysPanel />
+      {/* ── GPS Background Tracking ── */}
+      <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
+
+      {/* ── Google Cloud Console Keys ── */}
+      <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-blue-400" />} keys={GOOGLE_CLOUD_KEYS} />
+
+      {/* ── Law Enforcement / Government APIs ── */}
+      <ApiKeyPanel title="Law Enforcement / Government" icon={<Shield className="w-4 h-4 text-red-400" />} keys={LAW_ENFORCEMENT_KEYS} />
+
+      {/* ── Free / Open Source APIs ── */}
+      <ApiKeyPanel title="Free / Open Source APIs" icon={<Unlock className="w-4 h-4 text-green-400" />} keys={FREE_OPEN_APIS} />
+
+      {/* ── Notifications ── */}
+      <ApiKeyPanel title="Notifications & Messaging" icon={<Bell className="w-4 h-4 text-amber-400" />} keys={NOTIFICATION_KEYS} />
+
+      {/* ── AI / Machine Learning ── */}
+      <ApiKeyPanel title="AI / Machine Learning" icon={<Cpu className="w-4 h-4 text-purple-400" />} keys={AI_ML_KEYS} />
+
+      {/* ── Cloud Storage & Infrastructure ── */}
+      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-sky-400" />} keys={CLOUD_STORAGE_KEYS} />
+
+      {/* ── Data Services ── */}
+      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-cyan-400" />} keys={DATA_SERVICE_KEYS} />
+
+      {/* ── RapidAPI & Third-Party ── */}
+      <ApiKeyPanel title="RapidAPI & Third-Party" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
 
       {/* ── API Keys Panel ── */}
       <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">

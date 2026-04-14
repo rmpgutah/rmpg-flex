@@ -45,9 +45,9 @@ export function resolveDistrict(lat: number, lng: number): DistrictResult | null
 
     // Resolve from new geography tables (dispatch_beats → dispatch_zones → dispatch_sectors)
     const district = db.prepare(`
-      SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
-             dz.zone_code, dz.name as zone_name,
-             ds.sector_code, ds.name as sector_name
+      SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+             dz.zone_code, dz.zone_name,
+             ds.sector_code, ds.sector_name
       FROM dispatch_beats db2
       JOIN dispatch_zones dz ON dz.id = db2.zone_id
       JOIN dispatch_sectors ds ON ds.id = dz.sector_id

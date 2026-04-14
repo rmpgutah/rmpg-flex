@@ -390,7 +390,7 @@ export default function MapPage() {
   useEffect(() => {
     let cancelled = false;
     apiFetch<any[]>('/dispatch/districts').then((districts) => {
-      if (cancelled || !districts) return;
+      if (cancelled || !Array.isArray(districts) || districts.length === 0) return;
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
       for (const d of districts) {
@@ -872,12 +872,28 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
+      // ── CartoDB dark_matter tile overlay ──────────────────────
+      // Overlays free CartoDB tiles on top of Google's base map.
+      // Covers the "For development purposes only" watermark when
+      // Google billing is not active, while keeping all Google Maps
+      // API features (markers, GeoJSON, info windows) working.
+      // Tiles are also cached by the service worker for offline use.
+      const cartoTileLayer = new google.maps.ImageMapType({
+        getTileUrl: (coord, zoom) =>
+          `https://basemaps.cartocdn.com/dark_all/${zoom}/${coord.x}/${coord.y}@2x.png`,
+        tileSize: new google.maps.Size(256, 256),
+        name: 'CartoDB Dark',
+        maxZoom: 20,
+        opacity: 1.0,
+      });
+      map.overlayMapTypes.push(cartoTileLayer);
+
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
       // Without mapId, markers are created but silently never render.
       // Since we use a raster styled map (no mapId), always use the
       // OverlayView-based fallback which works reliably on all map types.
       useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
@@ -942,10 +958,10 @@ export default function MapPage() {
       let apiKey = '';
       try {
         apiKey = await getGoogleMapsApiKey();
-      } catch (err) {
+      } catch {
+        // No Google API key — trigger the OfflineMapFallback (Leaflet)
         if (!cancelled) {
-          setMapLoaded(false);
-          setMapError(err instanceof Error ? err.message : getGoogleMapsApiKeyErrorMessage());
+          setMapError('offline');
         }
         return;
       }

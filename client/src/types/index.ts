@@ -1786,7 +1786,10 @@ export type WSMessageType =
   | 'emergency_talkgroup_active'
   | 'emergency_talkgroup_ended'
   // Security
-  | 'security:updated';
+  | 'security:updated'
+  // Speed tracking
+  | 'speed:alert'
+  | 'geofence:alert';
 
 export interface WSMessage {
   type: WSMessageType;

@@ -840,15 +840,15 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     let query = `
       SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
-             db2.beat_code as dispatch_code, ds.name as sector_name, dz.name as zone_name,
-             db2.name as beat_name, db2.descriptor as beat_descriptor
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor
       FROM dispatch_beats db2
       JOIN dispatch_zones dz ON dz.id = db2.zone_id
       JOIN dispatch_sectors ds ON ds.id = dz.sector_id
     `;
     const params: any[] = [];
     if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
-      query += ` WHERE dz.name LIKE ? ESCAPE '\\' OR db2.name LIKE ? ESCAPE '\\' OR ds.name LIKE ? ESCAPE '\\'`;
+      query += ` WHERE dz.zone_name LIKE ? ESCAPE '\\' OR db2.beat_name LIKE ? ESCAPE '\\' OR ds.sector_name LIKE ? ESCAPE '\\'`;
       const s = `%${escapeLike(search)}%`;
       params.push(s, s, s);
     }
@@ -889,8 +889,8 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     let district: any;
     const districtQuery = `
       SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
-             db2.beat_code as dispatch_code, ds.name as sector_name, dz.name as zone_name,
-             db2.name as beat_name, db2.descriptor as beat_descriptor
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor
       FROM dispatch_beats db2
       JOIN dispatch_zones dz ON dz.id = db2.zone_id
       JOIN dispatch_sectors ds ON ds.id = dz.sector_id
@@ -945,8 +945,8 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
 
     // Lookup geography tables for rich names
     const district = db.prepare(`
-      SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
-             dz.zone_code, dz.name as zone_name, ds.sector_code, ds.name as sector_name
+      SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+             dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
       FROM dispatch_beats db2
       JOIN dispatch_zones dz ON dz.id = db2.zone_id
       JOIN dispatch_sectors ds ON ds.id = dz.sector_id
