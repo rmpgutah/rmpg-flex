@@ -39,6 +39,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
     "connect-src 'self' ws: wss: https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io",
     "frame-src 'self' blob: https://*.arcgis.com",
+    "media-src 'self' blob: data:",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "manifest-src 'self'",

@@ -654,7 +654,7 @@ export interface CustodyEntry {
   timestamp: string;
 }
 
-export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident';
+export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident' | 'warrant';
 
 export interface RecordLink {
   id: string;
@@ -1692,6 +1692,11 @@ export type WSMessageType =
   | 'panic_alert'
   | 'panic_audio'
   | 'panic_audio_response'
+  | 'panic_acknowledged'
+  | 'panic_resolved'
+  | 'panic_cancelled'
+  | 'panic_false_alarm'
+  | 'panic_escalated'
   | 'dispatch_update'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
@@ -1775,6 +1780,11 @@ export type WSMessageType =
   | 'serve_attempt'
   | 'serve_created'
   // Radio events (for cross-integration)
+  | 'radio_check'
+  | 'radio_check_ack'
+  | 'radio_transmission'
+  | 'emergency_talkgroup_active'
+  | 'emergency_talkgroup_ended'
   // Security
   | 'security:updated'
   // Speed tracking

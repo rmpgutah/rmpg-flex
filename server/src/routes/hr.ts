@@ -2156,14 +2156,39 @@ router.get('/performance-reviews', (req: Request, res: Response) => {
 router.post('/performance-reviews', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { officer_id, review_type, review_date, period_start, period_end, overall_rating, strengths, areas_for_improvement, goals, comments } = req.body;
-    if (!officer_id || !review_type) return res.status(400).json({ error: 'officer_id and review_type required', code: 'OFFICERID_AND_REVIEWTYPE_REQUIRED' });
+    // Audit 2026-04-11: this handler previously referenced columns that
+    // don't exist (officer_id, review_type, period_start, period_end), so
+    // every POST threw a SQLite error and the HR Performance Review modal
+    // was completely broken. The actual DB schema uses user_id and has
+    // no review_type/period columns. Accept officer_id as an alias for
+    // user_id so the existing client modal works without changes.
+    const {
+      officer_id, user_id, review_type, review_date, cycle_id,
+      overall_rating, strengths, areas_for_improvement, goals, comments,
+    } = req.body;
+    const resolvedUserId = user_id || officer_id;
+    if (!resolvedUserId) return res.status(400).json({ error: 'officer_id (or user_id) is required', code: 'OFFICERID_REQUIRED' });
+    void review_type; // accepted for forward-compat but not yet stored
+    const reviewerId = (req as any).user?.userId ?? (req as any).user?.id;
     const result = db.prepare(`
-      INSERT INTO hr_performance_reviews (officer_id, reviewer_id, review_type, review_date, period_start, period_end, overall_rating, strengths, areas_for_improvement, goals, comments, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
-    `).run(officer_id, (req as any).user?.id, review_type, review_date || localNow(), period_start || null, period_end || null, overall_rating || null, strengths || null, areas_for_improvement || null, goals || null, comments || null);
+      INSERT INTO hr_performance_reviews (
+        user_id, reviewer_id, cycle_id, review_date,
+        overall_rating, strengths, areas_for_improvement, goals, comments, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+    `).run(
+      resolvedUserId,
+      reviewerId,
+      cycle_id || null,
+      review_date || localNow(),
+      overall_rating || null,
+      strengths || null,
+      areas_for_improvement || null,
+      goals || null,
+      comments || null,
+    );
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
+    console.error('[HR] performance-reviews POST error:', error?.message);
     res.status(500).json({ error: 'Failed to create review', code: 'FAILED_TO_CREATE_REVIEW' });
   }
 });
@@ -2217,7 +2242,10 @@ router.post('/disciplinary-actions', requireRole('admin', 'manager'), (req: Requ
 router.put('/disciplinary-actions/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const fields = ['action_type', 'severity', 'description', 'status', 'resolution', 'resolution_date'];
+    // Audit 2026-04-11: removed `resolution` and `resolution_date` —
+    // hr_disciplinary has neither column, so any PUT including those
+    // keys threw a SQLite error.
+    const fields = ['action_type', 'severity', 'description', 'status', 'issued_date'];
     const sets: string[] = [];
     const vals: any[] = [];
     for (const f of fields) {
@@ -2228,6 +2256,7 @@ router.put('/disciplinary-actions/:id', requireRole('admin', 'manager'), (req: R
     db.prepare(`UPDATE hr_disciplinary SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
+    console.error('[HR] disciplinary-actions PUT error:', error?.message);
     res.status(500).json({ error: 'Failed to update disciplinary action', code: 'FAILED_TO_UPDATE_DISCIPLINARY' });
   }
 });

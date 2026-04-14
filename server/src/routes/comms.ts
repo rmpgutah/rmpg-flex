@@ -1,11 +1,15 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+
+const __filename_comms = fileURLToPath(import.meta.url);
+const __dirname_comms = path.dirname(__filename_comms);
 
 const router = Router();
 
@@ -1146,11 +1150,16 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
 
     if (!entry) { res.status(404).json({ error: 'Audio entry not found', code: 'AUDIO_ENTRY_NOT_FOUND' }); return; }
 
-    if (entry.audio_path) {
-      // path, fs imported at top of file
-      const audioPath = path.resolve(entry.audio_path);
+    if (entry.audio_file) {
+      // audio_file stores relative path like "radio/filename.webm" — resolve against uploads dir
+      const uploadsDir = path.resolve(__dirname_comms, '../../uploads');
+      const audioPath = path.resolve(uploadsDir, entry.audio_file);
       if (fs.existsSync(audioPath)) {
-        res.sendFile(audioPath);
+        const stat = fs.statSync(audioPath);
+        res.setHeader('Content-Type', 'audio/webm');
+        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Accept-Ranges', 'bytes');
+        fs.createReadStream(audioPath).pipe(res);
         return;
       }
     }

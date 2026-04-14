@@ -151,6 +151,7 @@ export const SECTION_COLORS: Record<string, string> = {
 const SECTION_COLOR_FALLBACKS = ['#0ea5e9', '#d946ef', '#84cc16', '#fb923c', '#e11d48', '#14b8a6', '#f59e0b', '#8b5cf6'];
 
 export function getSectionColor(sectionId: string): string {
+  if (!sectionId) return SECTION_COLOR_FALLBACKS[0];
   if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];
   let hash = 0;
   for (let i = 0; i < sectionId.length; i++) hash = ((hash << 5) - hash + sectionId.charCodeAt(i)) | 0;

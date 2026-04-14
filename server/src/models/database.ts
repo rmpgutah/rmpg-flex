@@ -1380,6 +1380,37 @@ function createTables(): void {
       FOREIGN KEY (searched_by) REFERENCES users(id)
     );
   `);
+
+  // ─── PANIC ALERTS TABLE ────────────────────────────
+  // Uses db.prepare().run() pattern per CLAUDE.md Gotcha #42
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS panic_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      call_id INTEGER,
+      trigger_method TEXT NOT NULL DEFAULT 'ui_button',
+      message TEXT,
+      latitude REAL,
+      longitude REAL,
+      location_address TEXT,
+      audio_file_id TEXT,
+      audio_duration_seconds INTEGER,
+      status TEXT NOT NULL DEFAULT 'active',
+      escalation_level INTEGER DEFAULT 0,
+      acknowledged_at TEXT,
+      acknowledged_by INTEGER,
+      resolved_at TEXT,
+      resolved_by INTEGER,
+      resolution_notes TEXT,
+      responder_unit_ids TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
+      FOREIGN KEY (acknowledged_by) REFERENCES users(id),
+      FOREIGN KEY (resolved_by) REFERENCES users(id)
+    )
+  `).run();
 }
 
 /**
@@ -1482,8 +1513,6 @@ function migrateSchema(): void {
     const cols = db.prepare('PRAGMA table_info(calls_for_service)').all() as any[];
     const hasOld = cols.some((c) => c.name === 'section_id');
     if (hasOld) {
-      // Both columns now exist (sector_id added above). Copy data then drop the old column.
-      // SQLite doesn't support DROP COLUMN until 3.35 — use UPDATE to copy then leave old in place.
       db.prepare('UPDATE calls_for_service SET sector_id = section_id WHERE section_id IS NOT NULL AND sector_id IS NULL').run();
       console.log('[migrate] calls_for_service.section_id -> sector_id (data copied)');
     }
@@ -3099,6 +3128,25 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
+  // ── SECTIONS → SECTORS Phase 2a: Backfill sector_id from section_id ─
+  // Safe, idempotent backfill. Runs every startup but only copies rows
+  // where sector_id is NULL, so it's a no-op after the first run.
+  try {
+    db.prepare("UPDATE calls_for_service SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+    db.prepare("UPDATE incidents SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+  } catch { /* columns may not exist on very old DBs — ignore */ }
+
+  // ── SECTIONS → SECTORS Phase 2b: Drop obsolete dual-write triggers ──
+  // Phase 2a triggers mirrored section_id → sector_id during the rename
+  // transition. Now that all code uses sector_id natively, these triggers
+  // are obsolete and crash on fresh DBs (section_id column doesn't exist).
+  try {
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror_upd').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
+  } catch { /* ignore */ }
+
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');  // legacy
   addCol('citations', 'sector_id', 'TEXT');
@@ -3150,6 +3198,13 @@ function migrateSchema(): void {
   addCol('citations', 'sentence', 'TEXT');
   addCol('citations', 'disposition_date', 'TEXT');
   addCol('citations', 'case_id', 'INTEGER');
+
+  // SECTIONS → SECTORS Phase 2b: citations backfill + drop obsolete triggers
+  try {
+    db.prepare("UPDATE citations SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror_upd').run();
+  } catch { /* ignore */ }
 
   // Citation violations — multiple violations per citation
   try {
@@ -4529,6 +4584,11 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
 
+  // ── Radio transcripts — audio recording columns ──
+  addCol('radio_transcripts', 'audio_file', 'TEXT');
+  addCol('radio_transcripts', 'file_size', 'INTEGER');
+  addCol('radio_transcripts', 'linked_call_id', 'INTEGER');
+
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS cpgps_dashcam_events (
@@ -5282,6 +5342,13 @@ function createIndexes(): void {
 
     -- [FIX 75] Index for security_notifications user lookup
     CREATE INDEX IF NOT EXISTS idx_security_notifications_user ON security_notifications(user_id);
+
+    -- Panic alerts indexes
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_user ON panic_alerts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_status ON panic_alerts(status);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_created ON panic_alerts(created_at);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_call ON panic_alerts(call_id);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_escalation ON panic_alerts(escalation_level);
   `);
   } catch (err: any) {
     console.warn('[DB] createIndexes partially failed (non-fatal):', err?.message || 'Unknown error');
@@ -5360,6 +5427,20 @@ function seedData(): void {
   evidenceLocations.forEach(([name, desc], i) => {
     insertConfig.run(name, JSON.stringify({ description: desc }), 'evidence_location', i, now, now);
   });
+
+  // ─── PANIC / RADIO CONFIG DEFAULTS ─────────────────
+  const panicConfigs = [
+    { key: 'panic_audio_duration_seconds', value: '60', category: 'panic' },
+    { key: 'panic_escalation_1_seconds', value: '30', category: 'panic' },
+    { key: 'panic_escalation_2_seconds', value: '60', category: 'panic' },
+    { key: 'panic_escalation_3_seconds', value: '90', category: 'panic' },
+    { key: 'emergency_talkgroup_timeout_minutes', value: '30', category: 'radio' },
+    { key: 'radio_encryption_default', value: 'secure', category: 'radio' },
+  ];
+  const insertPanicConfig = db.prepare('INSERT OR IGNORE INTO system_config (config_key, config_value, category) VALUES (?, ?, ?)');
+  for (const c of panicConfigs) {
+    insertPanicConfig.run(c.key, c.value, c.category);
+  }
 
   console.log('Seed data initialized (admin user + system config).');
 
