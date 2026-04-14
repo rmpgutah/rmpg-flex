@@ -11,3 +11,6 @@ export function getV2Schema(formType: string): FormSchema<any> {
   if (!s) throw new Error(`No v2 schema registered for form: ${formType}`);
   return s;
 }
+
+import { incidentBlankSchema } from '../blankForms/incidentBlank';
+registerV2Schema('incident_blank', incidentBlankSchema);
