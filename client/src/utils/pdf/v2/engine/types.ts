@@ -6,10 +6,10 @@ export interface FormMeta {
   revision: string;
 }
 
-export interface HeaderSpec {
+export interface HeaderSpec<T = any> {
   kind: 'default';
   formId: string;
-  caseNumberAccessor?: (d: any) => string | undefined;
+  caseNumberAccessor?: (d: T) => string | undefined;
 }
 
 export interface FooterSpec {
@@ -50,7 +50,8 @@ export interface NarrativeField<T = any> {
 export interface TableColumn {
   key: string;
   header: string;
-  width: Width;
+  width?: Width;
+  ratio?: number;
 }
 
 export interface TableField<T = any> {
@@ -98,7 +99,7 @@ export type Section<T = any> = SchemaSection<T> | RenderCallback<T>;
 
 export interface FormSchema<T = any> {
   meta: FormMeta;
-  header: HeaderSpec;
+  header: HeaderSpec<T>;
   sections: Section<T>[];
   footer?: FooterSpec;
 }
