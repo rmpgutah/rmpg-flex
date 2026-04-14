@@ -11,6 +11,7 @@ import { seedUtahStatutes } from '../seeds/utahStatutes';
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
+import { registerSqliteFunctions } from './sqliteFunctions';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,7 @@ export function initDatabase(): Database.Database {
   }
 
   db = new Database(DB_PATH);
+  registerSqliteFunctions(db);
 
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
