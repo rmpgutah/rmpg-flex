@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -178,5 +178,93 @@ describe('PdfReviewModal', () => {
       />
     );
     expect(screen.getByText('Signature editor coming soon')).toBeInTheDocument();
+  });
+
+  describe('attach action', () => {
+    let originalFetch: any;
+    let originalCreate: any;
+    let originalRevoke: any;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+      originalCreate = URL.createObjectURL;
+      originalRevoke = URL.revokeObjectURL;
+      URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+      URL.revokeObjectURL = vi.fn();
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    });
+
+    it('uploads blob to /api/pdf-artifacts when attach is chosen', async () => {
+      const postCalls: Array<{ url: string; body: FormData }> = [];
+      globalThis.fetch = vi.fn(async (url: any, init?: any) => {
+        if (String(url).startsWith('blob:')) {
+          return {
+            ok: true,
+            blob: async () => new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+          } as any;
+        }
+        if (String(url) === '/api/pdf-artifacts') {
+          postCalls.push({ url: String(url), body: init.body });
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ id: 42, sha256: 'abc123' }),
+          } as any;
+        }
+        throw new Error('unexpected fetch: ' + url);
+      }) as any;
+
+      render(
+        <PdfReviewModal
+          open schema={schema} initialData={{ name: 'Jones' }}
+          onClose={() => {}} onCommit={() => {}}
+          allowedActions={['download', 'attach']}
+          recordType="warrant" recordId={42}
+        />
+      );
+      // Wait for the debounced render to produce a blobUrl
+      await screen.findByTitle('pdf-preview', {}, { timeout: 2000 });
+
+      // Open dropdown and click Attach
+      await userEvent.click(screen.getByLabelText('More commit options'));
+      await userEvent.click(screen.getByText(/Attach to record/i));
+
+      // Wait for the success message
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent(/Attached to warrant #42/);
+      }, { timeout: 2000 });
+
+      expect(postCalls.length).toBe(1);
+    });
+
+    it('shows error status when attach fails', async () => {
+      globalThis.fetch = vi.fn(async (url: any) => {
+        if (String(url).startsWith('blob:')) {
+          return { ok: true, blob: async () => new Blob(['x'], { type: 'application/pdf' }) } as any;
+        }
+        return { ok: false, status: 500 } as any;
+      }) as any;
+
+      render(
+        <PdfReviewModal
+          open schema={schema} initialData={{ name: 'Jones' }}
+          onClose={() => {}} onCommit={() => {}}
+          allowedActions={['download', 'attach']}
+          recordType="warrant" recordId={42}
+        />
+      );
+      await screen.findByTitle('pdf-preview', {}, { timeout: 2000 });
+      await userEvent.click(screen.getByLabelText('More commit options'));
+      await userEvent.click(screen.getByText(/Attach to record/i));
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent(/attach failed/i);
+      }, { timeout: 2000 });
+    });
   });
 });

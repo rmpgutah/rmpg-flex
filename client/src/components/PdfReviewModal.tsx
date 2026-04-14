@@ -15,6 +15,42 @@ interface Props<T> {
   onClose: () => void;
   onCommit: (data: T, action: CommitKind) => void;
   allowedActions?: CommitKind[];
+  recordType?: 'case' | 'incident' | 'warrant' | 'evidence';
+  recordId?: number;
+}
+
+/** POST the PDF blob + metadata to /api/pdf-artifacts. Resolves with the inserted artifact's id. */
+export async function attachBlobToRecord(
+  blob: Blob,
+  formType: string,
+  formVersion: string,
+  recordType: string,
+  recordId: number,
+  title: string | undefined,
+): Promise<{ id: number; sha256: string }> {
+  const fd = new FormData();
+  fd.append('form_type', formType);
+  fd.append('form_version', formVersion);
+  fd.append('record_type', recordType);
+  fd.append('record_id', String(recordId));
+  if (title) fd.append('title', title);
+  fd.append('pdf', blob, `${formType}.pdf`);
+
+  let token = '';
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+      token = localStorage.getItem('accessToken') || '';
+    }
+  } catch {
+    /* test environments may not support localStorage */
+  }
+  const res = await fetch('/api/pdf-artifacts', {
+    method: 'POST',
+    body: fd,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`attach failed: ${res.status}`);
+  return res.json();
 }
 
 function setPath<T extends Record<string, any>>(obj: T, path: string, value: unknown): T {
@@ -32,9 +68,12 @@ function setPath<T extends Record<string, any>>(obj: T, path: string, value: unk
 export function PdfReviewModal<T extends Record<string, any>>({
   open, schema, initialData, onClose, onCommit,
   allowedActions = ['download', 'print'],
+  recordType,
+  recordId,
 }: Props<T>) {
   const [data, setData] = useState<T>(initialData);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [commitStatus, setCommitStatus] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null);
   const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -61,19 +100,50 @@ export function PdfReviewModal<T extends Record<string, any>>({
     };
   }, []);
 
-  const handleCommit = (action: CommitKind) => {
-    if (action === 'download' && blobUrl) {
-      downloadBlob(blobUrl, `${schema.meta.formNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
+  const handleCommit = async (action: CommitKind) => {
+    try {
+      if (action === 'download' && blobUrl) {
+        downloadBlob(blobUrl, `${schema.meta.formNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
+        onCommit(data, action);
+        return;
+      }
+      if (action === 'print' && blobUrl) {
+        printBlob(blobUrl);
+        onCommit(data, action);
+        return;
+      }
+      if (action === 'attach') {
+        if (!blobUrl) {
+          setCommitStatus({ kind: 'err', message: 'Preview not ready yet — try again in a moment.' });
+          return;
+        }
+        if (!recordType || recordId == null) {
+          setCommitStatus({ kind: 'err', message: 'No record to attach to (recordType/recordId missing).' });
+          return;
+        }
+        setCommitStatus({ kind: 'ok', message: 'Uploading…' });
+        // Re-fetch the blob from the URL so we get fresh bytes
+        const blob = await fetch(blobUrl).then((r) => r.blob());
+        const result = await attachBlobToRecord(
+          blob,
+          schema.meta.formNumber,
+          schema.meta.revision,
+          recordType,
+          recordId,
+          `${schema.meta.title} — ${new Date().toISOString().split('T')[0]}`,
+        );
+        setCommitStatus({ kind: 'ok', message: `Attached to ${recordType} #${recordId} (id ${result.id}).` });
+        onCommit(data, action);
+        return;
+      }
+      // email or unhandled: delegate
       onCommit(data, action);
-      return;
+    } catch (err) {
+      setCommitStatus({
+        kind: 'err',
+        message: (err as Error)?.message ?? 'Commit failed',
+      });
     }
-    if (action === 'print' && blobUrl) {
-      printBlob(blobUrl);
-      onCommit(data, action);
-      return;
-    }
-    // attach/email or no-blob fallbacks: delegate to parent
-    onCommit(data, action);
   };
 
   if (!open) return null;
@@ -102,8 +172,18 @@ export function PdfReviewModal<T extends Record<string, any>>({
           </div>
         </div>
         <footer className="flex justify-between items-center px-4 py-2 border-t border-[#222]">
-          <div className="text-xs text-amber-400">
-            ⚠ Editing will update the source record. Use Cancel to discard.
+          <div className="flex flex-col gap-1">
+            <div className="text-xs text-amber-400">
+              ⚠ Editing will update the source record. Use Cancel to discard.
+            </div>
+            {commitStatus && (
+              <div
+                role="status"
+                className={`text-xs ${commitStatus.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}
+              >
+                {commitStatus.message}
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-3 py-1 bg-gray-700 text-white">Cancel</button>
