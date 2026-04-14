@@ -3650,6 +3650,36 @@ function migrateSchema(): void {
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_received ON email_cache(received_at DESC)`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_conv ON email_cache(conversation_id)`).run();
 
+  // FTS5 external-content table for full-text search over email bodies
+  db.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS email_cache_fts USING fts5(
+    subject, from_address, from_name, body_text,
+    content='email_cache', content_rowid='id',
+    tokenize='porter unicode61'
+  )`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_ai AFTER INSERT ON email_cache BEGIN
+    INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    VALUES (new.id, COALESCE(new.subject,''), COALESCE(new.from_address,''), COALESCE(new.from_name,''), html_to_text(new.body_html));
+  END`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_ad AFTER DELETE ON email_cache BEGIN
+    INSERT INTO email_cache_fts(email_cache_fts, rowid, subject, from_address, from_name, body_text)
+    VALUES ('delete', old.id, COALESCE(old.subject,''), COALESCE(old.from_address,''), COALESCE(old.from_name,''), html_to_text(old.body_html));
+  END`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_au AFTER UPDATE ON email_cache BEGIN
+    INSERT INTO email_cache_fts(email_cache_fts, rowid, subject, from_address, from_name, body_text)
+    VALUES ('delete', old.id, COALESCE(old.subject,''), COALESCE(old.from_address,''), COALESCE(old.from_name,''), html_to_text(old.body_html));
+    INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    VALUES (new.id, COALESCE(new.subject,''), COALESCE(new.from_address,''), COALESCE(new.from_name,''), html_to_text(new.body_html));
+  END`).run();
+
+  // Idempotent backfill — any rows already in email_cache that aren't indexed yet
+  db.prepare(`INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    SELECT id, COALESCE(subject,''), COALESCE(from_address,''), COALESCE(from_name,''), html_to_text(body_html)
+    FROM email_cache
+    WHERE id NOT IN (SELECT rowid FROM email_cache_fts)`).run();
+
   db.prepare(`CREATE TABLE IF NOT EXISTS email_folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     graph_id TEXT UNIQUE NOT NULL,
