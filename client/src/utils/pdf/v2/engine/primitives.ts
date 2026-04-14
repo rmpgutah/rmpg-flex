@@ -56,7 +56,8 @@ export class Primitives {
     this.doc.setFont('helvetica', 'normal');
     this.doc.setFontSize(LABEL_FONT_SIZE);
     this.doc.setTextColor(100, 100, 100);
-    this.doc.text(spec.label.toUpperCase(), x, y);
+    const labelMax = this.doc.splitTextToSize(spec.label.toUpperCase(), width - 1)[0] ?? spec.label.toUpperCase();
+    this.doc.text(labelMax, x, y);
 
     this.doc.setFontSize(VALUE_FONT_SIZE);
     this.doc.setTextColor(0, 0, 0);
@@ -218,8 +219,21 @@ export class Primitives {
     this.doc.setFontSize(VALUE_FONT_SIZE);
     this.doc.setTextColor(0, 0, 0);
     this.doc.text(`Printed name: ${sigData?.printedName ?? ''}`, x, y + 17);
-    this.doc.text(`Date: ${sigData?.date ?? ''}`, x + sigWidth + 8, y + 12);
+
+    // Date label small + above the line (mirrors signature label pattern)
+    this.doc.setFontSize(LABEL_FONT_SIZE);
+    this.doc.setTextColor(100, 100, 100);
+    this.doc.text('DATE', x + sigWidth + 8, y + 8);
+    // Line for signer to write date on
+    this.doc.setDrawColor(0, 0, 0);
+    this.doc.setLineWidth(0.2);
     this.doc.line(x + sigWidth + 8, y + 12, x + sigWidth + 55, y + 12);
+    // Pre-filled date value (if any) below the line
+    if (sigData?.date) {
+      this.doc.setFontSize(VALUE_FONT_SIZE);
+      this.doc.setTextColor(0, 0, 0);
+      this.doc.text(sigData.date, x + sigWidth + 8, y + 17);
+    }
 
     this.layout.advance(blockHeight);
   }

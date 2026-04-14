@@ -6,8 +6,8 @@ import type {
 } from './types';
 
 const SECTION_HEADER_H = 5;      // mm — matches v1 SPACING.SECTION_HEADER_H
-const SECTION_CONTENT_PAD = 1.2; // mm — space above first row in a section
-const SECTION_GAP = 2;           // mm — gap below each section
+const SECTION_CONTENT_PAD = 3;   // mm — space above first row in a section
+const SECTION_GAP = 3;           // mm — gap below each section
 
 /**
  * Draw a NIBRS-style section header bar (dark fill, white text),
