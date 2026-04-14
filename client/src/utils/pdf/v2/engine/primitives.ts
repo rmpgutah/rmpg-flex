@@ -109,8 +109,63 @@ export class Primitives {
     }
   }
 
-  // Tasks 5–6 replace these stubs
-  table<T>(_spec: TableField<T>, _data: T): void { this.layout.advance(40); }
+  table<T>(spec: TableField<T>, data: T): void {
+    const rowHeight = 14;
+    const headerHeight = 14;
+    const rows = spec.accessor(data) ?? [];
+    const totalHeight = headerHeight + (rows.length || 1) * rowHeight;
+    this.layout.pageBreakIfNeeded(totalHeight + 10);
+
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.setFontSize(7);
+    this.doc.setTextColor(100, 100, 100);
+    this.doc.text(spec.label.toUpperCase(), this.layout.leftX, this.layout.cursorY);
+    this.layout.advance(10);
+
+    const tableWidth = this.layout.rightX - this.layout.leftX;
+    const totalUnits = spec.columns.reduce((sum, c) => sum + widthUnits(c.width ?? 'full'), 0);
+    let x = this.layout.leftX;
+    const colStarts: number[] = [];
+    const colWidths: number[] = [];
+    for (const c of spec.columns) {
+      const w = (widthUnits(c.width ?? 'full') / totalUnits) * tableWidth;
+      colStarts.push(x);
+      colWidths.push(w);
+      x += w;
+    }
+
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.setFontSize(8);
+    this.doc.setTextColor(0, 0, 0);
+    this.doc.setFillColor(230, 230, 230);
+    this.doc.rect(this.layout.leftX, this.layout.cursorY, tableWidth, headerHeight, 'F');
+    spec.columns.forEach((c, i) => {
+      this.doc.text(c.header, colStarts[i] + 3, this.layout.cursorY + 10);
+    });
+    this.layout.advance(headerHeight);
+
+    this.doc.setFont('helvetica', 'normal');
+    this.doc.setFontSize(9);
+    if (rows.length === 0) {
+      this.doc.setTextColor(150, 150, 150);
+      this.doc.text('No records', this.layout.leftX + 3, this.layout.cursorY + 10);
+      this.layout.advance(rowHeight);
+    } else {
+      this.doc.setTextColor(0, 0, 0);
+      for (const row of rows) {
+        this.layout.pageBreakIfNeeded(rowHeight);
+        spec.columns.forEach((c, i) => {
+          const raw = (row as Record<string, unknown>)[c.key];
+          const text = raw === null || raw === undefined ? '' : String(raw);
+          const maxLine = this.doc.splitTextToSize(text, colWidths[i] - 6)[0] ?? '';
+          this.doc.text(maxLine, colStarts[i] + 3, this.layout.cursorY + 10);
+        });
+        this.layout.advance(rowHeight);
+      }
+    }
+  }
+
+  // Task 6 replaces this stub
   signature<T>(_spec: SignatureField<T>, _data: T): void { this.layout.advance(40); }
 }
 

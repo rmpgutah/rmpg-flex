@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import jsPDF from 'jspdf';
 import { LayoutEngine } from '../layout';
 import { Primitives } from '../primitives';
-import type { LabeledField, CheckboxField, NarrativeField } from '../types';
+import type { LabeledField, CheckboxField, NarrativeField, TableField } from '../types';
 
 describe('Primitives — labeledField', () => {
   let doc: jsPDF; let layout: LayoutEngine; let prims: Primitives;
@@ -92,5 +92,38 @@ describe('Primitives — narrative', () => {
     };
     prims.narrative(spec, {});
     expect(layout.cursorY).toBeGreaterThan(before + 60);
+  });
+});
+
+describe('Primitives — table', () => {
+  let doc: jsPDF; let layout: LayoutEngine; let prims: Primitives;
+  beforeEach(() => {
+    doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    layout = new LayoutEngine(doc, { topMargin: 60, bottomMargin: 50, leftMargin: 40, rightMargin: 40 });
+    prims = new Primitives(doc, layout);
+  });
+
+  it('renders header row + data rows, advances cursor proportional to rows', () => {
+    const before = layout.cursorY;
+    const spec: TableField<{ rows: Array<{ a: string; b: string }> }> = {
+      kind: 'table', label: 'Test',
+      columns: [
+        { key: 'a', header: 'A', width: 'half' },
+        { key: 'b', header: 'B', width: 'half' },
+      ],
+      accessor: d => d.rows,
+    };
+    prims.table(spec, { rows: [{ a: '1', b: '2' }, { a: '3', b: '4' }] });
+    expect(layout.cursorY).toBeGreaterThan(before + 40);
+  });
+
+  it('renders "No records" placeholder when accessor returns empty array', () => {
+    const spec: TableField<{ rows: Array<any> }> = {
+      kind: 'table', label: 'Test',
+      columns: [{ key: 'a', header: 'A', width: 'full' }],
+      accessor: d => d.rows,
+    };
+    prims.table(spec, { rows: [] });
+    expect(layout.cursorY).toBeGreaterThan(60);
   });
 });
