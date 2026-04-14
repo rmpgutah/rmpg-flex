@@ -4,6 +4,7 @@ import type {
   CheckboxField, NarrativeField, TableField, SignatureField,
 } from '../utils/pdf/v2/engine/types';
 import { renderPdfV2 } from '../utils/pdf/v2';
+import { CommitDropdown } from './CommitDropdown';
 
 export type CommitKind = 'download' | 'attach' | 'email' | 'print';
 
@@ -13,6 +14,7 @@ interface Props<T> {
   initialData: T;
   onClose: () => void;
   onCommit: (data: T, action: CommitKind) => void;
+  allowedActions?: CommitKind[];
 }
 
 function setPath<T extends Record<string, any>>(obj: T, path: string, value: unknown): T {
@@ -29,6 +31,7 @@ function setPath<T extends Record<string, any>>(obj: T, path: string, value: unk
 
 export function PdfReviewModal<T extends Record<string, any>>({
   open, schema, initialData, onClose, onCommit,
+  allowedActions = ['download', 'print'],
 }: Props<T>) {
   const [data, setData] = useState<T>(initialData);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -57,6 +60,21 @@ export function PdfReviewModal<T extends Record<string, any>>({
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     };
   }, []);
+
+  const handleCommit = (action: CommitKind) => {
+    if (action === 'download' && blobUrl) {
+      downloadBlob(blobUrl, `${schema.meta.formNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
+      onCommit(data, action);
+      return;
+    }
+    if (action === 'print' && blobUrl) {
+      printBlob(blobUrl);
+      onCommit(data, action);
+      return;
+    }
+    // attach/email or no-blob fallbacks: delegate to parent
+    onCommit(data, action);
+  };
 
   if (!open) return null;
 
@@ -89,12 +107,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-3 py-1 bg-gray-700 text-white">Cancel</button>
-            <button
-              onClick={() => onCommit(data, 'download')}
-              className="px-3 py-1 bg-[#d4a017] text-black font-bold"
-            >
-              Commit: Download
-            </button>
+            <CommitDropdown allowedActions={allowedActions} onSelect={handleCommit} />
           </div>
         </footer>
       </div>
@@ -312,4 +325,39 @@ function SignaturePlaceholder<T>({ field }: { field: SignatureField<T> }) {
       </div>
     </div>
   );
+}
+
+/** Save the PDF blob to the user's computer as a file download. */
+export function downloadBlob(blobUrl: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/** Open a hidden iframe pointing at the PDF blob and trigger print on its contentWindow. */
+export function printBlob(blobUrl: string): void {
+  // If an iframe from a previous print is still in the DOM, clean it up.
+  document.querySelectorAll('iframe[data-pdf-print]').forEach((el) => el.remove());
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('data-pdf-print', 'true');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.src = blobUrl;
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (err) {
+      console.error('[pdf-v2] print failed', err);
+    }
+  };
+  document.body.appendChild(iframe);
 }

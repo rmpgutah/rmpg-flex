@@ -79,7 +79,7 @@ describe('PdfReviewModal', () => {
     const input = screen.getByLabelText('Name');
     await userEvent.clear(input);
     await userEvent.type(input, 'Smith');
-    await userEvent.click(screen.getByText('Commit: Download'));
+    await userEvent.click(screen.getByText(/Commit: Download/i));
     expect(onCommit).toHaveBeenCalledWith({ name: 'Smith' }, 'download');
   });
 
@@ -141,7 +141,7 @@ describe('PdfReviewModal', () => {
       />
     );
     await userEvent.click(screen.getByLabelText('Active'));
-    await userEvent.click(screen.getByText('Commit: Download'));
+    await userEvent.click(screen.getByText(/Commit: Download/i));
     expect(onCommit).toHaveBeenCalledWith(
       expect.objectContaining({ active: true }),
       'download',
@@ -160,7 +160,7 @@ describe('PdfReviewModal', () => {
     await userEvent.click(screen.getByLabelText('Add row to Items'));
     const labelCell = screen.getByLabelText('Items row 1 Label') as HTMLInputElement;
     await userEvent.type(labelCell, 'widget');
-    await userEvent.click(screen.getByText('Commit: Download'));
+    await userEvent.click(screen.getByText(/Commit: Download/i));
     expect(onCommit).toHaveBeenCalledWith(
       expect.objectContaining({
         items: [{ label: 'widget', qty: '' }],
