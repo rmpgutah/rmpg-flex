@@ -165,11 +165,12 @@ export default function OfflineMapFallback({
       keyboard: true,
     });
 
-    // Primary: online CartoDB dark_matter tiles (free, no API key)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // Primary: online CartoDB dark_matter tiles (free, high quality, retina)
+    // Fallback: pre-cached offline tiles from service worker
+    L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', {
       maxZoom: 20,
-      subdomains: 'abcd',
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+      tileSize: 256,
+      errorTileUrl: '', // Don't show broken image icons for failed online tiles
     }).addTo(map);
 
     // Restore saved center/zoom from localStorage
