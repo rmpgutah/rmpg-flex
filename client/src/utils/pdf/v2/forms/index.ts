@@ -14,3 +14,18 @@ export function getV2Schema(formType: string): FormSchema<any> {
 
 import { incidentBlankSchema } from '../blankForms/incidentBlank';
 registerV2Schema('incident_blank', incidentBlankSchema);
+
+import { personBlankSchema } from '../blankForms/personBlank';
+registerV2Schema('person_blank', personBlankSchema);
+
+import { vehicleBlankSchema } from '../blankForms/vehicleBlank';
+registerV2Schema('vehicle_blank', vehicleBlankSchema);
+
+import { propertyBlankSchema } from '../blankForms/propertyBlank';
+registerV2Schema('property_blank', propertyBlankSchema);
+
+import { citationBlankSchema } from '../blankForms/citationBlank';
+registerV2Schema('citation_blank', citationBlankSchema);
+
+import { fieldInterviewBlankSchema } from '../blankForms/fieldInterviewBlank';
+registerV2Schema('field_interview_blank', fieldInterviewBlankSchema);
