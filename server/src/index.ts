@@ -330,10 +330,15 @@ app.get('/api/system-status', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
-// ─── OwnTracks/Traccar GPS webhook — BEFORE all other routes (own auth, no JWT) ───
+// ─── OwnTracks/Traccar GPS webhook — own auth (shared secret), no JWT ───
+// NOTE: Do NOT mount this router at '/api/dispatch/gps' — that prefix shadows
+// the authenticated GPS endpoint in dispatchRoutes (POST /api/dispatch/gps),
+// causing Express to match the webhook's '/' handler first and reject every
+// JWT-authenticated request with 403 "Invalid webhook token".
+// The '/owntracks' mount below is the supported path for the OwnTracks app;
+// internal subpaths like '/owntracks/:user/:device' remain available there.
 import { owntracksWebhookRouter } from './routes/dispatch/gps';
-app.use('/api/dispatch/gps', owntracksWebhookRouter);
-app.use('/owntracks', owntracksWebhookRouter);  // Short path for OwnTracks app (appends /{user}/{device})
+app.use('/owntracks', owntracksWebhookRouter);
 
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
