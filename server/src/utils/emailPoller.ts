@@ -18,6 +18,7 @@ import {
   CONFIG_KEYS,
 } from './msGraphClient';
 import { sendEmail } from './emailSender';
+import { renderEmailMarkdown } from './emailMarkdown';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -242,18 +243,11 @@ async function processScheduledEmails(): Promise<void> {
       const sigRow = db.prepare("SELECT config_value FROM system_config WHERE config_key = ?")
         .get(`email_signature_${email.created_by}`) as { config_value: string } | undefined;
 
-      let bodyHtml = email.body;
+      let bodyMarkdown = email.body;
       if (sigRow?.config_value) {
-        bodyHtml += '\n\n--\n' + sigRow.config_value;
+        bodyMarkdown += '\n\n--\n' + sigRow.config_value;
       }
-      // Basic markdown conversion
-      bodyHtml = bodyHtml
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
-        .replace(/\n/g, '<br>');
-      bodyHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;">${bodyHtml}</body></html>`;
+      const bodyHtml = renderEmailMarkdown(bodyMarkdown);
 
       const sent = await sendEmail({
         to: toList,
