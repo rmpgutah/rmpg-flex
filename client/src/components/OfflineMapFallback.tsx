@@ -22,8 +22,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { WifiOff, Navigation, RefreshCw, Signal } from 'lucide-react';
-import { OFFLINE_TILE_MIN_ZOOM, OFFLINE_TILE_MAX_ZOOM } from '../utils/googleMapsLoader';
+import { Navigation } from 'lucide-react';
 
 // SLC default center
 const DEFAULT_CENTER: L.LatLngExpression = [40.7608, -111.8910];
@@ -146,27 +145,6 @@ export default function OfflineMapFallback({
     document.head.appendChild(s);
   }, []);
 
-  // ── Auto-retry: try Google Maps every 30s + on `online` event ─
-  useEffect(() => {
-    if (!onRetry) return;
-
-    // Periodic retry
-    autoRetryRef.current = setInterval(() => {
-      if (!retrying) onRetry();
-    }, AUTO_RETRY_INTERVAL);
-
-    // Immediate retry when device comes back online
-    const onOnline = () => {
-      if (!retrying) onRetry();
-    };
-    window.addEventListener('online', onOnline);
-
-    return () => {
-      if (autoRetryRef.current) clearInterval(autoRetryRef.current);
-      window.removeEventListener('online', onOnline);
-    };
-  }, [onRetry, retrying]);
-
   // ── Initialize Leaflet map ──────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -174,8 +152,8 @@ export default function OfflineMapFallback({
     const map = L.map(containerRef.current, {
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
-      minZoom: OFFLINE_TILE_MIN_ZOOM,
-      maxZoom: OFFLINE_TILE_MAX_ZOOM,
+      minZoom: 3,
+      maxZoom: 20,
       zoomControl: false,
       attributionControl: false,
       // Touch: single-finger drag (critical for in-vehicle use)
@@ -187,13 +165,32 @@ export default function OfflineMapFallback({
       keyboard: true,
     });
 
-    // Add our pre-cached offline tile layer
-    L.tileLayer('/tiles/{z}/{x}/{y}.png', {
-      minZoom: OFFLINE_TILE_MIN_ZOOM,
-      maxZoom: OFFLINE_TILE_MAX_ZOOM,
+    // Primary: online CartoDB dark_matter tiles (free, high quality, retina)
+    // Fallback: pre-cached offline tiles from service worker
+    L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', {
+      maxZoom: 20,
       tileSize: 256,
-      errorTileUrl: '', // Don't show broken image icons
+      errorTileUrl: '', // Don't show broken image icons for failed online tiles
     }).addTo(map);
+
+    // Restore saved center/zoom from localStorage
+    try {
+      const sc = localStorage.getItem('rmpg_map_center');
+      const sz = localStorage.getItem('rmpg_map_zoom');
+      if (sc) {
+        const center = JSON.parse(sc);
+        map.setView([center.lat, center.lng], sz ? parseInt(sz, 10) : DEFAULT_ZOOM);
+      }
+    } catch { /* use defaults */ }
+
+    // Save center/zoom on move
+    map.on('moveend', () => {
+      try {
+        const c = map.getCenter();
+        localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
+        localStorage.setItem('rmpg_map_zoom', String(map.getZoom()));
+      } catch { /* quota */ }
+    });
 
     // Zoom control in bottom-right (out of the way of sidebar)
     if (!compact) {
@@ -540,45 +537,24 @@ export default function OfflineMapFallback({
       {/* Leaflet map container */}
       <div ref={containerRef} className="absolute inset-0 z-0" />
 
-      {/* Offline mode badge */}
+      {/* Map status badge */}
       <div
         className="absolute top-3 left-3 z-[1000] flex items-center gap-2 px-3 py-2"
         style={{
-          background: 'rgba(6, 12, 20, 0.95)',
-          border: '1px solid #f59e0b40',
+          background: 'rgba(6, 12, 20, 0.90)',
+          border: '1px solid #22c55e40',
           borderRadius: 2,
-          WebkitBackdropFilter: 'blur(4px)',
-          backdropFilter: 'blur(4px)',
         }}
       >
-        <WifiOff style={{ width: 14, height: 14, color: '#f59e0b' }} />
+        <Navigation style={{ width: 14, height: 14, color: '#22c55e' }} />
         <div className="flex flex-col">
-          <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider font-mono leading-none">
-            OFFLINE MODE
+          <span className="text-[10px] text-green-400 font-bold uppercase tracking-wider font-mono leading-none">
+            LIVE MAP
           </span>
           <span className="text-[8px] text-rmpg-400 font-mono leading-none mt-0.5">
-            Cached tiles · Auto-retrying
+            OpenStreetMap · CartoDB Dark
           </span>
         </div>
-        {onRetry && (
-          <button type="button"
-            onClick={onRetry}
-            disabled={retrying}
-            className="ml-2 flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
-            style={{
-              background: retrying ? '#222222' : '#888888',
-              color: retrying ? '#666666' : '#fff',
-              borderRadius: 2,
-            }}
-          >
-            {retrying ? (
-              <RefreshCw style={{ width: 10, height: 10 }} className="animate-spin" />
-            ) : (
-              <Signal style={{ width: 10, height: 10 }} />
-            )}
-            {retrying ? 'RETRYING...' : 'RETRY'}
-          </button>
-        )}
       </div>
 
       {/* Center on self button */}
