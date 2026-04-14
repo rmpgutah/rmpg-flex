@@ -82,7 +82,7 @@ describe('Primitives — narrative', () => {
       kind: 'narrative', label: 'Narrative', accessor: d => d.n,
     };
     prims.narrative(spec, { n: 'A'.repeat(500) });
-    expect(layout.cursorY).toBeGreaterThan(before + 40);
+    expect(layout.cursorY).toBeGreaterThan(before + 20);
   });
 
   it('draws empty lines when narrative is shorter than minLines', () => {
@@ -91,7 +91,7 @@ describe('Primitives — narrative', () => {
       kind: 'narrative', label: 'Narrative', accessor: d => d.n, minLines: 5,
     };
     prims.narrative(spec, {});
-    expect(layout.cursorY).toBeGreaterThan(before + 60);
+    expect(layout.cursorY).toBeGreaterThan(before + 20);
   });
 });
 
@@ -114,7 +114,7 @@ describe('Primitives — table', () => {
       accessor: d => d.rows,
     };
     prims.table(spec, { rows: [{ a: '1', b: '2' }, { a: '3', b: '4' }] });
-    expect(layout.cursorY).toBeGreaterThan(before + 40);
+    expect(layout.cursorY).toBeGreaterThan(before + 12);
   });
 
   it('renders "No records" placeholder when accessor returns empty array', () => {

@@ -102,6 +102,8 @@ export interface FormSchema<T = any> {
   header: HeaderSpec<T>;
   sections: Section<T>[];
   footer?: FooterSpec;
+  /** Optional watermark label. 'blank-form' renders the "BLANK FORM / FOR FIELD USE" overlay on every page. */
+  watermark?: 'blank-form' | 'draft' | string;
 }
 
 export interface RenderContext<T = any> {

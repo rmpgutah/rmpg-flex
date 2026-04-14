@@ -23,14 +23,15 @@ const OPERATIONAL_FLAGS = [
 
 export const incidentBlankSchema: FormSchema<IncidentBlankData> = {
   meta: {
-    formNumber: 'PS-205-BLK',
+    formNumber: 'FORM PS-205-BLK',
     title: 'INCIDENT REPORT',
     revision: '2026-04',
   },
   header: { kind: 'default', formId: 'incident_blank' },
+  watermark: 'blank-form',
   sections: [
     {
-      kind: 'section', title: 'CLASSIFICATION',
+      kind: 'section', title: 'CLASSIFICATION', columns: 3,
       fields: [
         blankLabeled('Incident Type'),
         blankLabeled('Priority'),
@@ -38,20 +39,30 @@ export const incidentBlankSchema: FormSchema<IncidentBlankData> = {
       ],
     },
     {
-      kind: 'section', title: 'DATE, TIME & LOCATION',
+      kind: 'section', title: 'DATE & TIME', columns: 2,
       fields: [
         blankLabeled('Occurred Date'),
         blankLabeled('Occurred Time'),
         blankLabeled('End Date'),
         blankLabeled('End Time'),
+      ],
+    },
+    {
+      kind: 'section', title: 'LOCATION', columns: 1,
+      fields: [
         blankLabeled('Location Address'),
+      ],
+    },
+    {
+      kind: 'section', title: 'GEOGRAPHY', columns: 3,
+      fields: [
         blankLabeled('Section'),
         blankLabeled('Zone'),
         blankLabeled('Beat'),
       ],
     },
     {
-      kind: 'section', title: 'SCENE DETAILS',
+      kind: 'section', title: 'SCENE DETAILS', columns: 3,
       fields: [
         blankLabeled('Weather Conditions'),
         blankLabeled('Lighting Conditions'),
@@ -71,11 +82,11 @@ export const incidentBlankSchema: FormSchema<IncidentBlankData> = {
           }
           inner.checkboxRow(row, _data);
         }
-        inner.spacer(4);
+        inner.spacer(2);
       });
     },
     {
-      kind: 'section', title: 'LINKED RECORDS',
+      kind: 'section', title: 'LINKED RECORDS', columns: 3,
       fields: [
         blankLabeled('Call Number'),
         blankLabeled('Responding LE Agency'),
@@ -86,19 +97,19 @@ export const incidentBlankSchema: FormSchema<IncidentBlankData> = {
       ],
     },
     {
-      kind: 'section', title: 'NARRATIVE / REPORT',
+      kind: 'section', title: 'NARRATIVE / REPORT', columns: 1,
       fields: [
         {
           kind: 'narrative',
           label: 'Narrative',
           accessor: () => '',
-          minLines: 30,
+          minLines: 25,
           editable: false,
         },
       ],
     },
     {
-      kind: 'section', title: 'SIGNATURES',
+      kind: 'section', title: 'SIGNATURES', columns: 1,
       fields: [
         {
           kind: 'signature',
