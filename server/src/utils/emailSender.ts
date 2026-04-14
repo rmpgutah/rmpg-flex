@@ -14,24 +14,25 @@ export interface SendEmailOptions {
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }
 
-export type SendFailureReason = 'auth_expired' | 'network' | 'rejected_recipient' | 'quota' | 'unknown';
+export type SendFailureReason = 'disabled' | 'auth_expired' | 'network' | 'rejected_recipient' | 'quota' | 'unknown';
 export type SendResult =
   | { ok: true; transport: 'graph' | 'smtp'; messageId?: string }
   | { ok: false; reason: SendFailureReason; detail: string };
 
 function classifyError(err: any): SendFailureReason {
   const msg = String(err?.message || err || '').toLowerCase();
-  if (/auth|token expired|unauthorized|401|forbidden|403/.test(msg)) return 'auth_expired';
-  if (/network|econn|etimed|enotfound|dns/.test(msg)) return 'network';
-  if (/recipient|invalid address|550|554/.test(msg)) return 'rejected_recipient';
-  if (/quota|throttl|429|too many/.test(msg)) return 'quota';
+  // Check specific patterns BEFORE generic auth (403 "forbidden" can be quota-related).
+  if (/quota|throttl|429|too many|mailbox ?full/.test(msg)) return 'quota';
+  if (/recipient|invalid address|550|554|5\.1\.[0-9]/.test(msg)) return 'rejected_recipient';
+  if (/network|econn|etimed|enotfound|dns|socket hang/.test(msg)) return 'network';
+  if (/\bauth(entication|orization)?\b|token expired|unauthorized|\b401\b|\b403\b|invalid_grant/.test(msg)) return 'auth_expired';
   return 'unknown';
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<SendResult> {
   if (!isEnabled()) {
     console.log('[Email] Integration not enabled — skipping send');
-    return { ok: false, reason: 'unknown', detail: 'Email integration not enabled' };
+    return { ok: false, reason: 'disabled', detail: 'Email integration not enabled' };
   }
 
   let lastGraphErr: any = null;
@@ -88,7 +89,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendResult> 
   if (lastGraphErr) {
     return { ok: false, reason: classifyError(lastGraphErr), detail: lastGraphErr.message || 'Graph send failed' };
   }
-  return { ok: false, reason: 'unknown', detail: 'No transport configured' };
+  return { ok: false, reason: 'disabled', detail: 'No transport configured' };
 }
 
 export async function sendNotificationEmail(userId: number, title: string, body: string): Promise<SendResult> {
