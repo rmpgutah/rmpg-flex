@@ -221,10 +221,13 @@ export default function MapPage() {
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  // Determine if the error is an API key/auth issue vs a connectivity issue.
-  // Auth errors → show config dialog.  Connectivity errors → show Leaflet fallback.
-  const isAuthError = mapError != null && (mapError.includes('API key') || mapError.includes('authentication') || mapError.includes('not configured'));
-  const showOfflineFallback = mapError != null && !isAuthError;
+  // All map errors route to the Leaflet fallback — no blocking config dialog.
+  // "No API key configured" is a normal operating mode for deployments without
+  // Google Maps billing enabled. gm_authFailure and network errors likewise
+  // degrade gracefully to Leaflet + CartoDB tiles. The config dialog was a
+  // holdover from an earlier era when Google Maps was mandatory.
+  const isAuthError = false;
+  const showOfflineFallback = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
