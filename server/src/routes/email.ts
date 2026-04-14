@@ -689,12 +689,12 @@ router.post('/send', async (req: Request, res: Response) => {
       attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
     });
 
-    if (sent) {
-      auditLog(req, 'SEND_EMAIL', 'email', 0, JSON.stringify({ to: toList, subject, attachmentCount: emailAttachments.length }));
+    if (sent.ok) {
+      auditLog(req, 'SEND_EMAIL', 'email', 0, JSON.stringify({ to: toList, subject, attachmentCount: emailAttachments.length, transport: sent.transport }));
       broadcast('admin', 'email:sent', { to: toList, subject });
       res.json({ success: true });
     } else {
-      res.status(500).json({ error: 'Failed to send email', code: 'FAILED_TO_SEND_EMAIL' });
+      res.status(500).json({ error: `Failed to send email: ${sent.reason}`, code: 'FAILED_TO_SEND_EMAIL', detail: sent.detail });
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
