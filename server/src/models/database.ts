@@ -3680,6 +3680,30 @@ function migrateSchema(): void {
     FROM email_cache
     WHERE id NOT IN (SELECT rowid FROM email_cache_fts)`).run();
 
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 100,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    conditions_json TEXT NOT NULL,
+    actions_json TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rules_enabled ON email_rules(enabled, priority)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_rule_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_cache_id INTEGER NOT NULL,
+    rule_id INTEGER NOT NULL,
+    executed_at TEXT NOT NULL,
+    action_result TEXT,
+    FOREIGN KEY (email_cache_id) REFERENCES email_cache(id) ON DELETE CASCADE,
+    FOREIGN KEY (rule_id) REFERENCES email_rules(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rule_matches_email ON email_rule_matches(email_cache_id)`).run();
+
   db.prepare(`CREATE TABLE IF NOT EXISTS email_folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     graph_id TEXT UNIQUE NOT NULL,
