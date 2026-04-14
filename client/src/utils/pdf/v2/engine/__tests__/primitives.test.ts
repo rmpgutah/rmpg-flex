@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import jsPDF from 'jspdf';
 import { LayoutEngine } from '../layout';
 import { Primitives } from '../primitives';
-import type { LabeledField, CheckboxField } from '../types';
+import type { LabeledField, CheckboxField, NarrativeField } from '../types';
 
 describe('Primitives — labeledField', () => {
   let doc: jsPDF; let layout: LayoutEngine; let prims: Primitives;
@@ -65,5 +65,32 @@ describe('Primitives — spacer', () => {
     const prims = new Primitives(doc, layout);
     prims.spacer(20);
     expect(layout.cursorY).toBe(80);
+  });
+});
+
+describe('Primitives — narrative', () => {
+  let doc: jsPDF; let layout: LayoutEngine; let prims: Primitives;
+  beforeEach(() => {
+    doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    layout = new LayoutEngine(doc, { topMargin: 60, bottomMargin: 50, leftMargin: 40, rightMargin: 40 });
+    prims = new Primitives(doc, layout);
+  });
+
+  it('wraps long narrative text within page width', () => {
+    const before = layout.cursorY;
+    const spec: NarrativeField<{ n: string }> = {
+      kind: 'narrative', label: 'Narrative', accessor: d => d.n,
+    };
+    prims.narrative(spec, { n: 'A'.repeat(500) });
+    expect(layout.cursorY).toBeGreaterThan(before + 40);
+  });
+
+  it('draws empty lines when narrative is shorter than minLines', () => {
+    const before = layout.cursorY;
+    const spec: NarrativeField<{ n?: string }> = {
+      kind: 'narrative', label: 'Narrative', accessor: d => d.n, minLines: 5,
+    };
+    prims.narrative(spec, {});
+    expect(layout.cursorY).toBeGreaterThan(before + 60);
   });
 });
