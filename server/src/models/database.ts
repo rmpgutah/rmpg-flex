@@ -3623,6 +3623,69 @@ function migrateSchema(): void {
   addCol('court_events', 'prosecutor_phone', 'TEXT');
   addCol('court_events', 'prosecutor_email', 'TEXT');
 
+  // Defensive: these tables existed historically but had no CREATE in source.
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    graph_id TEXT UNIQUE NOT NULL,
+    conversation_id TEXT,
+    folder_id TEXT,
+    subject TEXT,
+    from_address TEXT,
+    from_name TEXT,
+    to_addresses TEXT,
+    cc_addresses TEXT,
+    body_preview TEXT,
+    body_html TEXT,
+    has_attachments INTEGER DEFAULT 0,
+    is_read INTEGER DEFAULT 0,
+    is_flagged INTEGER DEFAULT 0,
+    importance TEXT DEFAULT 'normal',
+    received_at TEXT,
+    sent_at TEXT,
+    synced_at TEXT
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_folder ON email_cache(folder_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_received ON email_cache(received_at DESC)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_conv ON email_cache(conversation_id)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    graph_id TEXT UNIQUE NOT NULL,
+    display_name TEXT,
+    parent_folder_id TEXT,
+    total_count INTEGER DEFAULT 0,
+    unread_count INTEGER DEFAULT 0,
+    synced_at TEXT
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_graph_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    created_by INTEGER,
+    created_at TEXT
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_email ON email_links(email_graph_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_entity ON email_links(entity_type, entity_id)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    to_addresses TEXT NOT NULL,
+    cc_addresses TEXT,
+    bcc_addresses TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    attachments TEXT,
+    scheduled_at TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    sent_at TEXT,
+    error_message TEXT,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status, scheduled_at)`).run();
+
   // ── EMAIL_CACHE — categories for auto-tagging ──
   addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");
 
