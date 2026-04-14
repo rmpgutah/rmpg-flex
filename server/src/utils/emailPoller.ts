@@ -19,6 +19,7 @@ import {
 } from './msGraphClient';
 import { sendEmail } from './emailSender';
 import { renderEmailMarkdown } from './emailMarkdown';
+import { evaluateRulesForEmail } from './emailRuleEngine';
 import { auditLogSystem } from './auditLogger';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -87,6 +88,9 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
       synced_at = excluded.synced_at
   `);
 
+  const checkExisting = db.prepare('SELECT id FROM email_cache WHERE graph_id = ?');
+  const newIds: number[] = [];
+
   const tx = db.transaction(() => {
     for (const msg of messages) {
       const fromAddr = msg.from?.emailAddress?.address || '';
@@ -100,6 +104,8 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
         name: r.emailAddress?.name,
       })));
       const isFlagged = msg.flag?.flagStatus === 'flagged' ? 1 : 0;
+
+      const existing = checkExisting.get(msg.id) as { id: number } | undefined;
 
       const info = upsert.run(
         msg.id,
@@ -121,10 +127,24 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
         now,
       );
       if (info.changes > 0) newCount++;
+      if (!existing && info.lastInsertRowid) {
+        newIds.push(Number(info.lastInsertRowid));
+      }
     }
   });
 
   tx();
+
+  // Rule evaluation runs OUTSIDE the transaction so a slow/broken rule
+  // can't roll back the sync. Each rule has its own internal 50ms timeout.
+  for (const id of newIds) {
+    try {
+      await evaluateRulesForEmail(db, id);
+    } catch (err: any) {
+      console.warn(`[EmailPoller] Rule eval failed for email #${id}:`, err.message);
+    }
+  }
+
   return newCount;
 }
 
