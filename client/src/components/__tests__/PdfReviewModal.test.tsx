@@ -242,6 +242,40 @@ describe('PdfReviewModal', () => {
       expect(postCalls.length).toBe(1);
     });
 
+    it('opens the email dialog, sends, and reports success', async () => {
+      globalThis.fetch = vi.fn(async (url: any, _init?: any) => {
+        if (String(url).startsWith('blob:')) {
+          return { ok: true, blob: async () => new Blob(['%PDF-1.4'], { type: 'application/pdf' }) } as any;
+        }
+        if (String(url) === '/api/pdf-engine/email') {
+          return { ok: true, status: 200, text: async () => '', json: async () => ({ success: true }) } as any;
+        }
+        throw new Error('unexpected: ' + url);
+      }) as any;
+
+      render(
+        <PdfReviewModal
+          open schema={schema} initialData={{ name: 'Jones' }}
+          onClose={() => {}} onCommit={() => {}}
+          allowedActions={['download', 'email']}
+        />
+      );
+      await screen.findByTitle('pdf-preview', {}, { timeout: 2000 });
+
+      // Open dropdown and pick Email
+      await userEvent.click(screen.getByLabelText('More commit options'));
+      await userEvent.click(screen.getByText(/^Email$/));
+
+      // Dialog should appear
+      const toInput = await screen.findByLabelText('To');
+      await userEvent.type(toInput, 'court@example.com');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent(/Emailed to court@example.com/);
+      }, { timeout: 2000 });
+    });
+
     it('shows error status when attach fails', async () => {
       globalThis.fetch = vi.fn(async (url: any) => {
         if (String(url).startsWith('blob:')) {

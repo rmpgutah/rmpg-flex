@@ -5,6 +5,7 @@ import type {
 } from '../utils/pdf/v2/engine/types';
 import { renderPdfV2 } from '../utils/pdf/v2';
 import { CommitDropdown } from './CommitDropdown';
+import { PdfEmailDialog } from './PdfEmailDialog';
 
 export type CommitKind = 'download' | 'attach' | 'email' | 'print';
 
@@ -53,6 +54,41 @@ export async function attachBlobToRecord(
   return res.json();
 }
 
+/** POST the PDF blob + email fields to /api/pdf-engine/email. */
+export async function emailBlob(
+  blob: Blob,
+  formType: string,
+  to: string[],
+  cc: string[],
+  subject: string,
+  body: string,
+): Promise<void> {
+  const fd = new FormData();
+  fd.append('form_type', formType);
+  to.forEach((t) => fd.append('to', t));
+  cc.forEach((c) => fd.append('cc', c));
+  fd.append('subject', subject);
+  fd.append('body', body);
+  fd.append('pdf', blob, `${formType}.pdf`);
+
+  let token = '';
+  try {
+    token = typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function'
+      ? (localStorage.getItem('accessToken') || '')
+      : '';
+  } catch { /* no-op */ }
+
+  const res = await fetch('/api/pdf-engine/email', {
+    method: 'POST',
+    body: fd,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`email failed: ${res.status} ${text}`);
+  }
+}
+
 function setPath<T extends Record<string, any>>(obj: T, path: string, value: unknown): T {
   const keys = path.split('.');
   const copy: any = Array.isArray(obj) ? [...obj] : { ...obj };
@@ -74,6 +110,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
   const [data, setData] = useState<T>(initialData);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [commitStatus, setCommitStatus] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -136,13 +173,35 @@ export function PdfReviewModal<T extends Record<string, any>>({
         onCommit(data, action);
         return;
       }
-      // email or unhandled: delegate
+      if (action === 'email') {
+        if (!blobUrl) {
+          setCommitStatus({ kind: 'err', message: 'Preview not ready yet — try again in a moment.' });
+          return;
+        }
+        setShowEmailDialog(true);
+        return;
+      }
+      // unhandled: delegate
       onCommit(data, action);
     } catch (err) {
       setCommitStatus({
         kind: 'err',
         message: (err as Error)?.message ?? 'Commit failed',
       });
+    }
+  };
+
+  const handleEmailSend = async (to: string[], cc: string[], subject: string, body: string) => {
+    setShowEmailDialog(false);
+    if (!blobUrl) return;
+    try {
+      setCommitStatus({ kind: 'ok', message: 'Sending…' });
+      const blob = await fetch(blobUrl).then((r) => r.blob());
+      await emailBlob(blob, schema.meta.formNumber, to, cc, subject, body);
+      setCommitStatus({ kind: 'ok', message: `Emailed to ${to.join(', ')}.` });
+      onCommit(data, 'email');
+    } catch (err) {
+      setCommitStatus({ kind: 'err', message: (err as Error)?.message ?? 'email failed' });
     }
   };
 
@@ -190,6 +249,13 @@ export function PdfReviewModal<T extends Record<string, any>>({
             <CommitDropdown allowedActions={allowedActions} onSelect={handleCommit} />
           </div>
         </footer>
+        {showEmailDialog && (
+          <PdfEmailDialog
+            defaultSubject={`${schema.meta.title} — ${schema.meta.formNumber}`}
+            onCancel={() => setShowEmailDialog(false)}
+            onSend={handleEmailSend}
+          />
+        )}
       </div>
     </div>
   );
