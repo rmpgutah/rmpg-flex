@@ -257,11 +257,13 @@ async function processScheduledEmails(): Promise<void> {
         html: bodyHtml,
       });
 
-      if (sent) {
+      if (sent.ok) {
         db.prepare("UPDATE scheduled_emails SET status = 'sent', sent_at = ? WHERE id = ?").run(localNow(), email.id);
-        console.log(`[EmailPoller] Scheduled email #${email.id} sent to ${toList.join(', ')}`);
+        console.log(`[EmailPoller] Scheduled email #${email.id} sent to ${toList.join(', ')} via ${sent.transport}`);
       } else {
-        db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = 'Send failed' WHERE id = ?").run(email.id);
+        const errMsg = `Send failed: ${sent.reason} — ${sent.detail}`;
+        db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?").run(errMsg, email.id);
+        console.error(`[EmailPoller] Scheduled email #${email.id} ${errMsg}`);
       }
     } catch (err: any) {
       db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?")
