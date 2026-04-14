@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FormSchema, SchemaSection, FieldSpec, LabeledField } from '../utils/pdf/v2/engine/types';
+import type {
+  FormSchema, SchemaSection, FieldSpec, LabeledField,
+  CheckboxField, NarrativeField, TableField, SignatureField,
+} from '../utils/pdf/v2/engine/types';
 import { renderPdfV2 } from '../utils/pdf/v2';
 
 export type CommitKind = 'download' | 'attach' | 'email' | 'print';
@@ -115,22 +118,198 @@ function EditorSection<T extends Record<string, any>>({
 function EditorField<T extends Record<string, any>>({
   field, data, onChange,
 }: { field: FieldSpec<T>; data: T; onChange: (d: T) => void }) {
-  if (field.kind !== 'labeled') return null;
-  const labeled = field as LabeledField<T>;
-  const value = String(labeled.accessor(data) ?? '');
+  switch (field.kind) {
+    case 'labeled':   return <LabeledEditor field={field} data={data} onChange={onChange} />;
+    case 'checkbox':  return <CheckboxEditor field={field} data={data} onChange={onChange} />;
+    case 'narrative': return <NarrativeEditor field={field} data={data} onChange={onChange} />;
+    case 'table':     return <TableEditor field={field} data={data} onChange={onChange} />;
+    case 'signature': return <SignaturePlaceholder field={field} />;
+    case 'spacer':    return null;
+  }
+}
+
+function LabeledEditor<T extends Record<string, any>>({
+  field, data, onChange,
+}: { field: LabeledField<T>; data: T; onChange: (d: T) => void }) {
+  const value = String(field.accessor(data) ?? '');
+  const disabled = field.editable === false;
   return (
     <label className="block mb-2 text-xs">
-      <span className="block text-gray-400 uppercase mb-1">{labeled.label}</span>
+      <span className="block text-gray-400 uppercase mb-1">
+        {field.label}
+        {disabled && field.readOnlyReason && (
+          <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
+        )}
+      </span>
       <input
-        aria-label={labeled.label}
-        className="w-full bg-[#0d1520] text-white border border-[#2e2e2e] p-1"
+        aria-label={field.label}
+        className="w-full bg-[#0d1520] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
         value={value}
-        disabled={labeled.editable === false}
+        disabled={disabled}
         onChange={(e) => {
-          if (!labeled.path) return;
-          onChange(setPath(data, labeled.path, e.target.value));
+          if (!field.path) return;
+          onChange(setPath(data, field.path, e.target.value));
         }}
       />
     </label>
+  );
+}
+
+function CheckboxEditor<T extends Record<string, any>>({
+  field, data, onChange,
+}: { field: CheckboxField<T>; data: T; onChange: (d: T) => void }) {
+  const checked = Boolean(field.accessor(data));
+  const disabled = field.editable === false;
+  return (
+    <label className="flex items-center gap-2 mb-2 text-xs">
+      <input
+        type="checkbox"
+        aria-label={field.label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => {
+          if (!field.path) return;
+          onChange(setPath(data, field.path, e.target.checked));
+        }}
+      />
+      <span className="text-gray-300">
+        {field.label}
+        {disabled && field.readOnlyReason && (
+          <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
+        )}
+      </span>
+    </label>
+  );
+}
+
+function NarrativeEditor<T extends Record<string, any>>({
+  field, data, onChange,
+}: { field: NarrativeField<T>; data: T; onChange: (d: T) => void }) {
+  const value = String(field.accessor(data) ?? '');
+  const disabled = field.editable === false;
+  return (
+    <label className="block mb-2 text-xs">
+      <span className="block text-gray-400 uppercase mb-1">
+        {field.label}
+        {disabled && field.readOnlyReason && (
+          <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
+        )}
+      </span>
+      <textarea
+        aria-label={field.label}
+        rows={4}
+        className="w-full bg-[#0d1520] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => {
+          if (!field.path) return;
+          onChange(setPath(data, field.path, e.target.value));
+        }}
+      />
+    </label>
+  );
+}
+
+function TableEditor<T extends Record<string, any>>({
+  field, data, onChange,
+}: { field: TableField<T>; data: T; onChange: (d: T) => void }) {
+  const rows = field.accessor(data) ?? [];
+  const disabled = field.editable === false;
+
+  const updateCell = (rowIdx: number, key: string, value: string) => {
+    if (!field.path) return;
+    const newRows = rows.map((r, i) => (i === rowIdx ? { ...r, [key]: value } : r));
+    onChange(setPath(data, field.path, newRows));
+  };
+  const addRow = () => {
+    if (!field.path) return;
+    const empty: Record<string, unknown> = {};
+    for (const c of field.columns) empty[c.key] = '';
+    onChange(setPath(data, field.path, [...rows, empty]));
+  };
+  const removeRow = (rowIdx: number) => {
+    if (!field.path) return;
+    const newRows = rows.filter((_, i) => i !== rowIdx);
+    onChange(setPath(data, field.path, newRows));
+  };
+
+  return (
+    <div className="mb-3 text-xs">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-gray-400 uppercase">
+          {field.label}
+          {disabled && field.readOnlyReason && (
+            <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
+          )}
+        </span>
+        {!disabled && (
+          <button
+            type="button"
+            onClick={addRow}
+            className="text-[#d4a017] hover:underline"
+            aria-label={`Add row to ${field.label}`}
+          >
+            + Add row
+          </button>
+        )}
+      </div>
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="text-gray-500 uppercase text-[10px]">
+            {field.columns.map((c) => (
+              <th key={c.key} className="text-left border-b border-[#222] py-1">{c.header}</th>
+            ))}
+            {!disabled && <th className="w-6"></th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={field.columns.length + 1} className="text-gray-500 italic py-1">
+                No rows
+              </td>
+            </tr>
+          )}
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {field.columns.map((c) => (
+                <td key={c.key} className="py-1 pr-1">
+                  <input
+                    aria-label={`${field.label} row ${i + 1} ${c.header}`}
+                    value={String((row as Record<string, unknown>)[c.key] ?? '')}
+                    disabled={disabled}
+                    onChange={(e) => updateCell(i, c.key, e.target.value)}
+                    className="w-full bg-[#0d1520] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+                  />
+                </td>
+              ))}
+              {!disabled && (
+                <td className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => removeRow(i)}
+                    className="text-red-400 hover:text-red-200"
+                    aria-label={`Remove row ${i + 1} from ${field.label}`}
+                  >
+                    ×
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SignaturePlaceholder<T>({ field }: { field: SignatureField<T> }) {
+  return (
+    <div className="block mb-2 text-xs">
+      <span className="block text-gray-400 uppercase mb-1">{field.label}</span>
+      <div className="w-full bg-[#0d1520] border border-dashed border-[#2e2e2e] p-2 text-gray-500 italic">
+        Signature editor coming soon
+      </div>
+    </div>
   );
 }
