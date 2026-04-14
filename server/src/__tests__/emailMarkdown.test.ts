@@ -43,4 +43,22 @@ describe('renderEmailMarkdown', () => {
     const out = renderEmailMarkdown('line1\nline2');
     expect(out.toLowerCase()).toContain('<br');
   });
+
+  it('strips javascript: from style attribute CSS', () => {
+    const out = renderEmailMarkdown(`<p style="background:url('javascript:alert(1)')">x</p>`);
+    expect(out.toLowerCase()).not.toContain('javascript:');
+  });
+
+  it('handles empty/null/undefined input gracefully', () => {
+    expect(() => renderEmailMarkdown('')).not.toThrow();
+    expect(() => renderEmailMarkdown(null as any)).not.toThrow();
+    expect(() => renderEmailMarkdown(undefined as any)).not.toThrow();
+  });
+
+  it('preserves https link href and adds rel/target security attrs', () => {
+    const out = renderEmailMarkdown('[click](https://example.com)');
+    expect(out).toContain('href="https://example.com"');
+    expect(out).toContain('target="_blank"');
+    expect(out).toContain('rel="noopener noreferrer"');
+  });
 });
