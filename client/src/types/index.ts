@@ -1420,6 +1420,283 @@ export interface FleetFuelLog {
   calc_distance?: number | null;
   cost_per_mile?: number | null;
   running_avg_mpg?: number | null;
+  // 2026-04-14 enhancements
+  source?: string | null;      // 'manual' | 'import' | 'simplyfleet'
+  receipt_path?: string | null; // relative filename (server-side)
+  flags?: string | null;        // JSON-encoded string[] of outlier warnings
+  // v2 attribution fields — optional, legacy rows leave these null
+  driver_officer_id?: number | null;
+  fuel_card_id?: number | null;
+}
+
+// ── Fuel v2 (2026-04-14) ──────────────────────────────────────
+
+export type FuelBudgetPeriod = 'monthly' | 'quarterly' | 'annual';
+
+export interface FleetFuelBudget {
+  id: number;
+  vehicle_id: number | null;    // NULL = fleet-wide
+  period_type: FuelBudgetPeriod;
+  budget_amount: number;
+  alert_threshold_pct: number;
+  effective_from: string;
+  effective_to: string | null;
+  notes?: string | null;
+  created_by?: number | null;
+  created_at: string;
+  updated_at: string;
+  // JOINed fields from the list endpoint — null on unattached/fleet rows.
+  vehicle_number?: string | null;
+  make?: string | null;
+  model?: string | null;
+  year?: number | null;
+}
+
+export interface FleetFuelBudgetSummary {
+  has_budget: boolean;
+  vehicle_id: number | null;
+  message?: string;
+  budget?: FleetFuelBudget;
+  period?: {
+    type: FuelBudgetPeriod;
+    start: string;
+    end: string;
+    days_total: number;
+    days_elapsed: number;
+    days_remaining: number;
+  };
+  spend?: {
+    actual: number;
+    pct_of_budget: number;
+    daily_rate: number;
+    forecast: number;
+    variance_pct: number;
+  };
+  status?: 'on_track' | 'watch' | 'warning' | 'over';
+}
+
+export interface FuelAnalyticsByOfficer {
+  officer_id: number | null;
+  username: string | null;
+  full_name: string | null;
+  display_name: string;
+  fill_count: number;
+  total_gallons: number;
+  total_cost: number;
+  avg_cpg: number | null;
+  avg_mpg: number | null;
+  flag_count: number;
+  flag_rate: number;
+}
+
+export interface FuelAnalyticsByCard {
+  card_id: number;
+  card_number: string;
+  provider: string | null;
+  status: string;
+  monthly_limit: number | null;
+  vehicle_id: number | null;
+  vehicle_number: string | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  spent: number;
+  fill_count: number;
+  pct_of_limit: number | null;
+  spend_status: 'ok' | 'watch' | 'over' | 'unlimited';
+}
+
+// ── Fleet operating costs (2026-04-14) ───────────────────────
+
+export type FleetLoanStatus = 'active' | 'paid_off' | 'refinanced' | 'defaulted';
+export interface FleetLoan {
+  id: number;
+  vehicle_id: number;
+  lender: string | null;
+  original_amount: number;
+  current_balance: number | null;
+  monthly_payment: number;
+  interest_rate: number | null;
+  term_months: number | null;
+  start_date: string;
+  payoff_date: string | null;
+  status: FleetLoanStatus;
+  notes: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FleetInsuranceFreq = 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+export type FleetInsuranceStatus = 'active' | 'expired' | 'cancelled';
+export interface FleetInsurancePolicy {
+  id: number;
+  vehicle_id: number;
+  carrier: string | null;
+  policy_number: string | null;
+  coverage_type: string | null;
+  premium_amount: number;
+  premium_frequency: FleetInsuranceFreq;
+  effective_from: string;
+  expires_at: string | null;
+  deductible: number | null;
+  liability_limit: number | null;
+  status: FleetInsuranceStatus;
+  notes: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FleetAccessoryStatus = 'installed' | 'removed' | 'replaced' | 'damaged';
+export interface FleetAccessory {
+  id: number;
+  vehicle_id: number;
+  name: string;
+  category: string | null;
+  installed_date: string;
+  removed_date: string | null;
+  cost: number;
+  vendor: string | null;
+  warranty_until: string | null;
+  serial_number: string | null;
+  status: FleetAccessoryStatus;
+  notes: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FleetUtilityFreq = 'one_time' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+export interface FleetUtilityCost {
+  id: number;
+  vehicle_id: number | null;  // NULL = fleet-wide allocation
+  category: string;
+  provider: string | null;
+  cost_amount: number;
+  cost_frequency: FleetUtilityFreq;
+  period_start: string;
+  period_end: string | null;
+  notes: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FleetCostSummary {
+  vehicle_id: number;
+  categories: {
+    fuel: number;
+    maintenance: number;
+    loans: number;
+    insurance: number;
+    accessories: number;
+    utilities: number;
+  };
+  total_lifetime: number;
+  monthly_commitment: {
+    loan: number;
+    insurance: number;
+    total: number;
+  };
+  cost_per_mile: number | null;
+}
+
+// ── Unified cost timeline + analytics (2026-04-15) ────────────
+
+export type CostCategoryKey = 'fuel' | 'maintenance' | 'loan' | 'insurance' | 'accessory' | 'utility';
+
+export interface CostTimelineEntry {
+  date: string;             // YYYY-MM-DD
+  category: CostCategoryKey;
+  amount: number;
+  description: string;
+  reference_id: number | string;
+  synthetic: boolean;       // true = extrapolated (loan/insurance payment schedule)
+}
+
+export interface CostTimelineResponse {
+  entries: CostTimelineEntry[];
+  total: number;
+  by_category: Partial<Record<CostCategoryKey, { count: number; amount: number }>>;
+  range: { from: string | null; to: string | null; count: number };
+}
+
+export interface CostAnalyticsAnomaly {
+  kind: 'cpm_outlier' | 'mom_spike' | 'category_imbalance';
+  severity: 'watch' | 'alert';
+  detail: string;
+}
+
+export interface CostAnalyticsVehicle {
+  id: number;
+  vehicle_number: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  current_mileage: number | null;
+  fuel_cost: number;
+  maint_cost: number;
+  loan_cost: number;
+  insurance_cost: number;
+  accessory_cost: number;
+  utility_cost: number;
+  total: number;
+  cost_per_mile: number | null;
+  anomalies: CostAnalyticsAnomaly[];
+}
+
+export interface CostAnalyticsOverview {
+  since: string;
+  days: number;
+  totals: {
+    fuel: number;
+    maintenance: number;
+    loan: number;
+    insurance: number;
+    accessories: number;
+    utilities: number;
+  };
+  total_all: number;
+  counts: {
+    fuel_fills: number;
+    maintenance_events: number;
+    accessory_installs: number;
+    utility_entries: number;
+    active_loans: number;
+    active_policies: number;
+  };
+  fleet_avg_cost_per_mile: number;
+  vehicles: CostAnalyticsVehicle[];
+  monthly_trend: Array<{ month: string; cost: number }>;
+}
+
+export interface FuelAnalyticsOverview {
+  since: string;
+  days: number;
+  totals: {
+    fill_count: number;
+    total_gallons: number;
+    total_cost: number;
+    avg_cpg: number | null;
+    flag_count: number;
+    flag_rate: number;
+  };
+  vehicles: Array<{
+    id: number;
+    vehicle_number: string;
+    make: string | null;
+    model: string | null;
+    year: number | null;
+    avg_mpg: number | null;
+    fill_count: number;
+    total_cost: number;
+    total_gallons: number;
+    flag_count: number;
+    flag_rate: number;
+  }>;
+  monthly_trend: Array<{ month: string; cost: number; gallons: number; fills: number }>;
+  top_stations: Array<{ station: string; fill_count: number; total_spent: number; avg_cpg: number | null }>;
+  flagged_leaderboard: Array<{ id: number; vehicle_number: string; make: string | null; model: string | null; flagged_count: number }>;
 }
 
 export interface FleetFuelSummary {

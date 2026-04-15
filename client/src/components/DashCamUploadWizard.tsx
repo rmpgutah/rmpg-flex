@@ -9,6 +9,7 @@ import {
   Upload, X, ChevronDown, ChevronRight, Check, AlertCircle,
   Film, Plus, ArrowLeft, ArrowRight, Loader2, Trash2, Copy,
 } from 'lucide-react';
+import { chunkedVideoUpload } from '../utils/chunkedVideoUpload';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -38,8 +39,10 @@ interface Props {
 interface FileEntry {
   id: string;
   file: File;
+  // Object URL used for in-Wizard preview display only. The server does not
+  // persist thumbnails today, so we deliberately do not keep the underlying
+  // Blob around after its URL is created.
   thumbnailUrl: string | null;
-  thumbnailBlob: Blob | null;
   duration: number | null;
   title: string;
   vehicleId: string;
@@ -96,7 +99,7 @@ function generateId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function generateThumbnail(file: File): Promise<{ url: string; blob: Blob; duration: number | null }> {
+function generateThumbnail(file: File): Promise<{ url: string; duration: number | null }> {
   return new Promise((resolve) => {
     const video = document.createElement('video');
     video.preload = 'metadata';
@@ -105,11 +108,11 @@ function generateThumbnail(file: File): Promise<{ url: string; blob: Blob; durat
     video.src = objectUrl;
 
     let resolved = false;
-    const finish = (url: string, blob: Blob, dur: number | null) => {
+    const finish = (url: string, dur: number | null) => {
       if (resolved) return;
       resolved = true;
       URL.revokeObjectURL(objectUrl);
-      resolve({ url, blob, duration: dur });
+      resolve({ url, duration: dur });
     };
 
     const captureFrame = () => {
@@ -121,19 +124,19 @@ function generateThumbnail(file: File): Promise<{ url: string; blob: Blob; durat
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // We create the Blob only long enough to make an object-URL for the
+          // Wizard's preview <img>. The Blob reference is dropped immediately;
+          // the URL keeps the underlying bytes alive inside the browser until
+          // URL.revokeObjectURL() is called during reset/unmount.
           canvas.toBlob((b) => {
-            if (b) {
-              const thumbUrl = URL.createObjectURL(b);
-              finish(thumbUrl, b, dur);
-            } else {
-              finish('', new Blob(), dur);
-            }
+            if (b) finish(URL.createObjectURL(b), dur);
+            else finish('', dur);
           }, 'image/jpeg', 0.7);
         } else {
-          finish('', new Blob(), dur);
+          finish('', dur);
         }
       } catch {
-        finish('', new Blob(), dur);
+        finish('', dur);
       }
     };
 
@@ -150,7 +153,7 @@ function generateThumbnail(file: File): Promise<{ url: string; blob: Blob; durat
       if (!resolved) {
         resolved = true;
         URL.revokeObjectURL(objectUrl);
-        resolve({ url: '', blob: new Blob(), duration: null });
+        resolve({ url: '', duration: null });
       }
     };
 
@@ -159,7 +162,7 @@ function generateThumbnail(file: File): Promise<{ url: string; blob: Blob; durat
       if (!resolved) {
         resolved = true;
         URL.revokeObjectURL(objectUrl);
-        resolve({ url: '', blob: new Blob(), duration: null });
+        resolve({ url: '', duration: null });
       }
     }, 10000);
   });
@@ -177,7 +180,7 @@ export default function DashCamUploadWizard({
   const [isUploading, setIsUploading] = useState(false);
   const [allDone, setAllDone] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const thumbnailUrlsRef = useRef<string[]>([]);
 
   // Clean up thumbnail URLs on unmount
@@ -201,7 +204,8 @@ export default function DashCamUploadWizard({
     setUploadStates({});
     setIsUploading(false);
     setAllDone(false);
-    xhrRef.current = null;
+    uploadAbortRef.current?.abort();
+    uploadAbortRef.current = null;
   };
 
   const handleClose = () => {
@@ -227,14 +231,13 @@ export default function DashCamUploadWizard({
     const toAdd = arr.slice(0, remaining);
 
     for (const file of toAdd) {
-      const { url, blob, duration } = await generateThumbnail(file);
+      const { url, duration } = await generateThumbnail(file);
       if (url) thumbnailUrlsRef.current.push(url);
 
       const entry: FileEntry = {
         id: generateId(),
         file,
         thumbnailUrl: url || null,
-        thumbnailBlob: blob.size > 0 ? blob : null,
         duration,
         title: file.name.replace(/\.[^.]+$/, ''),
         vehicleId: '',
@@ -310,95 +313,66 @@ export default function DashCamUploadWizard({
   // ── Step 3: Upload ───────────────────────
 
   const uploadFile = useCallback(
-    (entry: FileEntry): Promise<void> => {
-      return new Promise((resolve) => {
+    async (entry: FileEntry): Promise<void> => {
+      setUploadStates((prev) => ({
+        ...prev,
+        [entry.id]: { status: 'uploading', progress: 0, error: '' },
+      }));
+
+      // The chunked util walks through init → chunks → complete for files
+      // ≥ 50 MB and falls back to a single multipart POST below that.
+      // The server does not currently persist thumbnails (the dashcam_videos
+      // schema has no thumbnail column), so the preview URL we generated
+      // stays client-side only — see generateThumbnail() for details.
+      try {
+        await chunkedVideoUpload({
+          endpoint: '/fleet/dashcam-videos',
+          file: entry.file,
+          headers: getAuthHeaders(),
+          abortSignal: uploadAbortRef.current?.signal,
+          metadata: {
+            title: entry.title || entry.file.name,
+            vehicle_id: entry.vehicleId,
+            unit_id: entry.unitId,
+            classification: entry.classification,
+            duration_seconds: entry.duration ?? undefined,
+            recorded_at: entry.recordedAt,
+            speed_mph: entry.speedMph,
+            latitude: entry.latitude,
+            longitude: entry.longitude,
+            address: entry.address,
+            case_number: entry.caseNumber,
+            notes: entry.notes,
+          },
+          onProgress: (p) => {
+            setUploadStates((prev) => ({
+              ...prev,
+              [entry.id]: { ...prev[entry.id], status: 'uploading', progress: p.percent, error: '' },
+            }));
+          },
+        });
         setUploadStates((prev) => ({
           ...prev,
-          [entry.id]: { status: 'uploading', progress: 0, error: '' },
+          [entry.id]: { status: 'complete', progress: 100, error: '' },
         }));
-
-        const formData = new FormData();
-        formData.append('video', entry.file);
-        formData.append('title', entry.title || entry.file.name);
-        if (entry.vehicleId) formData.append('vehicle_id', entry.vehicleId);
-        if (entry.unitId) formData.append('unit_id', entry.unitId);
-        formData.append('classification', entry.classification);
-        if (entry.duration != null) formData.append('duration_seconds', String(entry.duration));
-        if (entry.recordedAt) formData.append('recorded_at', entry.recordedAt);
-        if (entry.speedMph) formData.append('speed_mph', entry.speedMph);
-        if (entry.latitude) formData.append('latitude', entry.latitude);
-        if (entry.longitude) formData.append('longitude', entry.longitude);
-        if (entry.address) formData.append('address', entry.address);
-        if (entry.caseNumber) formData.append('case_number', entry.caseNumber);
-        if (entry.notes) formData.append('notes', entry.notes);
-        if (entry.thumbnailBlob && entry.thumbnailBlob.size > 0) {
-          formData.append('thumbnail', entry.thumbnailBlob, 'thumbnail.jpg');
-        }
-
-        const xhr = new XMLHttpRequest();
-        xhrRef.current = xhr;
-        xhr.open('POST', `${apiBase}/fleet/dashcam-videos`);
-        xhr.timeout = 600000;
-
-        const headers = getAuthHeaders();
-        for (const [key, val] of Object.entries(headers)) {
-          xhr.setRequestHeader(key, val);
-        }
-
-        xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            const pct = Math.round((ev.loaded / ev.total) * 100);
-            setUploadStates((prev) => ({
-              ...prev,
-              [entry.id]: { ...prev[entry.id], progress: pct },
-            }));
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            setUploadStates((prev) => ({
-              ...prev,
-              [entry.id]: { status: 'complete', progress: 100, error: '' },
-            }));
-          } else {
-            let errorMsg = `Upload failed (HTTP ${xhr.status})`;
-            try {
-              const resp = JSON.parse(xhr.responseText);
-              if (resp.error) errorMsg = resp.error;
-            } catch {}
-            setUploadStates((prev) => ({
-              ...prev,
-              [entry.id]: { status: 'error', progress: 0, error: errorMsg },
-            }));
-          }
-          resolve();
-        };
-
-        xhr.onerror = () => {
-          setUploadStates((prev) => ({
-            ...prev,
-            [entry.id]: { status: 'error', progress: 0, error: 'Network error' },
-          }));
-          resolve();
-        };
-
-        xhr.ontimeout = () => {
-          setUploadStates((prev) => ({
-            ...prev,
-            [entry.id]: { status: 'error', progress: 0, error: 'Upload timed out' },
-          }));
-          resolve();
-        };
-
-        xhr.send(formData);
-      });
+      } catch (err: any) {
+        const errorMsg = err?.name === 'AbortError'
+          ? 'Upload cancelled'
+          : (err?.message || 'Upload failed');
+        setUploadStates((prev) => ({
+          ...prev,
+          [entry.id]: { status: 'error', progress: 0, error: errorMsg },
+        }));
+      }
     },
-    [apiBase, getAuthHeaders]
+    [getAuthHeaders]
   );
 
   const startUploadAll = useCallback(async () => {
     setIsUploading(true);
+    // A single AbortController covers the whole queue; cancelling stops
+    // the in-flight upload and all subsequent queued files.
+    uploadAbortRef.current = new AbortController();
     const initial: Record<string, UploadState> = {};
     files.forEach((f) => {
       initial[f.id] = { status: 'queued', progress: 0, error: '' };
@@ -406,6 +380,7 @@ export default function DashCamUploadWizard({
     setUploadStates(initial);
 
     for (const entry of files) {
+      if (uploadAbortRef.current?.signal.aborted) break;
       await uploadFile(entry);
     }
 

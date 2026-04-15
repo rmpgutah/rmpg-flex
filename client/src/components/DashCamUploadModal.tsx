@@ -4,6 +4,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Upload, X, Car, Loader2, MapPin, Gauge } from 'lucide-react';
+import { chunkedVideoUpload, type ChunkedUploadPhase } from '../utils/chunkedVideoUpload';
 
 interface FleetVehicle {
   id: number;
@@ -54,7 +55,10 @@ export default function DashCamUploadModal({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [duration, setDuration] = useState<number | null>(null);
+  const [phase, setPhase] = useState<ChunkedUploadPhase>('uploading');
+  const [chunkStatus, setChunkStatus] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   if (!isOpen) return null;
 
@@ -75,12 +79,19 @@ export default function DashCamUploadModal({
     setError('');
     setDuration(null);
     setUploading(false);
+    setPhase('uploading');
+    setChunkStatus('');
+    abortRef.current = null;
   };
 
   const handleClose = () => {
     if (uploading) return;
     reset();
     onClose();
+  };
+
+  const handleCancel = () => {
+    abortRef.current?.abort();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,7 +112,7 @@ export default function DashCamUploadModal({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !title) {
       setError('File and title are required');
@@ -111,52 +122,50 @@ export default function DashCamUploadModal({
     setUploading(true);
     setProgress(0);
     setError('');
+    setPhase('uploading');
+    setChunkStatus('Preparing upload...');
 
-    const formData = new FormData();
-    formData.append('video', file);
-    formData.append('title', title);
-    if (vehicleId) formData.append('vehicle_id', vehicleId);
-    if (unitId) formData.append('unit_id', unitId);
-    formData.append('classification', classification);
-    if (duration != null) formData.append('duration_seconds', String(duration));
-    if (recordedAt) formData.append('recorded_at', recordedAt);
-    if (speedMph) formData.append('speed_mph', speedMph);
-    if (latitude) formData.append('latitude', latitude);
-    if (longitude) formData.append('longitude', longitude);
-    if (address) formData.append('address', address);
-    if (caseNumber) formData.append('case_number', caseNumber);
-    if (notes) formData.append('notes', notes);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${apiBase}/fleet/dashcam-videos`);
-    xhr.timeout = 600000;
-
-    const headers = getAuthHeaders();
-    for (const [key, val] of Object.entries(headers)) xhr.setRequestHeader(key, val);
-
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 100));
-    };
-
-    xhr.onload = () => {
+    try {
+      await chunkedVideoUpload({
+        endpoint: '/fleet/dashcam-videos',
+        file,
+        headers: getAuthHeaders(),
+        abortSignal: controller.signal,
+        metadata: {
+          title,
+          vehicle_id: vehicleId,
+          unit_id: unitId,
+          classification,
+          duration_seconds: duration ?? undefined,
+          recorded_at: recordedAt,
+          speed_mph: speedMph,
+          latitude,
+          longitude,
+          address,
+          case_number: caseNumber,
+          notes,
+        },
+        onProgress: (p) => {
+          setProgress(p.percent);
+          setPhase(p.phase);
+          setChunkStatus(p.message);
+        },
+      });
       setUploading(false);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        reset();
-        onUploaded();
-        onClose();
+      reset();
+      onUploaded();
+      onClose();
+    } catch (err: any) {
+      setUploading(false);
+      if (err?.name === 'AbortError') {
+        setError('Upload cancelled.');
       } else {
-        try {
-          const resp = JSON.parse(xhr.responseText);
-          setError(resp.error || `Upload failed (HTTP ${xhr.status})`);
-        } catch {
-          setError(`Upload failed (HTTP ${xhr.status})`);
-        }
+        setError(err?.message || 'Upload failed');
       }
-    };
-
-    xhr.onerror = () => { setUploading(false); setError('Network error — upload failed.'); };
-    xhr.ontimeout = () => { setUploading(false); setError('Upload timed out.'); };
-    xhr.send(formData);
+    }
   };
 
   const formatSize = (bytes: number) => {
@@ -296,7 +305,8 @@ export default function DashCamUploadModal({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-rmpg-400 flex items-center gap-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin text-brand-400" /> Uploading...
+                  <Loader2 className="w-3 h-3 animate-spin text-brand-400" />
+                  {chunkStatus || (phase === 'finalizing' ? 'Finalizing...' : 'Uploading...')}
                 </span>
                 <span className="text-brand-400 font-mono font-bold">{progress}%</span>
               </div>
@@ -308,7 +318,11 @@ export default function DashCamUploadModal({
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2">
-            <button type="button" onClick={handleClose} disabled={uploading} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
+            {uploading ? (
+              <button type="button" onClick={handleCancel} className="toolbar-btn text-xs px-4 py-1.5">Cancel Upload</button>
+            ) : (
+              <button type="button" onClick={handleClose} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
+            )}
             <button type="submit" disabled={uploading || !file || !title} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
               {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               {uploading ? 'Uploading...' : 'Upload Video'}

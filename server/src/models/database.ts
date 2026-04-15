@@ -3092,6 +3092,197 @@ function migrateSchema(): void {
   addCol('fleet_fuel_logs', 'efficiency', 'REAL');
   addCol('fleet_fuel_logs', 'source', "TEXT DEFAULT 'manual'");
 
+  // ── FLEET — fuel-log enhancements (2026-04-14) ───────────
+  //
+  // receipt_path: relative filename under uploads/fuel-receipts/ — matches the
+  //               flat-filename convention used by dashcam_videos.file_path.
+  //               NULL when no receipt has been attached yet.
+  // flags       : JSON-encoded array of human-readable outlier/fraud warnings
+  //               computed at create/update time (e.g. tank-overflow,
+  //               mpg-anomaly, price-spike, rapid-duplicate). NULL when clean.
+  addCol('fleet_fuel_logs', 'receipt_path', 'TEXT');
+  addCol('fleet_fuel_logs', 'flags', 'TEXT');
+
+  // ── FLEET — fuel v2 enhancements (2026-04-14 later) ──────
+  //
+  // driver_officer_id: user id of the officer who was driving at the time
+  //                    of the fill (distinct from `created_by` which is who
+  //                    entered the log). Enables per-officer MPG / cost
+  //                    analytics and fuel-card abuse detection. Optional
+  //                    so legacy rows stay valid as NULL.
+  // fuel_card_id     : FK into fleet_fuel_cards. Populated when the fill
+  //                    was paid via a tracked card — enables per-card
+  //                    monthly spend dashboards vs each card's
+  //                    `monthly_limit`. NULL means cash / non-card fill.
+  addCol('fleet_fuel_logs', 'driver_officer_id', 'INTEGER REFERENCES users(id)');
+  addCol('fleet_fuel_logs', 'fuel_card_id', 'INTEGER REFERENCES fleet_fuel_cards(id)');
+
+  // Tank capacity per vehicle — used by detectFuelLogFlags() for
+  // overflow detection and by the analytics page to estimate tank-%
+  // remaining. Default NULL (falls back to the 30-gal safe default
+  // in the flag detector) so unpopulated rows don't trip false alarms.
+  addCol('fleet_vehicles', 'tank_capacity', 'REAL');
+
+  // ── Fleet cost categories (2026-04-14) ───────────────────
+  //
+  // Tracks ongoing operating costs beyond fuel + maintenance:
+  //   fleet_loans              — vehicle financing (one row per loan)
+  //   fleet_insurance_policies — insurance premiums (multiple per vehicle)
+  //   fleet_accessories        — installed equipment (one-time costs)
+  //   fleet_utility_costs      — recurring utilities (electricity for EVs,
+  //                              storage/garage allocations, etc.)
+  //
+  // All four use the same `archived_at` pattern as other fleet tables for
+  // soft-delete + restore. Each is FK'd to fleet_vehicles(id), and the
+  // utility costs table allows vehicle_id NULL for fleet-wide allocations.
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS fleet_loans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER NOT NULL,
+        lender TEXT,
+        original_amount REAL NOT NULL,
+        current_balance REAL,
+        monthly_payment REAL NOT NULL,
+        interest_rate REAL,
+        term_months INTEGER,
+        start_date TEXT NOT NULL,
+        payoff_date TEXT,
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','paid_off','refinanced','defaulted')),
+        notes TEXT,
+        archived_at TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `).run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_loans_vehicle ON fleet_loans(vehicle_id)').run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_loans_status ON fleet_loans(status)').run();
+
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS fleet_insurance_policies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER NOT NULL,
+        carrier TEXT,
+        policy_number TEXT,
+        coverage_type TEXT,
+        premium_amount REAL NOT NULL,
+        premium_frequency TEXT NOT NULL DEFAULT 'monthly' CHECK(premium_frequency IN ('monthly','quarterly','semi_annual','annual')),
+        effective_from TEXT NOT NULL,
+        expires_at TEXT,
+        deductible REAL,
+        liability_limit REAL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','cancelled')),
+        notes TEXT,
+        archived_at TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `).run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_insurance_vehicle ON fleet_insurance_policies(vehicle_id)').run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_insurance_status ON fleet_insurance_policies(status)').run();
+
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS fleet_accessories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        category TEXT,
+        installed_date TEXT NOT NULL,
+        removed_date TEXT,
+        cost REAL NOT NULL DEFAULT 0,
+        vendor TEXT,
+        warranty_until TEXT,
+        serial_number TEXT,
+        status TEXT NOT NULL DEFAULT 'installed' CHECK(status IN ('installed','removed','replaced','damaged')),
+        notes TEXT,
+        archived_at TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `).run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_accessories_vehicle ON fleet_accessories(vehicle_id)').run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_accessories_status ON fleet_accessories(status)').run();
+
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS fleet_utility_costs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER,
+        category TEXT NOT NULL,
+        provider TEXT,
+        cost_amount REAL NOT NULL,
+        cost_frequency TEXT NOT NULL DEFAULT 'monthly' CHECK(cost_frequency IN ('one_time','monthly','quarterly','semi_annual','annual')),
+        period_start TEXT NOT NULL,
+        period_end TEXT,
+        notes TEXT,
+        archived_at TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `).run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_utilities_vehicle ON fleet_utility_costs(vehicle_id)').run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_utilities_category ON fleet_utility_costs(category)').run();
+  } catch (e: any) {
+    console.warn('fleet cost tables init warn:', e?.message);
+  }
+
+  // Lifetime cost rollups on fleet_vehicles. Computed/refreshed by the
+  // /:id/cost-summary endpoint when a row is read; not maintained in
+  // real-time on every insert (the summary recompute is cheap).
+  addCol('fleet_vehicles', 'total_loan_cost', 'REAL DEFAULT 0');
+  addCol('fleet_vehicles', 'total_insurance_cost', 'REAL DEFAULT 0');
+  addCol('fleet_vehicles', 'total_accessory_cost', 'REAL DEFAULT 0');
+  addCol('fleet_vehicles', 'total_utility_cost', 'REAL DEFAULT 0');
+
+  // ── Fuel budgets ─────────────────────────────────────────
+  //
+  // Scope is either the whole fleet (vehicle_id = NULL) or one specific
+  // vehicle. Period is monthly / quarterly / annual — the budget endpoint
+  // computes current-period spend and a burn-rate forecast on demand so we
+  // don't need to store projected values.
+  //
+  // `alert_threshold_pct` defines when the UI turns amber (e.g. 80 = amber
+  // at 80% of budget spent, red at 100%+).
+  //
+  // `effective_from` / `effective_to` let an operator retire an old budget
+  // without deleting history — e.g. Q1 2026 = $5k, Q2 2026 = $5.5k. Latest
+  // applicable (current date >= effective_from AND (effective_to IS NULL OR
+  // current date <= effective_to)) wins when multiple rows match.
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS fleet_fuel_budgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER,
+        period_type TEXT NOT NULL CHECK(period_type IN ('monthly','quarterly','annual')),
+        budget_amount REAL NOT NULL,
+        alert_threshold_pct REAL NOT NULL DEFAULT 80,
+        effective_from TEXT NOT NULL,
+        effective_to TEXT,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `).run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_fuel_budgets_vehicle ON fleet_fuel_budgets(vehicle_id)').run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_fuel_budgets_effective ON fleet_fuel_budgets(effective_from, effective_to)').run();
+  } catch (e: any) {
+    console.warn('fleet_fuel_budgets init warn:', e?.message);
+  }
+
   // ── FLEET — maintenance labor cost tracking ──────────────
   addCol('fleet_maintenance', 'labor_cost', 'REAL');
   addCol('fleet_maintenance', 'service_tasks', 'TEXT');

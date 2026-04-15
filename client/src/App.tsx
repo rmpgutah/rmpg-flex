@@ -42,6 +42,8 @@ const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
+const FuelAnalyticsPage = lazyRetry(() => import('./pages/fleet/FuelAnalyticsPage'));
+const FleetCostAnalyticsPage = lazyRetry(() => import('./pages/fleet/FleetCostAnalyticsPage'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
@@ -218,6 +220,8 @@ function AppRoutes() {
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
             <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            <Route path="/fuel-analytics" element={<RouteErrorBoundary><FuelAnalyticsPage /></RouteErrorBoundary>} />
+            <Route path="/cost-analytics" element={<RouteErrorBoundary><FleetCostAnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />

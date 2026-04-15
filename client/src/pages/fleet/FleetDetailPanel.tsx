@@ -3,14 +3,18 @@ import { useAuth } from '../../context/AuthContext';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
+  DollarSign,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
   FleetInspection, FleetAssignment, FleetAnalytics, FleetVehicleStatus,
   FleetPersonnelData,
+  FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary,
 } from '../../types';
 import FleetOverviewTab from './tabs/FleetOverviewTab';
 import FleetFuelTab from './tabs/FleetFuelTab';
+import FleetCostsTab from './tabs/FleetCostsTab';
+import type { CostCategory } from './modals/FleetCostFormModal';
 import FleetInspectionsTab from './tabs/FleetInspectionsTab';
 import FleetAssignmentsTab from './tabs/FleetAssignmentsTab';
 import FleetPersonnelTab from './tabs/FleetPersonnelTab';
@@ -21,7 +25,7 @@ import FleetRecallsTab from './tabs/FleetRecallsTab';
 import { formatMilitary } from './utils/fleetFormatters';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -52,6 +56,7 @@ function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'non
 const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'overview', label: 'Overview', icon: Car },
   { key: 'fuel', label: 'Fuel', icon: Fuel },
+  { key: 'costs', label: 'Costs', icon: DollarSign },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
@@ -80,6 +85,37 @@ interface Props {
   onNewInspection: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  // Fuel-log enhancements 2026-04-14 — optional, so legacy callers work unchanged.
+  onImportFuelCsv?: () => void;
+  onExportFuelCsv?: () => void;
+  onDownloadFuelReport?: () => void;
+  // v2: budget hooks
+  fuelBudgetSummary?: import('../../types').FleetFuelBudgetSummary | null;
+  onManageFuelBudget?: () => void;
+  // v3: extra printables + UX hooks
+  onPrintFuelBudgetVariance?: () => void;
+  onPrintFuelFlaggedAudit?: () => void;
+  onQuickLogFuel?: (parsed: { gallons: number; total_cost?: number; cost_per_gallon?: number; station?: string; odometer_reading?: number }) => Promise<void> | void;
+  onDropFuelReceipt?: (file: File) => Promise<void> | void;
+  // v4: lifted period selector for the Fuel tab
+  fuelPeriod?: import('./tabs/FleetFuelTab').FuelPeriod;
+  onFuelPeriodChange?: (p: import('./tabs/FleetFuelTab').FuelPeriod) => void;
+  // v5 (2026-04-14): operating-cost categories — loans, insurance,
+  // accessories, utilities. Each list comes from its own server endpoint;
+  // summary is the aggregated cost-of-ownership from /:id/cost-summary.
+  costLoans?: FleetLoan[];
+  costInsurance?: FleetInsurancePolicy[];
+  costAccessories?: FleetAccessory[];
+  costUtilities?: FleetUtilityCost[];
+  costSummary?: FleetCostSummary | null;
+  costsSubTab?: 'timeline' | 'loan' | 'insurance' | 'accessory' | 'utility';
+  onCostsSubTabChange?: (t: 'timeline' | 'loan' | 'insurance' | 'accessory' | 'utility') => void;
+  onAddCost?: (category: CostCategory) => void;
+  onEditCost?: (category: CostCategory, record: any) => void;
+  onDeleteCost?: (category: CostCategory, record: any) => void;
+  // v6 (2026-04-15): unified timeline + TCO PDF
+  costTimeline?: import('../../types').CostTimelineEntry[];
+  onPrintTco?: () => void;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
@@ -193,7 +229,15 @@ export default function FleetDetailPanel({
   analytics, analyticsLoading, personnelData, personnelLoading,
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
-  onEditFuel, onDeleteFuel, onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
+  onEditFuel, onDeleteFuel, onImportFuelCsv, onExportFuelCsv, onDownloadFuelReport,
+  fuelBudgetSummary, onManageFuelBudget,
+  onPrintFuelBudgetVariance, onPrintFuelFlaggedAudit, onQuickLogFuel, onDropFuelReceipt,
+  fuelPeriod, onFuelPeriodChange,
+  costLoans = [], costInsurance = [], costAccessories = [], costUtilities = [],
+  costSummary = null, costsSubTab = 'timeline', onCostsSubTabChange,
+  onAddCost, onEditCost, onDeleteCost,
+  costTimeline = [], onPrintTco,
+  onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
   onClose,
@@ -342,7 +386,42 @@ export default function FleetDetailPanel({
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
         {activeTab === 'overview' && <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />}
-        {activeTab === 'fuel' && <FleetFuelTab fuelLogs={fuelLogs} summary={fuelSummary} onAddFuel={onLogFuel} onEditFuel={onEditFuel} onDeleteFuel={onDeleteFuel} />}
+        {activeTab === 'fuel' && (
+          <FleetFuelTab
+            fuelLogs={fuelLogs}
+            summary={fuelSummary}
+            onAddFuel={onLogFuel}
+            onEditFuel={onEditFuel}
+            onDeleteFuel={onDeleteFuel}
+            onImportCsv={onImportFuelCsv}
+            onExportCsv={onExportFuelCsv}
+            onDownloadReport={onDownloadFuelReport}
+            budgetSummary={fuelBudgetSummary}
+            onManageBudget={onManageFuelBudget}
+            onPrintBudgetVariance={onPrintFuelBudgetVariance}
+            onPrintFlaggedAudit={onPrintFuelFlaggedAudit}
+            onQuickLog={onQuickLogFuel}
+            onReceiptDropped={onDropFuelReceipt}
+            period={fuelPeriod}
+            onPeriodChange={onFuelPeriodChange}
+          />
+        )}
+        {activeTab === 'costs' && (
+          <FleetCostsTab
+            loans={costLoans}
+            insurance={costInsurance}
+            accessories={costAccessories}
+            utilities={costUtilities}
+            summary={costSummary}
+            subTab={costsSubTab}
+            onSubTabChange={onCostsSubTabChange ?? (() => {})}
+            onAdd={(cat) => onAddCost?.(cat)}
+            onEdit={(cat, r) => onEditCost?.(cat, r)}
+            onDelete={(cat, r) => onDeleteCost?.(cat, r)}
+            timeline={costTimeline}
+            onPrintTco={onPrintTco}
+          />
+        )}
         {activeTab === 'inspections' && <FleetInspectionsTab inspections={inspections} onNewInspection={onNewInspection} onEditInspection={onEditInspection} onDeleteInspection={onDeleteInspection} />}
         {activeTab === 'assignments' && <FleetAssignmentsTab assignments={assignments} />}
         {activeTab === 'personnel' && (

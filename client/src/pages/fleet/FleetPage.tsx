@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
   Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2, DollarSign, Fuel,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
@@ -19,7 +20,21 @@ import FleetDetailPanel, { type DetailTab } from './FleetDetailPanel';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
-import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
+import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM, type DriverOption, type FuelCardOption } from './modals/FuelLogModal';
+import FuelImportModal from './modals/FuelImportModal';
+import FuelBudgetModal from './modals/FuelBudgetModal';
+import FuelGaugeCard, { type FuelGaugeData } from './components/FuelGaugeCard';
+import FleetCostFormModal, { EMPTY_COST_FORM, type CostCategory, type CostFormState } from './modals/FleetCostFormModal';
+import { generateFleetFuelReport } from './utils/fleetFuelReport';
+import { generateFleetBudgetVariancePdf } from './utils/fleetBudgetVariancePdf';
+import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
+import { generateFleetTcoReportPdf } from './utils/fleetTcoReportPdf';
+import { type FuelPeriod, getFuelPeriodBounds, filterLogsByPeriod } from './tabs/FleetFuelTab';
+import type {
+  FleetFuelBudget, FleetFuelBudgetSummary, FuelBudgetPeriod,
+  FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary,
+  CostTimelineEntry, CostTimelineResponse,
+} from '../../types';
 import InspectionFormModal, { type InspectionFormState, EMPTY_INSPECTION_FORM } from './modals/InspectionFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ExportButton from '../../components/ExportButton';
@@ -131,6 +146,56 @@ export default function FleetPage() {
   const [editingMaintenanceId, setEditingMaintenanceId] = useState<string | null>(null);
   const [editingInspectionId, setEditingInspectionId] = useState<string | null>(null);
 
+  // Warnings surfaced in the fuel modal when the just-saved row was flagged.
+  // Cleared when the modal is closed or a fresh save starts.
+  const [fuelFlagWarnings, setFuelFlagWarnings] = useState<string[]>([]);
+
+  // CSV-import modal visibility. Opening resets the modal's internal state
+  // automatically via its `isOpen` guard.
+  const [showFuelImport, setShowFuelImport] = useState(false);
+
+  // v4 (2026-04-14): selected period for the Fuel tab. Lifted up so the
+  // PDF generators (Report, Audit) and the entry list all read from one
+  // source of truth.
+  const [fuelPeriod, setFuelPeriod] = useState<FuelPeriod>('all');
+
+  // v5 (2026-04-14): cost-category state for the Costs tab. Each list
+  // is loaded lazily on Costs-tab activation; the summary is recomputed
+  // server-side after every CRUD mutation so the breakdown bars track.
+  const [costLoans, setCostLoans] = useState<FleetLoan[]>([]);
+  const [costInsurance, setCostInsurance] = useState<FleetInsurancePolicy[]>([]);
+  const [costAccessories, setCostAccessories] = useState<FleetAccessory[]>([]);
+  const [costUtilities, setCostUtilities] = useState<FleetUtilityCost[]>([]);
+  const [costSummary, setCostSummary] = useState<FleetCostSummary | null>(null);
+  const [costsSubTab, setCostsSubTab] = useState<'timeline' | 'loan' | 'insurance' | 'accessory' | 'utility'>('timeline');
+  // Unified chronological timeline — populated when the Timeline sub-tab
+  // is first activated (or refreshed after a cost CRUD mutation).
+  const [costTimeline, setCostTimeline] = useState<CostTimelineEntry[]>([]);
+  const [showCostModal, setShowCostModal] = useState(false);
+  const [costModalCategory, setCostModalCategory] = useState<CostCategory>('loan');
+  const [costForm, setCostForm] = useState<CostFormState>(EMPTY_COST_FORM);
+  const [editingCostId, setEditingCostId] = useState<number | null>(null);
+
+  // v3: Fleet-wide fuel gauges loaded once on mount (and refreshed on
+  // explicit fuel updates). Keyed by vehicle_id for fast lookup in the
+  // grid render — building a new Map every render is cheap, doing it via
+  // useMemo on the dependency array keeps it stable.
+  const [fuelGauges, setFuelGauges] = useState<FuelGaugeData[]>([]);
+  const fuelGaugeByVehicle = useMemo(() => {
+    const m = new Map<number, FuelGaugeData>();
+    for (const g of fuelGauges) m.set(g.vehicle_id, g);
+    return m;
+  }, [fuelGauges]);
+
+  // v2: budget state. Summary drives the BudgetCard; modal + initial wire
+  // creation / editing. `drivers` and `fuelCards` are loaded once on
+  // selected-vehicle change to populate the attribution dropdowns.
+  const [budgetSummary, setBudgetSummary] = useState<FleetFuelBudgetSummary | null>(null);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<FleetFuelBudget | null>(null);
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [fuelCards, setFuelCards] = useState<FuelCardOption[]>([]);
+
   // Delete confirmation state for sub-records
   const [deletingFuel, setDeletingFuel] = useState<FleetFuelLog | null>(null);
   const [deletingMaintenance, setDeletingMaintenance] = useState<FleetMaintenance | null>(null);
@@ -186,6 +251,10 @@ export default function FleetPage() {
   }, [addToast, showArchived]);
 
   useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
+  // Load fleet-wide fuel gauges once on mount. Refetched on any fuel
+  // mutation (POST/PUT/DELETE/import/quick-log) via the `fetchFuelLogs`
+  // wrappers below.
+  useEffect(() => { fetchFuelGauges(); /* eslint-disable-next-line */ }, []);
 
   // Live sync — auto-refresh when any device modifies fleet (silent to avoid unmounting UI)
   const silentRefreshVehicles = useCallback(() => fetchVehicles({ silent: true }), [fetchVehicles]);
@@ -220,7 +289,14 @@ export default function FleetPage() {
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
-    if (activeTab === 'fuel') fetchFuelLogs(selectedId);
+    if (activeTab === 'fuel') {
+      fetchFuelLogs(selectedId);
+      fetchBudgetSummary(selectedId);
+      // One-shot: load the driver + card pickers the first time the fuel
+      // tab becomes active. Subsequent tab switches reuse cached arrays.
+      if (drivers.length === 0 && fuelCards.length === 0) fetchDriversAndCards();
+    }
+    if (activeTab === 'costs') fetchCosts(selectedId);
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
     if (activeTab === 'analytics') fetchVehicleAnalytics();
@@ -238,10 +314,203 @@ export default function FleetPage() {
 
   const fetchFuelLogs = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel`);
+      // Request the maximum allowed page size so we get every entry in
+      // one call. The Fuel tab does its own client-side period filtering
+      // (MTD / 30d / 60d / 90d / quarterly), and the existing summary
+      // logic on the server still works at any page size.
+      const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel?per_page=10000`);
       setFuelLogs(data.data || []);
       setFuelSummary(data.summary || null);
+      // Recompute the fleet-wide gauges in the background — any save/edit
+      // /import that hits this function changes the most-recent-fill row
+      // for this vehicle, which is exactly what /fuel/gauges aggregates.
+      fetchFuelGauges();
     } catch { addToast('Failed to load fuel logs', 'error'); }
+  };
+
+  // ── v2: load the vehicle's budget summary (fleet-wide falls back when
+  // no vehicle-scoped budget exists), attribution dropdowns (drivers +
+  // cards), and refresh them when the selected vehicle changes.
+  const fetchBudgetSummary = async (id: string | number) => {
+    try {
+      const data = await apiFetch<FleetFuelBudgetSummary>(`/fleet/fuel/budgets/summary?vehicle_id=${encodeURIComponent(String(id))}`);
+      if (!data.has_budget) {
+        // Fallback to fleet-wide budget so the tab still shows a progress bar.
+        const fleet = await apiFetch<FleetFuelBudgetSummary>('/fleet/fuel/budgets/summary');
+        setBudgetSummary(fleet);
+      } else {
+        setBudgetSummary(data);
+      }
+    } catch {
+      // Non-fatal — BudgetCard just renders its "No budget set" empty state.
+      setBudgetSummary({ has_budget: false, vehicle_id: Number(id) });
+    }
+  };
+
+  const fetchFuelGauges = async () => {
+    try {
+      const data = await apiFetch<{ data: FuelGaugeData[] }>('/fleet/fuel/gauges');
+      setFuelGauges(data.data || []);
+    } catch {
+      setFuelGauges([]);
+    }
+  };
+
+  // ── Cost categories: fetchers + summary refresh ────────────────
+  //
+  // All four lists are independent endpoints so we fetch in parallel.
+  // The summary endpoint is computed server-side from the same tables,
+  // so calling it once after the parallel fetch is sufficient.
+  const fetchCosts = async (id: string | number) => {
+    try {
+      // Parallel fetch: four per-category lists + rollup summary + the
+      // unified chronological timeline. Each endpoint is independent;
+      // the Promise.all pattern keeps latency at max-of-N rather than sum.
+      const [loans, insurance, accessories, utilities, summary, timeline] = await Promise.all([
+        apiFetch<{ data: FleetLoan[] }>(`/fleet/${id}/loans`).catch(() => ({ data: [] })),
+        apiFetch<{ data: FleetInsurancePolicy[] }>(`/fleet/${id}/insurance`).catch(() => ({ data: [] })),
+        apiFetch<{ data: FleetAccessory[] }>(`/fleet/${id}/accessories`).catch(() => ({ data: [] })),
+        apiFetch<{ data: FleetUtilityCost[] }>(`/fleet/${id}/utilities`).catch(() => ({ data: [] })),
+        apiFetch<FleetCostSummary>(`/fleet/${id}/cost-summary`).catch(() => null),
+        apiFetch<CostTimelineResponse>(`/fleet/${id}/cost-timeline`).catch(() => ({ entries: [], total: 0, by_category: {}, range: { from: null, to: null, count: 0 } } as CostTimelineResponse)),
+      ]);
+      setCostLoans(loans.data || []);
+      setCostInsurance(insurance.data || []);
+      setCostAccessories(accessories.data || []);
+      setCostUtilities(utilities.data || []);
+      setCostSummary(summary);
+      setCostTimeline(timeline.entries || []);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to load operating costs', 'error');
+    }
+  };
+
+  // ── Cost CRUD handlers ────────────────────────────────────────
+  //
+  // The shared FleetCostFormModal builds a wire-shaped payload, so all
+  // we do here is pick the right endpoint based on category and POST/PUT.
+  // After mutation we refetch the relevant list + summary so the UI and
+  // the cost breakdown bars stay in sync.
+  const COST_PATH: Record<CostCategory, string> = {
+    loan: 'loans', insurance: 'insurance', accessory: 'accessories', utility: 'utilities',
+  };
+
+  const openAddCost = (category: CostCategory) => {
+    setCostModalCategory(category);
+    setCostForm(EMPTY_COST_FORM);
+    setEditingCostId(null);
+    setShowCostModal(true);
+  };
+
+  const openEditCost = (category: CostCategory, record: any) => {
+    setCostModalCategory(category);
+    setEditingCostId(record.id);
+    // Hydrate the union-shaped form from the category-specific record.
+    // Empty strings everywhere a value is missing so the controlled inputs
+    // don't flip from controlled-to-uncontrolled and back.
+    const f: CostFormState = {
+      ...EMPTY_COST_FORM,
+      notes: record.notes ?? '',
+    };
+    if (category === 'loan') {
+      f.lender = record.lender ?? '';
+      f.original_amount = record.original_amount != null ? String(record.original_amount) : '';
+      f.current_balance = record.current_balance != null ? String(record.current_balance) : '';
+      f.monthly_payment = record.monthly_payment != null ? String(record.monthly_payment) : '';
+      f.interest_rate = record.interest_rate != null ? String(record.interest_rate) : '';
+      f.term_months = record.term_months != null ? String(record.term_months) : '';
+      f.start_date = (record.start_date || '').slice(0, 10);
+      f.payoff_date = (record.payoff_date || '').slice(0, 10);
+      f.loan_status = record.status || 'active';
+    } else if (category === 'insurance') {
+      f.carrier = record.carrier ?? '';
+      f.policy_number = record.policy_number ?? '';
+      f.coverage_type = record.coverage_type ?? '';
+      f.premium_amount = record.premium_amount != null ? String(record.premium_amount) : '';
+      f.premium_frequency = record.premium_frequency || 'monthly';
+      f.effective_from = (record.effective_from || '').slice(0, 10);
+      f.expires_at = (record.expires_at || '').slice(0, 10);
+      f.deductible = record.deductible != null ? String(record.deductible) : '';
+      f.liability_limit = record.liability_limit != null ? String(record.liability_limit) : '';
+      f.insurance_status = record.status || 'active';
+    } else if (category === 'accessory') {
+      f.name = record.name ?? '';
+      f.accessory_category = record.category ?? '';
+      f.installed_date = (record.installed_date || '').slice(0, 10);
+      f.removed_date = (record.removed_date || '').slice(0, 10);
+      f.cost = record.cost != null ? String(record.cost) : '';
+      f.vendor = record.vendor ?? '';
+      f.warranty_until = (record.warranty_until || '').slice(0, 10);
+      f.serial_number = record.serial_number ?? '';
+      f.accessory_status = record.status || 'installed';
+    } else {
+      f.utility_category = record.category ?? '';
+      f.provider = record.provider ?? '';
+      f.cost_amount = record.cost_amount != null ? String(record.cost_amount) : '';
+      f.cost_frequency = record.cost_frequency || 'monthly';
+      f.period_start = (record.period_start || '').slice(0, 10);
+      f.period_end = (record.period_end || '').slice(0, 10);
+    }
+    setCostForm(f);
+    setShowCostModal(true);
+  };
+
+  const handleSaveCost = async (payload: Record<string, any>) => {
+    if (selectedId == null) return;
+    setSaving(true);
+    try {
+      const path = COST_PATH[costModalCategory];
+      if (editingCostId) {
+        await apiFetch(`/fleet/${path}/${editingCostId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast(`${costModalCategory} updated`, 'success');
+      } else {
+        await apiFetch(`/fleet/${selectedId}/${path}`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast(`${costModalCategory} added`, 'success');
+      }
+      setShowCostModal(false);
+      setEditingCostId(null);
+      fetchCosts(selectedId);
+    } finally { setSaving(false); }
+  };
+
+  const handleDeleteCost = async (category: CostCategory, record: any) => {
+    if (selectedId == null) return;
+    if (!confirm(`Archive this ${category}? The record will be hidden from lists but kept in the audit trail.`)) return;
+    try {
+      await apiFetch(`/fleet/${COST_PATH[category]}/${record.id}`, { method: 'DELETE' });
+      addToast(`${category} archived`, 'success');
+      fetchCosts(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to archive', 'error');
+    }
+  };
+
+  const fetchDriversAndCards = async () => {
+    try {
+      // Users list is behind /api/users; we only need id/username/name for
+      // the dropdown, so any role with list access is sufficient.
+      const users = await apiFetch<any[]>('/users?limit=200');
+      const driverOpts: DriverOption[] = (Array.isArray(users) ? users : [])
+        .filter((u: any) => u?.active !== 0 && u?.active !== false)
+        .map((u: any) => ({ id: u.id, full_name: u.full_name, username: u.username, badge: u.badge_number }));
+      setDrivers(driverOpts);
+    } catch {
+      setDrivers([]);
+    }
+    try {
+      const cards = await apiFetch<any[]>('/fleet/fuel-cards');
+      const cardOpts: FuelCardOption[] = (Array.isArray(cards) ? cards : [])
+        .map((c: any) => ({
+          id: c.id,
+          card_number: c.card_number,
+          provider: c.provider,
+          status: c.status,
+          vehicle_id: c.vehicle_id,
+        }));
+      setFuelCards(cardOpts);
+    } catch {
+      setFuelCards([]);
+    }
   };
 
   const fetchInspections = async (id: string | number) => {
@@ -410,6 +679,7 @@ export default function FleetPage() {
     if (!fuelForm.fuel_date || !fuelForm.gallons) { addToast('Date and gallons are required', 'warning'); return; }
     if (selectedId == null) return;
     setSaving(true);
+    setFuelFlagWarnings([]);
     try {
       const payload = {
         fuel_date: fuelForm.fuel_date,
@@ -420,20 +690,275 @@ export default function FleetPage() {
         fuel_type: fuelForm.fuel_type,
         station: fuelForm.station.trim() || null,
         notes: fuelForm.notes.trim() || null,
+        // v2 attribution fields — empty string → null so the server stores NULL
+        driver_officer_id: fuelForm.driver_officer_id ? parseInt(fuelForm.driver_officer_id, 10) : null,
+        fuel_card_id: fuelForm.fuel_card_id ? parseInt(fuelForm.fuel_card_id, 10) : null,
       };
+
+      // The POST/PUT responses include the stored row. We parse its `flags`
+      // column (JSON string of outlier warnings from detectFuelLogFlags) so
+      // we can surface a toast + optional modal banner.
+      let saved: any;
       if (modal === 'edit_fuel' && editingFuelId) {
-        await apiFetch(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        addToast('Fuel entry updated successfully', 'success');
+        saved = await apiFetch<any>(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {
-        await apiFetch(`/fleet/${selectedId}/fuel`, { method: 'POST', body: JSON.stringify(payload) });
-        addToast('Fuel entry logged successfully', 'success');
+        saved = await apiFetch<any>(`/fleet/${selectedId}/fuel`, { method: 'POST', body: JSON.stringify(payload) });
       }
+
+      // If the user staged a receipt file on the form, upload it now that we
+      // have a log ID. Separate multipart request so the main JSON POST stays
+      // slim. We continue on receipt-upload failure (log itself is saved).
+      const savedId = saved?.id ?? editingFuelId;
+      if (fuelForm.receiptFile && savedId) {
+        try {
+          const fd = new FormData();
+          fd.append('receipt', fuelForm.receiptFile);
+          const token = localStorage.getItem('rmpg_token');
+          const res = await fetch(`${window.location.origin}/api/fleet/fuel/${savedId}/receipt`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: fd,
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `Receipt upload failed (HTTP ${res.status})`);
+          }
+        } catch (recErr) {
+          addToast(recErr instanceof Error ? `Saved, but receipt upload failed: ${recErr.message}` : 'Receipt upload failed', 'warning');
+        }
+      }
+
+      // Surface any outlier flags from the save response.
+      let flagArr: string[] = [];
+      if (saved?.flags) {
+        try { flagArr = JSON.parse(saved.flags); } catch { /* non-JSON — ignore */ }
+      }
+      if (flagArr.length > 0) {
+        addToast(`Fuel entry saved with ${flagArr.length} warning${flagArr.length === 1 ? '' : 's'} — review flagged row`, 'warning');
+      } else {
+        addToast(modal === 'edit_fuel' ? 'Fuel entry updated successfully' : 'Fuel entry logged successfully', 'success');
+      }
+
       setModal('none');
       setEditingFuelId(null);
+      setFuelFlagWarnings([]);
       fetchFuelLogs(selectedId);
       if (payload.odometer_reading) fetchDetail(selectedId); // refresh mileage
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to save fuel entry', 'error');
+    } finally { setSaving(false); }
+  };
+
+  const handleRemoveFuelReceipt = async () => {
+    if (!editingFuelId || !selectedId) return;
+    try {
+      await apiFetch(`/fleet/fuel/${editingFuelId}/receipt`, { method: 'DELETE' });
+      setFuelForm((f) => ({ ...f, existingReceipt: false }));
+      addToast('Receipt removed', 'success');
+      fetchFuelLogs(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to remove receipt', 'error');
+    }
+  };
+
+  // ── Fuel tab toolbar handlers (CSV export, CSV import, PDF report) ──
+  // All three target the currently-selected vehicle. Export is a
+  // browser-download of the server's CSV endpoint; import opens a modal;
+  // PDF report is generated client-side from already-loaded data so it
+  // works offline too.
+  const handleExportFuelCsv = () => {
+    if (selectedId == null) return;
+    const token = localStorage.getItem('rmpg_token') || '';
+    const url = `${window.location.origin}/api/fleet/fuel/export.csv?vehicle_id=${encodeURIComponent(String(selectedId))}`;
+    // Open in a new tab with the auth token; the server accepts ?token= as
+    // an Authorization header fallback on streaming routes (same pattern as
+    // the dash-cam /stream endpoint). This keeps the CSV download a single
+    // click instead of needing a full blob-fetch with custom headers.
+    window.open(`${url}&token=${encodeURIComponent(token)}`, '_blank');
+  };
+
+  const handleDownloadFuelReport = () => {
+    if (!detail) { addToast('Load a vehicle first', 'warning'); return; }
+    try {
+      // Honor the period selector — the PDF entries + header range track
+      // the same filter the user sees on screen. "All Time" passes the full
+      // log set unchanged.
+      const filtered = filterLogsByPeriod(fuelLogs, fuelPeriod);
+      const periodLabel = getFuelPeriodBounds(fuelPeriod).label;
+      generateFleetFuelReport({
+        vehicle: detail,
+        fuelLogs: filtered,
+        summary: fuelSummary,
+        periodLabel,
+      });
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to generate PDF report', 'error');
+    }
+  };
+
+  // ── v2: budget handlers ────────────────────────────────────────
+  //
+  // Manage-budget opens the modal in either "create" (no existing budget)
+  // or "edit" mode. When a BudgetCard shows an active budget, we pre-load
+  // that full row into the modal so the user can tweak fields rather than
+  // overwrite blindly.
+  const openBudgetManager = async () => {
+    if (budgetSummary?.has_budget && budgetSummary.budget) {
+      setEditingBudget(budgetSummary.budget);
+    } else {
+      setEditingBudget(null);
+    }
+    setShowBudgetModal(true);
+  };
+
+  // ── v3 printables + UX handlers ────────────────────────────────
+  //
+  // All three short-circuit early when the prerequisite data isn't loaded,
+  // showing an actionable toast instead of throwing — these are wired to
+  // toolbar buttons that the user can hit at any time.
+
+  const handlePrintBudgetVariance = () => {
+    if (!budgetSummary?.has_budget) {
+      addToast('No active budget to print', 'warning'); return;
+    }
+    try {
+      generateFleetBudgetVariancePdf({
+        summary: budgetSummary,
+        scopeLabel: budgetSummary.budget?.vehicle_id && detail
+          ? `#${detail.vehicle_number} — ${[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}`
+          : 'Fleet-wide',
+      });
+    } catch (e: any) { addToast(e?.message || 'Failed to generate variance PDF', 'error'); }
+  };
+
+  const handlePrintFlaggedAudit = () => {
+    // Audit PDF respects the same period filter as the on-screen entry
+    // list — auditors generally want to pull a Q1/Q2 audit, not every
+    // flag in history. When period='all', the bounds are open and we
+    // fall back to first-and-last log dates for the header range.
+    const inPeriod = filterLogsByPeriod(fuelLogs, fuelPeriod);
+    const flagged = inPeriod.filter(l => l.flags);
+    if (flagged.length === 0) {
+      const scopeLabel = fuelPeriod === 'all' ? '' : ` in ${getFuelPeriodBounds(fuelPeriod).shortLabel}`;
+      addToast(`No flagged entries${scopeLabel} to audit`, 'warning');
+      return;
+    }
+    const bounds = getFuelPeriodBounds(fuelPeriod);
+    const fmt = (d: Date | null) => d
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      : undefined;
+    try {
+      generateFlaggedAuditPdf({
+        logs: flagged,
+        scopeLabel: detail ? `#${detail.vehicle_number} - ${[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}` : 'Fleet-wide',
+        dateRange: {
+          from: fmt(bounds.start) || flagged[flagged.length - 1]?.fuel_date?.slice(0, 10),
+          to:   fmt(bounds.end)   || flagged[0]?.fuel_date?.slice(0, 10),
+        },
+      });
+    } catch (e: any) { addToast(e?.message || 'Failed to generate audit PDF', 'error'); }
+  };
+
+  // QuickLogBar parser already gave us a structured payload; we just need
+  // to fill in defaults (timestamp = now in datetime-local format) and
+  // call the same POST endpoint the modal uses, then refresh.
+  const handleQuickLog = async (parsed: { gallons: number; total_cost?: number; cost_per_gallon?: number; station?: string; odometer_reading?: number }) => {
+    if (selectedId == null) { addToast('Open a vehicle first', 'warning'); return; }
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const localIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    try {
+      const saved = await apiFetch<any>(`/fleet/${selectedId}/fuel`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fuel_date: localIso,
+          gallons: parsed.gallons,
+          cost_per_gallon: parsed.cost_per_gallon ?? null,
+          total_cost: parsed.total_cost ?? null,
+          odometer_reading: parsed.odometer_reading ?? null,
+          fuel_type: 'regular',
+          station: parsed.station ?? null,
+          notes: 'Quick-logged',
+        }),
+      });
+      let flagArr: string[] = [];
+      if (saved?.flags) { try { flagArr = JSON.parse(saved.flags); } catch { /* ignore */ } }
+      addToast(
+        flagArr.length > 0
+          ? `Quick log saved with ${flagArr.length} warning${flagArr.length === 1 ? '' : 's'}`
+          : 'Quick log saved',
+        flagArr.length > 0 ? 'warning' : 'success',
+      );
+      fetchFuelLogs(selectedId);
+      if (parsed.odometer_reading) fetchDetail(selectedId);
+    } catch (err: any) { addToast(err?.message || 'Quick log failed', 'error'); }
+  };
+
+  // Drag-drop receipt → attach to the most recently-dated log for this
+  // vehicle. Falls back to opening the modal in create mode (with the
+  // file pre-staged) if there's no recent log to attach to — that path
+  // is rare enough that we punt on it for now and just toast a warning.
+  const handleDropFuelReceipt = async (file: File) => {
+    if (selectedId == null) { addToast('Open a vehicle first', 'warning'); return; }
+    if (fuelLogs.length === 0) { addToast('No fuel logs yet — create one before attaching a receipt', 'warning'); return; }
+    const target = fuelLogs[0]; // GET /fleet/:id/fuel returns DESC by date
+    try {
+      const fd = new FormData();
+      fd.append('receipt', file);
+      const token = localStorage.getItem('rmpg_token');
+      const res = await fetch(`${window.location.origin}/api/fleet/fuel/${target.id}/receipt`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      addToast(`Receipt attached to fill from ${target.fuel_date.slice(0, 10)}`, 'success');
+      fetchFuelLogs(selectedId);
+    } catch (err: any) { addToast(err?.message || 'Receipt attach failed', 'error'); }
+  };
+
+  // Unified TCO PDF — combines summary + category breakdown + timeline
+  // for this vehicle. Needs `detail`, `costSummary`, and `costTimeline`
+  // loaded; the Costs tab's fetchCosts() call fills all three in one
+  // round-trip so by the time the button is reachable this data is ready.
+  const handlePrintTco = () => {
+    if (!detail) { addToast('Load a vehicle first', 'warning'); return; }
+    if (!costSummary) { addToast('Cost summary still loading — try again in a moment', 'warning'); return; }
+    try {
+      generateFleetTcoReportPdf({
+        vehicle: detail,
+        summary: costSummary,
+        timeline: costTimeline,
+      });
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to generate TCO PDF', 'error');
+    }
+  };
+
+  const handleSaveBudget = async (payload: {
+    vehicle_id: number | null;
+    period_type: FuelBudgetPeriod;
+    budget_amount: number;
+    alert_threshold_pct: number;
+    effective_from: string;
+    effective_to: string | null;
+    notes: string | null;
+  }) => {
+    setSaving(true);
+    try {
+      if (editingBudget) {
+        await apiFetch(`/fleet/fuel/budgets/${editingBudget.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Budget updated', 'success');
+      } else {
+        await apiFetch('/fleet/fuel/budgets', { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Budget created', 'success');
+      }
+      setShowBudgetModal(false);
+      setEditingBudget(null);
+      if (selectedId != null) fetchBudgetSummary(selectedId);
     } finally { setSaving(false); }
   };
 
@@ -623,8 +1148,18 @@ export default function FleetPage() {
       fuel_type: log.fuel_type,
       station: log.station || '',
       notes: log.notes || '',
+      receiptFile: null,
+      existingReceipt: !!log.receipt_path,
+      driver_officer_id: log.driver_officer_id != null ? String(log.driver_officer_id) : '',
+      fuel_card_id: log.fuel_card_id != null ? String(log.fuel_card_id) : '',
     });
     setEditingFuelId(log.id);
+    // Show existing flags in the modal's warning banner if present.
+    let existingFlags: string[] = [];
+    if (log.flags) {
+      try { existingFlags = JSON.parse(log.flags); } catch { /* ignore */ }
+    }
+    setFuelFlagWarnings(existingFlags);
     setModal('edit_fuel');
   };
 
@@ -736,6 +1271,14 @@ export default function FleetPage() {
           </button>
           {!showArchived && (
             <>
+              {/* v2: shortcut to the fleet-wide fuel analytics dashboard. */}
+              <Link to="/fuel-analytics" className="toolbar-btn print:hidden" title="Open fleet-wide fuel analytics">
+                <BarChart3 className="w-3 h-3" /> Fuel Analytics
+              </Link>
+              {/* v6: fleet-wide TCO analytics across all 6 cost streams. */}
+              <Link to="/cost-analytics" className="toolbar-btn print:hidden" title="Open fleet-wide total cost-of-ownership analytics">
+                <DollarSign className="w-3 h-3" /> Cost Analytics
+              </Link>
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openNewVehicle}>
                 <Plus className="w-3 h-3" /> New Vehicle
               </button>
@@ -1002,6 +1545,10 @@ export default function FleetPage() {
                       </div>
                     </div>
                   )}
+                  {/* v3: Fuel gauge — estimated tank %, days since last fill,
+                      days remaining at avg burn rate. Status colour escalates
+                      from green → amber → red as fuel depletes. */}
+                  <FuelGaugeCard gauge={fuelGaugeByVehicle.get(Number(v.id))} />
                 </div>
               );
             })}
@@ -1057,6 +1604,29 @@ export default function FleetPage() {
               onNewInspection={openNewInspection}
               onEditFuel={openEditFuel}
               onDeleteFuel={(log) => setDeletingFuel(log)}
+              onImportFuelCsv={() => setShowFuelImport(true)}
+              onExportFuelCsv={handleExportFuelCsv}
+              onDownloadFuelReport={handleDownloadFuelReport}
+              fuelBudgetSummary={budgetSummary}
+              onManageFuelBudget={openBudgetManager}
+              onPrintFuelBudgetVariance={handlePrintBudgetVariance}
+              onPrintFuelFlaggedAudit={handlePrintFlaggedAudit}
+              onQuickLogFuel={handleQuickLog}
+              onDropFuelReceipt={handleDropFuelReceipt}
+              fuelPeriod={fuelPeriod}
+              onFuelPeriodChange={setFuelPeriod}
+              costLoans={costLoans}
+              costInsurance={costInsurance}
+              costAccessories={costAccessories}
+              costUtilities={costUtilities}
+              costSummary={costSummary}
+              costsSubTab={costsSubTab}
+              onCostsSubTabChange={setCostsSubTab}
+              onAddCost={openAddCost}
+              onEditCost={openEditCost}
+              onDeleteCost={handleDeleteCost}
+              costTimeline={costTimeline}
+              onPrintTco={handlePrintTco}
               onEditMaintenance={openEditMaintenance}
               onDeleteMaintenance={(record) => setDeletingMaintenance(record)}
               onEditInspection={openEditInspection}
@@ -1102,7 +1672,38 @@ export default function FleetPage() {
         form={fuelForm}
         onChange={setFuelForm}
         onSave={handleSaveFuel}
-        onClose={() => { setModal('none'); setEditingFuelId(null); }}
+        onClose={() => { setModal('none'); setEditingFuelId(null); setFuelFlagWarnings([]); }}
+        saving={saving}
+        onRemoveReceipt={modal === 'edit_fuel' && editingFuelId ? handleRemoveFuelReceipt : undefined}
+        flagWarnings={fuelFlagWarnings}
+        drivers={drivers}
+        fuelCards={fuelCards}
+        currentVehicleId={selectedId}
+      />
+      <FuelImportModal
+        isOpen={showFuelImport}
+        onClose={() => setShowFuelImport(false)}
+        onImported={() => { if (selectedId != null) fetchFuelLogs(selectedId); }}
+        vehicles={vehicles}
+      />
+      <FuelBudgetModal
+        isOpen={showBudgetModal}
+        mode={editingBudget ? 'edit' : 'create'}
+        initial={editingBudget}
+        vehicleId={selectedId != null ? Number(selectedId) : null}
+        vehicleLabel={detail ? `#${detail.vehicle_number} — ${[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}` : undefined}
+        onSave={handleSaveBudget}
+        onClose={() => { setShowBudgetModal(false); setEditingBudget(null); }}
+        saving={saving}
+      />
+      <FleetCostFormModal
+        isOpen={showCostModal}
+        category={costModalCategory}
+        mode={editingCostId ? 'edit' : 'create'}
+        form={costForm}
+        onChange={setCostForm}
+        onSave={handleSaveCost}
+        onClose={() => { setShowCostModal(false); setEditingCostId(null); setCostForm(EMPTY_COST_FORM); }}
         saving={saving}
       />
       <InspectionFormModal

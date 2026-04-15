@@ -156,8 +156,386 @@ router.get('/:id', validateParamIdMiddleware, authenticateToken, (req: Request, 
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// Chunked upload endpoints for dash-cam video (for files ≥ 50 MB)
+//
+// Same protocol as bodycam (personnel.ts). Each chunk is ~10 MB, so
+// nginx's client_max_body_size never has to accommodate the full file
+// and a dropped connection only costs one chunk. Rows inserted by
+// upload-complete are indistinguishable from rows inserted by the
+// legacy single-POST path below (same columns, same source='upload',
+// same uploaded_by=username, same audit/broadcast events).
+//
+// Protocol:
+//   1. POST  /upload-init        — { fileName, fileSize, totalChunks, mimeType } → { uploadId }
+//   2. POST  /upload-chunk       — multipart (chunk, uploadId, chunkIndex)
+//   3. POST  /upload-complete    — JSON { uploadId + all metadata fields the legacy POST accepts }
+//   4. DELETE /upload-abort/:id  — idempotent cleanup
+// ═══════════════════════════════════════════════════════════════════
+interface DashcamUploadSession {
+  uploadId: string;
+  username: string;
+  fileName: string;
+  fileSize: number;
+  totalChunks: number;
+  mimeType: string;
+  tmpDir: string;
+  chunksReceived: Set<number>;
+  createdAt: number;
+  updatedAt: number;
+}
+const dashcamSessions = new Map<string, DashcamUploadSession>();
+const DASHCAM_SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const DASHCAM_CHUNK_MAX_SIZE = 15 * 1024 * 1024; // 15 MB (client sends 10 MB, headroom for overhead)
+const DASHCAM_CHUNK_STAGING_DIR = path.join(DASHCAM_DIR, 'tmp', '_staging');
+const DASHCAM_SESSIONS_ROOT = path.join(DASHCAM_DIR, 'tmp');
+if (!fs.existsSync(DASHCAM_CHUNK_STAGING_DIR)) fs.mkdirSync(DASHCAM_CHUNK_STAGING_DIR, { recursive: true });
+
+// Periodic sweep of expired sessions + their tmp dirs. .unref() so this
+// interval doesn't block process exit.
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, s] of dashcamSessions.entries()) {
+    if (now - s.updatedAt > DASHCAM_SESSION_TTL_MS) {
+      try { fs.rmSync(s.tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+      dashcamSessions.delete(id);
+    }
+  }
+}, 5 * 60 * 1000).unref();
+
+const DASHCAM_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Canonical list, shared with UPDATE /:id (line ~288) and legacy POST / (line ~192).
+// Must stay in sync with all three handlers + the client UI's CLASSIFICATIONS array.
+// Adding 'flagged'/'restricted' here fixes uploads where the client UI offered those
+// values but the legacy POST rejected them with 400 (silent Save failure).
+const DASHCAM_VALID_CLASSIFICATIONS = ['routine', 'evidence', 'incident', 'training', 'flagged', 'restricted', 'other'];
+const DASHCAM_VIDEO_MIME_TYPES = new Set([
+  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
+]);
+
+// Multer for a single chunk: goes to shared staging dir with a random name.
+// We can't route to tmp/<uploadId>/ in destination() because req.body isn't
+// populated until after multipart parsing finishes — stage then rename.
+const dashcamChunkStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, DASHCAM_CHUNK_STAGING_DIR),
+  filename: (_req, _file, cb) => cb(null, `stage_${crypto.randomUUID()}`),
+});
+const dashcamChunkUpload = multer({
+  storage: dashcamChunkStorage,
+  limits: { fileSize: DASHCAM_CHUNK_MAX_SIZE, files: 1, fields: 10, parts: 15, fieldSize: 1024 * 1024 },
+});
+
+// ── 1. INIT ────────────────────────────────────────────────────────
+router.post('/upload-init', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const { fileName, fileSize, totalChunks, mimeType } = req.body || {};
+
+    if (typeof fileName !== 'string' || !fileName || fileName.length > 500) {
+      res.status(400).json({ error: 'fileName required (string, max 500 chars)' });
+      return;
+    }
+    const size = Number(fileSize);
+    if (!Number.isFinite(size) || size <= 0 || size > 64 * 1024 * 1024 * 1024) {
+      res.status(400).json({ error: 'fileSize must be a positive number ≤ 64 GB' });
+      return;
+    }
+    const chunks = Number(totalChunks);
+    if (!Number.isInteger(chunks) || chunks < 1 || chunks > 10000) {
+      res.status(400).json({ error: 'totalChunks must be an integer between 1 and 10000' });
+      return;
+    }
+    const mt = typeof mimeType === 'string' ? mimeType : 'video/mp4';
+    if (!DASHCAM_VIDEO_MIME_TYPES.has(mt)) {
+      res.status(400).json({ error: `mimeType ${mt} not allowed. Accepted: MP4, MOV, AVI, WebM, MKV` });
+      return;
+    }
+
+    const uploadId = crypto.randomUUID();
+    const tmpDir = path.join(DASHCAM_SESSIONS_ROOT, uploadId);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const now = Date.now();
+    dashcamSessions.set(uploadId, {
+      uploadId,
+      username: req.user?.username || 'system',
+      fileName,
+      fileSize: size,
+      totalChunks: chunks,
+      mimeType: mt,
+      tmpDir,
+      chunksReceived: new Set<number>(),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    res.status(201).json({ uploadId, totalChunks: chunks, chunkSize: 10 * 1024 * 1024 });
+  } catch (err: any) {
+    console.error('[dashcam upload-init] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to initialize upload session' });
+  }
+});
+
+// ── 2. CHUNK ───────────────────────────────────────────────────────
+router.post('/upload-chunk', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  req.setTimeout(180000);
+  dashcamChunkUpload.single('chunk')(req, res, (multerErr: any) => {
+    const cleanupStaged = () => {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      }
+    };
+
+    if (multerErr) {
+      cleanupStaged();
+      console.error('[dashcam upload-chunk] multer error:', multerErr?.message);
+      res.status(400).json({ error: multerErr.message || 'Chunk upload failed' });
+      return;
+    }
+
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: 'chunk file required' });
+        return;
+      }
+      const { uploadId, chunkIndex } = req.body || {};
+      if (typeof uploadId !== 'string' || !DASHCAM_UUID_RE.test(uploadId)) {
+        cleanupStaged();
+        res.status(400).json({ error: 'valid uploadId (UUID) required' });
+        return;
+      }
+      const idx = Number(chunkIndex);
+      if (!Number.isInteger(idx) || idx < 0) {
+        cleanupStaged();
+        res.status(400).json({ error: 'chunkIndex must be a non-negative integer' });
+        return;
+      }
+
+      const session = dashcamSessions.get(uploadId);
+      if (!session) {
+        cleanupStaged();
+        res.status(404).json({ error: 'Upload session not found or expired' });
+        return;
+      }
+      if (session.username !== (req.user?.username || 'system')) {
+        cleanupStaged();
+        res.status(403).json({ error: 'Upload session owned by another user' });
+        return;
+      }
+      if (idx >= session.totalChunks) {
+        cleanupStaged();
+        res.status(400).json({ error: `chunkIndex ${idx} exceeds totalChunks ${session.totalChunks}` });
+        return;
+      }
+
+      const destPath = path.join(session.tmpDir, `${idx}.part`);
+      if (fs.existsSync(destPath)) {
+        // Retry for an already-accepted chunk — overwrite rather than leak the staged file.
+        try { fs.unlinkSync(destPath); } catch { /* ignore */ }
+      }
+      fs.renameSync(req.file.path, destPath);
+
+      session.chunksReceived.add(idx);
+      session.updatedAt = Date.now();
+
+      res.json({
+        ok: true,
+        chunkIndex: idx,
+        received: session.chunksReceived.size,
+        total: session.totalChunks,
+      });
+    } catch (err: any) {
+      cleanupStaged();
+      console.error('[dashcam upload-chunk] error:', err?.message, err?.stack);
+      res.status(500).json({ error: 'Failed to save chunk' });
+    }
+  });
+});
+
+// ── 3. COMPLETE ────────────────────────────────────────────────────
+router.post('/upload-complete', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  req.setTimeout(1800000);
+  res.setTimeout(1800000);
+
+  let finalPath: string | null = null;
+
+  try {
+    const {
+      uploadId, title, vehicle_id, unit_id, recorded_at, case_number,
+      classification, speed_mph, latitude, longitude, address, notes,
+      duration_seconds,
+    } = req.body || {};
+
+    if (typeof uploadId !== 'string' || !DASHCAM_UUID_RE.test(uploadId)) {
+      res.status(400).json({ error: 'valid uploadId (UUID) required' });
+      return;
+    }
+    const session = dashcamSessions.get(uploadId);
+    if (!session) {
+      res.status(404).json({ error: 'Upload session not found or expired' });
+      return;
+    }
+    if (session.username !== (req.user?.username || 'system')) {
+      res.status(403).json({ error: 'Upload session owned by another user' });
+      return;
+    }
+
+    // Mirror legacy POST validation (whitelist + ranges) so chunked-complete
+    // rejects the same inputs the single-POST path would reject.
+    if (!title || typeof title !== 'string' || title.length > 500) {
+      res.status(400).json({ error: 'title required (string, max 500 chars)', code: 'TITLE_IS_REQUIRED' });
+      return;
+    }
+    if (classification && !DASHCAM_VALID_CLASSIFICATIONS.includes(classification)) {
+      res.status(400).json({ error: `Classification must be one of: ${DASHCAM_VALID_CLASSIFICATIONS.join(', ')}` });
+      return;
+    }
+    if (latitude != null) {
+      const lat = parseFloat(String(latitude));
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'latitude must be between -90 and 90', code: 'LATITUDE_MUST_BE_BETWEEN' });
+        return;
+      }
+    }
+    if (longitude != null) {
+      const lng = parseFloat(String(longitude));
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'longitude must be between -180 and 180', code: 'LONGITUDE_MUST_BE_BETWEEN' });
+        return;
+      }
+    }
+
+    if (session.chunksReceived.size !== session.totalChunks) {
+      res.status(409).json({
+        error: `Incomplete upload: received ${session.chunksReceived.size}/${session.totalChunks} chunks`,
+        received: session.chunksReceived.size,
+        total: session.totalChunks,
+      });
+      return;
+    }
+
+    // Assemble into DASHCAM_DIR with the same filename convention as the
+    // legacy multer diskStorage (dashcam_<ts>_<rand>.<ext>).
+    const ext = path.extname(session.fileName || '').toLowerCase() || '.mp4';
+    const filename = `dashcam_${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`;
+    finalPath = path.join(DASHCAM_DIR, filename);
+
+    // Stream-concat chunks 0..N-1 in order. Never buffers full video in RAM.
+    await new Promise<void>((resolve, reject) => {
+      const output = fs.createWriteStream(finalPath as string);
+      let i = 0;
+      const pipeNext = () => {
+        if (i >= session.totalChunks) {
+          output.end();
+          return;
+        }
+        const chunkPath = path.join(session.tmpDir, `${i}.part`);
+        if (!fs.existsSync(chunkPath)) {
+          output.destroy();
+          reject(new Error(`Chunk ${i} missing on disk`));
+          return;
+        }
+        const input = fs.createReadStream(chunkPath);
+        input.on('error', (e) => { output.destroy(); reject(e); });
+        input.on('end', () => { i++; pipeNext(); });
+        input.pipe(output, { end: false });
+      };
+      output.on('error', reject);
+      output.on('finish', () => resolve());
+      pipeNext();
+    });
+
+    const diskStat = fs.statSync(finalPath);
+    if (diskStat.size !== session.fileSize) {
+      console.warn(`[dashcam upload-complete] size mismatch: declared=${session.fileSize}, assembled=${diskStat.size}`);
+      // Non-fatal: client-declared size is a hint; disk is authoritative.
+    }
+
+    const db = getDb();
+
+    // Auto-resolve vehicle_id from unit's assigned fleet vehicle if not provided.
+    let resolvedVehicleId = vehicle_id || null;
+    if (!resolvedVehicleId && unit_id) {
+      const fv = db.prepare('SELECT id FROM fleet_vehicles WHERE assigned_unit_id = ?').get(unit_id) as any;
+      if (fv) resolvedVehicleId = fv.id;
+    }
+
+    const now = localNow();
+    const result = db.prepare(`
+      INSERT INTO dashcam_videos
+        (vehicle_id, unit_id, title, file_path, file_size, duration_seconds, mime_type,
+         recorded_at, case_number, classification, speed_mph, latitude, longitude, address,
+         notes, source, uploaded_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, ?, ?)
+    `).run(
+      resolvedVehicleId,
+      unit_id || null,
+      title,
+      filename,
+      diskStat.size,
+      duration_seconds ? parseInt(String(duration_seconds), 10) : null,
+      session.mimeType,
+      recorded_at || null,
+      case_number || null,
+      classification || 'routine',
+      speed_mph ? parseFloat(String(speed_mph)) : null,
+      latitude ? parseFloat(String(latitude)) : null,
+      longitude ? parseFloat(String(longitude)) : null,
+      address || null,
+      notes || null,
+      session.username,
+      now, now,
+    );
+
+    const id = Number(result.lastInsertRowid);
+
+    // Session cleanup (best effort — sweep picks up orphans).
+    try { fs.rmSync(session.tmpDir, { recursive: true, force: true }); } catch { /* swept later */ }
+    dashcamSessions.delete(uploadId);
+
+    auditLog(req, 'dashcam_uploaded', 'dashcam_video', id, `Uploaded dash cam video (chunked): ${title}`);
+    broadcast('fleet', 'dashcam_uploaded', { id, title });
+
+    res.json({ success: true, id });
+  } catch (err: any) {
+    console.error('[dashcam upload-complete] error:', err?.message, err?.stack);
+    // Rollback: if we assembled the final file but INSERT failed, don't leave an orphan.
+    if (finalPath && fs.existsSync(finalPath)) {
+      try { fs.unlinkSync(finalPath); } catch { /* orphan — operator cleanup */ }
+    }
+    if (!res.headersSent) {
+      res.status(500).json({ error: `Upload completion failed: ${err?.message || 'Internal server error'}`, code: 'INTERNAL_SERVER_ERROR' });
+    }
+  }
+});
+
+// ── 4. ABORT ───────────────────────────────────────────────────────
+router.delete('/upload-abort/:uploadId', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const uploadId = String(req.params.uploadId || '');
+    if (!DASHCAM_UUID_RE.test(uploadId)) {
+      res.status(400).json({ error: 'valid uploadId (UUID) required' });
+      return;
+    }
+    const session = dashcamSessions.get(uploadId);
+    if (!session) {
+      res.json({ ok: true, alreadyGone: true });
+      return;
+    }
+    if (session.username !== (req.user?.username || 'system')) {
+      res.status(403).json({ error: 'Upload session owned by another user' });
+      return;
+    }
+    try { fs.rmSync(session.tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+    dashcamSessions.delete(uploadId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[dashcam upload-abort] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to abort upload session' });
+  }
+});
+
 // ============================================================
-// POST /api/fleet/dashcam-videos — Upload a new dash cam video
+// POST /api/fleet/dashcam-videos — Upload a new dash cam video (legacy, < 50 MB)
 // ============================================================
 router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), upload.single('video'), (req: Request, res: Response) => {
   try {
@@ -188,11 +566,12 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
-    // Validate classification whitelist
-    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'other'];
-    if (classification && !validClassifications.includes(classification)) {
+    // Validate classification whitelist — must match DASHCAM_VALID_CLASSIFICATIONS
+    // and the UPDATE handler's list (line ~288). Client UI offers 'flagged'/'restricted',
+    // so those must be accepted here or the Save button silently fails.
+    if (classification && !DASHCAM_VALID_CLASSIFICATIONS.includes(classification)) {
       fs.unlinkSync(req.file.path);
-      res.status(400).json({ error: `Classification must be one of: ${validClassifications.join(', ')}` });
+      res.status(400).json({ error: `Classification must be one of: ${DASHCAM_VALID_CLASSIFICATIONS.join(', ')}` });
       return;
     }
 
@@ -283,11 +662,8 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
       res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_MUST_BE_500' });
       return;
     }
-    // Audit 2026-04-11: client offered 'flagged' and 'restricted' but server
-    // rejected them — Save button silently failed. Added both to the allowlist.
-    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'flagged', 'restricted', 'other'];
-    if (req.body.classification && !validClassifications.includes(req.body.classification)) {
-      res.status(400).json({ error: `Classification must be one of: ${validClassifications.join(', ')}` });
+    if (req.body.classification && !DASHCAM_VALID_CLASSIFICATIONS.includes(req.body.classification)) {
+      res.status(400).json({ error: `Classification must be one of: ${DASHCAM_VALID_CLASSIFICATIONS.join(', ')}` });
       return;
     }
     if (req.body.notes !== undefined && req.body.notes !== null && typeof req.body.notes === 'string' && req.body.notes.length > 10000) {
@@ -300,6 +676,10 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
     // null. Switched to a dynamic SET clause gated by hasOwnProperty so
     // explicit nulls now write through correctly and only fields actually
     // present in the request body are touched.
+    //
+    // Audit 2026-04-14: hoisted the classification whitelist into the module-
+    // scope DASHCAM_VALID_CLASSIFICATIONS constant so legacy POST /,
+    // chunked upload-complete, and this UPDATE share one list.
     const fieldMap: Record<string, (v: any) => any> = {
       title: v => v ?? null,
       vehicle_id: v => v ?? null,

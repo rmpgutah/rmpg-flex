@@ -3504,7 +3504,360 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
-  // POST /api/personnel/bodycam-videos - Upload video
+  // ═══════════════════════════════════════════════════════════════════
+  // Chunked upload endpoints for body-camera video (for files ≥ 50 MB)
+  //
+  // Why chunked: a single multi-GB POST hits nginx's client_max_body_size
+  // edge cap, Node's requestTimeout, and TCP reset risk. Splitting into
+  // 10 MB chunks means each HTTP request is tiny, a dropped connection
+  // only loses one chunk (client retries with backoff), and total upload
+  // size is effectively unbounded.
+  //
+  // Protocol (matches VideoUploadModal.tsx, triggered at file.size >= 50 MB):
+  //   1. POST  /personnel/bodycam-videos/upload-init      — create session
+  //   2. POST  /personnel/bodycam-videos/upload-chunk     — stream chunks (repeated)
+  //   3. POST  /personnel/bodycam-videos/upload-complete  — assemble + insert DB row
+  //   4. DELETE /personnel/bodycam-videos/upload-abort/:id — cleanup on cancel
+  //
+  // Sessions are held in RAM with a 4-hour TTL swept every 5 min. Session
+  // authorship (req.user.userId) is bound at init, so only the originating
+  // user can push chunks / complete / abort.
+  // ═══════════════════════════════════════════════════════════════════
+  interface ChunkedUploadSession {
+    uploadId: string;
+    userId: string;
+    fileName: string;
+    fileSize: number;
+    totalChunks: number;
+    mimeType: string;
+    tmpDir: string;
+    chunksReceived: Set<number>;
+    createdAt: number;
+    updatedAt: number;
+  }
+  const chunkedSessions = new Map<string, ChunkedUploadSession>();
+  const CHUNK_SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+  const CHUNK_MAX_SIZE = 15 * 1024 * 1024; // 15 MB (client sends 10 MB, headroom for overhead)
+  const CHUNK_STAGING_DIR = path.join(BODYCAM_DIR, 'tmp', '_staging');
+  const CHUNK_SESSIONS_ROOT = path.join(BODYCAM_DIR, 'tmp');
+  if (!fs.existsSync(CHUNK_STAGING_DIR)) fs.mkdirSync(CHUNK_STAGING_DIR, { recursive: true });
+
+  // Periodic sweep of expired sessions + their tmp dirs. .unref() so this
+  // interval doesn't block process exit.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, s] of chunkedSessions.entries()) {
+      if (now - s.updatedAt > CHUNK_SESSION_TTL_MS) {
+        try { fs.rmSync(s.tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+        chunkedSessions.delete(id);
+      }
+    }
+  }, 5 * 60 * 1000).unref();
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // Multer for a single chunk: goes to shared staging dir with a random name.
+  // We can't route to tmp/<uploadId>/ in destination() because req.body isn't
+  // populated until after multipart parsing finishes — so we stage, then
+  // rename inside the handler once uploadId is known.
+  const chunkStagingStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, CHUNK_STAGING_DIR),
+    filename: (_req, _file, cb) => cb(null, `stage_${crypto.randomUUID()}`),
+  });
+  const bodycamChunkUpload = multer({
+    storage: chunkStagingStorage,
+    limits: { fileSize: CHUNK_MAX_SIZE, files: 1, fields: 10, parts: 15, fieldSize: 1024 * 1024 },
+  });
+
+  // ── 1. INIT ────────────────────────────────────────────────────────
+  parentRouter.post('/personnel/bodycam-videos/upload-init', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const { fileName, fileSize, totalChunks, mimeType } = req.body || {};
+
+      if (typeof fileName !== 'string' || !fileName || fileName.length > 500) {
+        res.status(400).json({ error: 'fileName required (string, max 500 chars)' });
+        return;
+      }
+      const size = Number(fileSize);
+      if (!Number.isFinite(size) || size <= 0 || size > 64 * 1024 * 1024 * 1024) {
+        res.status(400).json({ error: 'fileSize must be a positive number ≤ 64 GB' });
+        return;
+      }
+      const chunks = Number(totalChunks);
+      if (!Number.isInteger(chunks) || chunks < 1 || chunks > 10000) {
+        res.status(400).json({ error: 'totalChunks must be an integer between 1 and 10000' });
+        return;
+      }
+      const mt = typeof mimeType === 'string' ? mimeType : 'video/mp4';
+      if (!VIDEO_MIME_TYPES.has(mt)) {
+        res.status(400).json({ error: `mimeType ${mt} not allowed. Accepted: MP4, MOV, AVI, WebM, MKV` });
+        return;
+      }
+
+      const uploadId = crypto.randomUUID();
+      const tmpDir = path.join(CHUNK_SESSIONS_ROOT, uploadId);
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      const now = Date.now();
+      chunkedSessions.set(uploadId, {
+        uploadId,
+        userId: String(req.user!.userId),
+        fileName,
+        fileSize: size,
+        totalChunks: chunks,
+        mimeType: mt,
+        tmpDir,
+        chunksReceived: new Set<number>(),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      res.status(201).json({ uploadId, totalChunks: chunks, chunkSize: 10 * 1024 * 1024 });
+    } catch (err: any) {
+      console.error('[bodycam upload-init] error:', err?.message, err?.stack);
+      res.status(500).json({ error: 'Failed to initialize upload session' });
+    }
+  });
+
+  // ── 2. CHUNK ───────────────────────────────────────────────────────
+  parentRouter.post('/personnel/bodycam-videos/upload-chunk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    // Generous per-chunk timeout — one chunk is ~10 MB so seconds at worst.
+    req.setTimeout(180000);
+    bodycamChunkUpload.single('chunk')(req, res, (multerErr: any) => {
+      // Cleanup staged file on any error path
+      const cleanupStaged = () => {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+        }
+      };
+
+      if (multerErr) {
+        cleanupStaged();
+        console.error('[bodycam upload-chunk] multer error:', multerErr?.message);
+        res.status(400).json({ error: multerErr.message || 'Chunk upload failed' });
+        return;
+      }
+
+      try {
+        if (!req.file) {
+          res.status(400).json({ error: 'chunk file required' });
+          return;
+        }
+        const { uploadId, chunkIndex } = req.body || {};
+        if (typeof uploadId !== 'string' || !UUID_RE.test(uploadId)) {
+          cleanupStaged();
+          res.status(400).json({ error: 'valid uploadId (UUID) required' });
+          return;
+        }
+        const idx = Number(chunkIndex);
+        if (!Number.isInteger(idx) || idx < 0) {
+          cleanupStaged();
+          res.status(400).json({ error: 'chunkIndex must be a non-negative integer' });
+          return;
+        }
+
+        const session = chunkedSessions.get(uploadId);
+        if (!session) {
+          cleanupStaged();
+          res.status(404).json({ error: 'Upload session not found or expired' });
+          return;
+        }
+        if (session.userId !== String(req.user!.userId)) {
+          cleanupStaged();
+          res.status(403).json({ error: 'Upload session owned by another user' });
+          return;
+        }
+        if (idx >= session.totalChunks) {
+          cleanupStaged();
+          res.status(400).json({ error: `chunkIndex ${idx} exceeds totalChunks ${session.totalChunks}` });
+          return;
+        }
+
+        // Rename staged file into the session dir. Both paths live under
+        // BODYCAM_DIR on the same filesystem so rename is atomic + cheap.
+        const destPath = path.join(session.tmpDir, `${idx}.part`);
+        // If the rename target already exists (client retry landed after first
+        // success), overwrite it rather than leaking the staged file.
+        if (fs.existsSync(destPath)) {
+          try { fs.unlinkSync(destPath); } catch { /* ignore */ }
+        }
+        fs.renameSync(req.file.path, destPath);
+
+        session.chunksReceived.add(idx);
+        session.updatedAt = Date.now();
+
+        res.json({
+          ok: true,
+          chunkIndex: idx,
+          received: session.chunksReceived.size,
+          total: session.totalChunks,
+        });
+      } catch (err: any) {
+        cleanupStaged();
+        console.error('[bodycam upload-chunk] error:', err?.message, err?.stack);
+        res.status(500).json({ error: 'Failed to save chunk' });
+      }
+    });
+  });
+
+  // ── 3. COMPLETE ────────────────────────────────────────────────────
+  parentRouter.post('/personnel/bodycam-videos/upload-complete', authenticateToken, requireRole('admin'), async (req: Request, res: Response) => {
+    // Assembly streams chunk files — no 10-min API cap since we're writing, not uploading.
+    req.setTimeout(1800000);
+    res.setTimeout(1800000);
+
+    let finalPath: string | null = null; // populated after rename, used for rollback
+
+    try {
+      const { uploadId, camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes } = req.body || {};
+
+      if (typeof uploadId !== 'string' || !UUID_RE.test(uploadId)) {
+        res.status(400).json({ error: 'valid uploadId (UUID) required' });
+        return;
+      }
+      const session = chunkedSessions.get(uploadId);
+      if (!session) {
+        res.status(404).json({ error: 'Upload session not found or expired' });
+        return;
+      }
+      if (session.userId !== String(req.user!.userId)) {
+        res.status(403).json({ error: 'Upload session owned by another user' });
+        return;
+      }
+      if (!camera_id || !officer_id || !title) {
+        res.status(400).json({ error: 'camera_id, officer_id, and title are required', code: 'CAMERAID_OFFICERID_AND_TITLE' });
+        return;
+      }
+      if (session.chunksReceived.size !== session.totalChunks) {
+        res.status(409).json({
+          error: `Incomplete upload: received ${session.chunksReceived.size}/${session.totalChunks} chunks`,
+          received: session.chunksReceived.size,
+          total: session.totalChunks,
+        });
+        return;
+      }
+
+      // Destination directory matches the legacy POST's YYYY/MM layout.
+      const now = new Date();
+      const subDir = path.join(BODYCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+      if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
+
+      const ext = path.extname(session.fileName || '').toLowerCase() || '.mp4';
+      finalPath = path.join(subDir, `${crypto.randomUUID()}${ext}`);
+
+      // Stream-concat chunks 0..N-1 in order. This never buffers the full
+      // video in RAM — one 10 MB chunk is in-flight at a time.
+      await new Promise<void>((resolve, reject) => {
+        const output = fs.createWriteStream(finalPath as string);
+        let i = 0;
+        const pipeNext = () => {
+          if (i >= session.totalChunks) {
+            output.end();
+            return;
+          }
+          const chunkPath = path.join(session.tmpDir, `${i}.part`);
+          if (!fs.existsSync(chunkPath)) {
+            output.destroy();
+            reject(new Error(`Chunk ${i} missing on disk`));
+            return;
+          }
+          const input = fs.createReadStream(chunkPath);
+          input.on('error', (e) => { output.destroy(); reject(e); });
+          input.on('end', () => { i++; pipeNext(); });
+          input.pipe(output, { end: false });
+        };
+        output.on('error', reject);
+        output.on('finish', () => resolve());
+        pipeNext();
+      });
+
+      // Verify assembled size matches the session's declared size.
+      const diskStat = fs.statSync(finalPath);
+      if (diskStat.size !== session.fileSize) {
+        console.warn(`[bodycam upload-complete] size mismatch: declared=${session.fileSize}, assembled=${diskStat.size}`);
+        // Not fatal — declared size is a client hint; disk size is authoritative.
+      }
+
+      const db = getDb();
+      const relativePath = path.relative(BODYCAM_DIR, finalPath);
+
+      const result = db.prepare(`
+        INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        camera_id, officer_id, title, relativePath, diskStat.size,
+        duration_seconds || null, session.mimeType,
+        recorded_at || localNow(), case_number || null,
+        classification || 'routine', notes || null, String(req.user!.userId)
+      );
+      const videoId = result.lastInsertRowid;
+
+      const video = db.prepare(`
+        SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
+        FROM bodycam_videos v
+        LEFT JOIN users u ON v.officer_id = u.id
+        LEFT JOIN body_cameras c ON v.camera_id = c.id
+        WHERE v.id = ?
+      `).get(videoId);
+
+      // Session + tmp dir cleanup. Non-fatal if it fails — the sweep will pick it up.
+      try { fs.rmSync(session.tmpDir, { recursive: true, force: true }); } catch { /* swept later */ }
+      chunkedSessions.delete(uploadId);
+
+      // Fire-and-forget ffprobe (same pattern as legacy POST)
+      extractVideoDuration(finalPath).then((probedDuration) => {
+        if (probedDuration != null) {
+          try {
+            const dbInner = getDb();
+            dbInner.prepare('UPDATE bodycam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
+              .run(probedDuration, localNow(), videoId);
+          } catch (e: any) {
+            console.warn('[bodycam upload-complete] ffprobe duration update failed:', e?.message);
+          }
+        }
+      }).catch(() => { /* ffprobe not available */ });
+
+      res.status(201).json(video);
+    } catch (err: any) {
+      console.error('[bodycam upload-complete] error:', err?.message, err?.stack);
+      // Rollback: if we created the final file but INSERT failed, don't leave an orphan video.
+      if (finalPath && fs.existsSync(finalPath)) {
+        try { fs.unlinkSync(finalPath); } catch { /* orphan — operator cleanup */ }
+      }
+      if (!res.headersSent) {
+        res.status(500).json({ error: `Upload completion failed: ${err?.message || 'Internal server error'}` });
+      }
+    }
+  });
+
+  // ── 4. ABORT ───────────────────────────────────────────────────────
+  parentRouter.delete('/personnel/bodycam-videos/upload-abort/:uploadId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const uploadId = String(req.params.uploadId || '');
+      if (!UUID_RE.test(uploadId)) {
+        res.status(400).json({ error: 'valid uploadId (UUID) required' });
+        return;
+      }
+      const session = chunkedSessions.get(uploadId);
+      if (!session) {
+        // Idempotent — aborting a non-existent session is a no-op.
+        res.json({ ok: true, alreadyGone: true });
+        return;
+      }
+      if (session.userId !== String(req.user!.userId)) {
+        res.status(403).json({ error: 'Upload session owned by another user' });
+        return;
+      }
+      try { fs.rmSync(session.tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+      chunkedSessions.delete(uploadId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error('[bodycam upload-abort] error:', err?.message, err?.stack);
+      res.status(500).json({ error: 'Failed to abort upload session' });
+    }
+  });
+
+  // POST /api/personnel/bodycam-videos - Upload video (legacy single-POST, used for files < 50 MB)
   parentRouter.post('/personnel/bodycam-videos', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
     // Increase timeout for large video uploads (10 minutes)
     req.setTimeout(600000);

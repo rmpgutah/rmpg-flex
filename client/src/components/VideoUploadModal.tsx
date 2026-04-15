@@ -8,6 +8,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
+import { chunkedVideoUpload, DEFAULT_CHUNK_SIZE } from '../utils/chunkedVideoUpload';
 
 interface Props {
   isOpen: boolean;
@@ -34,9 +35,6 @@ const ACTIVATION_TYPES: { value: string; label: string }[] = [
   { value: 'POST_EVENT', label: 'Post-Event' },
 ];
 
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunks
-const MAX_RETRIES = 3;
-
 type UploadPhase = 'idle' | 'initializing' | 'uploading' | 'finalizing' | 'done' | 'error';
 
 export default function VideoUploadModal({
@@ -61,9 +59,10 @@ export default function VideoUploadModal({
   const [eta, setEta] = useState(0); // seconds remaining
   const [chunkStatus, setChunkStatus] = useState('');
   const [error, setError] = useState('');
-  const abortRef = useRef(false);
-  const activeXhrRef = useRef<XMLHttpRequest | null>(null);
-  const uploadIdRef = useRef<string | null>(null);
+  // The shared chunkedVideoUpload util owns the in-flight XHRs, the upload
+  // session id, and the abort DELETE — we only need an AbortController here
+  // to fire when the user clicks Cancel.
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   if (!isOpen) return null;
 
@@ -84,8 +83,7 @@ export default function VideoUploadModal({
     setError('');
     setDuration(null);
     setPhase('idle');
-    abortRef.current = false;
-    uploadIdRef.current = null;
+    abortControllerRef.current = null;
   };
 
   const handleClose = () => {
@@ -112,65 +110,10 @@ export default function VideoUploadModal({
     }
   };
 
-  const apiFetchJson = async (url: string, opts: RequestInit = {}) => {
-    const headers: Record<string, string> = { ...getAuthHeaders() };
-    if (!(opts.body instanceof FormData)) {
-      headers['Content-Type'] = 'application/json';
-    }
-    const res = await fetch(`${apiBase}${url}`, { ...opts, headers: { ...headers, ...(opts.headers as Record<string, string> || {}) } });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `HTTP ${res.status}`);
-    }
-    return await res.json();
-  };
-
-  /** Upload a single chunk via XHR (for progress tracking per chunk) */
-  const uploadChunk = (uploadId: string, chunkIndex: number, blob: Blob): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('chunk', blob, `chunk_${chunkIndex}`);
-      formData.append('uploadId', uploadId);
-      formData.append('chunkIndex', String(chunkIndex));
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${apiBase}/personnel/bodycam-videos/upload-chunk`);
-      xhr.timeout = 120000; // 2 min per chunk
-
-      const headers = getAuthHeaders();
-      for (const [key, val] of Object.entries(headers)) xhr.setRequestHeader(key, val);
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve();
-        else {
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            reject(new Error(resp.error || `Chunk ${chunkIndex} failed (HTTP ${xhr.status})`));
-          } catch {
-            reject(new Error(`Chunk ${chunkIndex} failed (HTTP ${xhr.status})`));
-          }
-        }
-      };
-      xhr.onerror = () => reject(new Error(`Network error on chunk ${chunkIndex}`));
-      xhr.ontimeout = () => reject(new Error(`Chunk ${chunkIndex} timed out`));
-      xhr.send(formData);
-    });
-  };
-
-  const handleAbort = async () => {
-    abortRef.current = true;
-    if (activeXhrRef.current) { activeXhrRef.current.abort(); activeXhrRef.current = null; }
+  const handleAbort = () => {
+    abortControllerRef.current?.abort();
     setPhase('idle');
     setChunkStatus('Upload cancelled');
-    if (uploadIdRef.current) {
-      try {
-        await fetch(`${apiBase}/personnel/bodycam-videos/upload-abort/${uploadIdRef.current}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
-      } catch { /* best effort cleanup */ }
-    }
-    uploadIdRef.current = null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -180,158 +123,60 @@ export default function VideoUploadModal({
       return;
     }
 
-    abortRef.current = false;
     setError('');
     setProgress(0);
     setBytesUploaded(0);
     setSpeed(0);
     setEta(0);
+    setPhase('initializing');
+    setChunkStatus('Preparing upload...');
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     const selectedCamera = cameras.find(c => String(c.id) === cameraId);
     const resolvedOfficerId = selectedCamera?.officer_id || officerId;
 
-    // For small files (< 50MB), use legacy single-file upload
-    if (file.size < 50 * 1024 * 1024) {
-      setPhase('uploading');
-      setChunkStatus('Uploading file...');
-
-      const formData = new FormData();
-      formData.append('video', file);
-      formData.append('title', title);
-      formData.append('camera_id', cameraId);
-      formData.append('officer_id', String(resolvedOfficerId));
-      formData.append('classification', classification);
-      if (duration != null) formData.append('duration_seconds', String(duration));
-      if (recordedAt) formData.append('recorded_at', recordedAt);
-      if (caseNumber) formData.append('case_number', caseNumber);
-      if (notes) formData.append('notes', notes);
-
-      const xhr = new XMLHttpRequest();
-      activeXhrRef.current = xhr;
-      xhr.open('POST', `${apiBase}/personnel/bodycam-videos`);
-      xhr.timeout = 600000;
-      const headers = getAuthHeaders();
-      for (const [key, val] of Object.entries(headers)) xhr.setRequestHeader(key, val);
-
-      xhr.upload.onprogress = (ev) => {
-        if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 100));
-      };
-      xhr.onload = () => {
-        activeXhrRef.current = null;
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setPhase('done');
-          setTimeout(() => { reset(); onUploaded(); onClose(); }, 500);
-        } else {
-          setPhase('error');
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            setError(resp.error || `Upload failed (HTTP ${xhr.status})`);
-          } catch {
-            setError(`Upload failed (HTTP ${xhr.status})`);
-          }
-        }
-      };
-      xhr.onerror = () => { activeXhrRef.current = null; setPhase('error'); setError('Network error — upload failed.'); };
-      xhr.ontimeout = () => { activeXhrRef.current = null; setPhase('error'); setError('Upload timed out.'); };
-      xhr.send(formData);
-      return;
-    }
-
-    // ── Chunked upload for large files ──────────────────────────
+    // The shared util handles the small-file (single-POST) vs chunked
+    // branching internally at file.size ≥ 50 MB, runs 4 concurrent chunk
+    // uploads by default (~2–4× faster on broadband), retries each chunk
+    // up to 3× with backoff, and cancels all workers + fires the server
+    // abort DELETE when `controller.abort()` is called.
     try {
-      // Phase 1: Initialize
-      setPhase('initializing');
-      setChunkStatus('Initializing upload session...');
-
-      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-      const initData = await apiFetchJson('/personnel/bodycam-videos/upload-init', {
-        method: 'POST',
-        body: JSON.stringify({
-          fileName: file.name,
-          fileSize: file.size,
-          totalChunks,
-          mimeType: file.type || 'video/mp4',
-        }),
-      });
-
-      const uploadId = initData.uploadId;
-      uploadIdRef.current = uploadId;
-
-      // Phase 2: Upload chunks
-      setPhase('uploading');
-      const startTime = Date.now();
-      let totalSent = 0;
-
-      for (let i = 0; i < totalChunks; i++) {
-        if (abortRef.current) return;
-
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, file.size);
-        const blob = file.slice(start, end);
-
-        setChunkStatus(`Uploading chunk ${i + 1} of ${totalChunks}...`);
-
-        // Retry logic
-        let lastErr: Error | null = null;
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-          if (abortRef.current) return;
-          try {
-            await uploadChunk(uploadId, i, blob);
-            lastErr = null;
-            break;
-          } catch (err: any) {
-            lastErr = err;
-            if (attempt < MAX_RETRIES - 1) {
-              setChunkStatus(`Chunk ${i + 1} failed, retrying (${attempt + 2}/${MAX_RETRIES})...`);
-              await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // backoff
-            }
-          }
-        }
-
-        if (lastErr) throw lastErr;
-
-        totalSent += (end - start);
-        setBytesUploaded(totalSent);
-        setProgress(Math.round((totalSent / file.size) * 100));
-
-        // Calculate speed and ETA
-        const elapsed = (Date.now() - startTime) / 1000;
-        const currentSpeed = elapsed > 0 ? totalSent / elapsed : 0;
-        setSpeed(currentSpeed);
-        const remaining = file.size - totalSent;
-        setEta(currentSpeed > 0 ? Math.round(remaining / currentSpeed) : 0);
-      }
-
-      if (abortRef.current) return;
-
-      // Phase 3: Finalize
-      setPhase('finalizing');
-      setChunkStatus('Assembling file on server...');
-
-      await apiFetchJson('/personnel/bodycam-videos/upload-complete', {
-        method: 'POST',
-        body: JSON.stringify({
-          uploadId,
+      await chunkedVideoUpload({
+        endpoint: '/personnel/bodycam-videos',
+        file,
+        headers: getAuthHeaders(),
+        abortSignal: controller.signal,
+        metadata: {
+          title,
           camera_id: cameraId,
           officer_id: resolvedOfficerId,
-          title,
-          duration_seconds: duration,
-          recorded_at: recordedAt || undefined,
-          case_number: caseNumber || undefined,
           classification,
-          notes: notes || undefined,
-        }),
+          duration_seconds: duration ?? undefined,
+          recorded_at: recordedAt,
+          case_number: caseNumber,
+          notes,
+        },
+        onProgress: (p) => {
+          setPhase(p.phase);
+          setProgress(p.percent);
+          setBytesUploaded(p.bytesUploaded);
+          setSpeed(p.speed);
+          setEta(p.eta);
+          setChunkStatus(p.message);
+        },
       });
-
       setPhase('done');
       setChunkStatus('Upload complete!');
       setTimeout(() => { reset(); onUploaded(); onClose(); }, 800);
-
     } catch (err: any) {
-      if (!abortRef.current) {
-        setPhase('error');
-        setError(err?.message || 'Upload failed');
+      if (err?.name === 'AbortError') {
+        // Already handled by handleAbort — keep UI in idle state.
+        return;
       }
+      setPhase('error');
+      setError(err?.message || 'Upload failed');
     }
   };
 
@@ -401,7 +246,7 @@ export default function VideoUploadModal({
                     {duration != null && <> &bull; {formatDurationHMS(duration)}</>}
                     {file.size >= 50 * 1024 * 1024 && (
                       <span className="ml-1 text-brand-400">
-                        &bull; Chunked upload ({Math.ceil(file.size / CHUNK_SIZE)} parts)
+                        &bull; Chunked upload ({Math.ceil(file.size / DEFAULT_CHUNK_SIZE)} parts, 4 parallel)
                       </span>
                     )}
                   </p>

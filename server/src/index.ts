@@ -160,10 +160,13 @@ app.use((req, res, next) => {
 });
 
 // ─── Request Timeout Middleware ────────────────────────
-// Protect against hung requests — 30s for API, 600s for uploads
+// Protect against hung requests — 30s for API, 30min for uploads.
+// The 30-minute upload window matches nginx proxy_read_timeout and
+// Node's primaryServer.requestTimeout so all three layers fail together
+// instead of cutting off mid-transfer on slow links during 4–10 GB uploads.
 app.use((req, res, next) => {
   const isUpload = req.path.startsWith('/api/uploads') || req.path.startsWith('/api/fleet/dashcam-videos');
-  const timeout = isUpload ? 600000 : 30000; // 10min for uploads, 30s for API
+  const timeout = isUpload ? 1800000 : 30000; // 30min for uploads, 30s for API
   req.setTimeout(timeout, () => {
     if (!res.headersSent) {
       res.status(408).json({ error: 'Request timeout' });
@@ -562,9 +565,12 @@ try {
 
   const displayHost = config.isProduction ? config.primaryDomain : 'localhost';
 
-  // Increase timeouts for large file uploads (body cam video — up to 2 GB)
-  primaryServer.requestTimeout = 600000;   // 10 min
-  primaryServer.headersTimeout = 120000;   // 2 min for headers
+  // Increase timeouts for large file uploads (body cam / dashcam video — up to 10 GB)
+  // requestTimeout matches nginx proxy_read_timeout (1800s) so Node doesn't cut off
+  // mid-upload on slow links — a 10 GB file at 10 Mbps takes ~2.3 hours, but typical
+  // 4–6 GB uploads on 20+ Mbps office links finish well inside the 30-minute window.
+  primaryServer.requestTimeout = 1800000;  // 30 min — matches nginx proxy_read_timeout
+  primaryServer.headersTimeout = 120000;   // 2 min for headers (must be < requestTimeout)
   primaryServer.keepAliveTimeout = 120000; // 2 min keepalive
 
   primaryServer.listen(listenPort, listenHost, () => {
