@@ -64,7 +64,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
-      const ws = new WebSocket(`${protocol}//${host}/ws?token=${token}`);
+      // Message-based auth: connect without URL token, then send authenticate
+      // frame on open. URL-token auth was deprecated 2026-04-15 to prevent JWT
+      // leakage via server logs, browser history, and referrer headers.
+      const ws = new WebSocket(`${protocol}//${host}/ws`);
 
       // Connection timeout — if the socket hasn't opened in 10s, kill it and retry.
       // Without this, a stalled TCP handshake can hang the socket indefinitely.
@@ -93,6 +96,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         setConnectionLost(false);
         reconnectDelayRef.current = WS_RECONNECT_DELAY;
         retryCountRef.current = 0; // reset on successful connection
+
+        // Message-based authentication: send the JWT as the first frame.
+        // Server expects { type: 'authenticate', token } and will close the
+        // socket after a short timeout if this doesn't arrive.
+        try {
+          ws.send(JSON.stringify({ type: 'authenticate', token }));
+        } catch (err) {
+          devWarn('[WS] Failed to send auth frame:', err);
+        }
 
         // Start heartbeat ping/pong
         if (heartbeatRef.current) clearInterval(heartbeatRef.current);
