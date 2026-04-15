@@ -43,22 +43,23 @@ export function resolveDistrict(lat: number, lng: number): DistrictResult | null
 
     const db = getDb();
 
-    // Try matching by dispatch_code first, then fall back to zone_id + beat_id
-    let district = db.prepare(
-      'SELECT * FROM dispatch_districts WHERE dispatch_code = ?'
-    ).get(beat.beat_code) as any;
-
-    if (!district) {
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-      ).get(beat.city_code, beat.district_letter) as any;
-    }
+    // Resolve from new geography tables (dispatch_beats → dispatch_zones → dispatch_sectors)
+    const district = db.prepare(`
+      SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+             dz.zone_code, dz.zone_name,
+             ds.sector_code, ds.sector_name
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      WHERE db2.beat_code = ?
+      LIMIT 1
+    `).get(beat.beat_code) as any;
 
     if (district) {
       return {
-        sector_id: district.sector_id,
-        zone_id: district.zone_name,
-        beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
+        sector_id: district.sector_code,
+        zone_id: district.zone_code,
+        beat_id: district.beat_code,
         zone_beat: beat.beat_code,
         sector_name: district.sector_name,
         zone_name: district.zone_name,
@@ -68,12 +69,11 @@ export function resolveDistrict(lat: number, lng: number): DistrictResult | null
       };
     }
 
-    // No dispatch_districts row — log warning and return raw geofence data
-    console.warn(`[districtResolver] No dispatch_districts row for beat_code=${beat.beat_code} (zone=${beat.city_code}, beat=${beat.district_letter})`);
+    // No geography row — return raw geofence data
     return {
       sector_id: beat.district_letter,
-      zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
-      beat_id: beat.beat_id,
+      zone_id: beat.city_code,
+      beat_id: beat.beat_code,
       zone_beat: beat.beat_code,
       exact,
     };

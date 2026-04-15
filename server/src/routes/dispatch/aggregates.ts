@@ -1,17 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { authenticateToken, requireRole } from '../../middleware/auth';
-import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '../../utils/websocket';
-import { generateCallNumber } from '../../utils/caseNumbers';
+import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
-import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat, reloadGeofence, findNearestBeat } from '../../utils/geofence';
 import fs from 'fs';
 import path from 'path';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
-import { buildThreatContext } from '../../utils/threatContext';
-import { findNearestUnits } from '../../utils/proximityAlerts';
 import { createNotification } from '../notifications';
 
 const router = Router();
@@ -640,193 +636,6 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
   }
 });
 
-// POST /api/dispatch/panic - Emergency PANIC button
-// Broadcasts audible alert to all connected users
-router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { latitude, longitude, message } = req.body;
-
-    // Validate panic input
-    if (message !== undefined && message !== null) {
-      if (typeof message !== 'string' || message.length > 500) {
-        res.status(400).json({ error: 'Message must be a string of 500 characters or less', code: 'INVALID_MESSAGE' });
-        return;
-      }
-    }
-    if (latitude != null && (isNaN(Number(latitude)) || Math.abs(Number(latitude)) > 90)) {
-      res.status(400).json({ error: 'Invalid latitude', code: 'INVALID_LATITUDE' });
-      return;
-    }
-    if (longitude != null && (isNaN(Number(longitude)) || Math.abs(Number(longitude)) > 180)) {
-      res.status(400).json({ error: 'Invalid longitude', code: 'INVALID_LONGITUDE' });
-      return;
-    }
-
-    const user = db.prepare('SELECT id, full_name, badge_number, role FROM users WHERE id = ?')
-      .get(req.user!.userId) as any;
-
-    if (!user) {
-      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
-      return;
-    }
-
-    const now = localNow();
-
-    // ── Reverse-geocode officer GPS → address (with fallback) ──
-    // Must happen BEFORE the transaction since it's async
-    let locationAddress = latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
-      ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
-      : 'Unknown location';
-
-    if (latitude != null && longitude != null) {
-      try {
-        const addr = await reverseGeocodeAddress(Number(latitude), Number(longitude));
-        if (addr) locationAddress = addr;
-      } catch (geoErr) { console.error('[Panic] Reverse geocode failed, using GPS fallback:', geoErr instanceof Error ? geoErr.message : geoErr); }
-    }
-
-    // ── All DB writes in a single transaction for atomicity ──
-    const callNumber = generateCallNumber(db);
-    const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
-
-    const panicTx = db.transaction(() => {
-      // Log the panic alert to activity log
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'panic_alert', 'user', ?, ?, ?)
-      `).run(
-        user.id,
-        user.id,
-        `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
-        req.ip || 'unknown'
-      );
-
-      // Auto-create "Officer Assist — Panic Alarm" dispatch call
-      const callResult = db.prepare(`
-        INSERT INTO calls_for_service (
-          call_number, incident_type, priority, status,
-          caller_name, location_address, latitude, longitude,
-          description, source, dispatcher_id,
-          weapons_involved, created_at, dispatched_at
-        ) VALUES (?, 'officer_assist', 'P1', 'dispatched',
-          ?, ?, ?, ?,
-          ?, 'panic', ?,
-          'unknown', ?, ?)
-      `).run(
-        callNumber,
-        user.full_name,
-        locationAddress,
-        latitude ?? null,
-        longitude ?? null,
-        description,
-        user.id,
-        now,
-        now,
-      );
-
-      const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
-        .get(callResult.lastInsertRowid) as any;
-      if (!call) throw new Error('Failed to retrieve auto-created panic call');
-
-      // Auto-assign officer's unit to the call
-      const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
-        .get(user.id) as any;
-
-      if (unit) {
-        db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
-          .run('dispatched', call.id, now, unit.id);
-
-        const unitIds = JSON.stringify([unit.id]);
-        db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
-          .run(unitIds, call.id);
-      }
-
-      // Log call creation
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
-
-      return { call, unit };
-    });
-
-    const { call, unit } = panicTx();
-
-    // ── Broadcasts happen AFTER transaction commits ──
-    if (unit) {
-      broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call.id } });
-    }
-
-    broadcastPanic({
-      user_id: user.id,
-      user_name: user.full_name,
-      badge_number: user.badge_number,
-      role: user.role,
-      message: message || null,
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      triggered_at: now,
-      call_number: callNumber,
-      call_id: call.id,
-      location_address: locationAddress,
-      unit_call_sign: unit?.call_sign || null,
-    });
-
-    const enrichedCall = db.prepare(`
-      SELECT c.*, u.full_name as dispatcher_name
-      FROM calls_for_service c
-      LEFT JOIN users u ON c.dispatcher_id = u.id
-      WHERE c.id = ?
-    `).get(call.id);
-
-    // Find nearest units (sync)
-    let nearestUnits: any[] = [];
-    try {
-      const panicCall = enrichedCall || call;
-      if (panicCall.latitude && panicCall.longitude) {
-        nearestUnits = findNearestUnits(panicCall.latitude, panicCall.longitude, 3);
-      }
-    } catch { /* non-critical */ }
-
-    broadcastDispatchUpdate({ action: 'call_created', call: enrichedCall || call, nearestUnits });
-
-    // Async threat context enrichment for panic call
-    buildThreatContext({
-      locationAddress: (enrichedCall || call).location_address,
-      latitude: (enrichedCall || call).latitude,
-      longitude: (enrichedCall || call).longitude,
-      callId: call.id,
-    }).then((ctx) => {
-      if (ctx.briefingSummary) {
-        broadcastDispatchUpdate({
-          action: 'call_created',
-          call: enrichedCall || call,
-          threatContext: {
-            threatLevel: ctx.threatLevel,
-            briefingSummary: ctx.briefingSummary,
-            premiseHistoryCount: ctx.premiseHistory.totalCalls,
-            activeWarrantCount: ctx.activeWarrants.length,
-          },
-          nearestUnits,
-        });
-      }
-    }).catch(() => { /* non-critical */ });
-
-    auditLog(req, 'panic_activated', 'call', call.id, `PANIC alert by ${user.full_name} (${user.badge_number || 'N/A'}) — call ${callNumber} created`);
-
-    res.json({
-      success: true,
-      message: 'Panic alert sent — dispatch call created',
-      call_number: callNumber,
-      call_id: call.id,
-    });
-  } catch (error: any) {
-    console.error('[Dispatch] panic alert error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error', code: 'PANIC_ERROR' });
-  }
-});
-
 // GET /api/dispatch/premise-history - Premise history lookup
 // Returns prior calls at or near a given address.
 router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
@@ -1029,14 +838,21 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
     // Fix 62: LIMIT on district queries
     const limit = Math.max(1, Math.min(5000, parseInt(req.query.limit as string, 10) || 5000));
 
-    let query = 'SELECT * FROM dispatch_districts';
+    let query = `
+      SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+    `;
     const params: any[] = [];
     if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
-      query += ` WHERE zone_name LIKE ? ESCAPE '\\' OR beat_name LIKE ? ESCAPE '\\' OR sector_name LIKE ? ESCAPE '\\'`;
+      query += ` WHERE dz.zone_name LIKE ? ESCAPE '\\' OR db2.beat_name LIKE ? ESCAPE '\\' OR ds.sector_name LIKE ? ESCAPE '\\'`;
       const s = `%${escapeLike(search)}%`;
       params.push(s, s, s);
     }
-    query += ' ORDER BY sector_id, zone_id, beat_id LIMIT ?';
+    query += ' ORDER BY ds.sector_code, dz.zone_code, db2.beat_code LIMIT ?';
     params.push(limit);
 
     const districts = db.prepare(query).all(...params);
@@ -1071,15 +887,18 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     }
 
     let district: any;
+    const districtQuery = `
+      SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+    `;
     if (beat_id) {
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-      ).get(zone_id, beat_id);
+      district = db.prepare(districtQuery + ' WHERE dz.zone_code = ? AND db2.beat_code = ? LIMIT 1').get(zone_id, beat_id);
     } else {
-      // Return first matching zone entry
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? LIMIT 1'
-      ).get(zone_id);
+      district = db.prepare(districtQuery + ' WHERE dz.zone_code = ? LIMIT 1').get(zone_id);
     }
 
     if (!district) {
@@ -1124,38 +943,36 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       exact = false;
     }
 
-    // Lookup dispatch_districts table for rich names — try dispatch_code first, then zone_id + beat_id
-    let district = db.prepare(
-      'SELECT * FROM dispatch_districts WHERE dispatch_code = ?'
-    ).get(beat.beat_code) as any;
-
-    if (!district) {
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-      ).get(beat.city_code, beat.district_letter) as any;
-    }
+    // Lookup geography tables for rich names
+    const district = db.prepare(`
+      SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+             dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      WHERE db2.beat_code = ? LIMIT 1
+    `).get(beat.beat_code) as any;
 
     if (district) {
       res.json({
         found: true,
         exact,
-        sector_id: district.sector_id,
-        zone_id: district.zone_name,
-        beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
-        dispatch_code: district.dispatch_code,
+        sector_id: district.sector_code,
+        zone_id: district.zone_code,
+        beat_id: district.beat_code,
+        dispatch_code: district.beat_code,
         sector_name: district.sector_name,
         zone_name: district.zone_name,
         beat_name: district.beat_name,
         beat_descriptor: district.beat_descriptor,
       });
     } else {
-      // Fallback to raw geofence data
       res.json({
         found: true,
         exact,
         sector_id: beat.district_letter,
-        zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
-        beat_id: beat.beat_id,
+        zone_id: beat.city_code,
+        beat_id: beat.beat_code,
       });
     }
   } catch (error: any) {
@@ -1190,51 +1007,16 @@ router.post('/districts/reload-geofence', requireRole('admin', 'manager'), (req:
   } catch (error: any) { console.error('[Dispatch] geofence reload error:', error?.message); res.status(500).json({ error: 'Failed to reload geofence', code: 'GEOFENCE_RELOAD_ERROR' }); }
 });
 
-// POST /api/dispatch/districts — Create district row
-router.post('/districts', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { sector_id, zone_id, beat_id, dispatch_code, sector_name, zone_name, beat_name, beat_descriptor } = req.body;
-    if (!sector_id?.trim() || !zone_id?.trim() || !beat_id?.trim() || !sector_name?.trim() || !zone_name?.trim() || !beat_name?.trim()) {
-      res.status(400).json({ error: 'sector_id, zone_id, beat_id, sector_name, zone_name, beat_name are required', code: 'MISSING_FIELDS' });
-      return;
-    }
-    const code = dispatch_code?.trim() || `${sector_id.trim()}-${zone_id.trim()}/${beat_id.trim()}`;
-    const existing = db.prepare('SELECT id FROM dispatch_districts WHERE dispatch_code = ?').get(code);
-    if (existing) { res.status(409).json({ error: 'Duplicate dispatch code', code: 'DUPLICATE_DISTRICT' }); return; }
-    const result = db.prepare('INSERT INTO dispatch_districts (sector_id, zone_id, beat_id, dispatch_code, sector_name, zone_name, beat_name, beat_descriptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(sector_id.trim(), zone_id.trim(), beat_id.trim(), code, sector_name.trim(), zone_name.trim(), beat_name.trim(), beat_descriptor?.trim() || null);
-    auditLog(req, 'CREATE' as any, 'dispatch_district' as any, result.lastInsertRowid as number, `Created district ${code}`);
-    res.status(201).json({ success: true, id: result.lastInsertRowid, dispatch_code: code });
-  } catch (error: any) { console.error('[Dispatch] district create error:', error?.message); res.status(500).json({ error: 'Failed to create district', code: 'DISTRICT_CREATE_ERROR' }); }
+// POST/PUT/DELETE /api/dispatch/districts — Legacy CRUD (migrated to /api/dispatch/geography/*)
+// These endpoints are retained as stubs for backward compatibility — manage geography via GeographyPage
+router.post('/districts', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
 });
-
-// PUT /api/dispatch/districts/:id — Update district row
-router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
-    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
-    const { sector_id, zone_id, beat_id, dispatch_code, sector_name, zone_name, beat_name, beat_descriptor } = req.body;
-    db.prepare('UPDATE dispatch_districts SET sector_id = COALESCE(?, sector_id), zone_id = COALESCE(?, zone_id), beat_id = COALESCE(?, beat_id), dispatch_code = COALESCE(?, dispatch_code), sector_name = COALESCE(?, sector_name), zone_name = COALESCE(?, zone_name), beat_name = COALESCE(?, beat_name), beat_descriptor = COALESCE(?, beat_descriptor) WHERE id = ?').run(sector_id || null, zone_id || null, beat_id || null, dispatch_code || null, sector_name || null, zone_name || null, beat_name || null, beat_descriptor ?? null, id);
-    auditLog(req, 'UPDATE' as any, 'dispatch_district' as any, id, `Updated district ${existing.dispatch_code}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('[Dispatch] district update error:', error?.message); res.status(500).json({ error: 'Failed to update district', code: 'DISTRICT_UPDATE_ERROR' }); }
+router.put('/districts/:id', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
 });
-
-// DELETE /api/dispatch/districts/:id — Delete district row
-router.delete('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
-    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
-    db.prepare('DELETE FROM dispatch_districts WHERE id = ?').run(id);
-    auditLog(req, 'DELETE' as any, 'dispatch_district' as any, id, `Deleted district ${existing.dispatch_code}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('[Dispatch] district delete error:', error?.message); res.status(500).json({ error: 'Failed to delete district', code: 'DISTRICT_DELETE_ERROR' }); }
+router.delete('/districts/:id', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
 });
 
 // PUT /api/dispatch/districts/beat-geometry/:beatCode — Update beat polygon in GeoJSON file
@@ -1994,7 +1776,7 @@ router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'disp
 
     // Broadcast
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: call.status === 'pending' ? 'dispatched' : call.status } });
-    broadcastUnitUpdate({ action: 'unit_status', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
 
     res.json({ success: true, call_number: call.call_number, unit_call_sign: unit.call_sign });
   } catch (err: any) {
@@ -2039,7 +1821,7 @@ router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 
 
     auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, JSON.stringify({ unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) }));
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: 'dispatched' } });
-    broadcastUnitUpdate({ action: 'unit_status', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
 
     res.json({ success: true, call_number: call.call_number, unit_call_sign: nearest.call_sign, distance_km: parseFloat(minDist.toFixed(2)) });
   } catch (err: any) {

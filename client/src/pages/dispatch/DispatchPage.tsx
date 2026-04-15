@@ -870,6 +870,13 @@ export default function DispatchPage() {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+      } else if (data.action === 'unit_position_update' && data.unit) {
+        // Update unit position + speed_mph from GPS broadcast
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id)
+          ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude, speed_mph: data.unit.speed_mph }
+          : u)));
+      } else if (data.action === 'unit_updated' && data.unit) {
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
       } else if (data.action === 'unit_created' && data.unit) {
         setUnits((prev) => {
           if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
@@ -927,7 +934,16 @@ export default function DispatchPage() {
       fetchData({ silent: true });
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
+    const unsubSpeed = subscribe('speed:alert', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.unit && data?.speed_mph) {
+        const severity = data.severity === 'critical' ? 'error' : 'warning';
+        addToast(`🚨 ${data.label || 'SPEED ALERT'}: Unit ${data.unit} at ${data.speed_mph} mph${data.current_call_number ? ` on ${data.current_call_number}` : ''}`, severity);
+        announceSpeedAdvisory(data.unit, data.speed_mph);
+      }
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
@@ -1396,6 +1412,25 @@ export default function DispatchPage() {
         damage_description: callData.damage_description || null,
         responding_officer: callData.responding_officer || null,
         action_taken: callData.action_taken || null,
+        // Tactical / safety flags
+        mental_health_crisis: callData.mental_health_crisis ?? false,
+        juvenile_involved: callData.juvenile_involved ?? false,
+        felony_in_progress: callData.felony_in_progress ?? false,
+        officer_safety_caution: callData.officer_safety_caution ?? false,
+        gang_related: callData.gang_related ?? false,
+        k9_requested: callData.k9_requested ?? false,
+        ems_requested: callData.ems_requested ?? false,
+        fire_requested: callData.fire_requested ?? false,
+        hazmat: callData.hazmat ?? false,
+        evidence_collected: callData.evidence_collected ?? false,
+        body_camera_active: callData.body_camera_active ?? false,
+        photos_taken: callData.photos_taken ?? false,
+        trespass_issued: callData.trespass_issued ?? false,
+        vehicle_pursuit: callData.vehicle_pursuit ?? false,
+        foot_pursuit: callData.foot_pursuit ?? false,
+        secondary_type: callData.secondary_type || null,
+        contact_method: callData.contact_method || null,
+        dispatch_code: callData.dispatch_code || null,
         // PSO Client Request fields
         contract_id: callData.contract_id || null,
         pso_service_type: callData.pso_service_type || null,
@@ -2633,6 +2668,18 @@ export default function DispatchPage() {
                   </button>
                 )}
               </div>
+
+              {/* Disposition prompt — appears when Clear is tapped */}
+              {dispositionPromptCallId === selectedCall.id && (
+                <div className="px-2">
+                  <DispositionPrompt
+                    callNumber={selectedCall.call_number}
+                    dispositionCodes={dispositionCodes}
+                    onConfirm={handleConfirmClear}
+                    onCancel={() => setDispositionPromptCallId(null)}
+                  />
+                </div>
+              )}
 
               {/* Key info fields */}
               <div className="space-y-2">
@@ -6016,6 +6063,7 @@ export default function DispatchPage() {
               call_number: c.call_number,
               status: c.status,
             })),
+            currentUser: user?.full_name || user?.username || 'Dispatch',
           }}
           onAction={(action: CommandAction) => {
             switch (action.type) {

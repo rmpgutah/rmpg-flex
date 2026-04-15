@@ -78,7 +78,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'beat.geojson',
     visible: true,
     selectable: true,
-    style: { fillColor: '#22c55e', fillOpacity: 0.08, strokeColor: '#22c55e', strokeOpacity: 0.45, strokeWeight: 1 },
+    style: { fillColor: '#22c55e', fillOpacity: 0.20, strokeColor: '#22c55e', strokeOpacity: 0.6, strokeWeight: 1.2 },
     labelProp: 'beat_code',
     featureKeyProp: 'beat_code',
     detailProps: ['city', 'beat_id', 'district_letter', 'beat_number'],
@@ -127,21 +127,49 @@ const ASSIGNED_STYLE = {
   strokeWeight: 2,
 };
 
+// ── Municipality color palette (hash-based for 257 municipalities) ──
+const MUNI_COLORS = [
+  '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
+  '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#06b6d4', '#e11d48',
+  '#84cc16', '#6366f1', '#d946ef', '#0ea5e9', '#facc15', '#fb923c',
+];
+
+function getMuniColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  return MUNI_COLORS[Math.abs(hash) % MUNI_COLORS.length];
+}
+
 // ── Section color palette (12 distinct hues for beat sections) ──
 
 export const SECTION_COLORS: Record<string, string> = {
-  SL1: '#22c55e', SL2: '#888888', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#22c55e',
+  SL1: '#22c55e', SL2: '#3b82f6', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#06b6d4',
   DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
   WB1: '#8b5cf6', WB2: '#10b981',
-  UC1: '#888888', UC2: '#eab308', UC3: '#f43f5e',
+  UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
 };
-const SECTION_COLOR_FALLBACKS = ['#666666', '#78716c', '#a3a3a3', '#71717a', '#737373', '#666666'];
+const SECTION_COLOR_FALLBACKS = ['#0ea5e9', '#d946ef', '#84cc16', '#fb923c', '#e11d48', '#14b8a6', '#f59e0b', '#8b5cf6'];
 
 export function getSectionColor(sectionId: string): string {
+  if (!sectionId) return SECTION_COLOR_FALLBACKS[0];
   if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];
   let hash = 0;
   for (let i = 0; i < sectionId.length; i++) hash = ((hash << 5) - hash + sectionId.charCodeAt(i)) | 0;
   return SECTION_COLOR_FALLBACKS[Math.abs(hash) % SECTION_COLOR_FALLBACKS.length];
+}
+
+/** Per-city color — 24 medium-bright hues visible on dark map tiles */
+const CITY_COLORS = [
+  '#4ade80', '#60a5fa', '#f87171', '#fbbf24', '#c084fc', '#f472b6',
+  '#2dd4bf', '#fb923c', '#a78bfa', '#34d399', '#22d3ee', '#fb7185',
+  '#a3e635', '#818cf8', '#e879f9', '#38bdf8', '#fde047', '#fdba74',
+  '#5eead4', '#f9a8d4', '#bef264', '#93c5fd', '#fcd34d', '#7dd3fc',
+];
+
+export function getCityColor(cityCode: string): string {
+  let hash = 0;
+  for (let i = 0; i < cityCode.length; i++) hash = ((hash << 5) - hash + cityCode.charCodeAt(i)) | 0;
+  return CITY_COLORS[Math.abs(hash) % CITY_COLORS.length];
 }
 
 // ── Beat-District enrichment data ────────────────────────────
@@ -274,10 +302,10 @@ export function useGeoJsonLayers({
     if (!beatCfg) return undefined;
     const lookup = new Map<string, BeatStyleEntry>();
     for (const [cityCode, zoneMap] of beatDistrictMap) {
+      const cColor = getCityColor(cityCode);
       for (const [distLetter, entry] of zoneMap) {
-        const sColor = getSectionColor(entry.sectionId);
         lookup.set(`${cityCode}::${distLetter}`, {
-          style: { ...beatCfg.style, fillColor: sColor, strokeColor: sColor, fillOpacity: 0.12, strokeOpacity: 0.6 },
+          style: { ...beatCfg.style, fillColor: cColor, strokeColor: cColor, fillOpacity: 0.22, strokeOpacity: 0.65, strokeWeight: 1.2 },
           entry,
         });
       }
@@ -333,12 +361,26 @@ export function useGeoJsonLayers({
 
         // For beat layer: use pre-computed section-based style (O(1) lookup, no object spread)
         let baseStyle = cfg.style;
-        if (cfg.id === 'beat' && beatStyleLookupRef.current && !isSelected && !isAssigned) {
+        if (cfg.id === 'beat' && !isSelected && !isAssigned) {
           const cityCode = feature.getProperty('city_code') as string;
           const distLetter = feature.getProperty('district_letter') as string;
-          if (cityCode && distLetter) {
+          if (cityCode && distLetter && beatStyleLookupRef.current) {
             const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
             if (cached) baseStyle = cached.style;
+          }
+          // Fallback: color by city_code even without district map data
+          if (baseStyle === cfg.style && cityCode) {
+            const cc = getCityColor(cityCode);
+            baseStyle = { ...cfg.style, fillColor: cc, strokeColor: cc, fillOpacity: 0.12, strokeOpacity: 0.5, strokeWeight: 1 };
+          }
+        }
+
+        // For municipality layer: use hash-based per-municipality color
+        if (cfg.id === 'municipality' && !isSelected && !isAssigned) {
+          const name = feature.getProperty('NAME') as string;
+          if (name) {
+            const mc = getMuniColor(name);
+            baseStyle = { ...cfg.style, fillColor: mc, strokeColor: mc, fillOpacity: 0.10, strokeOpacity: 0.5 };
           }
         }
 
@@ -464,12 +506,20 @@ export function useGeoJsonLayers({
     }));
 
     // ── Beat label overlays — show dispatch codes at polygon centroids ──
-    if (cfg.id === 'beat' && beatDistrictMapRef.current) {
+    if (cfg.id === 'beat') {
       dataLayer.forEach((feature) => {
         const cityCode = feature.getProperty('city_code') as string;
         const distLetter = feature.getProperty('district_letter') as string;
-        const entry = lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter);
-        if (!entry) return;
+        const beatCode = feature.getProperty('beat_code') as string;
+        if (!cityCode) return;
+
+        // Try district map lookup, fall back to GeoJSON properties
+        const entry = beatDistrictMapRef.current
+          ? lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter)
+          : null;
+        const labelText = entry
+          ? (entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`)
+          : (beatCode || `${cityCode}-${distLetter}`);
 
         // Calculate polygon centroid
         const geom = feature.getGeometry();
@@ -483,17 +533,17 @@ export function useGeoJsonLayers({
         if (pointCount === 0) return;
         const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
 
-        const sColor = getSectionColor(entry.sectionId);
+        const labelColor = getCityColor(cityCode);
         const marker = new google.maps.Marker({
           position: centroid,
           map,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
-            scale: 0, // invisible icon — we only want the label
+            scale: 0,
           },
           label: {
-            text: entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`,
-            color: sColor,
+            text: labelText,
+            color: labelColor,
             fontSize: '9px',
             fontWeight: 'bold',
             fontFamily: 'JetBrains Mono, Courier New, monospace',
@@ -501,7 +551,6 @@ export function useGeoJsonLayers({
           clickable: false,
           zIndex: 1,
         });
-        // Store label markers for cleanup
         if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
         labelMarkersRef.current[cfg.id].push(marker);
       });
@@ -529,6 +578,31 @@ export function useGeoJsonLayers({
             fontWeight: 'bold',
             fontFamily: 'JetBrains Mono, Courier New, monospace',
           },
+          clickable: false,
+          zIndex: 0,
+        });
+        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
+        labelMarkersRef.current[cfg.id].push(marker);
+      });
+    }
+
+    // ── Municipality label overlays — show municipality names at polygon centroids ──
+    if (cfg.id === 'municipality') {
+      dataLayer.forEach((feature) => {
+        const name = feature.getProperty('NAME') as string;
+        if (!name) return;
+        const geom = feature.getGeometry();
+        if (!geom) return;
+        let latSum = 0, lngSum = 0, pointCount = 0;
+        geom.forEachLatLng((latLng) => { latSum += latLng.lat(); lngSum += latLng.lng(); pointCount++; });
+        if (pointCount === 0) return;
+        const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
+        const mc = getMuniColor(name);
+        const marker = new google.maps.Marker({
+          position: centroid,
+          map,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+          label: { text: name.toUpperCase(), color: mc, fontSize: '8px', fontWeight: 'bold', fontFamily: 'JetBrains Mono, Courier New, monospace' },
           clickable: false,
           zIndex: 0,
         });
@@ -611,8 +685,8 @@ export function useGeoJsonLayers({
         // Also toggle label markers visibility with zoom
         const labels = labelMarkersRef.current[cfg.id];
         if (labels) {
-          // Only show labels at zoom 12+ (readable size)
-          const showLabels = visible && zoom >= 12;
+          // Show labels at zoom 10+ (same as beat layer minZoom)
+          const showLabels = visible && zoom >= 10;
           for (const m of labels) m.setMap(showLabels ? map : null);
         }
       }

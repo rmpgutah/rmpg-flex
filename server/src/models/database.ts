@@ -156,7 +156,7 @@ function createTables(): void {
       longitude REAL,
       description TEXT,
       notes TEXT,
-      source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
+      source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
       assigned_unit_ids TEXT DEFAULT '[]',
       dispatcher_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -195,7 +195,7 @@ function createTables(): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       call_sign TEXT UNIQUE NOT NULL,
       officer_id INTEGER,
-      status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty')),
+      status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service')),
       latitude REAL,
       longitude REAL,
       vehicle_id TEXT,
@@ -1380,6 +1380,37 @@ function createTables(): void {
       FOREIGN KEY (searched_by) REFERENCES users(id)
     );
   `);
+
+  // ─── PANIC ALERTS TABLE ────────────────────────────
+  // Uses db.prepare().run() pattern per CLAUDE.md Gotcha #42
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS panic_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      call_id INTEGER,
+      trigger_method TEXT NOT NULL DEFAULT 'ui_button',
+      message TEXT,
+      latitude REAL,
+      longitude REAL,
+      location_address TEXT,
+      audio_file_id TEXT,
+      audio_duration_seconds INTEGER,
+      status TEXT NOT NULL DEFAULT 'active',
+      escalation_level INTEGER DEFAULT 0,
+      acknowledged_at TEXT,
+      acknowledged_by INTEGER,
+      resolved_at TEXT,
+      resolved_by INTEGER,
+      resolution_notes TEXT,
+      responder_unit_ids TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
+      FOREIGN KEY (acknowledged_by) REFERENCES users(id),
+      FOREIGN KEY (resolved_by) REFERENCES users(id)
+    )
+  `).run();
 }
 
 /**
@@ -1549,7 +1580,7 @@ function migrateSchema(): void {
           longitude REAL,
           description TEXT,
           notes TEXT,
-          source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
+          source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
           assigned_unit_ids TEXT DEFAULT '[]',
           dispatcher_id INTEGER,
           created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -1875,6 +1906,19 @@ function migrateSchema(): void {
   addCol('properties', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
   addCol('properties', 'updated_at', 'TEXT');
   addCol('properties', 'notes', 'TEXT');
+  addCol('properties', 'business_type', 'TEXT');
+  addCol('properties', 'structure_type', 'TEXT');
+  addCol('properties', 'occupancy_status', 'TEXT');
+  addCol('properties', 'year_built', 'TEXT');
+  addCol('properties', 'square_footage', 'TEXT');
+  addCol('properties', 'number_of_stories', 'TEXT');
+  addCol('properties', 'security_features', 'TEXT');
+  addCol('properties', 'key_holder_name', 'TEXT');
+  addCol('properties', 'key_holder_phone', 'TEXT');
+  addCol('properties', 'key_holder_relationship', 'TEXT');
+  addCol('properties', 'owner_name', 'TEXT');
+  addCol('properties', 'owner_phone', 'TEXT');
+  addCol('properties', 'last_inspection_date', 'TEXT');
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema
@@ -3092,30 +3136,16 @@ function migrateSchema(): void {
     db.prepare("UPDATE incidents SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
   } catch { /* columns may not exist on very old DBs — ignore */ }
 
-  // ── SECTIONS → SECTORS Phase 2a: Dual-write triggers ────────
-  // Mirror section_id → sector_id on every INSERT/UPDATE so future writes
-  // keep both columns in sync without touching application code. Triggers
-  // are idempotent via IF NOT EXISTS and safe to drop later in Phase 2b.
+  // ── SECTIONS → SECTORS Phase 2b: Drop obsolete dual-write triggers ──
+  // Phase 2a triggers mirrored section_id → sector_id during the rename
+  // transition. Now that all code uses sector_id natively, these triggers
+  // are obsolete and crash on fresh DBs (section_id column doesn't exist).
   try {
-    db.exec(`
-      CREATE TRIGGER IF NOT EXISTS trg_calls_for_service_sector_mirror
-        AFTER INSERT ON calls_for_service
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
-        BEGIN UPDATE calls_for_service SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_calls_for_service_sector_mirror_upd
-        AFTER UPDATE OF section_id ON calls_for_service
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
-        BEGIN UPDATE calls_for_service SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_incidents_sector_mirror
-        AFTER INSERT ON incidents
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
-        BEGIN UPDATE incidents SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_incidents_sector_mirror_upd
-        AFTER UPDATE OF section_id ON incidents
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
-        BEGIN UPDATE incidents SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-    `);
-  } catch { /* older SQLite may not support — backfill still works */ }
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_calls_for_service_sector_mirror_upd').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
+  } catch { /* ignore */ }
 
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');  // legacy
@@ -3169,19 +3199,11 @@ function migrateSchema(): void {
   addCol('citations', 'disposition_date', 'TEXT');
   addCol('citations', 'case_id', 'INTEGER');
 
-  // SECTIONS → SECTORS Phase 2a: citations backfill + trigger
+  // SECTIONS → SECTORS Phase 2b: citations backfill + drop obsolete triggers
   try {
     db.prepare("UPDATE citations SET sector_id = section_id WHERE sector_id IS NULL AND section_id IS NOT NULL").run();
-    db.exec(`
-      CREATE TRIGGER IF NOT EXISTS trg_citations_sector_mirror
-        AFTER INSERT ON citations
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL AND NEW.sector_id IS NULL
-        BEGIN UPDATE citations SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-      CREATE TRIGGER IF NOT EXISTS trg_citations_sector_mirror_upd
-        AFTER UPDATE OF section_id ON citations
-        FOR EACH ROW WHEN NEW.section_id IS NOT NULL
-        BEGIN UPDATE citations SET sector_id = NEW.section_id WHERE id = NEW.id; END;
-    `);
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror').run();
+    db.prepare('DROP TRIGGER IF EXISTS trg_citations_sector_mirror_upd').run();
   } catch { /* ignore */ }
 
   // Citation violations — multiple violations per citation
@@ -3239,6 +3261,10 @@ function migrateSchema(): void {
     addCol(tbl, 'pso_service_type', 'TEXT');        // patrol, standing_post, escort, process_service, alarm_response, event_security
     addCol(tbl, 'pso_billing_code', 'TEXT');
     addCol(tbl, 'pso_authorization', 'TEXT');        // auth/PO number from client
+    addCol(tbl, 'pso_72hr_deadline', 'TEXT');         // ISO timestamp: 72hr re-dispatch deadline after clear/close
+    addCol(tbl, 'pso_72hr_notified', 'TEXT');         // 'overdue'|'resolved'|NULL — tracks 72hr notification state
+    addCol(tbl, 'pso_service_windows', 'TEXT');       // JSON: {early_morning,daytime,evening,weekend} compliance
+    addCol(tbl, 'responding_vehicle_id', 'INTEGER');  // FK to fleet_vehicles — responding unit's vehicle
   }
   // Process service specific — must exist on BOTH calls_for_service AND incidents
   // Bug: incidents POST route INSERTs these columns but they were only added to
@@ -4186,6 +4212,27 @@ function migrateSchema(): void {
   `).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_disciplinary_officer ON disciplinary_records(officer_id)`).run();
 
+  // ── PDF v2: rendered PDF artifacts attached to records ──
+  // Stores PDFs generated by the v2 engine (renderer consumes FormSchema) and
+  // attached to case/incident/warrant/evidence records. The blob lives on disk
+  // at <uploads>/pdf/<form_type>/<YYYY>/<MM>/<sha256>.pdf; only the path +
+  // SHA-256 hash are stored here for dedupe + tamper detection.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS pdf_artifacts (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      form_type       TEXT NOT NULL,
+      form_version    TEXT NOT NULL,
+      record_type     TEXT NOT NULL,
+      record_id       INTEGER NOT NULL,
+      blob_path       TEXT NOT NULL,
+      sha256          TEXT NOT NULL,
+      created_at      TEXT NOT NULL,
+      created_by      INTEGER NOT NULL,
+      title           TEXT
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_pdf_artifacts_rec ON pdf_artifacts(record_type, record_id)').run();
+
   // ── Feature 3: Call tag system ──
   addCol('calls_for_service', 'tags', "TEXT DEFAULT '[]'");
 
@@ -4354,6 +4401,32 @@ function migrateSchema(): void {
   // ── Feature 23: Per-user notification sound toggle ──
   // Stored in user_preferences table with pref_key='notification_sounds_enabled'
 
+  // ── PSO visit history — tracks each dispatch attempt's timestamps + service windows ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS call_visit_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      visit_number INTEGER NOT NULL,
+      status TEXT,
+      dispatched_at TEXT,
+      enroute_at TEXT,
+      onscene_at TEXT,
+      cleared_at TEXT,
+      closed_at TEXT,
+      assigned_units TEXT,
+      responding_vehicle_id INTEGER,
+      starting_mileage REAL,
+      ending_mileage REAL,
+      disposition TEXT,
+      note TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      time_window TEXT,
+      is_weekend INTEGER DEFAULT 0
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_call_visit_call ON call_visit_history(call_id)').run();
+
   // ── Ensure call_persons junction table exists (used by dispatch person linking) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS call_persons (
@@ -4465,13 +4538,77 @@ function migrateSchema(): void {
   addCol('warrants', 'external_source_key', 'TEXT');
   addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
 
-  // ── dispatch_units mileage column ──
-  addCol('dispatch_units', 'mileage', 'REAL');
+  // ── units mileage + GPS source columns ──
+  addCol('units', 'mileage', 'REAL');
+  addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
+  addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
+
+  // ── OwnTracks / Traccar device-to-unit mapping table ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS owntracks_device_map (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tracker_id TEXT NOT NULL UNIQUE,
+      unit_id INTEGER NOT NULL,
+      device_name TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (unit_id) REFERENCES units(id)
+    )
+  `).run();
+
+  // ── units: add 'out_of_service' to CHECK constraint (production fix) ──
+  try {
+    const uInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='units'").get() as { sql: string } | undefined;
+    if (uInfo && !uInfo.sql.includes('out_of_service')) {
+      db.pragma('foreign_keys = OFF');
+      // Use the original CREATE TABLE SQL but replace the CHECK constraint
+      const newSql = uInfo.sql
+        .replace(/CREATE TABLE units/i, 'CREATE TABLE units_new')
+        .replace(
+          /CHECK\(status IN \([^)]+\)\)/i,
+          "CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service'))"
+        );
+      const cols = db.prepare("PRAGMA table_info(units)").all() as any[];
+      const colNames = cols.map((c: any) => c.name).join(', ');
+      db.prepare(newSql).run();
+      db.prepare(`INSERT INTO units_new (${colNames}) SELECT ${colNames} FROM units`).run();
+      db.prepare('DROP TABLE units').run();
+      db.prepare('ALTER TABLE units_new RENAME TO units').run();
+      db.pragma('foreign_keys = ON');
+    }
+  } catch (e) { console.warn('[DB] units CHECK migration skipped:', e instanceof Error ? e.message : e); }
+
+  // ── calls_for_service: add 'intake','servemanager' to source CHECK constraint ──
+  for (const tbl of ['calls_for_service', 'incidents']) {
+    try {
+      const info = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='${tbl}'`).get() as { sql: string } | undefined;
+      if (info && !info.sql.includes("'intake'")) {
+        db.pragma('foreign_keys = OFF');
+        const newSql = info.sql
+          .replace(new RegExp(`CREATE TABLE ${tbl}`, 'i'), `CREATE TABLE ${tbl}_new`)
+          .replace(
+            /CHECK\(source IN \([^)]+\)\)/i,
+            "CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other'))"
+          );
+        const cols = db.prepare(`PRAGMA table_info(${tbl})`).all() as any[];
+        const colNames = cols.map((c: any) => c.name).join(', ');
+        db.prepare(newSql).run();
+        db.prepare(`INSERT INTO ${tbl}_new (${colNames}) SELECT ${colNames} FROM ${tbl}`).run();
+        db.prepare(`DROP TABLE ${tbl}`).run();
+        db.prepare(`ALTER TABLE ${tbl}_new RENAME TO ${tbl}`).run();
+        db.pragma('foreign_keys = ON');
+      }
+    } catch (e) { console.warn(`[DB] ${tbl} source CHECK migration skipped:`, e instanceof Error ? e.message : e); }
+  }
 
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
+
+  // ── Radio transcripts — audio recording columns ──
+  addCol('radio_transcripts', 'audio_file', 'TEXT');
+  addCol('radio_transcripts', 'file_size', 'INTEGER');
+  addCol('radio_transcripts', 'linked_call_id', 'INTEGER');
 
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
@@ -5226,6 +5363,13 @@ function createIndexes(): void {
 
     -- [FIX 75] Index for security_notifications user lookup
     CREATE INDEX IF NOT EXISTS idx_security_notifications_user ON security_notifications(user_id);
+
+    -- Panic alerts indexes
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_user ON panic_alerts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_status ON panic_alerts(status);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_created ON panic_alerts(created_at);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_call ON panic_alerts(call_id);
+    CREATE INDEX IF NOT EXISTS idx_panic_alerts_escalation ON panic_alerts(escalation_level);
   `);
   } catch (err: any) {
     console.warn('[DB] createIndexes partially failed (non-fatal):', err?.message || 'Unknown error');
@@ -5304,6 +5448,20 @@ function seedData(): void {
   evidenceLocations.forEach(([name, desc], i) => {
     insertConfig.run(name, JSON.stringify({ description: desc }), 'evidence_location', i, now, now);
   });
+
+  // ─── PANIC / RADIO CONFIG DEFAULTS ─────────────────
+  const panicConfigs = [
+    { key: 'panic_audio_duration_seconds', value: '60', category: 'panic' },
+    { key: 'panic_escalation_1_seconds', value: '30', category: 'panic' },
+    { key: 'panic_escalation_2_seconds', value: '60', category: 'panic' },
+    { key: 'panic_escalation_3_seconds', value: '90', category: 'panic' },
+    { key: 'emergency_talkgroup_timeout_minutes', value: '30', category: 'radio' },
+    { key: 'radio_encryption_default', value: 'secure', category: 'radio' },
+  ];
+  const insertPanicConfig = db.prepare('INSERT OR IGNORE INTO system_config (config_key, config_value, category) VALUES (?, ?, ?)');
+  for (const c of panicConfigs) {
+    insertPanicConfig.run(c.key, c.value, c.category);
+  }
 
   console.log('Seed data initialized (admin user + system config).');
 

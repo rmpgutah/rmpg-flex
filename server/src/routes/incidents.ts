@@ -439,18 +439,23 @@ router.post('/', async (req: Request, res: Response) => {
         if (beat) {
           if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
 
-          // Look up 3-tier dispatch district for richer naming
-          const district = db.prepare(
-            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-          ).get(beat.city_code, beat.district_letter) as any;
+          // Look up 3-tier geography for richer naming
+          const district = db.prepare(`
+            SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                   dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+            FROM dispatch_beats db2
+            JOIN dispatch_zones dz ON dz.id = db2.zone_id
+            JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+            WHERE db2.beat_code = ? LIMIT 1
+          `).get(beat.beat_code) as any;
 
           if (district) {
-            if (!autoSectionId) autoSectionId = district.sector_id;
-            if (!autoZoneId) autoZoneId = district.zone_name;
-            if (!autoBeatId) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
+            if (!autoSectionId) autoSectionId = district.sector_code;
+            if (!autoZoneId) autoZoneId = district.zone_code;
+            if (!autoBeatId) autoBeatId = district.beat_code;
           } else {
-            if (!autoBeatId) autoBeatId = beat.beat_id;
-            if (!autoZoneId) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+            if (!autoBeatId) autoBeatId = beat.beat_code;
+            if (!autoZoneId) autoZoneId = beat.city_code;
             if (!autoSectionId) autoSectionId = beat.district_letter;
           }
         }
@@ -1846,7 +1851,7 @@ router.get('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'offic
   try {
     const db = getDb();
     const officers = db.prepare(`
-      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
       FROM incident_officers io
       JOIN users u ON u.id = io.officer_id
       WHERE io.incident_id = ?
@@ -1958,7 +1963,7 @@ router.post('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'offi
       `).run(...values);
 
       const updatedOfficer = db.prepare(`
-        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
         FROM incident_officers io
         JOIN users u ON u.id = io.officer_id
         WHERE io.id = ?
@@ -1974,7 +1979,7 @@ router.post('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'offi
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(incidentId, officerId, requestedRole, arrivedAt, departedAt, actionTaken, notes, userId);
     const officer = db.prepare(`
-      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+      SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
       FROM incident_officers io JOIN users u ON u.id = io.officer_id
       WHERE io.id = ?
     `).get(result.lastInsertRowid) as Record<string, unknown>;
@@ -1997,6 +2002,71 @@ router.delete('/:id/officers/:linkId', requireRole('admin', 'manager', 'supervis
 // ════════════════════════════════════════════════════════════
 // INCIDENT LINKS — Cross-reference to other records
 // ════════════════════════════════════════════════════════════
+
+// ── Link Search — search records by visible reference numbers ──
+// Called by AddLinkModal to find records to cross-reference.
+// Searches by: incident_number, call_number, case_number, warrant_number,
+// citation_number, or booking number — the identifiers users actually see.
+router.get('/link-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const type = req.query.type as string;
+    const q = (req.query.q as string || '').trim();
+    if (!type || !q || q.length < 2) { res.json([]); return; }
+
+    const like = `%${q}%`;
+    let results: any[] = [];
+
+    if (type === 'incident') {
+      results = db.prepare(`
+        SELECT id, incident_number as label, incident_type as type, status, priority
+        FROM incidents
+        WHERE incident_number LIKE ? OR narrative LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'call') {
+      results = db.prepare(`
+        SELECT id, call_number as label, incident_type as type, status, priority
+        FROM calls_for_service
+        WHERE call_number LIKE ? OR case_number LIKE ? OR description LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like, like);
+    } else if (type === 'case') {
+      results = db.prepare(`
+        SELECT id, case_number as label, case_type as type, status
+        FROM cases
+        WHERE case_number LIKE ? OR title LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'warrant') {
+      results = db.prepare(`
+        SELECT id, warrant_number as label, type, status
+        FROM warrants
+        WHERE warrant_number LIKE ? OR suspect_name LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'citation') {
+      results = db.prepare(`
+        SELECT id, citation_number as label, violation_description as type, status
+        FROM citations
+        WHERE citation_number LIKE ? OR violation_description LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'arrest') {
+      results = db.prepare(`
+        SELECT id, booking_number as label, charge as type, status
+        FROM arrest_records
+        WHERE booking_number LIKE ? OR last_name LIKE ? OR first_name LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like, like);
+    }
+
+    res.json(results);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Link search failed' });
+  }
+});
 
 router.get('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -2110,7 +2180,7 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
 
     try {
       officers = db.prepare(`
-        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.call_sign, u.rank
+        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
         FROM incident_officers io JOIN users u ON u.id = io.officer_id
         WHERE io.incident_id = ?
         ORDER BY CASE io.role WHEN 'primary' THEN 0 WHEN 'supervisor' THEN 1 ELSE 2 END

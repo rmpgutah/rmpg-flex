@@ -50,6 +50,10 @@ import statuteRoutes from './routes/statutes';
 import citationRoutes from './routes/citations';
 import invoiceRoutes from './routes/invoices';
 import adminSystemsRoutes from './routes/adminSystems';
+import pdfEngineRouter from './routes/pdfEngine';
+import auditPdfEngineRouter from './routes/auditPdfEngine';
+import pdfArtifactsRouter from './routes/pdfArtifacts';
+import pdfEmailRouter from './routes/pdfEmail';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
@@ -83,6 +87,7 @@ import crmFirecrawlRoutes from './routes/crmFirecrawl';
 import crmCompetitorMonitorRoutes from './routes/crmCompetitorMonitor';
 import userPreferencesRoutes from './routes/userPreferences';
 import serveRoutes from './routes/serve';
+import serveIntakeRoutes from './routes/serveIntake';
 import hrRoutes from './routes/hr';
 import securityDashboardRoutes from './routes/securityDashboard';
 import webauthnRoutes from './routes/webauthn';
@@ -325,6 +330,11 @@ app.get('/api/system-status', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
+// ─── OwnTracks/Traccar GPS webhook — BEFORE all other routes (own auth, no JWT) ───
+import { owntracksWebhookRouter } from './routes/dispatch/gps';
+app.use('/api/dispatch/gps', owntracksWebhookRouter);
+app.use('/owntracks', owntracksWebhookRouter);  // Short path for OwnTracks app (appends /{user}/{device})
+
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
@@ -337,6 +347,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/admin', systemConfigRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/audit', auditPdfEngineRouter);
 app.use('/api/patrol', patrolRoutes);
 app.use('/api/warrants', warrantRoutes);
 app.use('/api/fleet', fleetRoutes);
@@ -345,6 +356,9 @@ app.use('/api/statutes', statuteRoutes);
 app.use('/api/citations', citationRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/admin', adminSystemsRoutes);
+app.use('/api/admin/pdf-engine', pdfEngineRouter);
+app.use('/api/pdf-artifacts', pdfArtifactsRouter);
+app.use('/api/pdf-engine', pdfEmailRouter);
 app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
@@ -379,6 +393,7 @@ app.use('/api/crm', crmFirecrawlRoutes);
 app.use('/api/crm', crmCompetitorMonitorRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
+app.use('/api/serve-intake', serveIntakeRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/auth/security', securityDashboardRoutes);
 app.use('/api/auth/webauthn', webauthnRoutes);

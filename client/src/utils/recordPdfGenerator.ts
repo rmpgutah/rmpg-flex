@@ -44,7 +44,7 @@ import {
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
 import {
-  drawCheckboxGrid, drawNibrsHeader, drawFormSection, drawGeographyStrip,
+  drawCheckboxGrid, drawNibrsHeader, drawFormSection,
   type CheckboxItem, type FormRow,
 } from './pdfFormHelpers';
 
@@ -328,12 +328,6 @@ export interface PersonPdfData {
   date_of_birth?: string;
   gender?: string;
   race?: string;
-  // Geography / Contract
-  area_name?: string;
-  sector_name?: string;
-  zone_name?: string;
-  beat_name?: string;
-  contract_id?: string;
   // Physical
   height?: string;
   weight?: string;
@@ -408,6 +402,13 @@ export interface PersonPdfData {
   known_associates?: string;
   caution_flags?: string;
   flags?: string[];
+  // Alt Contact
+  home_phone?: string;
+  work_phone?: string;
+  email_secondary?: string;
+  alias_dob?: string;
+  date_last_seen?: string;
+  location_last_seen?: string;
   // Emergency
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
@@ -439,12 +440,6 @@ export interface VehiclePdfData {
   model?: string;
   year?: number;
   body_style?: string;
-  // Geography / Contract
-  area_name?: string;
-  sector_name?: string;
-  zone_name?: string;
-  beat_name?: string;
-  contract_id?: string;
   trim?: string;
   doors?: number;
   color?: string;
@@ -482,9 +477,13 @@ export interface VehiclePdfData {
   window_tint?: string;
   modifications?: string;
   equipment_notes?: string;
-  // Additional Registration
+  // Additional Registration / Owner
   registered_owner?: string;
   registration_state?: string;
+  owner_dl_number?: string;
+  owner_dob?: string;
+  primary_driver_name?: string;
+  vehicle_use?: string;
   // Description
   distinguishing_features?: string;
   damage_description?: string;
@@ -757,12 +756,6 @@ export interface PropertyPdfData {
   address?: string;
   city?: string;
   state?: string;
-  // Geography / Contract
-  area_name?: string;
-  sector_name?: string;
-  zone_name?: string;
-  beat_name?: string;
-  contract_id?: string;
   zip?: string;
   latitude?: number;
   longitude?: number;
@@ -796,6 +789,11 @@ export interface PropertyPdfData {
   known_hazards?: string;
   last_inspection_date?: string;
   inspection_status?: string;
+  // Operations
+  contact_email?: string;
+  opening_hours?: string;
+  closing_hours?: string;
+  patrol_frequency?: string;
   // Instructions
   access_instructions?: string;
   post_orders?: string;
@@ -818,6 +816,12 @@ export interface CitationPdfData {
   vehicle_description?: string;
   vehicle_plate?: string;
   vehicle_state?: string;
+  vehicle_vin?: string;
+  // Geography
+  sector_id?: string;
+  zone_id?: string;
+  beat_id?: string;
+  zone_beat?: string;
   // Violation
   statute_citation?: string;
   violation_description?: string;
@@ -972,7 +976,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('courier', 'bold');
       doc.setFontSize(dValSize);
       doc.setTextColor(255, 255, 255);
-      doc.text(sanitizePdfText(f.value), fx, barY + 6.5);
+      doc.text(sanitizePdfText(f.value).toUpperCase(), fx, barY + 6.5);
       colX += fw;
     });
 
@@ -1628,15 +1632,6 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
-  // Geography / Contract strip — AREA | SECTOR | ZONE | BEAT | CONTRACT ID
-  y = drawGeographyStrip(doc, y, {
-    area: data.area_name,
-    sector: data.sector_name,
-    zone: data.zone_name,
-    beat: data.beat_name,
-    contract_id: data.contract_id,
-  });
-
   // ── 1. Subject Identification ─────────────────────────────
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
     const fifthW = ffw / 5;
@@ -1721,11 +1716,25 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const c2 = addFieldPair(doc, 'Phone (Secondary)', data.phone_secondary || '', lx + thirdW, y, thirdW);
     const c3 = addFieldPair(doc, 'Email', data.email || '', lx + 2 * thirdW, y, thirdW);
     y = Math.max(c1, c2, c3);
-    // Row 2: Address (full width)
+    // Row 2: Alt contact
+    if (data.home_phone || data.work_phone || data.email_secondary) {
+      const ac1 = addFieldPair(doc, 'Home Phone', data.home_phone || '', lx, y, thirdW);
+      const ac2 = addFieldPair(doc, 'Work Phone', data.work_phone || '', lx + thirdW, y, thirdW);
+      const ac3 = addFieldPair(doc, 'Email (Alt)', data.email_secondary || '', lx + 2 * thirdW, y, thirdW);
+      y = Math.max(ac1, ac2, ac3);
+    }
+    // Row 3: Address (full width)
     y = addFieldPair(doc, 'Address', fullAddress, lx, y, ffw);
-    // Row 3: Social Media (if present)
+    // Row 4: Social Media (if present)
     if (data.social_media) {
       y = addFieldPair(doc, 'Social Media', data.social_media, lx, y, ffw);
+    }
+    // Row 5: Alias DOB + Last Seen
+    if (data.alias_dob || data.date_last_seen || data.location_last_seen) {
+      const ls1 = addFieldPair(doc, 'Alias DOB', fmtDate(data.alias_dob), lx, y, thirdW);
+      const ls2 = addFieldPair(doc, 'Date Last Seen', fmtDate(data.date_last_seen), lx + thirdW, y, thirdW);
+      const ls3 = addFieldPair(doc, 'Location Last Seen', data.location_last_seen || '', lx + 2 * thirdW, y, thirdW);
+      y = Math.max(ls1, ls2, ls3);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2069,15 +2078,6 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     caseNumber: data.license_plate || 'N/A',
   });
 
-  // Geography / Contract strip
-  y = drawGeographyStrip(doc, y, {
-    area: data.area_name,
-    sector: data.sector_name,
-    zone: data.zone_name,
-    beat: data.beat_name,
-    contract_id: data.contract_id,
-  });
-
   // ── Vehicle Identification ──
   y = checkPageBreak(doc, y, 25);
   { const sec = openAutoSection(doc, 'Vehicle Identification', y); y = sec.contentY;
@@ -2116,9 +2116,23 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     const r1b = addFieldPair(doc, 'Phone', data.owner_phone || '', rx, y, quarterW);
     const r1c = addFieldPair(doc, 'Odometer', data.odometer || '', rx + quarterW, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
-    // Row 2: Owner Address (full width)
+    // Row 2: Owner DL, DOB, Registered Owner
+    if (data.owner_dl_number || data.owner_dob || data.registered_owner) {
+      const tw = ffw / 3;
+      const od1 = addFieldPair(doc, 'Owner DL #', data.owner_dl_number || '', lx, y, tw);
+      const od2 = addFieldPair(doc, 'Owner DOB', fmtDate(data.owner_dob), lx + tw, y, tw);
+      const od3 = addFieldPair(doc, 'Registered Owner', data.registered_owner || '', lx + 2 * tw, y, tw);
+      y = Math.max(od1, od2, od3);
+    }
+    // Row 3: Primary Driver, Vehicle Use
+    if (data.primary_driver_name || data.vehicle_use) {
+      const pd1 = addFieldPair(doc, 'Primary Driver', data.primary_driver_name || '', lx, y, hfw);
+      const pd2 = addFieldPair(doc, 'Vehicle Use', data.vehicle_use || '', rx, y, hfw);
+      y = Math.max(pd1, pd2);
+    }
+    // Row 4: Owner Address (full width)
     y = addFieldPair(doc, 'Owner Address', data.owner_address || '', lx, y, ffw);
-    // Row 3: Checkboxes + Lien Holder (clear gap after address)
+    // Row 5: Checkboxes + Lien Holder (clear gap after address)
     y += 4;
     let flagX = lx;
     flagX = addCheckboxField(doc, 'Commercial', !!data.commercial_vehicle, flagX, y);
@@ -2992,15 +3006,6 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     caseNumber: data.name || 'N/A',
   });
 
-  // Geography / Contract strip
-  y = drawGeographyStrip(doc, y, {
-    area: data.area_name,
-    sector: data.sector_name,
-    zone: data.zone_name,
-    beat: data.beat_name,
-    contract_id: data.contract_id,
-  });
-
   // ── Property Information ──
   y = checkPageBreak(doc, y, 18);
   { const sec = openAutoSection(doc, 'Property Information', y); y = sec.contentY;
@@ -3051,6 +3056,19 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     const r1b = addFieldPair(doc, 'Alarm Code', data.alarm_code || '', lx + tw, y, tw);
     const r1c = addFieldPair(doc, 'Emergency Contact', data.emergency_contact || '', lx + tw * 2, y, tw * 2);
     y = Math.max(r1a, r1b, r1c);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Operations ──
+  if (data.contact_email || data.opening_hours || data.closing_hours || data.patrol_frequency) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Operations', y); y = sec.contentY;
+    const tw = ffw / 4;
+    const op1 = addFieldPair(doc, 'Contact Email', data.contact_email || '', lx, y, tw);
+    const op2 = addFieldPair(doc, 'Opening Hours', data.opening_hours || '', lx + tw, y, tw);
+    const op3 = addFieldPair(doc, 'Closing Hours', data.closing_hours || '', lx + 2 * tw, y, tw);
+    const op4 = addFieldPair(doc, 'Patrol Frequency', data.patrol_frequency || '', lx + 3 * tw, y, tw);
+    y = Math.max(op1, op2, op3, op4);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3200,7 +3218,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   }
 
   // ── Vehicle Information ──
-  if (data.vehicle_description || data.vehicle_plate) {
+  if (data.vehicle_description || data.vehicle_plate || data.vehicle_vin) {
     y = checkPageBreak(doc, y, 12, prio);
     { const sec = openAutoSection(doc, 'Vehicle Information', y); y = sec.contentY;
       const quarterW = ffw / 4;
@@ -3208,8 +3226,22 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
       const r1b = addFieldPair(doc, 'Plate', data.vehicle_plate || '', rx, y, quarterW);
       const r1c = addFieldPair(doc, 'State', data.vehicle_state || '', rx + quarterW, y, quarterW);
       y = Math.max(r1a, r1b, r1c);
+      if (data.vehicle_vin) y = addFieldPair(doc, 'VIN', data.vehicle_vin, lx, y, ffw);
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
+  }
+
+  // ── Location / Geography ──
+  if (data.sector_id || data.zone_id || data.beat_id) {
+    y = checkPageBreak(doc, y, 10, prio);
+    const sec = openAutoSection(doc, 'Location / Geography', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const g1 = addFieldPair(doc, 'Sector', data.sector_id || '', lx, y, qw);
+    const g2 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + qw, y, qw);
+    const g3 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + 2 * qw, y, qw);
+    const g4 = addFieldPair(doc, 'Zone/Beat', data.zone_beat || '', lx + 3 * qw, y, qw);
+    y = Math.max(g1, g2, g3, g4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Issuing Officer ──

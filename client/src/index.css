@@ -1525,9 +1525,31 @@ body.fx-noise::after {
 
 /* --- Leaflet Map Overrides (Blocky) --- */
 .leaflet-container {
-  background-color: var(--surface-base) !important;
+  background-color: #0a0a0a !important;
   font-family: inherit;
+  z-index: 1 !important;
 }
+.leaflet-tile-pane {
+  z-index: 200 !important;
+}
+.leaflet-tile-pane img {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.beat-label-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #aaaaaa !important;
+  font-size: 9px !important;
+  font-weight: bold !important;
+  font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+  text-shadow: 0 0 3px #000, 0 0 6px #000 !important;
+  padding: 0 !important;
+}
+.beat-label-tooltip::before { display: none !important; }
 
 .leaflet-control-zoom a {
   background-color: var(--surface-base) !important;

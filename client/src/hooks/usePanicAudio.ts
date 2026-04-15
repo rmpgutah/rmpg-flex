@@ -25,7 +25,7 @@ export interface PanicAudioState {
   error: string | null;
 }
 
-const BROADCAST_DURATION = 15; // seconds
+const BROADCAST_DURATION = 60; // seconds
 
 // ── Hook ─────────────────────────────────────────────────────
 
@@ -47,6 +47,9 @@ export function usePanicAudio() {
   const broadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guard against double-start (mic/timer leak)
   const isBroadcastingRef = useRef(false);
+  // Track the current panic ID for tagging audio chunks
+  const panicIdRef = useRef<number | null>(null);
+  const broadcastStartTimeRef = useRef<number>(0);
 
   // Stream players for incoming audio (separate for panic vs. response)
   const panicPlayerRef = useRef<StreamPlayer | null>(null);
@@ -56,10 +59,12 @@ export function usePanicAudio() {
   const stopBroadcastRef = useRef<() => void>(() => {});
 
   // ─── Start broadcasting (sender — open mic) ─────────────────
-  const startBroadcast = useCallback(async () => {
+  const startBroadcast = useCallback(async (panicId?: number) => {
     // Guard against double-start: prevents mic/timer leak if button is mashed
     if (isBroadcastingRef.current) return;
     isBroadcastingRef.current = true;
+    panicIdRef.current = panicId ?? null;
+    broadcastStartTimeRef.current = Date.now();
 
     try {
       // Request mic access
@@ -96,6 +101,7 @@ export function usePanicAudio() {
                 audio: base64,
                 mimeType,
                 chunk: true,
+                panicId: panicIdRef.current,
               },
             });
           };
@@ -175,11 +181,21 @@ export function usePanicAudio() {
     }
     mediaRecorderRef.current = null;
 
-    // Signal end of broadcast
+    // Calculate actual duration
+    const actualDuration = Math.round((Date.now() - broadcastStartTimeRef.current) / 1000);
+
+    // Signal end of broadcast with panicId and duration
     send({
       type: 'panic_audio',
-      data: { end: true },
+      data: {
+        end: true,
+        panicId: panicIdRef.current,
+        duration: actualDuration,
+      },
     });
+
+    panicIdRef.current = null;
+    broadcastStartTimeRef.current = 0;
 
     setState(prev => ({
       ...prev,

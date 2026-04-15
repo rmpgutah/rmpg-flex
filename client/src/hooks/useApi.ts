@@ -404,6 +404,28 @@ export async function apiFetch<T>(
   return res.json();
 }
 
+/** Fetch binary data (audio, images) with auth + token refresh. Returns a Blob. */
+export async function apiFetchBlob(endpoint: string): Promise<Blob> {
+  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const token = localStorage.getItem('rmpg_token');
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res = await fetchWithRetry(url, { headers });
+
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers['Authorization'] = `Bearer ${newToken}`;
+      res = await fetchWithRetry(url, { headers });
+    }
+    if (!res.ok) throw new Error('Session expired. Please log in again.');
+  }
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.blob();
+}
+
 // Upload files via FormData (multipart)
 export async function apiUploadFiles(
   files: File[],

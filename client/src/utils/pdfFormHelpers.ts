@@ -111,16 +111,21 @@ export function drawFormCell(
   // Value (Courier, black — centered in value area)
   if (cell.checkbox) {
     // Render checkbox square centered vertically in value area
-    const cbSize = 2.8;
+    const cbSize = 3.0;
     const cbX = x + pad;
     const cbY = valueAreaTop + (valueAreaH - cbSize) / 2;
-    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-    doc.setLineWidth(BORDER.CHECKBOX);
+    doc.setDrawColor(80, 80, 85);
+    doc.setLineWidth(0.3);
     doc.rect(cbX, cbY, cbSize, cbSize);
     if (cell.checked) {
-      doc.setLineWidth(BORDER.CHECK_MARK);
-      doc.line(cbX + 0.5, cbY + 1.4, cbX + 1.1, cbY + 2.3);
-      doc.line(cbX + 1.1, cbY + 2.3, cbX + 2.3, cbY + 0.5);
+      doc.setFillColor(230, 245, 230);
+      doc.rect(cbX + 0.15, cbY + 0.15, cbSize - 0.3, cbSize - 0.3, 'F');
+      doc.setDrawColor(20, 20, 20);
+      doc.setLineWidth(0.7);
+      const cx = cbX + cbSize / 2;
+      const cy = cbY + cbSize / 2;
+      doc.line(cx - 1.0, cy - 0.1, cx - 0.2, cy + 0.8);
+      doc.line(cx - 0.2, cy + 0.8, cx + 1.1, cy - 0.9);
     }
     // Label text after checkbox
     if (cell.value) {
@@ -306,7 +311,7 @@ export function drawCheckboxGrid(
     const rawLabel = items[i].code
       ? `${items[i].code} = ${items[i].label}`
       : items[i].label;
-    const labelText = sanitizePdfText(rawLabel);
+    const labelText = sanitizePdfText(rawLabel).toUpperCase();
 
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
@@ -365,12 +370,12 @@ export function drawCodeReferenceTable(
     doc.setFont('courier', 'bold');
     doc.setFontSize(4.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(sanitizePdfText(codes[i].code || ''), cellX + 1, curY + 2.3);
+    doc.text(sanitizePdfText(codes[i].code || '').toUpperCase(), cellX + 1, curY + 2.3);
 
     doc.setFont('courier', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(sanitizePdfText(`= ${codes[i].description || ''}`), cellX + 5.5, curY + 2.3, {
+    doc.text(sanitizePdfText(`= ${codes[i].description || ''}`).toUpperCase(), cellX + 5.5, curY + 2.3, {
       maxWidth: colW - 7,
     });
   }

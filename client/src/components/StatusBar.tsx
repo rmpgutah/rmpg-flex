@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
+import StatusBarRadio from './StatusBarRadio';
 import { safeTimeStr } from '../utils/dateUtils';
 
 const APP_VERSION: string =
@@ -115,6 +116,9 @@ export default function StatusBar({
           OPR: {user?.badge_number || '---'} {user?.last_name?.toUpperCase() || '---'}
         </span>
       </div>
+
+      {/* Radio */}
+      <StatusBarRadio />
 
       {/* Battery */}
       <BatteryIndicator />

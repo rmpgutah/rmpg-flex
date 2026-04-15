@@ -1685,7 +1685,13 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
 // Image Proxy — loads external email images through the server
 // to bypass CORS/referrer restrictions on CDN-hosted content
 // ════════════════════════════════════════════════════════════
-router.get('/image-proxy', authenticateToken, async (req: Request, res: Response) => {
+router.get('/image-proxy', (req: Request, res: Response, next: NextFunction) => {
+  // Accept auth via Authorization header OR ?token= query param (for blob iframe img src)
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  authenticateToken(req, res, next);
+}, async (req: Request, res: Response) => {
   try {
     const url = req.query.url as string;
     if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
