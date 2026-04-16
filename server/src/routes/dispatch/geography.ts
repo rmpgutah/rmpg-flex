@@ -442,7 +442,8 @@ router.delete('/geography/codes/:id', requireRole('admin'), (req: Request, res: 
 router.get('/geography/premise-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const address = req.query.address as string | undefined;
+    const rawAddress = req.query.address;
+    const address = typeof rawAddress === 'string' ? rawAddress : undefined;
     const lat = req.query.lat ? parseFloat(req.query.lat as string) : null;
     const lng = req.query.lng ? parseFloat(req.query.lng as string) : null;
     const radius = req.query.radius ? parseFloat(req.query.radius as string) : 0.005; // ~500m default
