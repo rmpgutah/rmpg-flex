@@ -211,6 +211,27 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 11: Payment Tracking Summary
+// NOTE: Must be declared BEFORE /:id — otherwise Express matches /:id first
+// and the /:id handler 400s on id="payment-summary" (not a valid integer).
+// ════════════════════════════════════════════════════════════
+router.get('/payment-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    let dateFilter = '';
+    const params: any[] = [];
+    if (date_from) { dateFilter += ' AND cp.payment_date >= ?'; params.push(date_from); }
+    if (date_to) { dateFilter += ' AND cp.payment_date <= ?'; params.push(date_to); }
+    const totalPayments = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter}`).get(...params) as any;
+    const byMethod = db.prepare(`SELECT payment_method, COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter} GROUP BY payment_method`).all(...params) as any[];
+    const outstandingRow = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(fine_amount), 0) as total FROM citations WHERE status IN ('issued', 'contested', 'payment_plan') AND fine_amount > 0`).get() as any;
+    const collectedRow = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments`).get() as any;
+    res.json({ data: { payment_count: totalPayments.count, payment_total: totalPayments.total, by_method: byMethod, outstanding_citations: outstandingRow.count, outstanding_amount: outstandingRow.total, total_collected: collectedRow.total, collection_rate: outstandingRow.total > 0 ? Math.round((collectedRow.total / (outstandingRow.total + collectedRow.total)) * 100) : 0 } });
+  } catch (error: any) { console.error('Payment summary error:', error); res.status(500).json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }); }
+});
+
 // ─── GET /api/citations/:id ──────────────────────────────
 router.get('/:id', (req: Request, res: Response) => {
   try {
@@ -744,25 +765,6 @@ router.get('/calculate-fine', (req: Request, res: Response) => {
     const calculatedFine = Math.round(baseFine * multiplier * 100) / 100;
     res.json({ data: { base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type: type || 'traffic' } });
   } catch (error: any) { console.error('Calculate fine error:', error); res.status(500).json({ error: 'Failed to calculate fine', code: 'CALCULATE_FINE_ERROR' }); }
-});
-
-// ════════════════════════════════════════════════════════════
-// UPGRADE 11: Payment Tracking Summary
-// ════════════════════════════════════════════════════════════
-router.get('/payment-summary', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { date_from, date_to } = req.query;
-    let dateFilter = '';
-    const params: any[] = [];
-    if (date_from) { dateFilter += ' AND cp.payment_date >= ?'; params.push(date_from); }
-    if (date_to) { dateFilter += ' AND cp.payment_date <= ?'; params.push(date_to); }
-    const totalPayments = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter}`).get(...params) as any;
-    const byMethod = db.prepare(`SELECT payment_method, COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter} GROUP BY payment_method`).all(...params) as any[];
-    const outstandingRow = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(fine_amount), 0) as total FROM citations WHERE status IN ('issued', 'contested', 'payment_plan') AND fine_amount > 0`).get() as any;
-    const collectedRow = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments`).get() as any;
-    res.json({ data: { payment_count: totalPayments.count, payment_total: totalPayments.total, by_method: byMethod, outstanding_citations: outstandingRow.count, outstanding_amount: outstandingRow.total, total_collected: collectedRow.total, collection_rate: outstandingRow.total > 0 ? Math.round((collectedRow.total / (outstandingRow.total + collectedRow.total)) * 100) : 0 } });
-  } catch (error: any) { console.error('Payment summary error:', error); res.status(500).json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════

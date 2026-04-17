@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
+import { auditEmailSend } from '../utils/emailAudit';
 import { broadcast } from '../utils/websocket';
 import { escapeLike, validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import type { NextFunction } from 'express';
@@ -528,6 +529,50 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/messages/search', async (req: Request, res: Response) => {
+  const db = getDb();
+  const q = String(req.query.q || '').trim();
+  const folder = req.query.folder ? String(req.query.folder) : '';
+  const from = req.query.from ? String(req.query.from) : '';
+  const after = req.query.after ? String(req.query.after) : '';
+  const before = req.query.before ? String(req.query.before) : '';
+  const flagged = req.query.flagged === '1';
+  const hasAttachment = req.query.has_attachment === '1';
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '25'), 10)));
+  const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10));
+
+  if (!q && !folder && !from && !after && !before && !flagged && !hasAttachment) {
+    return res.json({ results: [], total: 0 });
+  }
+
+  const where: string[] = [];
+  const params: any[] = [];
+  if (q.length >= 2) {
+    // Sanitize FTS query — drop quote/special chars that break MATCH syntax
+    const safeQ = q.replace(/["']/g, ' ').replace(/[^\w\s*]/g, ' ').trim();
+    if (safeQ) {
+      where.push('ec.id IN (SELECT rowid FROM email_cache_fts WHERE email_cache_fts MATCH ?)');
+      params.push(safeQ);
+    }
+  }
+  if (folder) { where.push('ec.folder_id = ?'); params.push(folder); }
+  if (from)   { where.push('ec.from_address LIKE ?'); params.push(`%${from}%`); }
+  if (after)  { where.push('ec.received_at >= ?'); params.push(after); }
+  if (before) { where.push('ec.received_at <= ?'); params.push(before); }
+  if (flagged) where.push('ec.is_flagged = 1');
+  if (hasAttachment) where.push('ec.has_attachments = 1');
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM email_cache ec ${whereSql}`).get(...params) as any).c;
+  const rows = db.prepare(
+    `SELECT ec.id, ec.graph_id, ec.subject, ec.from_address, ec.from_name, ec.body_preview, ec.received_at, ec.folder_id, ec.is_read, ec.is_flagged, ec.has_attachments
+     FROM email_cache ec ${whereSql}
+     ORDER BY ec.received_at DESC LIMIT ? OFFSET ?`
+  ).all(...params, limit, offset);
+
+  res.json({ results: rows, total, limit, offset });
+});
+
 // GET /api/email/messages/:id — Full message with body
 router.get('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
@@ -689,12 +734,19 @@ router.post('/send', async (req: Request, res: Response) => {
       attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
     });
 
-    if (sent) {
-      auditLog(req, 'SEND_EMAIL', 'email', 0, JSON.stringify({ to: toList, subject, attachmentCount: emailAttachments.length }));
+    if (sent.ok) {
+      auditEmailSend(req, 'SEND', {
+        to: toList, cc: ccList, bcc: bccList, subject,
+        messageId: sent.messageId, transport: sent.transport,
+      });
       broadcast('admin', 'email:sent', { to: toList, subject });
       res.json({ success: true });
     } else {
-      res.status(500).json({ error: 'Failed to send email', code: 'FAILED_TO_SEND_EMAIL' });
+      auditEmailSend(req, 'SEND', {
+        to: toList, cc: ccList, bcc: bccList, subject,
+        error: `${sent.reason}: ${sent.detail}`,
+      });
+      res.status(500).json({ error: `Failed to send email: ${sent.reason}`, code: 'FAILED_TO_SEND_EMAIL', detail: sent.detail });
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -704,6 +756,7 @@ router.post('/send', async (req: Request, res: Response) => {
 
 // POST /api/email/messages/:id/reply — Reply to message
 router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Response) => {
+  const messageId = String(req.params.id);
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
@@ -711,20 +764,22 @@ router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Re
     const client = await getGraphClient();
     const signature = getUserSignature(req.user!.userId);
 
-    await client.api(`/me/messages/${req.params.id}/reply`).post({
+    await client.api(`/me/messages/${messageId}/reply`).post({
       comment: textToEmailHtml(body || '', signature || undefined),
     });
 
-    auditLog(req, 'REPLY_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
+    auditEmailSend(req, 'REPLY', { messageId, transport: 'graph' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
+    auditEmailSend(req, 'REPLY', { messageId, error: err?.message || String(err) });
     res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/reply-all — Reply all
 router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res: Response) => {
+  const messageId = String(req.params.id);
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
@@ -732,27 +787,30 @@ router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res
     const client = await getGraphClient();
     const signature = getUserSignature(req.user!.userId);
 
-    await client.api(`/me/messages/${req.params.id}/replyAll`).post({
+    await client.api(`/me/messages/${messageId}/replyAll`).post({
       comment: textToEmailHtml(body || '', signature || undefined),
     });
 
-    auditLog(req, 'REPLY_ALL_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
+    auditEmailSend(req, 'REPLY_ALL', { messageId, transport: 'graph' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
+    auditEmailSend(req, 'REPLY_ALL', { messageId, error: err?.message || String(err) });
     res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/forward — Forward message
 router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: Response) => {
+  const messageId = String(req.params.id);
+  let toList: string[] = [];
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { to, body } = req.body;
     if (!to) { res.status(400).json({ error: 'Recipient required', code: 'RECIPIENT_REQUIRED' }); return; }
 
-    const toList = Array.isArray(to) ? to : [to];
+    toList = Array.isArray(to) ? to : [to];
     const emailRegexFwd = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     for (const addr of toList) {
       if (typeof addr !== 'string' || !emailRegexFwd.test(addr.trim())) {
@@ -763,17 +821,18 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
     const client = await getGraphClient();
 
     const signature = getUserSignature(req.user!.userId);
-    await client.api(`/me/messages/${req.params.id}/forward`).post({
+    await client.api(`/me/messages/${messageId}/forward`).post({
       comment: textToEmailHtml(body || '', signature || undefined),
       toRecipients: toList.map((email: string) => ({
         emailAddress: { address: email.trim() },
       })),
     });
 
-    auditLog(req, 'FORWARD_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id, to: toList }));
+    auditEmailSend(req, 'FORWARD', { messageId, to: toList, transport: 'graph' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
+    auditEmailSend(req, 'FORWARD', { messageId, to: toList, error: err?.message || String(err) });
     res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
@@ -1133,34 +1192,42 @@ router.delete('/link/:id', validateParamIdMiddleware, requireRole('admin', 'mana
 
 // POST /api/email/schedule — Schedule an email for later delivery
 router.post('/schedule', (req: Request, res: Response) => {
+  const { to, cc, bcc, subject } = req.body || {};
+  const toList = Array.isArray(to) ? to : (to ? [to] : []);
+  const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : undefined;
+  const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined;
   try {
     const db = getDb();
-    const { to, cc, bcc, subject, body, attachments, scheduledAt } = req.body;
+    const { body, attachments, scheduledAt } = req.body;
     if (!to || !subject || !scheduledAt) {
       res.status(400).json({ error: 'To, subject, and scheduledAt are required', code: 'TO_SUBJECT_AND_SCHEDULEDAT' });
       return;
     }
-
-    const toList = Array.isArray(to) ? to : [to];
 
     const result = db.prepare(`
       INSERT INTO scheduled_emails (to_addresses, cc_addresses, bcc_addresses, subject, body, attachments, scheduled_at, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       JSON.stringify(toList),
-      cc ? JSON.stringify(Array.isArray(cc) ? cc : [cc]) : null,
-      bcc ? JSON.stringify(Array.isArray(bcc) ? bcc : [bcc]) : null,
+      ccList ? JSON.stringify(ccList) : null,
+      bccList ? JSON.stringify(bccList) : null,
       subject, body || '',
       attachments ? JSON.stringify(attachments) : null,
       scheduledAt, req.user!.userId
     );
 
-    auditLog(req, 'SCHEDULE_EMAIL', 'email', Number(result.lastInsertRowid) as number,
-      JSON.stringify({ to: toList, subject, scheduledAt }));
+    auditEmailSend(req, 'SCHEDULE_SEND', {
+      to: toList, cc: ccList, bcc: bccList, subject,
+      messageId: `scheduled:${result.lastInsertRowid}`,
+    });
 
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
+    auditEmailSend(req, 'SCHEDULE_SEND', {
+      to: toList, cc: ccList, bcc: bccList, subject,
+      error: err?.message || String(err),
+    });
     res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });

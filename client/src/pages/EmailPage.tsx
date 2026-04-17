@@ -1551,6 +1551,11 @@ export default function EmailPage() {
   const [searchInput, setSearchInput] = useState('');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Task 2.4: FTS search — debounced call to /api/email/messages/search
+  // When searchResults is non-null, it replaces the folder message list
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<EmailMessage[] | null>(null);
+
   // Compose
   const [composing, setComposing] = useState<'new' | 'reply' | 'reply-all' | 'forward' | null>(null);
 
@@ -1696,6 +1701,36 @@ export default function EmailPage() {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchInput, search, selectedFolder, fetchMessages]);
 
+  // Task 2.4: Debounced FTS search (300ms, ≥2 chars) — populates searchResults
+  useEffect(() => {
+    if (searchQuery.length < 2) { setSearchResults(null); return; }
+    const t = setTimeout(() => {
+      const folder = selectedFolder;
+      apiFetch<{ results: any[] }>(`/email/messages/search?q=${encodeURIComponent(searchQuery)}&folder=${encodeURIComponent(folder || '')}`)
+        .then(r => {
+          // FTS endpoint returns raw snake_case DB rows — map to EmailMessage camelCase shape
+          const mapped: EmailMessage[] = (r.results || []).map((row: any) => ({
+            id: row.graph_id || row.id,
+            conversationId: row.conversation_id,
+            subject: row.subject || '',
+            fromAddress: row.from_address || '',
+            fromName: row.from_name || '',
+            toAddresses: [],
+            ccAddresses: [],
+            bodyPreview: row.body_preview || '',
+            hasAttachments: !!row.has_attachments,
+            isRead: !!row.is_read,
+            isFlagged: !!row.is_flagged,
+            importance: 'normal',
+            receivedAt: row.received_at || '',
+          }));
+          setSearchResults(mapped);
+        })
+        .catch(() => setSearchResults([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery, selectedFolder]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1758,14 +1793,19 @@ export default function EmailPage() {
 
   const handleSelectFolder = (folderId: string) => {
     setSelectedFolder(folderId); setSelectedMessage(null); setFullMessage(null); setSelectedIds(new Set()); setPage(1);
-    fetchMessages(1, folderId, search);
+    // Task 2.4: clear FTS search on folder change — simpler & more predictable UX
+    setSearchQuery(''); setSearchInput(''); setSearch(''); setSearchResults(null);
+    fetchMessages(1, folderId, '');
   };
 
   const handleSelectMessage = (msg: EmailMessage) => {
     setSelectedMessage(msg); setMobileView('detail'); fetchFullMessage(msg.id);
   };
 
-  const handleClearSearch = () => { setSearchInput(''); setSearch(''); setPage(1); fetchMessages(1, selectedFolder, ''); };
+  const handleClearSearch = () => {
+    setSearchInput(''); setSearch(''); setSearchQuery(''); setSearchResults(null);
+    setPage(1); fetchMessages(1, selectedFolder, '');
+  };
   const handleRefresh = () => { fetchFolders(); fetchMessages(1, selectedFolder, search); };
 
   const handleToggleRead = async (msg: EmailMessage) => {
@@ -1971,9 +2011,12 @@ export default function EmailPage() {
   // Top-level folders only (no parentFolderId, or parentFolderId points to root)
   const topLevelFolders = sortedFolders.filter(f => !f.parentFolderId || WELL_KNOWN_FOLDERS.includes(f.displayName));
 
+  // Task 2.4: When FTS search is active, searchResults replaces the folder message list
+  const displayedMessages: EmailMessage[] = searchResults ?? messages;
+
   // Apply client-side search filters
   const filteredMessages = hasActiveFilters(searchFilters)
-    ? messages.filter(msg => {
+    ? displayedMessages.filter(msg => {
         if (searchFilters.sender) {
           const s = searchFilters.sender.toLowerCase();
           if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
@@ -1985,7 +2028,7 @@ export default function EmailPage() {
         if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
         return true;
       })
-    : messages;
+    : displayedMessages;
 
   const conversationThreads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;
@@ -2217,10 +2260,10 @@ export default function EmailPage() {
             <div className="flex items-center gap-1.5">
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search emails..." aria-label="Search emails..."
+                <input value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
                   className="input-dark w-full text-[11px] pl-7 pr-7 py-1 min-h-[36px]" />
                 {searchInput && (
-                  <button type="button" onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+                  <button type="button" onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></button>
                 )}
                 {showSearchFilters && (
                   <SearchFilterPanel filters={searchFilters} onChange={setSearchFilters} onClose={() => setShowSearchFilters(false)} />
@@ -2256,6 +2299,10 @@ export default function EmailPage() {
               </button>
               <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
+            {/* Task 2.4: FTS search result count */}
+            {searchResults !== null && (
+              <div className="text-[10px] text-rmpg-500">{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</div>
+            )}
             {/* Active filter indicators */}
             {hasActiveFilters(searchFilters) && (
               <div className="flex items-center gap-1 flex-wrap">
@@ -2284,12 +2331,12 @@ export default function EmailPage() {
 
         {/* Message List (threaded) */}
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
-          {loading && messages.length === 0 ? (
+          {loading && displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
-          ) : messages.length === 0 ? (
+          ) : displayedMessages.length === 0 ? (
             <div className="text-center py-12 text-rmpg-500 text-xs">
               <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
-              {search ? (<><div>No results for &ldquo;{search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
+              {(search || searchQuery) ? (<><div>No results for &ldquo;{searchQuery || search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
             </div>
           ) : (
             <>
@@ -2396,7 +2443,7 @@ export default function EmailPage() {
                   </div>
                 );
               })}
-              {hasMore && (
+              {hasMore && searchResults === null && (
                 <button type="button" onClick={() => fetchMessages(page + 1, selectedFolder, search)} disabled={loadingMore} className="w-full py-2 text-[10px] text-brand-400 hover:text-brand-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
                   {loadingMore ? <><Loader2 size={10} className="animate-spin" /> Loading...</> : 'Load more...'}</button>
               )}

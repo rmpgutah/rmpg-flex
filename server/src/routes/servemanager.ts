@@ -1024,7 +1024,7 @@ router.get('/jobs/:id/linked-records', (req: Request, res: Response) => {
     const links: any = { warrant: null, call: null, trespass_orders: [] };
 
     if (job.linked_warrant_id) {
-      links.warrant = db.prepare('SELECT id, warrant_number, warrant_type, status, subject_name FROM warrants WHERE id = ?')
+      links.warrant = db.prepare(`SELECT w.id, w.warrant_number, w.type as warrant_type, w.status, COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id WHERE w.id = ?`)
         .get(job.linked_warrant_id);
     }
     if (job.linked_call_id) {

@@ -79,11 +79,11 @@ const HTML_BODY = `
 
 async function main() {
   console.log(`Sending update email to ${RECIPIENT}...`);
-  const ok = await sendEmail({ to: RECIPIENT, subject: SUBJECT, html: HTML_BODY });
-  if (ok) {
-    console.log('Email sent successfully.');
+  const result = await sendEmail({ to: RECIPIENT, subject: SUBJECT, html: HTML_BODY });
+  if (result.ok) {
+    console.log(`Email sent successfully via ${result.transport}.`);
   } else {
-    console.error('Failed to send email. Check email configuration.');
+    console.error(`Failed to send email (${result.reason}): ${result.detail}`);
     process.exit(1);
   }
 }

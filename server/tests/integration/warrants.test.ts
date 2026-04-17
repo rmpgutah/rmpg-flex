@@ -172,3 +172,35 @@ describe('PUT /api/warrants/:id/serve', () => {
     expect([200, 201]).toContain(res.status);
   });
 });
+
+describe('GET /api/warrants — filter de-duplication', () => {
+  it('applies severity filter exactly once (no doubled WHERE clauses)', async () => {
+    // Create two warrants with different offense_level
+    await request(app).post('/api/warrants').set('Authorization', `Bearer ${adminToken}`).send({
+      type: 'arrest', charge_description: 'Felony filter test', offense_level: 'felony'
+    });
+    await request(app).post('/api/warrants').set('Authorization', `Bearer ${adminToken}`).send({
+      type: 'arrest', charge_description: 'Misdemeanor filter test', offense_level: 'misdemeanor'
+    });
+
+    const res = await request(app)
+      .get('/api/warrants?severity=felony')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    for (const w of res.body.data) {
+      expect(w.offense_level).toBe('felony');
+    }
+  });
+
+  it('applies source filter exactly once', async () => {
+    const res = await request(app)
+      .get('/api/warrants?source=manual')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    for (const w of res.body.data) {
+      expect(w.source === 'manual' || w.source === null).toBe(true);
+    }
+  });
+});
