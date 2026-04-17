@@ -18,6 +18,25 @@ import {
   CONFIG_KEYS,
 } from './msGraphClient';
 import { sendEmail } from './emailSender';
+import { renderEmailMarkdown } from './emailMarkdown';
+import { evaluateRulesForEmail } from './emailRuleEngine';
+import { extractEntityReferences } from './emailAutoLinker';
+
+function isAllowlistedSender(fromAddr: string): boolean {
+  try {
+    const raw = getConfigValue('email_autolink_allowlist') || '[]';
+    const domains: string[] = JSON.parse(raw);
+    const addr = (fromAddr || '').toLowerCase();
+    return domains.some(d => {
+      const dom = d.toLowerCase();
+      if (dom.startsWith('.')) return addr.endsWith(dom);
+      return addr.endsWith('@' + dom) || addr.endsWith('.' + dom);
+    });
+  } catch {
+    return false;
+  }
+}
+import { auditLogSystem } from './auditLogger';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -85,6 +104,9 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
       synced_at = excluded.synced_at
   `);
 
+  const checkExisting = db.prepare('SELECT id FROM email_cache WHERE graph_id = ?');
+  const newIds: number[] = [];
+
   const tx = db.transaction(() => {
     for (const msg of messages) {
       const fromAddr = msg.from?.emailAddress?.address || '';
@@ -98,6 +120,8 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
         name: r.emailAddress?.name,
       })));
       const isFlagged = msg.flag?.flagStatus === 'flagged' ? 1 : 0;
+
+      const existing = checkExisting.get(msg.id) as { id: number } | undefined;
 
       const info = upsert.run(
         msg.id,
@@ -119,10 +143,44 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
         now,
       );
       if (info.changes > 0) newCount++;
+      if (!existing && info.lastInsertRowid) {
+        newIds.push(Number(info.lastInsertRowid));
+      }
     }
   });
 
   tx();
+
+  // Rule evaluation runs OUTSIDE the transaction so a slow/broken rule
+  // can't roll back the sync. Each rule has its own internal 50ms timeout.
+  for (const id of newIds) {
+    try {
+      await evaluateRulesForEmail(db, id);
+    } catch (err: any) {
+      console.warn(`[EmailPoller] Rule eval failed for email #${id}:`, err.message);
+    }
+
+    // Auto-link inbound from allowlisted senders to existing CAD/RMS entities.
+    try {
+      const row = db.prepare(
+        `SELECT graph_id, from_address, subject,
+           COALESCE((SELECT body_text FROM email_cache_fts WHERE rowid = ec.id),'') as body_text
+         FROM email_cache ec WHERE ec.id = ?`
+      ).get(id) as any;
+      if (row && isAllowlistedSender(row.from_address)) {
+        const refs = extractEntityReferences(row.subject || '', row.body_text || '');
+        for (const ref of refs) {
+          db.prepare(
+            `INSERT INTO email_links (email_graph_id, entity_type, entity_id, auto_linked, created_at)
+             VALUES (?,?,?,1,?)`
+          ).run(row.graph_id, ref.type, ref.id, localNow());
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[EmailPoller] Auto-link failed for email #${id}:`, err.message);
+    }
+  }
+
   return newCount;
 }
 
@@ -242,18 +300,11 @@ async function processScheduledEmails(): Promise<void> {
       const sigRow = db.prepare("SELECT config_value FROM system_config WHERE config_key = ?")
         .get(`email_signature_${email.created_by}`) as { config_value: string } | undefined;
 
-      let bodyHtml = email.body;
+      let bodyMarkdown = email.body;
       if (sigRow?.config_value) {
-        bodyHtml += '\n\n--\n' + sigRow.config_value;
+        bodyMarkdown += '\n\n--\n' + sigRow.config_value;
       }
-      // Basic markdown conversion
-      bodyHtml = bodyHtml
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
-        .replace(/\n/g, '<br>');
-      bodyHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;">${bodyHtml}</body></html>`;
+      const bodyHtml = renderEmailMarkdown(bodyMarkdown);
 
       const sent = await sendEmail({
         to: toList,
@@ -263,16 +314,37 @@ async function processScheduledEmails(): Promise<void> {
         html: bodyHtml,
       });
 
-      if (sent) {
+      if (sent.ok) {
         db.prepare("UPDATE scheduled_emails SET status = 'sent', sent_at = ? WHERE id = ?").run(localNow(), email.id);
-        console.log(`[EmailPoller] Scheduled email #${email.id} sent to ${toList.join(', ')}`);
+        console.log(`[EmailPoller] Scheduled email #${email.id} sent to ${toList.join(', ')} via ${sent.transport}`);
+        auditLogSystem(
+          'SCHEDULED_DELIVERED' as any,
+          'email' as any,
+          `scheduled:${email.id}`,
+          JSON.stringify({ to: toList, subject: email.subject, transport: sent.transport, messageId: sent.messageId || null }),
+        );
       } else {
-        db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = 'Send failed' WHERE id = ?").run(email.id);
+        const errMsg = `Send failed: ${sent.reason} — ${sent.detail}`;
+        db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?").run(errMsg, email.id);
+        console.error(`[EmailPoller] Scheduled email #${email.id} ${errMsg}`);
+        auditLogSystem(
+          'SCHEDULED_FAILED' as any,
+          'email' as any,
+          `scheduled:${email.id}`,
+          errMsg,
+        );
       }
     } catch (err: any) {
+      const errMsg = err.message || 'Unknown error';
       db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?")
-        .run(err.message || 'Unknown error', email.id);
+        .run(errMsg, email.id);
       console.error(`[EmailPoller] Scheduled email #${email.id} failed:`, err.message);
+      auditLogSystem(
+        'SCHEDULED_FAILED' as any,
+        'email' as any,
+        `scheduled:${email.id}`,
+        errMsg,
+      );
     }
   }
 }

@@ -11,6 +11,7 @@ import { seedUtahStatutes } from '../seeds/utahStatutes';
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
+import { registerSqliteFunctions } from './sqliteFunctions';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,7 @@ export function initDatabase(): Database.Database {
   }
 
   db = new Database(DB_PATH);
+  registerSqliteFunctions(db);
 
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
@@ -3622,6 +3624,135 @@ function migrateSchema(): void {
   addCol('court_events', 'court_fees', "TEXT DEFAULT '{}'");
   addCol('court_events', 'prosecutor_phone', 'TEXT');
   addCol('court_events', 'prosecutor_email', 'TEXT');
+
+  // Defensive: these tables existed historically but had no CREATE in source.
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    graph_id TEXT UNIQUE NOT NULL,
+    conversation_id TEXT,
+    folder_id TEXT,
+    subject TEXT,
+    from_address TEXT,
+    from_name TEXT,
+    to_addresses TEXT,
+    cc_addresses TEXT,
+    body_preview TEXT,
+    body_html TEXT,
+    has_attachments INTEGER DEFAULT 0,
+    is_read INTEGER DEFAULT 0,
+    is_flagged INTEGER DEFAULT 0,
+    importance TEXT DEFAULT 'normal',
+    received_at TEXT,
+    sent_at TEXT,
+    synced_at TEXT
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_folder ON email_cache(folder_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_received ON email_cache(received_at DESC)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_conv ON email_cache(conversation_id)`).run();
+
+  // FTS5 external-content table for full-text search over email bodies
+  db.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS email_cache_fts USING fts5(
+    subject, from_address, from_name, body_text,
+    content='email_cache', content_rowid='id',
+    tokenize='porter unicode61'
+  )`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_ai AFTER INSERT ON email_cache BEGIN
+    INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    VALUES (new.id, COALESCE(new.subject,''), COALESCE(new.from_address,''), COALESCE(new.from_name,''), html_to_text(new.body_html));
+  END`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_ad AFTER DELETE ON email_cache BEGIN
+    INSERT INTO email_cache_fts(email_cache_fts, rowid, subject, from_address, from_name, body_text)
+    VALUES ('delete', old.id, COALESCE(old.subject,''), COALESCE(old.from_address,''), COALESCE(old.from_name,''), html_to_text(old.body_html));
+  END`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_au AFTER UPDATE ON email_cache BEGIN
+    INSERT INTO email_cache_fts(email_cache_fts, rowid, subject, from_address, from_name, body_text)
+    VALUES ('delete', old.id, COALESCE(old.subject,''), COALESCE(old.from_address,''), COALESCE(old.from_name,''), html_to_text(old.body_html));
+    INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    VALUES (new.id, COALESCE(new.subject,''), COALESCE(new.from_address,''), COALESCE(new.from_name,''), html_to_text(new.body_html));
+  END`).run();
+
+  // Idempotent backfill — any rows already in email_cache that aren't indexed yet
+  db.prepare(`INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    SELECT id, COALESCE(subject,''), COALESCE(from_address,''), COALESCE(from_name,''), html_to_text(body_html)
+    FROM email_cache
+    WHERE id NOT IN (SELECT rowid FROM email_cache_fts)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 100,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    conditions_json TEXT NOT NULL,
+    actions_json TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rules_enabled ON email_rules(enabled, priority)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_rule_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_cache_id INTEGER NOT NULL,
+    rule_id INTEGER NOT NULL,
+    executed_at TEXT NOT NULL,
+    action_result TEXT,
+    FOREIGN KEY (email_cache_id) REFERENCES email_cache(id) ON DELETE CASCADE,
+    FOREIGN KEY (rule_id) REFERENCES email_rules(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rule_matches_email ON email_rule_matches(email_cache_id)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    graph_id TEXT UNIQUE NOT NULL,
+    display_name TEXT,
+    parent_folder_id TEXT,
+    total_count INTEGER DEFAULT 0,
+    unread_count INTEGER DEFAULT 0,
+    synced_at TEXT
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_graph_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    created_by INTEGER,
+    created_at TEXT
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_email ON email_links(email_graph_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_entity ON email_links(entity_type, entity_id)`).run();
+  addCol('email_links', 'auto_linked', 'INTEGER DEFAULT 0');
+
+  // Seed email auto-link allowlist + tip-line folder config if missing.
+  const existingAllowlist = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_autolink_allowlist'`).get();
+  if (!existingAllowlist) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`)
+      .run('email_autolink_allowlist', JSON.stringify(['rmpgutah.us', '.gov', '.state.ut.us', 'ut.gov', 'slco.org']));
+  }
+  const existingTipFolder = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_tip_line_folder_id'`).get();
+  if (!existingTipFolder) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_folder_id', '');
+  }
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    to_addresses TEXT NOT NULL,
+    cc_addresses TEXT,
+    bcc_addresses TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    attachments TEXT,
+    scheduled_at TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    sent_at TEXT,
+    error_message TEXT,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status, scheduled_at)`).run();
 
   // ── EMAIL_CACHE — categories for auto-tagging ──
   addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");
