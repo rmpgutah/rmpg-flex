@@ -5,12 +5,18 @@ import { devLog, devWarn } from '../utils/devLog';
 import { handleDispatchEvent } from '../utils/dispatcherBrain';
 import { registerRules } from '../utils/dispatcherRules/registry';
 import { EVENT_RULES } from '../utils/dispatcherRules/events';
+import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
 
-// Register the Dispatcher Brain event rules once at module load. The
-// registry is a module-level array that only grows at boot; if this
-// file hot-reloads during dev, duplicates become harmless because
-// each duplicate still shares ruleId+entityKey cooldown in speakQueue.
+// Register the Dispatcher Brain rule catalog once at module load.
+// - EVENT_RULES: Phase 2 event fan-in (citations, incidents, warrants,
+//   evidence, arrests, HR).
+// - COACHING_RULES: Phase 3 proactive guidance (DV approach, felony
+//   backup, MH protocol, geofence breach, overdue-status timer).
+// Registry is a module-level array that only grows at boot; duplicates
+// from hot-reload are harmless because ruleId+entityKey cooldown in
+// speakQueue dedupes them.
 registerRules(EVENT_RULES);
+registerRules(COACHING_RULES);
 
 type MessageHandler = (message: WSMessage) => void;
 
