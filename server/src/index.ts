@@ -466,8 +466,9 @@ h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head>
 </script></body></html>`);
 });
 
-// SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('*', (req, res) => {
+// SPA fallback: serve index.html for non-API, non-download routes (always fresh).
+// Express 5 + path-to-regexp v8 require named wildcards — bare '*' throws at boot.
+app.get('/*splat', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {

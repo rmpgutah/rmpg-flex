@@ -3703,10 +3703,13 @@ function migrateSchema(): void {
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_received ON email_cache(received_at DESC)`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_conv ON email_cache(conversation_id)`).run();
 
-  // FTS5 external-content table for full-text search over email bodies
+  // FTS5 standalone table for full-text search over email bodies.
+  // We cannot use external-content=email_cache because `body_text` is
+  // derived (html_to_text(body_html)) and not a real column — FTS5
+  // bookkeeping would fail with `no such column: T.body_text` at init.
+  // Standalone trades ~2x disk for correctness; triggers below keep it synced.
   db.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS email_cache_fts USING fts5(
     subject, from_address, from_name, body_text,
-    content='email_cache', content_rowid='id',
     tokenize='porter unicode61'
   )`).run();
 
