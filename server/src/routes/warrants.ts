@@ -74,14 +74,6 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND w.created_at <= ?';
       params.push(date_to);
     }
-    if (severity) {
-      whereClause += ' AND w.offense_level = ?';
-      params.push(severity);
-    }
-    if (source) {
-      whereClause += ' AND w.source = ?';
-      params.push(source);
-    }
     if (expiring_days) {
       const eDays = parseInt(expiring_days as string, 10);
       if (!isNaN(eDays) && eDays > 0) {
