@@ -30,6 +30,7 @@ class BrowserConnectivityMonitor {
   private onTransition: ConnectivityCallback | null = null;
   private listeners: Set<ConnectivityCallback> = new Set();
   private consecutiveFailures: number = 0;      // track offline streaks for adaptive backoff
+  private hasCompletedFirstCheck: boolean = false; // first real health check fast-path flag
 
   // Browser event handlers (stored for cleanup)
   private handleOnline: () => void;
@@ -178,6 +179,25 @@ class BrowserConnectivityMonitor {
       this.consecutiveState = 1;
     }
 
+    // Fast-path the very first real check: if the bootstrap state (seeded
+    // from navigator.onLine in start()) disagrees with the authoritative
+    // health-check result, transition immediately instead of waiting
+    // stableCount × pollInterval seconds. This matters when navigator.onLine
+    // lies at page-load time (common in Chromium VMs, iOS Safari standalone,
+    // and some Electron contexts): without the fast-path, a bogus
+    // `navigator.onLine === false` would pin the UI to "offline" for a full
+    // 30 seconds after load even though the server is reachable.
+    if (!this.hasCompletedFirstCheck) {
+      this.hasCompletedFirstCheck = true;
+      if (reachable !== this.isOnline) {
+        this.isOnline = reachable;
+        this.pendingState = reachable;
+        this.consecutiveState = this.stableCount; // treat as fully confirmed
+        this.notifyListeners(reachable);
+        return;
+      }
+    }
+
     // Only transition after stable consecutive checks
     if (this.consecutiveState >= this.stableCount && reachable !== this.isOnline) {
       const wasOnline = this.isOnline;
@@ -188,9 +208,19 @@ class BrowserConnectivityMonitor {
   }
 
   private async doHealthCheck(): Promise<boolean> {
-    // Quick fail if browser is offline
-    if (!navigator.onLine) return false;
-
+    // NOTE: We deliberately do NOT short-circuit on !navigator.onLine here.
+    // navigator.onLine is unreliable: it returns `false` in some Chromium
+    // VMs, iOS Safari standalone mode, and certain corporate proxy setups
+    // even while the device is happily making HTTP requests. A short-circuit
+    // would trap the monitor in "offline" forever because the only thing
+    // that would unstick it (a navigator `online` event) requires the
+    // browser's flag to flip on its own — which never happens when the
+    // underlying network state hasn't actually changed.
+    //
+    // Instead, always attempt the real fetch. If navigator genuinely is
+    // offline, the fetch fails quickly (no DNS, no socket) and we return
+    // false. If navigator is lying and the server IS reachable, the fetch
+    // succeeds and we return true, letting the monitor recover.
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.requestTimeout);
