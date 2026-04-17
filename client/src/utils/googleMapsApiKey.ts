@@ -14,8 +14,22 @@ export function getGoogleMapsApiKeyErrorMessage(): string {
   return MISSING_KEY_MESSAGE;
 }
 
-export async function getGoogleMapsApiKey(_forceRefresh = false): Promise<string> {
-  // Google Maps disabled — using Leaflet + CartoDB tiles instead.
-  // Re-enable by removing this throw and configuring GOOGLE_MAPS_API_KEY.
-  throw new Error('Google Maps disabled — using free map tiles');
+export async function getGoogleMapsApiKey(forceRefresh = false): Promise<string> {
+  if (!forceRefresh && cachedGoogleMapsApiKey) return cachedGoogleMapsApiKey;
+  if (!forceRefresh && inflightGoogleMapsApiKey) return inflightGoogleMapsApiKey;
+
+  inflightGoogleMapsApiKey = apiFetch<{ configured?: boolean; apiKey?: string }>('/integrations/google-maps/client-key')
+    .then((response) => {
+      const apiKey = typeof response?.apiKey === 'string' ? response.apiKey.trim() : '';
+      if (!apiKey) {
+        throw new Error(MISSING_KEY_MESSAGE);
+      }
+      cachedGoogleMapsApiKey = apiKey;
+      return apiKey;
+    })
+    .finally(() => {
+      inflightGoogleMapsApiKey = null;
+    });
+
+  return inflightGoogleMapsApiKey;
 }
