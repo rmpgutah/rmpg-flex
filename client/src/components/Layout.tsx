@@ -1287,11 +1287,11 @@ export default function Layout() {
                       height: 42,
                       padding: '2px 4px',
                       background: isActive
-                        ? 'linear-gradient(180deg, rgba(26,90,158,0.45) 0%, rgba(26,90,158,0.20) 100%)'
+                        ? 'linear-gradient(180deg, rgba(42,42,42,0.75) 0%, rgba(30,30,30,0.75) 100%)'
                         : isDropdownOpen
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
-                      borderBottom: isActive ? '2px solid #5aa8e8' : '2px solid transparent',
+                      borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
                       color: isActive ? '#ffffff' : '#888888',
                       cursor: 'pointer',
                     }}
@@ -1407,11 +1407,11 @@ export default function Layout() {
                             role="menuitem"
                             style={{
                               color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
+                              background: childActive ? 'rgba(42,42,42,0.60)' : 'transparent',
                             }}
                             onMouseEnter={(e) => {
                               if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(26,90,158,0.2) 0%, rgba(26,90,158,0.1) 100%)';
+                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(42,42,42,0.70) 0%, rgba(30,30,30,0.55) 100%)';
                                 (e.currentTarget as HTMLElement).style.color = '#ffffff';
                               }
                             }}

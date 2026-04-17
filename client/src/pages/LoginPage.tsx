@@ -427,13 +427,13 @@ export default function LoginPage() {
                 </div>
               </div>
             )}
-            {/* Max session duration message */}
+            {/* Max session duration message — neutral info style (not gold/warning) */}
             {showSessionExpired && (
-              <div className="mb-3 p-2.5 bg-blue-900/25 border border-blue-700/50 flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="mb-3 p-2.5 bg-[#141414] border border-[#2e2e2e] flex items-start gap-2" role="status" aria-live="polite">
+                <Lock className="w-3.5 h-3.5 text-[#888888] flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
-                  <p className="text-[10px] text-blue-300 font-semibold">Session Duration Limit</p>
-                  <p className="text-[9px] text-blue-400/80">Your session reached the maximum duration. Please sign in again.</p>
+                  <p className="text-[10px] text-[#cccccc] font-semibold">Session Duration Limit</p>
+                  <p className="text-[9px] text-[#888888]">Your session reached the maximum duration. Please sign in again.</p>
                 </div>
               </div>
             )}
