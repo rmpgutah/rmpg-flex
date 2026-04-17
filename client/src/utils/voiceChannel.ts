@@ -18,6 +18,9 @@ import { announceWithSeverity, speak, clearQueue } from './edgeTTS';
 import type { AlertSeverity } from './alertSeverity';
 import { createStressAnalyzer, type StressResult } from './stressAnalyzer';
 import * as conversationMemory from './conversationMemory';
+import { resolveReferents } from './referentResolver';
+import { getBrainContext, isBrainEnabled } from './dispatcherBrain';
+import { renderCallNarrative } from './narrativeRenderer';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -232,6 +235,25 @@ const QUICK_COMMANDS: QuickCommandPattern[] = [
     pattern: /\b(?:officer\s*down|shots?\s*fired|10[- ]?99|panic|emergency\s*traffic)\b/i,
     action: 'officer_down',
     message: 'EMERGENCY — Officer down broadcast transmitted',
+  },
+
+  // ── Conversational queries (Phase 4) ──
+  // After the resolver rewrites "that call" -> "call CN-26-0457",
+  // these patterns consume the explicit reference. They match the
+  // resolver's output format exactly ("call <call_number>"), so a
+  // raw "tell me about that call" becomes "tell me about call
+  // CN-26-0457" and matches here.
+  {
+    pattern: /\b(?:tell me (?:more )?about|describe|what(?:'s| is) the status of)\s+call\s+([A-Za-z0-9-]+)/i,
+    action: 'describe_call',
+    message: 'Describing call',
+    data: (m) => ({ call_number: m[1] }),
+  },
+  {
+    pattern: /\bwho(?:'s| is)?\s+(?:assigned|on)(?:\s+to)?\s+call\s+([A-Za-z0-9-]+)/i,
+    action: 'who_is_assigned',
+    message: 'Checking assigned units',
+    data: (m) => ({ call_number: m[1] }),
   },
 ];
 
@@ -777,13 +799,71 @@ export class VoiceChannel {
       }
     }
 
+    // ── Phase 4: Referent resolver + conversational queries ──
+    // When the Dispatcher Brain is enabled, rewrite pronouns/deictics
+    // before pattern matching so "tell me about that call" becomes
+    // "tell me about call CN-26-0457". If the resolver flags ambiguity
+    // (e.g. "that call" with no prior context), short-circuit into a
+    // clarification turn rather than falling through to server NLU.
+    let effectiveTranscript = transcript;
+    if (isBrainEnabled() && transcript) {
+      const resolved = resolveReferents(transcript, getBrainContext());
+      if (resolved.ambiguous) {
+        const slotLabel = resolved.ambiguousSlot ?? 'that';
+        const clarify: CommandResult = {
+          success: false,
+          action: 'clarify',
+          message: `Which ${slotLabel} did you mean?`,
+          data: { slot: slotLabel },
+        };
+        conversationMemory.addEntry({ role: 'system', text: clarify.message, action: clarify.action });
+        this.callbacks.onCommandResult(clarify);
+        await this.respond(clarify);
+        return;
+      }
+      effectiveTranscript = resolved.text;
+    }
+
     // 1. Try quick command match first (instant, client-side)
-    let result = matchQuickCommand(transcript);
+    let result = matchQuickCommand(effectiveTranscript);
+
+    // Handle conversational queries locally — compose from BrainContext
+    // rather than round-tripping through server NLU.
+    if (result && (result.action === 'describe_call' || result.action === 'who_is_assigned')) {
+      const ctx = getBrainContext();
+      const call = ctx.lastCall;
+      if (!call) {
+        result = {
+          success: false,
+          action: 'clarify',
+          message: 'Which call did you mean?',
+          data: { slot: 'call' },
+        };
+      } else if (result.action === 'describe_call') {
+        const spoken = renderCallNarrative(
+          {
+            call_number: call.call_number,
+            location_address: call.location,
+            incident_type: call.type,
+          },
+          'narrative',
+        );
+        result = { success: true, action: 'describe_call', message: spoken, data: { call_number: call.call_number } };
+      } else if (result.action === 'who_is_assigned') {
+        // BrainContext doesn't track assigned_units directly, but we do
+        // track lastUnit — a best-effort response for Phase 4.
+        const unit = ctx.lastUnit?.call_sign;
+        result = unit
+          ? { success: true, action: 'who_is_assigned', message: `${unit} is assigned to call ${call.call_number}.`, data: { call_number: call.call_number, unit } }
+          : { success: true, action: 'who_is_assigned', message: `No units assigned to call ${call.call_number}.`, data: { call_number: call.call_number } };
+      }
+    }
 
     if (!result) {
-      // 2. Try server text parsing
-      if (transcript) {
-        result = await sendTextToServer(transcript);
+      // 2. Try server text parsing — use the resolver's output so
+      // pronouns/deictics resolve before NLU, not after.
+      if (effectiveTranscript) {
+        result = await sendTextToServer(effectiveTranscript);
       }
 
       // 3. If text parse failed and we have audio, try audio endpoint
