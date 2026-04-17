@@ -35,9 +35,10 @@ export function setCurrentUser(callSign: string | undefined): void {
   ctx.currentUserCallSign = callSign;
 }
 
-/** Test-only reset. Clears context + disables the flag. */
+/** Test-only reset. Clears context, stops timer, disables the flag. */
 export function __resetBrainForTest(): void {
   ctx = { transcript: [] };
+  stopBrainTimer();
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(BRAIN_FLAG_KEY);
   }
@@ -71,6 +72,7 @@ export function handleDispatchEvent(type: string, payload: any): void {
   if (!isBrainEnabled()) return;
 
   absorbPayloadIntoContext(payload);
+  maybeMarkOnScene(type, payload);
 
   // Set the event on ctx only for the duration of rule matching + compose;
   // clear it afterward so timer/state triggers don't see stale event data.
@@ -90,5 +92,60 @@ export function handleDispatchEvent(type: string, payload: any): void {
     }
   } finally {
     ctx.event = undefined;
+  }
+}
+
+// ─── Timer loop (Phase 3) ───────────────────────────────────
+// A 30s tick fires timer-triggered rules (e.g. overdue-status-check).
+// startBrainTimer() is called once at app boot; stopBrainTimer() is
+// used by tests. The tick is a no-op when the brain flag is off.
+
+const TIMER_TICK_MS = 30_000;
+let timerHandle: ReturnType<typeof setInterval> | null = null;
+
+export function startBrainTimer(): void {
+  if (timerHandle != null) return;
+  timerHandle = setInterval(tickTimers, TIMER_TICK_MS);
+}
+
+export function stopBrainTimer(): void {
+  if (timerHandle != null) {
+    clearInterval(timerHandle);
+    timerHandle = null;
+  }
+}
+
+/** Test-only: invoke a timer tick synchronously. */
+export function __tickTimersForTest(): void {
+  tickTimers();
+}
+
+function tickTimers(): void {
+  if (!isBrainEnabled()) return;
+  const matched = findRules({ kind: 'timer', ctx });
+  for (const rule of matched) {
+    const text = rule.compose(ctx);
+    if (!text) continue;
+    enqueueSpeech({
+      text,
+      severity: rule.severity,
+      ruleId: rule.id,
+      entityKey: rule.entityKey?.(ctx) ?? 'global',
+      cooldownMs: rule.cooldownMs,
+    });
+  }
+}
+
+// Track when the current user's unit transitions into 'on_scene'
+// status so the overdue-status timer rule has a reference point.
+function maybeMarkOnScene(type: string, payload: any): void {
+  if (type !== 'unit_status' && type !== 'status_update' && type !== 'unit_update') return;
+  const callSign = payload?.call_sign ?? payload?.unit_call_sign ?? payload?.unit?.call_sign;
+  if (!callSign || callSign !== ctx.currentUserCallSign) return;
+  const status = String(payload?.status ?? payload?.unit?.status ?? '').toLowerCase();
+  if (status === 'on_scene' || status === 'on scene' || status === 'onscene') {
+    ctx.currentUserOnSceneAt = Date.now();
+  } else if (status === 'clear' || status === 'available' || status === 'off') {
+    ctx.currentUserOnSceneAt = undefined;
   }
 }

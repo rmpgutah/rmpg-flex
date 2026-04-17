@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
-import { handleDispatchEvent } from '../utils/dispatcherBrain';
+import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
 import { registerRules } from '../utils/dispatcherRules/registry';
 import { EVENT_RULES } from '../utils/dispatcherRules/events';
 import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
@@ -17,6 +17,11 @@ import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
 // speakQueue dedupes them.
 registerRules(EVENT_RULES);
 registerRules(COACHING_RULES);
+
+// Start the Dispatcher Brain 30s tick so timer-triggered rules
+// (e.g. overdue-status-check) have a pulse. tickTimers() is itself
+// flag-gated so this is a no-op for users who haven't opted in.
+startBrainTimer();
 
 type MessageHandler = (message: WSMessage) => void;
 
