@@ -30,7 +30,7 @@ class BrowserConnectivityMonitor {
   private onTransition: ConnectivityCallback | null = null;
   private listeners: Set<ConnectivityCallback> = new Set();
   private consecutiveFailures: number = 0;      // track offline streaks for adaptive backoff
-  private hasCompletedFirstCheck: boolean = false; // first real health check fast-path flag
+  hasCompletedFirstCheck: boolean = false;       // public so isLikelyOnline() can prefer authoritative state over navigator.onLine
 
   // Browser event handlers (stored for cleanup)
   private handleOnline: () => void;
@@ -268,6 +268,27 @@ export function createConnectivityMonitor(
 
 export function getConnectivityMonitor(): BrowserConnectivityMonitor | null {
   return monitor;
+}
+
+/**
+ * Best available online-ness signal for code outside the monitor.
+ *
+ * After the monitor has completed its first real health check, prefer its
+ * authoritative state (a successful /api/health fetch ground-truths it, even
+ * when `navigator.onLine` lies `false` in Chromium VMs / iOS Safari standalone
+ * / corporate proxies). Before the first check (monitor just started, or not
+ * created at all on routes that don't mount useOfflineMode), fall back to
+ * `navigator.onLine` — imperfect but better than nothing.
+ *
+ * Consumers that directly read `navigator.onLine` to gate expensive or
+ * write-touching behaviour (useApi routing, sync scheduler, banners) should
+ * use this helper instead so they benefit from the monitor's recovery path.
+ */
+export function isLikelyOnline(): boolean {
+  if (monitor && monitor.hasCompletedFirstCheck) {
+    return monitor.isOnline;
+  }
+  return typeof navigator !== 'undefined' ? navigator.onLine : true;
 }
 
 export { BrowserConnectivityMonitor };
