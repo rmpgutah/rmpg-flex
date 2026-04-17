@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from './useApi';
 
 export interface VoicePersona {
@@ -22,12 +22,25 @@ const DEFAULT: VoicePersona = {
   terseness: 'standard',
 };
 
+const VALID_TERSENESS = new Set<string>(['narrative', 'standard', 'terse']);
+
+function safeNumber(raw: string | null, fallback: number): number {
+  if (raw == null) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function readLocal(): VoicePersona {
+  const t = localStorage.getItem(LS.terseness);
+  const terseness = (t && VALID_TERSENESS.has(t))
+    ? (t as VoicePersona['terseness'])
+    : DEFAULT.terseness;
+
   return {
-    voiceId:   localStorage.getItem(LS.voiceId)   ?? DEFAULT.voiceId,
-    rate:      Number(localStorage.getItem(LS.rate)  ?? DEFAULT.rate),
-    pitch:     Number(localStorage.getItem(LS.pitch) ?? DEFAULT.pitch),
-    terseness: (localStorage.getItem(LS.terseness) as VoicePersona['terseness']) ?? DEFAULT.terseness,
+    voiceId:   localStorage.getItem(LS.voiceId) ?? DEFAULT.voiceId,
+    rate:      safeNumber(localStorage.getItem(LS.rate),  DEFAULT.rate),
+    pitch:     safeNumber(localStorage.getItem(LS.pitch), DEFAULT.pitch),
+    terseness,
   };
 }
 
@@ -40,12 +53,15 @@ function writeLocal(p: Partial<VoicePersona>): void {
 
 export function useVoicePersona() {
   const [persona, setPersonaState] = useState<VoicePersona>(readLocal);
+  const userEditedRef = useRef(false);
 
-  // Server -> local sync on mount
+  // Server -> local sync on mount. Ignored if the component has unmounted
+  // or the user has already called setPersona() (user edits win).
   useEffect(() => {
+    let cancelled = false;
     apiFetch<any>('/api/voice-persona')
       .then((row) => {
-        if (!row) return;
+        if (cancelled || userEditedRef.current || !row) return;
         const next: VoicePersona = {
           voiceId:   row.voice_persona ?? DEFAULT.voiceId,
           rate:      row.voice_rate    ?? DEFAULT.rate,
@@ -58,9 +74,11 @@ export function useVoicePersona() {
       .catch(() => {
         // Offline or transient error — keep localStorage values.
       });
+    return () => { cancelled = true; };
   }, []);
 
   const setPersona = useCallback((patch: Partial<VoicePersona>) => {
+    userEditedRef.current = true;
     const next = { ...readLocal(), ...patch };
     writeLocal(patch);
     setPersonaState(next);

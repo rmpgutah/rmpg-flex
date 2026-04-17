@@ -65,4 +65,71 @@ describe('useVoicePersona', () => {
     // initial state already from localStorage
     expect(result.current.persona.voiceId).toBe('en-US-AriaNeural');
   });
+
+  it('mount-GET does not clobber a concurrent user edit', async () => {
+    let resolveGet: (v: any) => void = () => {};
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementationOnce(
+      () => new Promise((r) => { resolveGet = r; })
+    );
+    // Subsequent apiFetch calls (the PUT from setPersona) resolve normally.
+    apiFetchMock.mockResolvedValue({ success: true });
+
+    const { result } = renderHook(() => useVoicePersona());
+
+    // User edits BEFORE the mount-GET resolves.
+    act(() => {
+      result.current.setPersona({ terseness: 'terse' });
+    });
+
+    // Now release the GET with a DIFFERENT terseness value.
+    await act(async () => {
+      resolveGet({
+        voice_persona: 'en-US-JennyNeural',
+        voice_rate: 1.0,
+        voice_pitch: 0,
+        voice_terseness: 'standard',
+      });
+      await Promise.resolve();
+    });
+
+    // User's 'terse' edit must win — the late GET must not clobber it.
+    expect(result.current.persona.terseness).toBe('terse');
+    expect(localStorage.getItem('rmpg-voice-terseness')).toBe('terse');
+  });
+
+  it('mount-GET resolving after unmount does not write to localStorage', async () => {
+    localStorage.setItem('rmpg-voice-persona', 'en-US-AriaNeural');
+    let resolveGet: (v: any) => void = () => {};
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementationOnce(
+      () => new Promise((r) => { resolveGet = r; })
+    );
+
+    const { unmount } = renderHook(() => useVoicePersona());
+    unmount();
+
+    await act(async () => {
+      resolveGet({
+        voice_persona: 'en-US-JennyNeural',
+        voice_rate: 1.0,
+        voice_pitch: 0,
+        voice_terseness: 'standard',
+      });
+      await Promise.resolve();
+    });
+
+    // localStorage still shows the pre-existing value.
+    expect(localStorage.getItem('rmpg-voice-persona')).toBe('en-US-AriaNeural');
+  });
+
+  it('garbage terseness in localStorage falls back to default', () => {
+    localStorage.setItem('rmpg-voice-terseness', 'yelling');
+    apiFetchMock.mockReset();
+    // never resolves — state is strictly from localStorage
+    apiFetchMock.mockImplementationOnce(() => new Promise(() => {}));
+
+    const { result } = renderHook(() => useVoicePersona());
+    expect(result.current.persona.terseness).toBe('standard');
+  });
 });
