@@ -9,7 +9,7 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 - **Service**: `systemd` unit `rmpg-flex` (HTTPS on 443, HTTP redirect on 80)
 - **Database**: SQLite via `better-sqlite3` at `server/data/rmpg-flex.db`
 - **Timezone**: America/Denver (Mountain Time)
-- **Version**: 5.7.0 (server, client, desktop)
+- **Version**: 5.8.0 (server, client, desktop, root)
 
 ## Tech Stack
 

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { broadcastUnitUpdate, broadcastAlert } from '../../utils/websocket';
@@ -891,11 +891,24 @@ const owntracksHandler = (req: Request, res: Response) => {
   }
 };
 
+// Rate limit OwnTracks GPS webhook.
+// Key by :user/:device URL params when present so each officer's phone has
+// its own bucket — critical when multiple officers share a corporate NAT/VPN
+// egress IP (naive IP keying would let one noisy device starve the rest).
+// Fall back to IP (IPv6 /64-masked via ipKeyGenerator) for the bare /owntracks
+// path with no params. 300/min = 5 req/sec per device, generous for tactical
+// pursuit streams while still catching runaway devices.
 const owntracksWebhookLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 120,            // allow webhook bursts while limiting abuse
+  max: 300,            // 5 req/sec per device
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    const user = typeof req.params.user === 'string' ? req.params.user : '';
+    const device = typeof req.params.device === 'string' ? req.params.device : '';
+    if (user || device) return `owntracks:device:${user}/${device}`;
+    return `owntracks:ip:${ipKeyGenerator(req.ip || '')}`;
+  },
   message: { error: 'Too many OwnTracks webhook requests, please try again later.' },
 });
 
