@@ -4604,6 +4604,10 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
+  // `source_type` ('api'|'html'|'search_form') needed by the seed below and
+  // the circuit-breaker query in servemanager; wasn't in CREATE TABLE so it
+  // must be lazy-added before the INSERT references it.
+  addCol('warrant_scraper_config', 'source_type', 'TEXT');
 
   // Warrant scraper enhancement — Phase 1 columns
   addCol('warrant_scraper_config', 'priority', 'INTEGER DEFAULT 3');
