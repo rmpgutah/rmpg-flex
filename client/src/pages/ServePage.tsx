@@ -739,7 +739,7 @@ export default function ServePage() {
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#888888]/50 ${
                     statusFilter === f.value
-                      ? 'text-white bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(26,90,158,0.3)]'
+                      ? 'text-white bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(212,160,23,0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -1004,7 +1004,7 @@ export default function ServePage() {
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
               <button type="button"
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(26,90,158,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
               >
                 <Navigation size={16} />
                 Navigate to Next

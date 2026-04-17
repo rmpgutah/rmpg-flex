@@ -369,7 +369,7 @@ export default function LoginPage() {
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="drop-shadow-[0_0_15px_rgba(26,90,158,0.25)]"
+              className="drop-shadow-[0_0_15px_rgba(212,160,23,0.25)]"
               style={{
                 height: 'clamp(48px, 12vw, 88px)',
                 width: 'clamp(48px, 12vw, 88px)',

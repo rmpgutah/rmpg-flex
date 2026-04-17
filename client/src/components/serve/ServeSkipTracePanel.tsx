@@ -213,7 +213,7 @@ export default function ServeSkipTracePanel({
             <button type="button"
               onClick={runLookup}
               disabled={loading || !searchName.trim()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#888888] hover:bg-[#888888]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#888888] hover:bg-[#888888]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
             >
               {loading ? (
                 <Loader2 size={14} className="animate-spin" />

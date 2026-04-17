@@ -108,7 +108,7 @@ const CHART_TOOLTIP_STYLE = {
     fontFamily: 'monospace',
     boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   },
-  cursor: { fill: 'rgba(26,90,158,0.08)' },
+  cursor: { fill: 'rgba(212,160,23,0.12)' },
 };
 
 // ============================================================
