@@ -17,6 +17,7 @@ import {
   getQueueDepth,
   type StoreName,
 } from './offlineDb';
+import { isLikelyOnline } from './connectivityMonitor';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -113,9 +114,12 @@ export function startSyncSchedule(url: string, token?: string): void {
   // Set up recurring timers per table
   for (const [table, interval] of Object.entries(PULL_INTERVALS)) {
     pullTimers[table] = setInterval(() => {
-      // Only poll when page is visible AND browser is online
-      // Skipping when offline prevents wasted fetch attempts on metered connections
-      if (document.visibilityState === 'visible' && navigator.onLine) {
+      // Only poll when page is visible AND we're online.
+      // Use the connectivity monitor's authoritative state so that a false
+      // `navigator.onLine === false` (common in Chromium VMs / iOS Safari
+      // standalone) doesn't silently pause sync for hours despite the
+      // server being reachable the whole time.
+      if (document.visibilityState === 'visible' && isLikelyOnline()) {
         pullTable(table).catch(err => {
           console.error(`[SYNC] Pull ${table} failed:`, err?.message || err);
         });
@@ -272,7 +276,7 @@ export function getSyncState() {
 // ─── Internal Helpers ───────────────────────────────────────
 
 function handleVisibilityChange(): void {
-  if (document.visibilityState === 'visible' && navigator.onLine) {
+  if (document.visibilityState === 'visible' && isLikelyOnline()) {
     // Tab became visible and online — catch up on missed data
     pullAll().catch(err => console.warn('[SYNC] Visibility pull failed:', err?.message || err));
   }
