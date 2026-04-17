@@ -21,9 +21,9 @@ describe('event rules', () => {
   // ─── citation-issued ────────────────────────────────────
   describe('citation-issued', () => {
     const rule = findRule('citation-issued');
-    it('matches when citation_number present', () => {
-      const ctx = ctxForEvent('citation_created', {
-        citation_number: 'RN-26-0142', officer_call_sign: '4-Bravo', fine_amount: 85,
+    it('matches server nested shape (production broadcast)', () => {
+      const ctx = ctxForEvent('citation_issued', {
+        citation: { citation_number: 'RN-26-0142', officer_name: '4-Bravo', fine_amount: 85 },
       });
       expect(rule.match(ctx)).toBe(true);
       const spoken = rule.compose(ctx);
@@ -31,10 +31,17 @@ describe('event rules', () => {
       expect(spoken).toContain('4-Bravo');
       expect(spoken).toContain('$85');
     });
+    it('also matches flat shape (future broadcast)', () => {
+      const ctx = ctxForEvent('citation_created', {
+        citation_number: 'RN-1', officer_call_sign: '4-Bravo',
+      });
+      expect(rule.match(ctx)).toBe(true);
+      expect(rule.compose(ctx)).toContain('RN-1');
+      expect(rule.compose(ctx)).toContain('4-Bravo');
+    });
     it('skips the "by officer" and fine clauses when absent', () => {
       const ctx = ctxForEvent('citation_created', { citation_number: 'RN-1' });
-      const spoken = rule.compose(ctx);
-      expect(spoken).toBe('Citation RN-1 issued.');
+      expect(rule.compose(ctx)).toBe('Citation RN-1 issued.');
     });
     it('entityKey keys on the citation number', () => {
       const ctx = ctxForEvent('citation_created', { citation_number: 'RN-99' });
@@ -89,9 +96,9 @@ describe('event rules', () => {
   // ─── arrest-booked ──────────────────────────────────────
   describe('arrest-booked', () => {
     const rule = findRule('arrest-booked');
-    it('speaks subject + charge + officer', () => {
+    it('speaks subject + charge + officer (nested shape from server)', () => {
       const ctx = ctxForEvent('arrest_created', {
-        arrest_id: 7, subject_name: 'Doe, J', charge: 'felony theft', officer_call_sign: '4-Bravo',
+        arrest: { id: 7, subject_name: 'Doe, J', charge: 'felony theft', officer_name: '4-Bravo' },
       });
       expect(rule.match(ctx)).toBe(true);
       const spoken = rule.compose(ctx);
@@ -99,6 +106,13 @@ describe('event rules', () => {
       expect(spoken).toContain('felony theft');
       expect(spoken).toContain('4-Bravo');
       expect(rule.severity).toBe('moderate');
+    });
+    it('also accepts flat shape', () => {
+      const ctx = ctxForEvent('arrest_created', {
+        arrest_id: 7, subject_name: 'Smith, J',
+      });
+      expect(rule.match(ctx)).toBe(true);
+      expect(rule.compose(ctx)).toContain('Smith, J');
     });
   });
 

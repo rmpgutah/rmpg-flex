@@ -4,7 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { validateParamId, validateParamIdMiddleware, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
+import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -301,6 +301,17 @@ router.post('/leave/:id/approve', validateParamIdMiddleware, requireRole('admin'
 
     auditLog(req, 'UPDATE', 'leave_request', id, `Leave request approved`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'approved', id });
+    // Dispatcher Brain fan-in (Phase 2): resolve officer_name for the
+    // spoken line. Safe lookup — if it fails, skip the broadcast rather
+    // than block the approval response.
+    try {
+      const who = db.prepare('SELECT full_name FROM users WHERE id = ?').get(existing.officer_id) as any;
+      broadcastDispatchUpdate({
+        action: 'leave_approved',
+        leave_id: id,
+        officer_name: who?.full_name ?? `Officer #${existing.officer_id}`,
+      });
+    } catch { /* brain broadcast is best-effort */ }
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave approve error:', error?.message);

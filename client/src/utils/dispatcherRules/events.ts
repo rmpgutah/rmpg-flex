@@ -14,21 +14,35 @@
 
 import type { DispatcherRule } from './types';
 
+// Some existing server broadcasts wrap the record under a key (e.g.
+// citations emit `{action: 'citation_issued', citation: {...}}` and
+// arrests emit `{action: 'arrest_created', arrest: {...}}`) while
+// newer broadcasts use a flat shape (`{action, field1, field2}`).
+// Rules tolerate BOTH so we don't have to change the existing
+// production broadcast contracts that non-brain UI consumers depend on.
+function pick(payload: any, wrapperKey: string): any {
+  if (!payload) return {};
+  return payload[wrapperKey] ?? payload;
+}
+
 export const EVENT_RULES: DispatcherRule[] = [
   // ─── Citations ────────────────────────────────────────────
+  // Server already broadcasts action='citation_issued' with nested
+  // { citation: {citation_number, subject_name, violation, officer_name} }.
   {
     id: 'citation-issued',
     trigger: 'event',
-    eventTypes: ['citation_created'],
-    match: (ctx) => !!ctx.event?.payload?.citation_number,
+    eventTypes: ['citation_issued', 'citation_created'],
+    match: (ctx) => !!pick(ctx.event?.payload, 'citation').citation_number,
     severity: 'minor',
     cooldownMs: 0,
-    entityKey: (ctx) => ctx.event?.payload?.citation_number ?? 'global',
+    entityKey: (ctx) => String(pick(ctx.event?.payload, 'citation').citation_number ?? 'global'),
     compose: (ctx) => {
-      const p = ctx.event!.payload;
-      const by = p.officer_call_sign ? ` by ${p.officer_call_sign}` : '';
-      const fine = p.fine_amount != null ? `, $${p.fine_amount} fine` : '';
-      return `Citation ${p.citation_number} issued${by}${fine}.`;
+      const c = pick(ctx.event!.payload, 'citation');
+      const by = c.officer_name ?? c.officer_call_sign;
+      const byClause = by ? ` by ${by}` : '';
+      const fine = c.fine_amount != null ? `, $${c.fine_amount} fine` : '';
+      return `Citation ${c.citation_number} issued${byClause}${fine}.`;
     },
   },
 
@@ -37,12 +51,12 @@ export const EVENT_RULES: DispatcherRule[] = [
     id: 'incident-created',
     trigger: 'event',
     eventTypes: ['incident_created'],
-    match: (ctx) => !!ctx.event?.payload?.incident_number,
+    match: (ctx) => !!pick(ctx.event?.payload, 'incident').incident_number,
     severity: 'minor',
     cooldownMs: 0,
-    entityKey: (ctx) => ctx.event?.payload?.incident_number ?? 'global',
+    entityKey: (ctx) => String(pick(ctx.event?.payload, 'incident').incident_number ?? 'global'),
     compose: (ctx) => {
-      const p = ctx.event!.payload;
+      const p = pick(ctx.event!.payload, 'incident');
       const from = p.source_call ? ` from call ${p.source_call}` : '';
       return `Incident ${p.incident_number} opened${from}.`;
     },
@@ -53,12 +67,12 @@ export const EVENT_RULES: DispatcherRule[] = [
     id: 'warrant-entered',
     trigger: 'event',
     eventTypes: ['warrant_entered'],
-    match: (ctx) => !!ctx.event?.payload?.subject_name,
+    match: (ctx) => !!pick(ctx.event?.payload, 'warrant').subject_name,
     severity: 'moderate',
     cooldownMs: 0,
-    entityKey: (ctx) => String(ctx.event?.payload?.warrant_id ?? 'global'),
+    entityKey: (ctx) => String(pick(ctx.event?.payload, 'warrant').warrant_id ?? 'global'),
     compose: (ctx) => {
-      const p = ctx.event!.payload;
+      const p = pick(ctx.event!.payload, 'warrant');
       const cls = p.offense_class ?? 'offense class unknown';
       const bail = p.bail_amount != null ? `, $${p.bail_amount} bail` : '';
       return `New warrant on ${p.subject_name}, ${cls}${bail}.`;
@@ -70,31 +84,34 @@ export const EVENT_RULES: DispatcherRule[] = [
     id: 'evidence-logged',
     trigger: 'event',
     eventTypes: ['evidence_logged'],
-    match: (ctx) => !!ctx.event?.payload?.tag_number,
+    match: (ctx) => !!pick(ctx.event?.payload, 'evidence').tag_number,
     severity: 'minor',
     cooldownMs: 0,
-    entityKey: (ctx) => ctx.event?.payload?.tag_number ?? 'global',
+    entityKey: (ctx) => String(pick(ctx.event?.payload, 'evidence').tag_number ?? 'global'),
     compose: (ctx) => {
-      const p = ctx.event!.payload;
+      const p = pick(ctx.event!.payload, 'evidence');
       const forCase = p.case_number ? ` for case ${p.case_number}` : '';
       return `Evidence tag ${p.tag_number} logged${forCase}.`;
     },
   },
 
   // ─── Arrests ──────────────────────────────────────────────
+  // Server already broadcasts action='arrest_created' with nested
+  // { arrest: {id, subject_name, charge, booking_number, officer_name} }.
   {
     id: 'arrest-booked',
     trigger: 'event',
     eventTypes: ['arrest_created'],
-    match: (ctx) => !!ctx.event?.payload?.subject_name,
+    match: (ctx) => !!pick(ctx.event?.payload, 'arrest').subject_name,
     severity: 'moderate',
     cooldownMs: 0,
-    entityKey: (ctx) => String(ctx.event?.payload?.arrest_id ?? 'global'),
+    entityKey: (ctx) => String(pick(ctx.event?.payload, 'arrest').id ?? pick(ctx.event?.payload, 'arrest').arrest_id ?? 'global'),
     compose: (ctx) => {
-      const p = ctx.event!.payload;
+      const p = pick(ctx.event!.payload, 'arrest');
       const charge = p.charge ?? 'charges pending';
-      const by = p.officer_call_sign ? `, by ${p.officer_call_sign}` : '';
-      return `Arrest booked: ${p.subject_name}, ${charge}${by}.`;
+      const by = p.officer_name ?? p.officer_call_sign;
+      const byClause = by ? `, by ${by}` : '';
+      return `Arrest booked: ${p.subject_name}, ${charge}${byClause}.`;
     },
   },
 
@@ -103,10 +120,13 @@ export const EVENT_RULES: DispatcherRule[] = [
     id: 'hr-approval',
     trigger: 'event',
     eventTypes: ['leave_approved'],
-    match: (ctx) => !!ctx.event?.payload?.officer_name,
+    match: (ctx) => !!pick(ctx.event?.payload, 'leave').officer_name,
     severity: 'minor',
     cooldownMs: 0,
-    entityKey: (ctx) => String(ctx.event?.payload?.leave_id ?? 'global'),
-    compose: (ctx) => `Leave request approved for ${ctx.event!.payload.officer_name}.`,
+    entityKey: (ctx) => String(pick(ctx.event?.payload, 'leave').leave_id ?? pick(ctx.event?.payload, 'leave').id ?? 'global'),
+    compose: (ctx) => {
+      const p = pick(ctx.event!.payload, 'leave');
+      return `Leave request approved for ${p.officer_name}.`;
+    },
   },
 ];
