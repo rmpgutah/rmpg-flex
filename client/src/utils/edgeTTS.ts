@@ -449,6 +449,17 @@ export async function speak(text: string, severity?: AlertSeverity): Promise<voi
   if (!isSoundEnabled()) return;
   if (severity && !shouldPlayAudio(severity)) return;
 
+  // Mirror every spoken line into the transcript buffer so the
+  // DispatcherTranscript drawer and ARIA live regions stay in sync.
+  // Dynamic import avoids a circular module load (edgeTTS -> hook -> React).
+  import('../hooks/useDispatchTranscript')
+    .then((m) => m.pushTranscriptEntry({
+      text,
+      severity: severity ?? 'minor',
+      source: 'system',
+    }))
+    .catch(() => { /* transcript is best-effort */ });
+
   const urgent = severity === 'major';
 
   // Major alerts clear non-major items from the queue

@@ -63,6 +63,7 @@ import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
+import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import OfflineStatusBar from './OfflineStatusBar';
 import PinEntryModal from './PinEntryModal';
@@ -1501,6 +1502,9 @@ export default function Layout() {
           gpsLastSent={gps.lastSentAt}
         />
       )}
+
+      {/* Dispatcher Transcript Drawer — toggles with 'T' key */}
+      <DispatcherTranscript />
 
       {/* Profile Modal */}
       <UserProfileModal
