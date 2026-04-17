@@ -2,6 +2,15 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
+import { handleDispatchEvent } from '../utils/dispatcherBrain';
+import { registerRules } from '../utils/dispatcherRules/registry';
+import { EVENT_RULES } from '../utils/dispatcherRules/events';
+
+// Register the Dispatcher Brain event rules once at module load. The
+// registry is a module-level array that only grows at boot; if this
+// file hot-reloads during dev, duplicates become harmless because
+// each duplicate still shares ruleId+entityKey cooldown in speakQueue.
+registerRules(EVENT_RULES);
 
 type MessageHandler = (message: WSMessage) => void;
 
@@ -177,6 +186,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                   osc2.stop(ctx.currentTime + 0.6);
                 }
               } catch { /* Audio not available */ }
+            }
+          }
+
+          // Dispatcher Brain fan-in: any dispatch_update carries an
+          // action discriminator the brain uses to match rules. No-op
+          // when the per-user brain flag is off, so this is safe to
+          // wire unconditionally.
+          if ((message.type as string) === 'dispatch_update') {
+            const data = (message as any).data;
+            if (data && typeof data.action === 'string') {
+              try {
+                handleDispatchEvent(data.action, data);
+              } catch (err) {
+                console.error('[Brain] handleDispatchEvent error:', err);
+              }
             }
           }
 
