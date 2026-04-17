@@ -2382,7 +2382,7 @@ export default function DispatchPage() {
         <div className="flex flex-col items-center gap-4">
           <div className="relative w-10 h-10 flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-[#888888] animate-spin" />
-            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(26,90,158,0.25)' }} />
+            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(212,160,23,0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
@@ -3961,10 +3961,10 @@ export default function DispatchPage() {
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
                         color: isActive ? '#999999' : '#666666',
-                        background: isActive ? 'rgba(26,90,158,0.1)' : 'transparent',
-                        borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
+                        background: isActive ? 'rgba(42,42,42,0.6)' : 'transparent',
+                        borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
                       }}
-                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
+                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(42,42,42,0.4)'; } }}
                       onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#666666'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
                       <span className="flex items-center gap-1.5">

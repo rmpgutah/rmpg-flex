@@ -640,7 +640,7 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
             >
               Apply Route
             </button>
