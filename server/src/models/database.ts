@@ -2726,6 +2726,59 @@ function migrateSchema(): void {
   // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
   addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
 
+  // ── SPEED VIOLATIONS — logs when officers exceed speed thresholds ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS speed_violations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id INTEGER NOT NULL,
+      officer_id INTEGER,
+      call_sign TEXT,
+      officer_name TEXT,
+      badge_number TEXT,
+      speed_mps REAL NOT NULL,
+      speed_mph REAL NOT NULL,
+      speed_limit_mph REAL NOT NULL DEFAULT 80,
+      overage_mph REAL NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      road_name TEXT,
+      nearest_intersection TEXT,
+      beat_id INTEGER,
+      zone_id INTEGER,
+      duration_seconds INTEGER DEFAULT 0,
+      current_call_id INTEGER,
+      current_call_number TEXT,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      acknowledged_by INTEGER,
+      acknowledged_at TEXT,
+      notes TEXT,
+      FOREIGN KEY (unit_id) REFERENCES units(id),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (acknowledged_by) REFERENCES users(id)
+    )
+  `).run();
+
+  // ── SPEED ZONES — geographic areas with custom speed limits ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS speed_zones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      speed_limit_mph REAL NOT NULL,
+      polygon_coords TEXT NOT NULL,
+      zone_type TEXT NOT NULL DEFAULT 'custom',
+      active_hours TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `).run();
+
+  // ── Speed violation indexes ──
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_speed_violations_unit_time ON speed_violations (unit_id, recorded_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_speed_violations_officer ON speed_violations (officer_id, recorded_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_speed_violations_unack ON speed_violations (acknowledged_by) WHERE acknowledged_by IS NULL`).run();
+
   // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
   // Runs in the background after startup so it doesn't block the server.
   // Samples distinct locations (rounded to ~100m grid) to minimize API calls.
