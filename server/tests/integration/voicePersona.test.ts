@@ -81,4 +81,40 @@ describe('PUT /api/voice-persona', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('rejects non-string voice_persona with 400', async () => {
+    const res = await request(app)
+      .put('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voice_persona: 12345 });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects oversize voice_persona with 400', async () => {
+    const res = await request(app)
+      .put('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voice_persona: 'x'.repeat(200) });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-numeric voice_rate string with 400', async () => {
+    const res = await request(app)
+      .put('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voice_rate: 'fast' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects voice_pitch out of range with 400', async () => {
+    const res = await request(app)
+      .put('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voice_pitch: 50 });
+
+    expect(res.status).toBe(400);
+  });
 });
