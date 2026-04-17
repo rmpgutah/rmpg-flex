@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { broadcastUnitUpdate, broadcastAlert } from '../../utils/websocket';
@@ -890,11 +891,19 @@ const owntracksHandler = (req: Request, res: Response) => {
   }
 };
 
-owntracksWebhookRouter.post('/owntracks', owntracksHandler);
-owntracksWebhookRouter.post('/owntracks/:user', owntracksHandler);
-owntracksWebhookRouter.post('/owntracks/:user/:device', owntracksHandler);
-owntracksWebhookRouter.post('/', owntracksHandler);                    // /owntracks (mounted at /owntracks)
-owntracksWebhookRouter.post('/:user', owntracksHandler);               // /owntracks/:user
-owntracksWebhookRouter.post('/:user/:device', owntracksHandler);       // /owntracks/:user/:device
+const owntracksWebhookLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120,            // allow webhook bursts while limiting abuse
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many OwnTracks webhook requests, please try again later.' },
+});
+
+owntracksWebhookRouter.post('/owntracks', owntracksWebhookLimiter, owntracksHandler);
+owntracksWebhookRouter.post('/owntracks/:user', owntracksWebhookLimiter, owntracksHandler);
+owntracksWebhookRouter.post('/owntracks/:user/:device', owntracksWebhookLimiter, owntracksHandler);
+owntracksWebhookRouter.post('/', owntracksWebhookLimiter, owntracksHandler);                    // /owntracks (mounted at /owntracks)
+owntracksWebhookRouter.post('/:user', owntracksWebhookLimiter, owntracksHandler);               // /owntracks/:user
+owntracksWebhookRouter.post('/:user/:device', owntracksWebhookLimiter, owntracksHandler);       // /owntracks/:user/:device
 
 export default router;
