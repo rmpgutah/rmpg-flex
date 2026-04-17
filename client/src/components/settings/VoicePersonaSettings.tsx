@@ -137,6 +137,45 @@ export default function VoicePersonaSettings() {
           Preview
         </button>
       </div>
+
+      {/* Dispatcher Brain master switch — Phase 2 kill switch */}
+      <div className="mt-4">
+        <div className="flex items-center gap-1.5 mb-2">
+          <Volume2 style={{ width: 11, height: 11, color: '#888888' }} />
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: '#888888' }}
+          >
+            Dispatcher Brain (Beta)
+          </span>
+        </div>
+        <div
+          className="flex items-center justify-between"
+          style={{ background: '#050505', border: '1px solid #242424', padding: '10px 12px' }}
+        >
+          <span className="text-[11px]" style={{ color: '#dddddd' }}>
+            Proactive coaching + event announcements
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={persona.brainEnabled}
+            onClick={() => setPersona({ brainEnabled: !persona.brainEnabled })}
+            className="px-3 py-1 text-[11px] uppercase tracking-wider"
+            style={{
+              background: persona.brainEnabled ? '#1a1a1a' : '#0a0a0a',
+              border: `1px solid ${persona.brainEnabled ? '#d4a017' : '#222222'}`,
+              color: persona.brainEnabled ? '#d4a017' : '#888888',
+              borderRadius: 2,
+            }}
+          >
+            {persona.brainEnabled ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
+        <p className="text-[10px] mt-1" style={{ color: '#666666' }}>
+          When off, no coaching or event-driven speech. New calls & alerts still announce as usual.
+        </p>
+      </div>
     </div>
   );
 }

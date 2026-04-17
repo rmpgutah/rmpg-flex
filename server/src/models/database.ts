@@ -1818,6 +1818,7 @@ function migrateSchema(): void {
   addCol('users', 'voice_rate', 'REAL DEFAULT 1.0');
   addCol('users', 'voice_pitch', 'REAL DEFAULT 0');
   addCol('users', 'voice_terseness', "TEXT DEFAULT 'standard'");
+  addCol('users', 'voice_brain_enabled', 'INTEGER DEFAULT 0');
 
   // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
   try {

@@ -132,4 +132,47 @@ describe('useVoicePersona', () => {
     const { result } = renderHook(() => useVoicePersona());
     expect(result.current.persona.terseness).toBe('standard');
   });
+
+  it('brainEnabled defaults to false when server returns 0', async () => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({
+      voice_persona: 'en-US-JennyNeural',
+      voice_rate: 1.0,
+      voice_pitch: 0,
+      voice_terseness: 'standard',
+      voice_brain_enabled: 0,
+    });
+    const { result } = renderHook(() => useVoicePersona());
+    await waitFor(() => expect(result.current.persona.brainEnabled).toBe(false));
+    expect(localStorage.getItem('rmpg-voice-brain-enabled')).toBe('0');
+  });
+
+  it('brainEnabled reflects server value when enabled', async () => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({
+      voice_persona: 'en-US-JennyNeural',
+      voice_rate: 1.0,
+      voice_pitch: 0,
+      voice_terseness: 'standard',
+      voice_brain_enabled: 1,
+    });
+    const { result } = renderHook(() => useVoicePersona());
+    await waitFor(() => expect(result.current.persona.brainEnabled).toBe(true));
+    expect(localStorage.getItem('rmpg-voice-brain-enabled')).toBe('1');
+  });
+
+  it('setPersona({brainEnabled: true}) sends voice_brain_enabled: 1 to server', async () => {
+    const { result } = renderHook(() => useVoicePersona());
+    await waitFor(() => expect(result.current.persona).toBeDefined());
+    apiFetchMock.mockClear();
+    act(() => { result.current.setPersona({ brainEnabled: true }); });
+    await waitFor(() => {
+      const put = apiFetchMock.mock.calls.find((c: any[]) => c[1]?.method === 'PUT');
+      expect(put).toBeTruthy();
+    });
+    const put: any[] = apiFetchMock.mock.calls.find((c: any[]) => c[1]?.method === 'PUT')!;
+    const body = JSON.parse(put[1].body as string);
+    expect(body).toMatchObject({ voice_brain_enabled: 1 });
+    expect(localStorage.getItem('rmpg-voice-brain-enabled')).toBe('1');
+  });
 });

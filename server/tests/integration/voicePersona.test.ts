@@ -41,6 +41,8 @@ describe('GET /api/voice-persona', () => {
     expect(res.status).toBe(200);
     expect(res.body.voice_persona).toBe('en-US-JennyNeural');
     expect(res.body.voice_terseness).toBe('standard');
+    // voice_brain_enabled defaults strictly off for every user.
+    expect(res.body.voice_brain_enabled).toBe(0);
   });
 });
 
@@ -115,6 +117,40 @@ describe('PUT /api/voice-persona', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ voice_pitch: 50 });
 
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts voice_brain_enabled = 1 and persists it', async () => {
+    const putRes = await request(app)
+      .put('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voice_brain_enabled: 1 });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await request(app)
+      .get('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(getRes.body.voice_brain_enabled).toBe(1);
+  });
+
+  it('accepts voice_brain_enabled = true (boolean) and persists as 1', async () => {
+    const putRes = await request(app)
+      .put('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voice_brain_enabled: true });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await request(app)
+      .get('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(getRes.body.voice_brain_enabled).toBe(1);
+  });
+
+  it('rejects non-boolean/non-0/1 voice_brain_enabled with 400', async () => {
+    const res = await request(app)
+      .put('/api/voice-persona')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voice_brain_enabled: 'yes' });
     expect(res.status).toBe(400);
   });
 });
