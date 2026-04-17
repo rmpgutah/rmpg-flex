@@ -11,6 +11,7 @@ import {
 import {
   createConnectivityMonitor,
   getConnectivityMonitor,
+  isLikelyOnline,
 } from '../services/connectivityMonitor';
 import {
   startSyncSchedule,
@@ -166,7 +167,12 @@ export function useOfflineMode() {
         if (!cancelled) {
           setState(prev => ({
             ...prev,
-            isOffline: !navigator.onLine,
+            // Prefer the monitor's first-check state if available. Between
+            // monitor.start() and this setState, the async init chain
+            // (auth/me fetch, hasActiveSession, getQueueDepth) gives the
+            // first health check time to complete — so by now isLikelyOnline()
+            // is usually authoritative, not just a navigator.onLine echo.
+            isOffline: !isLikelyOnline(),
             isLocalAuthorized: session.active,
             pinExpiresAt: session.expiresAt,
             syncQueueDepth: queueDepth,
@@ -284,11 +290,10 @@ export function useOfflineMode() {
         const session = await hasActiveSession();
         const queueDepth = await getQueueDepth();
         const role = await getConfig('current_user_role');
-        const monitor = getConnectivityMonitor();
 
         setState(prev => ({
           ...prev,
-          isOffline: monitor ? !monitor.isOnline : !navigator.onLine,
+          isOffline: !isLikelyOnline(),
           isLocalAuthorized: session.active,
           pinExpiresAt: session.expiresAt,
           syncQueueDepth: queueDepth,
