@@ -22,13 +22,24 @@ import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
+import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
+import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
-import { getAppVersion } from './utils/appVersion';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SERVER_VERSION = getAppVersion();
+// Read version — prefer CHANGELOG.json (canonical), fall back to package.json
+let SERVER_VERSION = '0.0.0';
+try {
+  const changelog = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../CHANGELOG.json'), 'utf-8'));
+  SERVER_VERSION = changelog.version || '0.0.0';
+} catch {
+  try {
+    const serverPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
+    SERVER_VERSION = serverPkg.version || '0.0.0';
+  } catch { /* use default */ }
+}
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -50,13 +61,10 @@ import statuteRoutes from './routes/statutes';
 import citationRoutes from './routes/citations';
 import invoiceRoutes from './routes/invoices';
 import adminSystemsRoutes from './routes/adminSystems';
-import pdfEngineRouter from './routes/pdfEngine';
-import auditPdfEngineRouter from './routes/auditPdfEngine';
-import pdfArtifactsRouter from './routes/pdfArtifacts';
-import pdfEmailRouter from './routes/pdfEmail';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
+import serveIntakeRoutes from './routes/serveIntake';
 import microbiltRoutes from './routes/microbilt';
 import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
@@ -85,10 +93,8 @@ import crmRoutes from './routes/crm';
 import crmLeadsRoutes from './routes/crmLeads';
 import crmProposalsRoutes from './routes/crmProposals';
 import crmFirecrawlRoutes from './routes/crmFirecrawl';
-import crmCompetitorMonitorRoutes from './routes/crmCompetitorMonitor';
 import userPreferencesRoutes from './routes/userPreferences';
 import serveRoutes from './routes/serve';
-import serveIntakeRoutes from './routes/serveIntake';
 import hrRoutes from './routes/hr';
 import securityDashboardRoutes from './routes/securityDashboard';
 import webauthnRoutes from './routes/webauthn';
@@ -107,15 +113,6 @@ import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
-
-// ─── Trust Proxy ─────────────────────────────────────
-// Production runs behind nginx on localhost (browser → nginx:443 → Express:3001).
-// Nginx sets X-Forwarded-For / X-Forwarded-Proto headers. Without trust proxy,
-// express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every request
-// because it can't identify the real client. Value `1` = trust exactly one hop
-// (nginx), which is correct for this topology. `true` would be insecure (accepts
-// any number of hops, which allows X-Forwarded-For header spoofing).
-app.set('trust proxy', 1);
 
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
@@ -353,7 +350,6 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/admin', systemConfigRoutes);
 app.use('/api/audit', auditRoutes);
-app.use('/api/audit', auditPdfEngineRouter);
 app.use('/api/patrol', patrolRoutes);
 app.use('/api/warrants', warrantRoutes);
 app.use('/api/fleet', fleetRoutes);
@@ -362,13 +358,11 @@ app.use('/api/statutes', statuteRoutes);
 app.use('/api/citations', citationRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/admin', adminSystemsRoutes);
-app.use('/api/admin/pdf-engine', pdfEngineRouter);
-app.use('/api/pdf-artifacts', pdfArtifactsRouter);
-app.use('/api/pdf-engine', pdfEmailRouter);
 app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
+app.use('/api/serve-intake', serveIntakeRoutes);
 app.use('/api/microbilt', microbiltRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
@@ -397,10 +391,8 @@ app.use('/api/crm', crmRoutes);
 app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
 app.use('/api/crm', crmFirecrawlRoutes);
-app.use('/api/crm', crmCompetitorMonitorRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
-app.use('/api/serve-intake', serveIntakeRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/auth/security', securityDashboardRoutes);
 app.use('/api/auth/webauthn', webauthnRoutes);
@@ -454,9 +446,28 @@ app.use(express.static(clientDistPath, {
   maxAge: '5m',
 }));
 
+// Force-refresh page — clears SW cache and reloads the app
+app.get('/force-refresh', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.send(`<!DOCTYPE html><html><head><title>RMPG Flex — Refreshing...</title>
+<style>body{background:#0a0a0a;color:#d4a017;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column}
+h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head><body>
+<h1>Clearing cache...</h1><p>Please wait — the app will reload automatically.</p>
+<script>
+(async()=>{
+  if('serviceWorker' in navigator){
+    const regs=await navigator.serviceWorker.getRegistrations();
+    for(const r of regs) await r.unregister();
+  }
+  const keys=await caches.keys();
+  for(const k of keys) await caches.delete(k);
+  setTimeout(()=>{ window.location.href='/'; },1500);
+})();
+</script></body></html>`);
+});
+
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-// Express 5 requires named wildcards — '*' alone throws "Missing parameter name"
-app.get('/*splat', (req, res) => {
+app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {
@@ -609,16 +620,32 @@ try {
     console.log('');
 
     // Start patrol monitor for missed scan alerts
-    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    try {
+      startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    } catch (err: any) {
+      console.warn('[Patrol Monitor] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start midnight daily patrol report scheduler
-    startDailyReportScheduler();
+    try {
+      startDailyReportScheduler();
+    } catch (err: any) {
+      console.warn('[Daily Report] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    scheduleOfacSync();
+    try {
+      scheduleOfacSync();
+    } catch (err: any) {
+      console.warn('[OFAC Sync] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
-    startHealthChecker();
+    try {
+      startHealthChecker();
+    } catch (err: any) {
+      console.warn('[Health Checker] Failed to start scheduler:', err?.message || err);
+    }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {
@@ -633,6 +660,26 @@ try {
       console.log('[Arrests] Auto-sync scheduler started');
     } catch (err: any) {
       console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+    }
+
+    // Start multi-state warrant scraper (polls configured sources on schedule)
+    try {
+      scheduleWarrantScraper();
+    } catch (err: any) {
+      console.warn('[Warrant Scraper] Failed to start scheduler:', err?.message || err);
+    }
+
+    // Nightly warrant scraper maintenance
+    try {
+      // First run 6h after boot (lets scheduler settle)
+      const nightlyInitial = setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+      if (nightlyInitial.unref) nightlyInitial.unref();
+
+      // Then every 24h
+      const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
+      if (nightlyInterval.unref) nightlyInterval.unref();
+    } catch (err: any) {
+      console.warn('[Scraper Nightly] Failed to schedule:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s

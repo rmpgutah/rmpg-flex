@@ -4788,11 +4788,324 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
+  // `source_type` ('api'|'html'|'search_form') needed by the seed below and
+  // the circuit-breaker query in servemanager; wasn't in CREATE TABLE so it
+  // must be lazy-added before the INSERT references it.
+  addCol('warrant_scraper_config', 'source_type', 'TEXT');
 
+  // Warrant scraper enhancement — Phase 1 columns
+  addCol('warrant_scraper_config', 'priority', 'INTEGER DEFAULT 3');
+  addCol('warrant_scraper_config', 'content_hash', 'TEXT');
+  addCol('warrant_scraper_config', 'content_hash_updated_at', 'TEXT');
+  addCol('warrant_scraper_config', 'etag', 'TEXT');
+  addCol('warrant_scraper_config', 'last_modified', 'TEXT');
+  addCol('warrant_scraper_config', 'last_success_at', 'TEXT');
+  addCol('warrant_scraper_config', 'avg_parse_count', 'REAL');
+  addCol('warrant_scraper_config', 'p95_latency_ms', 'INTEGER');
+  addCol('warrant_scraper_config', 'jitter_seed', 'INTEGER');
+
+  // Warrant scraper enhancement — Phase 1 runs metrics table
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS warrant_scraper_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        duration_ms INTEGER,
+        http_status INTEGER,
+        bytes_received INTEGER,
+        parsed_count INTEGER DEFAULT 0,
+        inserted_count INTEGER DEFAULT 0,
+        updated_count INTEGER DEFAULT 0,
+        skipped_reason TEXT,
+        error_message TEXT,
+        parser_used TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_scraper_runs_source_time
+        ON warrant_scraper_runs (source_key, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_scraper_runs_started_at
+        ON warrant_scraper_runs (started_at DESC);
+    `);
+  } catch (e) { /* */ }
+
+  // ── scraped_warrants missing columns ──
+  addCol('scraped_warrants', 'middle_name', 'TEXT');
+  addCol('scraped_warrants', 'age', 'INTEGER');
+  addCol('scraped_warrants', 'gender', 'TEXT');
+  addCol('scraped_warrants', 'race', 'TEXT');
+  addCol('scraped_warrants', 'city', 'TEXT');
+  addCol('scraped_warrants', 'state', 'TEXT');
+  addCol('scraped_warrants', 'photo_url', 'TEXT');
+  addCol('scraped_warrants', 'detail_url', 'TEXT');
+  addCol('scraped_warrants', 'first_seen_at', 'TEXT');
+  addCol('scraped_warrants', 'last_seen_at', 'TEXT');
+  addCol('scraped_warrants', 'cleared_at', 'TEXT');
+  addCol('scraped_warrants', 'dob_verified', 'INTEGER DEFAULT 0');
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_offense ON scraped_warrants(offense_level)'); } catch (e) { /* */ }
+
+  // ── Seed warrant scraper sources — All 50 US States + Federal ──
+  {
+    const s = db.prepare('INSERT OR IGNORE INTO warrant_scraper_config (source_key, state, county, source_url, source_name, source_type, scrape_interval_minutes, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    // Federal
+    s.run('federal_fbi_wanted', 'US', '', 'https://api.fbi.gov/wanted/v1/list', 'FBI Most Wanted', 'api', 360, 1);
+    s.run('federal_usmarshals', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/15-most-wanted-fugitive', 'US Marshals Most Wanted', 'html', 1440, 0);
+    // Alabama
+    s.run('al_jefferson_warrants', 'AL', 'Jefferson', 'https://www.jeffcosheriffal.com/most-wanted', 'Jefferson County AL', 'html', 720, 0);
+    // Alaska
+    s.run('ak_anchorage_warrants', 'AK', 'Anchorage', 'https://www.muni.org/departments/prior/APD/Pages/MostWanted.aspx', 'Anchorage PD', 'html', 720, 0);
+    // Arizona
+    s.run('az_maricopa_warrants', 'AZ', 'Maricopa', 'https://www.mcso.org/Most-Wanted', 'Maricopa County SO', 'html', 720, 1);
+    s.run('az_pima_warrants', 'AZ', 'Pima', 'https://88crime.org/category/wanted-fugitives/', 'Pima County 88-CRIME', 'html', 720, 1);
+    // Arkansas
+    s.run('ar_pulaski_warrants', 'AR', 'Pulaski', 'https://www.littlerock.gov/city-administration/city-departments/police/most-wanted/', 'Little Rock PD', 'html', 720, 0);
+    // California
+    s.run('ca_los_angeles_warrants', 'CA', 'Los Angeles', 'https://www.lapdonline.org/most-wanted/', 'LAPD Most Wanted', 'html', 720, 1);
+    s.run('ca_san_diego_warrants', 'CA', 'San Diego', 'https://www.sdcda.org/helping/fugitives.html', 'San Diego DA Fugitives', 'html', 720, 0);
+    // Colorado
+    s.run('co_el_paso_warrants', 'CO', 'El Paso', 'https://www.epcsheriffsoffice.com/active-warrants', 'El Paso County SO', 'html', 720, 1);
+    s.run('co_denver_warrants', 'CO', 'Denver', 'https://www.metrodenvercrimestoppers.com/', 'Metro Denver Crime Stoppers', 'html', 720, 1);
+    s.run('co_adams_warrants', 'CO', 'Adams', 'https://adamscosheriff.net/portal/MostWanted', 'Adams County SO', 'html', 720, 0);
+    // Connecticut
+    s.run('ct_hartford_warrants', 'CT', 'Hartford', 'https://www.manchesterct.gov/Police-Department/Most-Wanted', 'Hartford Area', 'html', 720, 0);
+    // Delaware
+    s.run('de_new_castle_warrants', 'DE', 'New Castle', 'https://www.tipsubmit.com/WebTips.aspx?AgencyID=256', 'Delaware Crime Stoppers', 'html', 720, 0);
+    // Florida
+    s.run('fl_miami_warrants', 'FL', 'Miami-Dade', 'https://www.crimestoppersmiami.com/mostwanted', 'Miami-Dade Crime Stoppers', 'html', 720, 1);
+    s.run('fl_hillsborough_warrants', 'FL', 'Hillsborough', 'https://www.hcso.tampa.fl.us/Community/Most-Wanted', 'Hillsborough County SO', 'html', 720, 0);
+    // Georgia
+    s.run('ga_fulton_warrants', 'GA', 'Fulton', 'https://www.fultoncountyga.gov/services/sheriff-s-office/most-wanted', 'Fulton County GA', 'html', 720, 0);
+    // Hawaii
+    s.run('hi_honolulu_warrants', 'HI', 'Honolulu', 'https://www.crimestoppershonolulu.org/', 'Honolulu Crime Stoppers', 'html', 1440, 0);
+    // Idaho
+    s.run('id_ada_warrants', 'ID', 'Ada', 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx', 'Ada County', 'search_form', 720, 0);
+    // Illinois
+    s.run('il_cook_warrants', 'IL', 'Cook', 'https://www.cookcountysheriff.org/most-wanted/', 'Cook County SO', 'html', 720, 1);
+    // Indiana
+    s.run('in_marion_warrants', 'IN', 'Marion', 'https://www.indycrimestoppers.org/', 'Indianapolis Crime Stoppers', 'html', 720, 0);
+    // Iowa
+    s.run('ia_polk_warrants', 'IA', 'Polk', 'https://www.polkcountyiowa.gov/county-sheriff/most-wanted/', 'Polk County IA', 'html', 720, 0);
+    // Kansas
+    s.run('ks_sedgwick_warrants', 'KS', 'Sedgwick', 'https://www.sedgwickcounty.org/sheriff/most-wanted/', 'Sedgwick County KS', 'html', 720, 0);
+    // Kentucky
+    s.run('ky_jefferson_warrants', 'KY', 'Jefferson', 'https://www.lmpd.org/wanted.html', 'Louisville Metro PD', 'html', 720, 0);
+    // Louisiana
+    s.run('la_orleans_warrants', 'LA', 'Orleans', 'https://www.crimestoppersgno.org/mostwanted', 'New Orleans Crime Stoppers', 'html', 720, 0);
+    // Maine
+    s.run('me_cumberland_warrants', 'ME', 'Cumberland', 'https://www.maine.gov/dps/msp/wanted-missing', 'Maine State Police', 'html', 720, 0);
+    // Maryland
+    s.run('md_baltimore_warrants', 'MD', 'Baltimore', 'https://www.baltimorepolice.org/most-wanted', 'Baltimore PD', 'html', 720, 0);
+    // Massachusetts
+    s.run('ma_suffolk_warrants', 'MA', 'Suffolk', 'https://www.mass.gov/most-wanted', 'Massachusetts Most Wanted', 'html', 720, 1);
+    // Michigan
+    s.run('mi_wayne_warrants', 'MI', 'Wayne', 'https://www.crimestoppers.com/', 'Detroit Crime Stoppers', 'html', 720, 0);
+    // Minnesota
+    s.run('mn_hennepin_warrants', 'MN', 'Hennepin', 'https://www.hennepinsheriff.org/jail-warrants/warrants', 'Hennepin County', 'html', 720, 0);
+    // Mississippi
+    s.run('ms_hinds_warrants', 'MS', 'Hinds', 'https://www.mscrimestoppers.com/mostwanted', 'Mississippi Crime Stoppers', 'html', 720, 0);
+    // Missouri
+    s.run('mo_jackson_warrants', 'MO', 'Jackson', 'https://www.kcpd.org/crime/most-wanted/', 'Kansas City PD', 'html', 720, 0);
+    // Montana
+    s.run('mt_flathead_warrants', 'MT', 'Flathead', 'https://apps.flathead.mt.gov/warrants/warrants_list.php', 'Flathead County', 'html', 720, 1);
+    // Nebraska
+    s.run('ne_douglas_warrants', 'NE', 'Douglas', 'https://www.omahacrimestoppers.org/mostwanted', 'Omaha Crime Stoppers', 'html', 720, 0);
+    // Nevada
+    s.run('nv_clark_warrants', 'NV', 'Clark', 'https://www.lvmpd.com/en-us/Pages/MostWanted.aspx', 'LVMPD Most Wanted', 'html', 720, 1);
+    s.run('nv_washoe_warrants', 'NV', 'Washoe', 'https://secretwitness.com/current-cases/current-fugitive-cases/', 'Washoe County Secret Witness', 'html', 720, 1);
+    // New Hampshire
+    s.run('nh_hillsborough_warrants', 'NH', 'Hillsborough', 'https://www.manchesternh.gov/Departments/Police/Most-Wanted', 'Manchester NH PD', 'html', 720, 0);
+    // New Jersey
+    s.run('nj_essex_warrants', 'NJ', 'Essex', 'https://www.njsp.org/wanted/index.shtml', 'NJ State Police', 'html', 720, 1);
+    // New Mexico
+    s.run('nm_bernalillo_warrants', 'NM', 'Bernalillo', 'https://bcapp.bernco.gov/BCSO_WarrantInterWITS/', 'Bernalillo County WITS', 'search_form', 720, 0);
+    // New York
+    s.run('ny_new_york_warrants', 'NY', 'New York', 'https://www.nyc.gov/nypd/most-wanted', 'NYPD Most Wanted', 'html', 720, 1);
+    // North Carolina
+    s.run('nc_mecklenburg_warrants', 'NC', 'Mecklenburg', 'https://www.crimestoppersofcharlotte.org/', 'Charlotte Crime Stoppers', 'html', 720, 0);
+    // North Dakota
+    s.run('nd_cass_warrants', 'ND', 'Cass', 'https://www.fargond.gov/city-government/departments/police/most-wanted', 'Fargo PD', 'html', 720, 0);
+    // Ohio
+    s.run('oh_cuyahoga_warrants', 'OH', 'Cuyahoga', 'https://www.cuyahogacounty.gov/sheriff/most-wanted', 'Cuyahoga County', 'html', 720, 0);
+    // Oklahoma
+    s.run('ok_oklahoma_warrants', 'OK', 'Oklahoma', 'https://www.okcpd.org/about-us/most-wanted/', 'Oklahoma City PD', 'html', 720, 0);
+    // Oregon
+    s.run('or_multnomah_warrants', 'OR', 'Multnomah', 'https://www.mcso.us/warrants/', 'Multnomah County', 'html', 720, 0);
+    // Pennsylvania
+    s.run('pa_philadelphia_warrants', 'PA', 'Philadelphia', 'https://www.phillypolice.com/forms/most-wanted/', 'Philadelphia PD', 'html', 720, 1);
+    // Rhode Island
+    s.run('ri_providence_warrants', 'RI', 'Providence', 'https://www.riag.ri.gov/most-wanted', 'Rhode Island AG', 'html', 720, 0);
+    // South Carolina
+    s.run('sc_richland_warrants', 'SC', 'Richland', 'https://www.rcsd.net/most-wanted', 'Richland County SC', 'html', 720, 0);
+    // South Dakota
+    s.run('sd_minnehaha_warrants', 'SD', 'Minnehaha', 'https://www.siouxfallspolice.com/resources/most-wanted', 'Sioux Falls PD', 'html', 720, 0);
+    // Tennessee
+    s.run('tn_davidson_warrants', 'TN', 'Davidson', 'https://www.nashville.gov/departments/police/most-wanted', 'Nashville PD', 'html', 720, 0);
+    // Texas
+    s.run('tx_harris_warrants', 'TX', 'Harris', 'https://www.crime-stoppers.org/mostwanted', 'Houston Crime Stoppers', 'html', 720, 1);
+    s.run('tx_dallas_warrants', 'TX', 'Dallas', 'https://www.ntcrimestoppers.com/fugitives', 'North Texas Crime Stoppers', 'html', 720, 0);
+    // Utah (statewide API handled by utahWarrantScraper.ts)
+    s.run('ut_statewide', 'UT', '', 'https://warrants.utah.gov/api/v1', 'Utah State Warrants API', 'api', 360, 1);
+    // Vermont
+    s.run('vt_chittenden_warrants', 'VT', 'Chittenden', 'https://www.burlingtonvt.gov/Police/Most-Wanted', 'Burlington VT PD', 'html', 1440, 0);
+    // Virginia
+    s.run('va_fairfax_warrants', 'VA', 'Fairfax', 'https://www.fairfaxcounty.gov/police/wanted', 'Fairfax County PD', 'html', 720, 0);
+    // Washington
+    s.run('wa_king_warrants', 'WA', 'King', 'https://www.kingcounty.gov/en/dept/dajd/courts-jails-legal/warrants', 'King County WA', 'html', 720, 0);
+    // West Virginia
+    s.run('wv_kanawha_warrants', 'WV', 'Kanawha', 'https://www.wvsp.gov/pages/Most-Wanted.aspx', 'WV State Police', 'html', 720, 0);
+    // Wisconsin
+    s.run('wi_milwaukee_warrants', 'WI', 'Milwaukee', 'https://www.milwaukeecountywi.gov/county-departments/sheriff/most-wanted/', 'Milwaukee County', 'html', 720, 0);
+    // Wyoming
+    s.run('wy_laramie_warrants', 'WY', 'Laramie', 'https://www.laramiecountywy.gov/County-Government/Elected-Officials/Laramie-County-Sheriffs-Office/Most-Wanted', 'Laramie County', 'html', 720, 0);
+
+    // ── Additional State Sources (expanded coverage) ──────────────────
+    // Alaska
+    s.run('ak_state_troopers', 'AK', '', 'https://www.prior.dps.alaska.gov/ast/AKMostWanted/MostWanted.aspx', 'Alaska State Troopers', 'html', 1440, 1);
+    s.run('ak_mat_su_warrants', 'AK', 'Mat-Su', 'https://www.prior.matsugov.us/sheriff/wanted', 'Mat-Su Borough', 'html', 720, 1);
+    // Alabama
+    s.run('al_mobile_warrants', 'AL', 'Mobile', 'https://www.mobilecountysheriffal.com/most-wanted/', 'Mobile County SO', 'html', 720, 1);
+    s.run('al_state_crimestop', 'AL', '', 'https://www.crime-stoppers.org/al/mostwanted', 'Alabama Crime Stoppers', 'html', 720, 1);
+    // Arizona
+    s.run('az_yavapai_warrants', 'AZ', 'Yavapai', 'https://yavapaisw.com/wanted-fugitives/', 'Yavapai Silent Witness', 'html', 720, 1);
+    // Arkansas
+    s.run('ar_benton_warrants', 'AR', 'Benton', 'https://www.bentoncountycrimestoppers.org/', 'Benton County Crime Stoppers', 'html', 720, 1);
+    // California
+    s.run('ca_riverside_warrants', 'CA', 'Riverside', 'https://www.riversidesheriff.org/810/Most-Wanted', 'Riverside County SO', 'html', 720, 1);
+    s.run('ca_sacramento_warrants', 'CA', 'Sacramento', 'https://www.sacsheriff.com/pages/most_wanted.aspx', 'Sacramento County SO', 'html', 720, 1);
+    s.run('ca_fresno_warrants', 'CA', 'Fresno', 'https://www.valleycrimestoppers.org/most-wanted', 'Fresno Valley Crime Stoppers', 'html', 720, 1);
+    s.run('ca_kern_warrants', 'CA', 'Kern', 'https://www.kerncounty.com/government/sheriff/most-wanted', 'Kern County SO', 'html', 720, 1);
+    s.run('ca_san_bernardino_warrants', 'CA', 'San Bernardino', 'https://www.ieanonymoustips.org/', 'IE Crime Stoppers', 'html', 720, 1);
+    // Colorado
+    s.run('co_pueblo_warrants', 'CO', 'Pueblo', 'https://www.pueblocrimestoppers.com/', 'Pueblo Crime Stoppers', 'html', 720, 1);
+    s.run('co_larimer_warrants', 'CO', 'Larimer', 'https://www.nococrimestoppers.com/', 'Northern CO Crime Stoppers', 'html', 720, 1);
+    s.run('co_weld_warrants', 'CO', 'Weld', 'https://www.weldcountysheriff.com/most-wanted', 'Weld County SO', 'html', 720, 1);
+    s.run('co_mesa_warrants', 'CO', 'Mesa', 'https://www.mesacounty.us/sheriff/most-wanted', 'Mesa County SO', 'html', 720, 1);
+    s.run('co_arapahoe_warrants', 'CO', 'Arapahoe', 'https://www.arapahoegov.com/847/Most-Wanted', 'Arapahoe County', 'html', 720, 1);
+    s.run('co_jefferson_warrants', 'CO', 'Jefferson', 'https://www.jeffco.us/3847/Most-Wanted', 'Jefferson County SO', 'html', 720, 1);
+    s.run('co_boulder_warrants', 'CO', 'Boulder', 'https://www.northerncoloradocrimestoppers.com/', 'Boulder Area Crime Stoppers', 'html', 720, 1);
+    s.run('co_springs_warrants', 'CO', 'El Paso', 'https://www.crimestoppersandpikespeakregion.com/', 'Pikes Peak Crime Stoppers', 'html', 720, 1);
+    // Connecticut
+    s.run('ct_state_police', 'CT', '', 'https://portal.ct.gov/DESPP/Division-of-State-Police/Most-Wanted', 'CT State Police', 'html', 720, 1);
+    // Delaware
+    s.run('de_state_police', 'DE', '', 'https://dsp.delaware.gov/crime-stoppers/', 'Delaware State Police', 'html', 720, 1);
+    // Florida
+    s.run('fl_broward_warrants', 'FL', 'Broward', 'https://www.browardsheriff.org/community/most-wanted', 'Broward County SO', 'html', 720, 1);
+    s.run('fl_orange_warrants', 'FL', 'Orange', 'https://www.ocso.com/most-wanted/', 'Orange County SO', 'html', 720, 1);
+    s.run('fl_duval_warrants', 'FL', 'Duval', 'https://www.fccrimestoppers.com/', 'First Coast Crime Stoppers', 'html', 720, 1);
+    // Georgia
+    s.run('ga_dekalb_warrants', 'GA', 'DeKalb', 'https://www.dekalbcountyga.gov/sheriff/most-wanted', 'DeKalb County SO', 'html', 720, 1);
+    s.run('ga_gwinnett_warrants', 'GA', 'Gwinnett', 'https://www.atlantacrimestoppers.com/', 'Atlanta Crime Stoppers', 'html', 720, 1);
+    // Hawaii
+    s.run('hi_maui_warrants', 'HI', 'Maui', 'https://www.mpd.maui.gov/crime-stoppers/', 'Maui Crime Stoppers', 'html', 1440, 1);
+    // Idaho
+    s.run('id_canyon_warrants', 'ID', 'Canyon', 'https://www.canyoncounty.id.gov/sheriff/most-wanted', 'Canyon County SO', 'html', 720, 1);
+    s.run('id_bonneville_warrants', 'ID', 'Bonneville', 'https://www.co.bonneville.id.us/sheriff/most-wanted', 'Bonneville County SO', 'html', 720, 1);
+    s.run('id_kootenai_warrants', 'ID', 'Kootenai', 'https://www.kcgov.us/154/Most-Wanted', 'Kootenai County SO', 'html', 720, 1);
+    s.run('id_twin_falls_warrants', 'ID', 'Twin Falls', 'https://www.twinfallscounty.org/sheriff/most-wanted', 'Twin Falls County SO', 'html', 720, 1);
+    s.run('id_state_police', 'ID', '', 'https://isp.idaho.gov/wanted/', 'Idaho State Police', 'html', 720, 1);
+    // Illinois
+    s.run('il_dupage_warrants', 'IL', 'DuPage', 'https://www.crimestoppersil.com/', 'Illinois Crime Stoppers', 'html', 720, 1);
+    // Indiana
+    s.run('in_allen_warrants', 'IN', 'Allen', 'https://www.allencountyindianawarrants.org/', 'Allen County Warrants', 'html', 720, 1);
+    // Iowa
+    s.run('ia_linn_warrants', 'IA', 'Linn', 'https://www.linncountyiowa.gov/1112/Most-Wanted', 'Linn County SO', 'html', 720, 1);
+    s.run('ia_state_crimestop', 'IA', '', 'https://iowacrimestoppers.org/', 'Iowa Crime Stoppers', 'html', 720, 1);
+    // Kansas
+    s.run('ks_johnson_warrants', 'KS', 'Johnson', 'https://www.jocosheriff.org/most-wanted', 'Johnson County SO', 'html', 720, 1);
+    // Kentucky
+    s.run('ky_fayette_warrants', 'KY', 'Fayette', 'https://www.bluegrasscrimestoppers.com/', 'Bluegrass Crime Stoppers', 'html', 720, 1);
+    // Louisiana
+    s.run('la_east_baton_rouge', 'LA', 'East Baton Rouge', 'https://www.crimestoppersbr.org/most-wanted', 'Baton Rouge Crime Stoppers', 'html', 720, 1);
+    // Maine
+    s.run('me_state_police', 'ME', '', 'https://www.maine.gov/dps/msp/wanted-missing', 'Maine State Police', 'html', 720, 1);
+    // Maryland
+    s.run('md_prince_georges', 'MD', 'Prince Georges', 'https://www.pgcrimesolvers.com/most-wanted', 'Prince Georges Crime Solvers', 'html', 720, 1);
+    // Michigan
+    s.run('mi_kent_warrants', 'MI', 'Kent', 'https://www.silentobserver.org/', 'Kent County Silent Observer', 'html', 720, 1);
+    s.run('mi_oakland_warrants', 'MI', 'Oakland', 'https://www.oaklandsheriff.com/most-wanted', 'Oakland County SO', 'html', 720, 1);
+    // Minnesota
+    s.run('mn_ramsey_warrants', 'MN', 'Ramsey', 'https://www.crimestoppersmn.org/', 'Minnesota Crime Stoppers', 'html', 720, 1);
+    // Mississippi
+    s.run('ms_harrison_warrants', 'MS', 'Harrison', 'https://www.mscoastcrimestoppers.com/', 'MS Coast Crime Stoppers', 'html', 720, 1);
+    // Missouri
+    s.run('mo_st_louis_warrants', 'MO', 'St. Louis', 'https://www.stlrcs.org/most-wanted', 'St. Louis Crime Stoppers', 'html', 720, 1);
+    // Montana
+    s.run('mt_cascade_warrants', 'MT', 'Cascade', 'https://www.cascadecountymt.gov/departments/sheriff/most-wanted', 'Cascade County SO', 'html', 720, 1);
+    s.run('mt_yellowstone_warrants', 'MT', 'Yellowstone', 'https://www.co.yellowstone.mt.gov/sheriff/most-wanted', 'Yellowstone County SO', 'html', 720, 1);
+    // Nebraska
+    s.run('ne_lancaster_warrants', 'NE', 'Lancaster', 'https://www.lincoln.ne.gov/City/Departments/Police-Department/Most-Wanted', 'Lincoln PD', 'html', 720, 1);
+    // New Hampshire
+    s.run('nh_state_police', 'NH', '', 'https://www.nh.gov/safety/divisions/nhsp/wanted/', 'NH State Police', 'html', 720, 1);
+    // New Jersey
+    s.run('nj_camden_warrants', 'NJ', 'Camden', 'https://www.camdencountypd.org/most-wanted', 'Camden County PD', 'html', 720, 1);
+    s.run('nj_passaic_warrants', 'NJ', 'Passaic', 'https://www.passaicsheriff.com/wanted/', 'Passaic County SO', 'html', 720, 1);
+    // New Mexico
+    s.run('nm_state_police', 'NM', '', 'https://www.nmsp.dps.state.nm.us/', 'NM State Police', 'html', 720, 1);
+    // New York
+    s.run('ny_suffolk_warrants', 'NY', 'Suffolk', 'https://www.suffolkcountyny.gov/sheriff/most-wanted', 'Suffolk County SO', 'html', 720, 1);
+    // North Carolina
+    s.run('nc_wake_warrants', 'NC', 'Wake', 'https://www.raleighcrimestoppers.org/', 'Raleigh Crime Stoppers', 'html', 720, 1);
+    s.run('nc_guilford_warrants', 'NC', 'Guilford', 'https://www.crimestoppersgso.org/', 'Greensboro Crime Stoppers', 'html', 720, 1);
+    // North Dakota
+    s.run('nd_burleigh_warrants', 'ND', 'Burleigh', 'https://www.bismarcknd.gov/1082/Most-Wanted', 'Bismarck PD', 'html', 720, 1);
+    // Ohio
+    s.run('oh_hamilton_warrants', 'OH', 'Hamilton', 'https://www.crimestoppers.com/cincinnati', 'Cincinnati Crime Stoppers', 'html', 720, 1);
+    s.run('oh_franklin_warrants', 'OH', 'Franklin', 'https://www.centralohiocrimestoppers.org/', 'Central Ohio Crime Stoppers', 'html', 720, 1);
+    // Oklahoma
+    s.run('ok_tulsa_warrants', 'OK', 'Tulsa', 'https://www.tulsacrimestoppers.org/most-wanted', 'Tulsa Crime Stoppers', 'html', 720, 1);
+    // Oregon
+    s.run('or_clackamas_warrants', 'OR', 'Clackamas', 'https://www.clackamas.us/sheriff/mostwanted', 'Clackamas County SO', 'html', 720, 1);
+    s.run('or_lane_warrants', 'OR', 'Lane', 'https://www.lanecountyor.gov/sheriff/most-wanted', 'Lane County SO', 'html', 720, 1);
+    // Pennsylvania
+    s.run('pa_allegheny_warrants', 'PA', 'Allegheny', 'https://www.pittsburghcrimestoppers.com/', 'Pittsburgh Crime Stoppers', 'html', 720, 1);
+    // Rhode Island
+    s.run('ri_state_police', 'RI', '', 'https://www.risp.ri.gov/most-wanted', 'RI State Police', 'html', 720, 1);
+    // South Carolina
+    s.run('sc_charleston_warrants', 'SC', 'Charleston', 'https://www.charlestoncrimestoppers.com/', 'Charleston Crime Stoppers', 'html', 720, 1);
+    // South Dakota
+    s.run('sd_pennington_warrants', 'SD', 'Pennington', 'https://www.rapidcity.com/police-department/most-wanted', 'Rapid City PD', 'html', 720, 1);
+    // Tennessee
+    s.run('tn_shelby_warrants', 'TN', 'Shelby', 'https://www.crimestopmem.org/mostwanted', 'Memphis Crime Stoppers', 'html', 720, 1);
+    s.run('tn_knox_warrants', 'TN', 'Knox', 'https://www.knoxcrimestoppers.com/', 'Knoxville Crime Stoppers', 'html', 720, 1);
+    // Texas
+    s.run('tx_bexar_warrants', 'TX', 'Bexar', 'https://www.sacrimestoppers.com/most-wanted', 'San Antonio Crime Stoppers', 'html', 720, 1);
+    s.run('tx_tarrant_warrants', 'TX', 'Tarrant', 'https://www.tarrantcrimestoppers.org/', 'Tarrant County Crime Stoppers', 'html', 720, 1);
+    s.run('tx_el_paso_warrants', 'TX', 'El Paso', 'https://www.crimestoppersofelpaso.org/most-wanted', 'El Paso Crime Stoppers', 'html', 720, 1);
+    s.run('tx_travis_warrants', 'TX', 'Travis', 'https://www.austincrimestoppers.org/', 'Austin Crime Stoppers', 'html', 720, 1);
+    // US Federal (additional)
+    s.run('federal_dea_fugitives', 'US', '', 'https://www.dea.gov/fugitives', 'DEA Fugitives', 'html', 1440, 1);
+    s.run('federal_atf_wanted', 'US', '', 'https://www.atf.gov/most-wanted', 'ATF Most Wanted', 'html', 1440, 1);
+    s.run('federal_ice_wanted', 'US', '', 'https://www.ice.gov/most-wanted', 'ICE Most Wanted', 'html', 1440, 1);
+    s.run('federal_secret_service', 'US', '', 'https://www.secretservice.gov/investigation/most-wanted', 'Secret Service Most Wanted', 'html', 1440, 1);
+    s.run('federal_usms_top15', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/most-wanted-fugitives', 'US Marshals 15 Most Wanted', 'html', 1440, 1);
+    s.run('federal_postal_inspectors', 'US', '', 'https://www.uspis.gov/investigations/wanted-fugitives', 'US Postal Inspectors', 'html', 1440, 1);
+    // Virginia
+    s.run('va_henrico_warrants', 'VA', 'Henrico', 'https://henrico.us/police/most-wanted/', 'Henrico County PD', 'html', 720, 1);
+    // Vermont
+    s.run('vt_state_police', 'VT', '', 'https://vsp.vermont.gov/wanted', 'Vermont State Police', 'html', 1440, 1);
+    // Washington
+    s.run('wa_pierce_warrants', 'WA', 'Pierce', 'https://www.piercecountywa.gov/2090/Most-Wanted', 'Pierce County SO', 'html', 720, 1);
+    s.run('wa_spokane_warrants', 'WA', 'Spokane', 'https://www.crimestoppersinlandnw.org/', 'Inland NW Crime Stoppers', 'html', 720, 1);
+    s.run('wa_snohomish_warrants', 'WA', 'Snohomish', 'https://snohomishcountywa.gov/282/Most-Wanted', 'Snohomish County SO', 'html', 720, 1);
+    // West Virginia
+    s.run('wv_kanawha_crimestop', 'WV', 'Kanawha', 'https://www.p3tips.com/TipForm.aspx?ID=104', 'Charleston WV Crime Stoppers', 'html', 720, 1);
+    // Wisconsin
+    s.run('wi_dane_warrants', 'WI', 'Dane', 'https://www.madisoncrimestoppers.com/', 'Madison Crime Stoppers', 'html', 720, 1);
+    // Wyoming
+    s.run('wy_natrona_warrants', 'WY', 'Natrona', 'https://www.natronacounty-wy.gov/603/Most-Wanted', 'Natrona County SO', 'html', 720, 1);
+    s.run('wy_sweetwater_warrants', 'WY', 'Sweetwater', 'https://www.sweet.wy.us/sheriff/most-wanted', 'Sweetwater County SO', 'html', 720, 1);
+    s.run('wy_albany_warrants', 'WY', 'Albany', 'https://www.co.albany.wy.us/sheriff/most-wanted', 'Albany County SO', 'html', 720, 1);
+    s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
+  }
+
+  // Enable ALL warrant scraper sources — circuit breaker auto-disables sources that fail 5 times
+  db.prepare("UPDATE warrant_scraper_config SET enabled = 1 WHERE enabled = 0 AND source_type != 'search_form'").run();
   // ── Radio transcripts — audio recording columns ──
-  addCol('radio_transcripts', 'audio_file', 'TEXT');
-  addCol('radio_transcripts', 'file_size', 'INTEGER');
-  addCol('radio_transcripts', 'linked_call_id', 'INTEGER');
+  addCol("radio_transcripts", "audio_file", "TEXT");
+  addCol("radio_transcripts", "file_size", "INTEGER");
+  addCol("radio_transcripts", "linked_call_id", "INTEGER");
 
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
