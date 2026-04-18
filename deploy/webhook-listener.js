@@ -63,25 +63,43 @@ function triggerDeploy(commitSha, branch, pusher) {
   // Sanitize inputs for logging — strip control chars and newlines
   const safeBranch = String(branch || '').replace(/[^\w/.-]/g, '').slice(0, 128);
   const safeSha = String(commitSha || '').replace(/[^a-f0-9]/gi, '').slice(0, 40);
-  const safePusher = String(pusher || '').replace(/[^\w.-@]/g, '').slice(0, 64);
+  // Note: backslash-escape the hyphen — `[^\w.-@]` would interpret `.-@` as
+  // a character range (CodeQL js/overly-large-range #2657).
+  const safePusher = String(pusher || '').replace(/[^\w.\-@]/g, '').slice(0, 64);
   log(`DEPLOY TRIGGERED — branch=${safeBranch}, commit=${safeSha}, by=${safePusher}`);
 
-  // Run: git pull then deploy script — using execFile with args to avoid shell injection
-  const child = execFile('/bin/bash', ['-c', 'git pull origin main && exec bash "$1"', '--', DEPLOY_SCRIPT], {
+  // Two sequential execFile calls instead of `bash -c` — DEPLOY_SCRIPT comes
+  // from env and could otherwise reach a shell parser (CodeQL flagged #2639
+  // js/shell-command-injection-from-environment, #2654 js/indirect-command-line-injection).
+  // The path is also validated at module load (line 19) — only [\w./-] allowed.
+  const pullChild = execFile('/usr/bin/git', ['pull', 'origin', 'main'], {
     cwd: REPO_DIR,
-    timeout: 300000, // 5 minute timeout
+    timeout: 60_000,
     env: { ...process.env, HOME: '/root' },
-  }, (error, stdout, stderr) => {
-    if (error) {
-      log(`DEPLOY FAILED — ${error.message}`);
-      if (stderr) log(`STDERR: ${stderr.slice(0, 500)}`);
-    } else {
-      log(`DEPLOY SUCCESS — output: ${(stdout || '').slice(0, 300)}`);
+  }, (pullErr, pullOut, pullStderr) => {
+    if (pullErr) {
+      log(`GIT PULL FAILED — ${pullErr.message}`);
+      if (pullStderr) log(`PULL STDERR: ${pullStderr.slice(0, 500)}`);
+      return;
     }
+    log(`git pull ok: ${(pullOut || '').slice(0, 200)}`);
+
+    const deployChild = execFile('/bin/bash', [DEPLOY_SCRIPT], {
+      cwd: REPO_DIR,
+      timeout: 240_000,
+      env: { ...process.env, HOME: '/root' },
+    }, (error, stdout, stderr) => {
+      if (error) {
+        log(`DEPLOY FAILED — ${error.message}`);
+        if (stderr) log(`STDERR: ${stderr.slice(0, 500)}`);
+      } else {
+        log(`DEPLOY SUCCESS — output: ${(stdout || '').slice(0, 300)}`);
+      }
+    });
+    deployChild.unref();
   });
 
-  // Detach so webhook response isn't delayed
-  child.unref();
+  pullChild.unref();
 }
 
 // ── HTTP Server ──
