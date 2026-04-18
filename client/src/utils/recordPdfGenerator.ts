@@ -1643,6 +1643,10 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     formTitle: 'PERSON RECORD',
     formNumber: 'FORM PS-202',
     caseNumber: personName,
+    // Label the right-side header box "SUBJECT NAME" for person records
+    // instead of the default "CASE NUMBER" — more semantically accurate
+    // since the value is a name, not an incident identifier.
+    caseNumberLabel: 'SUBJECT NAME',
     reportDate: fmtDate(data.created_at),
   });
 
@@ -1774,14 +1778,15 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── 7. Employment / Demographics ──────────────────────────
+  // ── 7. Employment ─────────────────────────────────────────
+  // Language lives in Subject Identification section above — removed from
+  // here 2026-04-18 to eliminate the duplicate field pair.
   y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Employment', y); y = sec.contentY;
-    const thirdW = ffw / 3;
-    const e1 = addFieldPair(doc, 'Employer', data.employer || '', lx, y, thirdW);
-    const e2 = addFieldPair(doc, 'Occupation', data.occupation || '', lx + thirdW, y, thirdW);
-    const e3 = addFieldPair(doc, 'Language', data.language || '', lx + 2 * thirdW, y, thirdW);
-    y = Math.max(e1, e2, e3);
+    const hw = ffw / 2;
+    const e1 = addFieldPair(doc, 'Employer', data.employer || '', lx, y, hw);
+    const e2 = addFieldPair(doc, 'Occupation', data.occupation || '', lx + hw, y, hw);
+    y = Math.max(e1, e2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2120,6 +2125,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     formTitle: 'VEHICLE RECORD',
     formNumber: 'FORM PS-203',
     caseNumber: data.license_plate || 'N/A',
+    caseNumberLabel: 'LICENSE PLATE',
   });
 
   // ── Vehicle Identification ──
@@ -2275,6 +2281,7 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     formTitle: 'WARRANT RECORD',
     formNumber: 'FORM PS-204',
     caseNumber: data.warrant_number,
+    caseNumberLabel: 'WARRANT #',
     reportDate: fmtDate(data.created_at),
   });
 
@@ -2397,6 +2404,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     formTitle: 'EVIDENCE / PROPERTY CUSTODY REPORT',
     formNumber: 'FORM PS-205',
     caseNumber: data.evidence_number,
+    caseNumberLabel: 'EVIDENCE #',
   });
 
   // ── Evidence Identification ──
@@ -2604,6 +2612,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     formTitle: reportTitles[reportType] || reportTitles.status,
     formNumber: 'FORM PS-206',
     caseNumber: data.vehicle_number,
+    caseNumberLabel: 'UNIT #',
   });
 
   // ── Vehicle Information ──
@@ -2970,6 +2979,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     formTitle: reportTitle,
     formNumber: 'FORM PS-207',
     caseNumber: data.badge_number || data.employee_id || 'N/A',
+    caseNumberLabel: 'BADGE #',
   });
 
   // ── Officer Identification (always shown) ──
@@ -3249,6 +3259,10 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     formTitle: 'PROPERTY RECORD',
     formNumber: 'FORM PS-208',
     caseNumber: data.name || 'N/A',
+    // Label the right-side header box "PROPERTY NAME" for property records
+    // — matches the actual value rendered there (e.g. "DONNA MANOR
+    // APARTMENTS") and avoids the semantically incorrect "CASE NUMBER".
+    caseNumberLabel: 'PROPERTY NAME',
   });
 
   // ── Property Information ──
@@ -3412,6 +3426,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     formTitle: 'CITATION / SUMMONS',
     formNumber: 'FORM PS-209',
     caseNumber: data.citation_number,
+    caseNumberLabel: 'CITATION #',
   });
 
   // ── Citation Information ──

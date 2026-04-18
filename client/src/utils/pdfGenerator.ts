@@ -1351,7 +1351,14 @@ export function addNarrativeSection(
   const text = sanitizePdfText(rawText);
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
-  y = sec.contentY;
+  // Extra breathing room between the section header bar and the first
+  // narrative line. Field pairs get their ~2mm label offset from
+  // addFieldPair, but wrapped-text renderers draw directly at the passed
+  // y — without this bump, narrative bodies hug the dark bar above them
+  // (visible on Damage Description / Notes / Access Instructions /
+  // Narrative / Service Notes sections across vehicle / property /
+  // person / serve PDFs).
+  y = sec.contentY + 2;
 
   // Pre-calculate text height for proper background tint sizing
   const lx = getLeftX();
