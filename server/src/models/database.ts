@@ -3848,29 +3848,20 @@ function migrateSchema(): void {
   addCol('scheduled_emails', 'owner_user_id', 'INTEGER');
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_owner      ON scheduled_emails(owner_user_id, status)`).run();
 
-  // ── PHASE 4: One-shot wipe of pre-Phase-4 email data ──
-  // Idempotent: gated by phase4_migration_done flag in system_config.
-  const phase4Done = db.prepare(
-    "SELECT config_value FROM system_config WHERE config_key = 'phase4_migration_done'"
-  ).get();
-  if (!phase4Done) {
-    console.log('[Phase4] Running one-shot wipe of pre-Phase-4 email data...');
-    db.transaction(() => {
-      db.prepare('DELETE FROM email_rule_matches').run();
-      db.prepare('DELETE FROM email_rules').run();
-      db.prepare('DELETE FROM email_links').run();
-      db.prepare('DELETE FROM scheduled_emails').run();
-      db.prepare('DELETE FROM email_cache').run();
-      db.prepare('DELETE FROM email_folders').run();
-      for (const k of ['ms_email_access_token','ms_email_refresh_token','ms_email_token_expires_at','ms_email_mailbox','ms_email_last_sync']) {
-        db.prepare("DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'").run(k);
-      }
-    })();
-    db.prepare(
-      "INSERT INTO system_config (config_key, config_value, category) VALUES ('phase4_migration_done', ?, 'system')"
-    ).run(localNow());
-    console.log('[Phase4] Migration complete.');
-  }
+  // ── PHASE 4: pre-Phase-4 email data isolation ──
+  // The original Phase 4 design called for wiping pre-Phase-4 email data on
+  // first deploy, but the wipe failed in production because the existing
+  // email_cache_fts virtual table's AFTER DELETE trigger references a
+  // contentless FTS5 'delete' command path that errored on real prod data
+  // (commit ddc6fcb7 / 2026-04-18 deploy). Since every per-user route filters
+  // by `WHERE owner_user_id = ?` and pre-Phase-4 rows have owner_user_id=NULL,
+  // the dormant data is already invisible to officers' inboxes, rule queries,
+  // schedule listings, and link lookups. No wipe is needed.
+  //
+  // The shared-mailbox OAuth tokens (ms_email_access_token, etc.) also stay
+  // in system_config — they are dead code under Phase 4 (no caller invokes
+  // the global getGraphClient()) and will be cleaned up by an admin tool in a
+  // follow-up rather than by an automatic destructive migration.
 
   // ── EMAIL_CACHE — categories for auto-tagging ──
   addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");
