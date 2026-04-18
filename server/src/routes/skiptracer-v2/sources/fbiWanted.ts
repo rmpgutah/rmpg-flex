@@ -6,6 +6,7 @@
 // API docs: https://www.fbi.gov/wanted/api
 // Base: https://api.fbi.gov/wanted/v1/list
 
+import sanitizeHtml from 'sanitize-html';
 import { BaseDataSource } from './base';
 import { SearchQuery, SourceCategory, SourceResult, WatchlistFlag } from '../types';
 import { localNow } from '../../../utils/timeUtils';
@@ -236,7 +237,11 @@ export default class FbiWantedSource extends BaseDataSource {
   }
 }
 
-/** Strip HTML tags from FBI API caution/remarks fields */
+/** Strip HTML tags from FBI API caution/remarks fields.
+ *  Uses sanitize-html (handles nested-tag bypass + entity decoding) to avoid
+ *  CodeQL js/double-escaping (#2749) and js/incomplete-multi-character-sanitization
+ *  (#2750) — the prior regex chain re-decoded entities inconsistently. */
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+  const stripped = sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} });
+  return stripped.replace(/\s+/g, ' ').trim();
 }
