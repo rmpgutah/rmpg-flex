@@ -15,6 +15,14 @@ const router = Router();
 
 // ── Helpers ─────────────────────────────────────────────────
 
+// Express query-param values can be string | string[] | ParsedQs | ParsedQs[].
+// Casting `as string` does NOT validate at runtime, so a request like
+// ?search[]=a&search[]=b lets an array through and downstream `.length` /
+// string concat behaves unsafely (CodeQL js/type-confusion-through-parameter-tampering).
+function asString(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
 function setCacheHeaders(res: Response, seconds: number) {
   res.set('Cache-Control', `private, max-age=${seconds}`);
 }
@@ -271,7 +279,7 @@ router.get('/geography/beats', requireRole('admin', 'manager', 'supervisor', 'of
   try {
     const db = getDb();
     const zoneId = req.query.zone_id ? parseInt(req.query.zone_id as string, 10) : null;
-    const search = req.query.search as string | undefined;
+    const search = asString(req.query.search);
     let query = `
       SELECT b.*,
         z.zone_code, z.zone_name,
@@ -357,8 +365,8 @@ router.delete('/geography/beats/:id', requireRole('admin'), (req: Request, res: 
 router.get('/geography/codes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const category = req.query.category as string | undefined;
-    const search = req.query.search as string | undefined;
+    const category = asString(req.query.category);
+    const search = asString(req.query.search);
     let query = 'SELECT * FROM dispatch_codes WHERE 1=1';
     const params: any[] = [];
     if (category && category !== 'all') { query += ' AND category = ?'; params.push(category); }
