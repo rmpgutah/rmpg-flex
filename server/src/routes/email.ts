@@ -34,6 +34,9 @@ import {
   getDecryptedValue,
   getAuthorizationUrl,
   exchangeCodeForTokens,
+  getAuthorizationUrlForUser,
+  verifyOAuthStateForUser,
+  exchangeCodeForUserTokens,
   getGraphClient,
   testConnection,
   getStatus,
@@ -93,43 +96,23 @@ function getUserSignature(userId: number): string | null {
 
 router.get('/oauth/callback', async (req: Request, res: Response) => {
   try {
-    const { code, state, error, error_description } = req.query;
+    const { code, state, error } = req.query;
+    if (error) return res.redirect('/email?status=error&message=Microsoft+denied');
+    if (!code || !state) return res.redirect('/email?status=error&message=Missing+code');
 
-    if (error) {
-      console.error('[OAuth] Microsoft returned error:', error, error_description);
-      res.redirect('/admin?tab=email&status=error&message=Microsoft+authorization+failed');
-      return;
-    }
+    let userId: number;
+    try { userId = verifyOAuthStateForUser(String(state)); }
+    catch { return res.redirect('/email?status=error&message=Invalid+state'); }
 
-    if (!code || !state) {
-      res.redirect('/admin?tab=email&status=error&message=Missing+code+or+state');
-      return;
-    }
-
-    // Validate CSRF state
-    const storedState = getConfigValue(CONFIG_KEYS.oauthState);
-    if (!storedState || storedState !== String(state)) {
-      res.redirect('/admin?tab=email&status=error&message=Invalid+state+token');
-      return;
-    }
-
-    // Clear state to prevent replay
-    deleteConfigValue(CONFIG_KEYS.oauthState);
-
-    // Exchange code for tokens — use hardcoded production domain to prevent Host header injection
     const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
     const redirectUri = `https://${host}/api/email/oauth/callback`;
-    await exchangeCodeForTokens(String(code), redirectUri);
+    await exchangeCodeForUserTokens(String(code), redirectUri, userId);
 
-    // Enable integration and start poller
-    setConfigValue(CONFIG_KEYS.enabled, 'true');
-    restartEmailPoller();
-
-    console.log('[OAuth] Microsoft email authorized successfully');
-    res.redirect('/admin?tab=email&status=authorized');
+    if (getConfigValue(CONFIG_KEYS.enabled) !== 'true') setConfigValue(CONFIG_KEYS.enabled, 'true');
+    res.redirect('/email?enrolled=1');
   } catch (err: any) {
-    console.error('[OAuth] Token exchange failed:', err.message);
-    res.redirect('/admin?tab=email&status=error&message=Token+exchange+failed');
+    console.error('[OAuth] Per-user exchange failed:', err.message);
+    res.redirect('/email?status=error&message=Token+exchange+failed');
   }
 });
 
@@ -151,6 +134,18 @@ router.get('/status', (_req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
+  }
+});
+
+// GET /api/email/oauth/authorize — Per-user Microsoft consent URL
+router.get('/oauth/authorize', (req: Request, res: Response) => {
+  try {
+    const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
+    const redirectUri = `https://${host}/api/email/oauth/callback`;
+    const url = getAuthorizationUrlForUser(req.user!.userId, redirectUri);
+    res.json({ authorizationUrl: url });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -7,6 +7,7 @@
 // Follows the same pattern as clearPathGpsClient.ts.
 
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import config from '../config';
@@ -330,6 +331,83 @@ export async function getGraphClientForUser(userId: number): Promise<Client> {
 export function isUserAuthorized(userId: number): boolean {
   const tokens = getUserTokens(userId);
   return !!tokens && tokens.expiresAt > 0;
+}
+
+// ============================================================
+// Per-user OAuth (signed-state CSRF, writes to user_graph_tokens)
+// ============================================================
+
+export function buildOAuthStateForUser(userId: number): string {
+  return jwt.sign(
+    { userId, nonce: crypto.randomBytes(16).toString('hex'), purpose: 'graph_oauth' },
+    config.jwt.secret,
+    { expiresIn: '10m' }
+  );
+}
+
+export function verifyOAuthStateForUser(state: string): number {
+  const decoded = jwt.verify(state, config.jwt.secret) as any;
+  if (decoded.purpose !== 'graph_oauth' || typeof decoded.userId !== 'number') {
+    throw new Error('Invalid OAuth state');
+  }
+  return decoded.userId;
+}
+
+export function getAuthorizationUrlForUser(userId: number, redirectUri: string): string {
+  const clientId = getDecryptedValue(CONFIG_KEYS.clientId);
+  const tenantId = getDecryptedValue(CONFIG_KEYS.tenantId);
+  if (!clientId || !tenantId) throw new Error('Email integration not configured');
+  const state = buildOAuthStateForUser(userId);
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    response_mode: 'query',
+    scope: GRAPH_SCOPES.join(' '),
+    state,
+    prompt: 'select_account',
+  });
+  return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params}`;
+}
+
+export async function exchangeCodeForUserTokens(code: string, redirectUri: string, userId: number): Promise<void> {
+  const clientId = getDecryptedValue(CONFIG_KEYS.clientId);
+  const clientSecret = getDecryptedValue(CONFIG_KEYS.clientSecret);
+  const tenantId = getDecryptedValue(CONFIG_KEYS.tenantId);
+  if (!clientId || !clientSecret || !tenantId) throw new Error('Not configured');
+
+  const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    }).toString(),
+  });
+  if (!res.ok) throw new Error(`Token exchange HTTP ${res.status}`);
+  const data = await res.json() as any;
+
+  let mailbox = '';
+  try {
+    const meRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+      headers: { Authorization: `Bearer ${data.access_token}` },
+    });
+    if (meRes.ok) {
+      const me = await meRes.json() as any;
+      mailbox = me.userPrincipalName || me.mail || '';
+    }
+  } catch { /* tolerated */ }
+
+  setUserTokens(userId, {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || null,
+    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    mailbox,
+    scopes: data.scope || GRAPH_SCOPES.join(' '),
+  });
 }
 
 /** Get an authenticated Microsoft Graph client. */
