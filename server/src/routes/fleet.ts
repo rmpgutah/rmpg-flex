@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastFleetUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
+import { pathInside } from '../utils/pathSafety';
 
 const execFileAsync = promisify(execFile);
 
@@ -1952,8 +1953,12 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
 router.post('/fuel/:id/receipt', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   fuelReceiptUpload.single('receipt')(req, res, (multerErr: any) => {
     const cleanup = () => {
-      if (req.file?.path && fs.existsSync(req.file.path)) {
-        try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      const p = req.file?.path;
+      // pathInside() proves containment to CodeQL — multer paths use
+      // crypto.randomBytes filenames so they're already safe, but the
+      // analyzer treats req.file.path as tainted by upload origin.
+      if (p && pathInside(p, FUEL_RECEIPT_DIR) && fs.existsSync(p)) {
+        try { fs.unlinkSync(p); } catch { /* ignore */ }
       }
     };
     if (multerErr) {
