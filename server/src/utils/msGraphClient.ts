@@ -20,7 +20,8 @@ function deriveKey(): Buffer {
   return crypto.createHash('sha256').update(config.jwt.secret).digest();
 }
 
-function encrypt(plaintext: string): string {
+/** AES-256-GCM encrypt with key derived from JWT_SECRET. Output is iv:authTag:ciphertext (hex). */
+export function encryptToken(plaintext: string): string {
   const key = deriveKey();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -30,7 +31,8 @@ function encrypt(plaintext: string): string {
   return `${iv.toString('hex')}:${authTag}:${encrypted}`;
 }
 
-function decrypt(stored: string): string {
+/** Decrypt a string produced by encryptToken(). Throws on tamper or wrong key. */
+export function decryptToken(stored: string): string {
   const key = deriveKey();
   const parts = stored.split(':');
   if (parts.length !== 3) throw new Error('Invalid encrypted format');
@@ -85,13 +87,13 @@ export function getConfigValue(key: string): string | null {
 export function getDecryptedValue(key: string): string | null {
   const val = getConfigValue(key);
   if (!val) return null;
-  try { return decrypt(val); } catch { return null; }
+  try { return decryptToken(val); } catch { return null; }
 }
 
 export function setConfigValue(key: string, value: string, shouldEncrypt = false): void {
   const db = getDb();
   const now = localNow();
-  const stored = shouldEncrypt ? encrypt(value) : value;
+  const stored = shouldEncrypt ? encryptToken(value) : value;
 
   db.prepare(
     "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'"
