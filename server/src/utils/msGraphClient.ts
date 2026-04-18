@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import config from '../config';
 import { Client } from '@microsoft/microsoft-graph-client';
+import { getUserTokens, setUserTokens, markUserNeedsReauth } from './userGraphTokens';
 
 // ============================================================
 // Encryption helpers (same pattern as clearPathGpsClient.ts)
@@ -276,6 +277,60 @@ export async function ensureValidToken(): Promise<string> {
 // ============================================================
 // Graph API client
 // ============================================================
+
+/** Per-user variant. Throws if user has no tokens. Refreshes if expiring within 1min. */
+export async function ensureValidTokenForUser(userId: number): Promise<string> {
+  const tokens = getUserTokens(userId);
+  if (!tokens) throw new Error(`User ${userId} not enrolled — needs OAuth`);
+  if (tokens.expiresAt > Date.now() + 60_000) return tokens.accessToken;
+
+  const clientId = getDecryptedValue(CONFIG_KEYS.clientId);
+  const clientSecret = getDecryptedValue(CONFIG_KEYS.clientSecret);
+  const tenantId = getDecryptedValue(CONFIG_KEYS.tenantId);
+  if (!clientId || !clientSecret || !tenantId || !tokens.refreshToken) {
+    markUserNeedsReauth(userId);
+    throw new Error(`User ${userId} token refresh failed: missing refresh_token or app config`);
+  }
+
+  const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: tokens.refreshToken,
+    scope: GRAPH_SCOPES.join(' '),
+  });
+  const res = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    markUserNeedsReauth(userId);
+    throw new Error(`Token refresh HTTP ${res.status}`);
+  }
+  const data = await res.json() as any;
+  setUserTokens(userId, {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || tokens.refreshToken,
+    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    mailbox: tokens.mailbox,
+    scopes: tokens.scopes,
+  });
+  return data.access_token;
+}
+
+/** Per-user Graph client — uses ensureValidTokenForUser internally. */
+export async function getGraphClientForUser(userId: number): Promise<Client> {
+  const accessToken = await ensureValidTokenForUser(userId);
+  return Client.init({ authProvider: (done) => done(null, accessToken) });
+}
+
+/** Per-user authorization check — true iff tokens exist and not marked for reauth. */
+export function isUserAuthorized(userId: number): boolean {
+  const tokens = getUserTokens(userId);
+  return !!tokens && tokens.expiresAt > 0;
+}
 
 /** Get an authenticated Microsoft Graph client. */
 export async function getGraphClient(): Promise<Client> {
