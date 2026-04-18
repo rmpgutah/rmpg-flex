@@ -12,6 +12,7 @@ import {
   ExternalLink, Shield, Hash, Upload,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
@@ -926,6 +927,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [redactionPreview, setRedactionPreview] = useState<{ redacted: string; diff: Array<{ original: string; replacement: string; type: string; index: number }> } | null>(null);
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
   const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -1068,7 +1070,70 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
-      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      // Forward uses raw fetch so we can detect the 409 redaction-required response
+      // (apiFetch throws on !ok and discards the response body, losing `preview`).
+      if (mode === 'forward' && replyMessage) {
+        const token = localStorage.getItem('rmpg_token');
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 409) {
+          const data = await res.json();
+          if (data?.requires_redaction && data.preview) {
+            setRedactionPreview(data.preview);
+            setSending(false);
+            return; // Wait for modal confirmation
+          }
+        }
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Forward failed: ${res.status}`);
+        }
+      } else {
+        await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      }
+
+      clearDraft();
+      onSent();
+      onClose();
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    finally { setSending(false); }
+  };
+
+  // Re-submit forward with the officer-reviewed (possibly edited) body.
+  const handleRedactionConfirm = async (editedBody: string) => {
+    if (!replyMessage) return;
+    setRedactionPreview(null);
+    setSending(true);
+    setError('');
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      const payload: any = {
+        to: to.split(',').map(s => s.trim()),
+        body: editedBody,
+        redaction_confirmed: true,
+      };
+      if (cc.trim()) payload.cc = cc.split(',').map((s: string) => s.trim());
+      if (bcc.trim()) payload.bcc = bcc.split(',').map((s: string) => s.trim());
+      const res = await fetch(`/api/email/messages/${replyMessage.id}/forward`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Forward failed: ${res.status}`);
+      }
       clearDraft();
       onSent();
       onClose();
@@ -1289,6 +1354,12 @@ Drag & drop files to attach • Ctrl+Enter to send" />
           onClose={() => setShowScheduleModal(false)}
         />
       )}
+      <ForwardRedactionModal
+        open={redactionPreview !== null}
+        preview={redactionPreview}
+        onConfirm={handleRedactionConfirm}
+        onCancel={() => { setRedactionPreview(null); setSending(false); }}
+      />
     </div>
   );
 }
