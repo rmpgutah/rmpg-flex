@@ -41,7 +41,7 @@ interface Props {
 }
 
 const SUB_TABS: { value: SubTab; label: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
-  { value: 'loan',      label: 'Loan',        icon: CreditCard, color: 'text-blue-400' },
+  { value: 'loan',      label: 'Loan',        icon: CreditCard, color: 'text-gray-400' },
   { value: 'insurance', label: 'Insurance',   icon: Shield,     color: 'text-green-400' },
   { value: 'accessory', label: 'Accessories', icon: Wrench,     color: 'text-amber-400' },
   { value: 'utility',   label: 'Utilities',   icon: Zap,        color: 'text-purple-400' },
@@ -57,13 +57,13 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
   const colors: Record<string, string> = {
     active:     'bg-green-900/30 text-green-400 border-green-700/40',
     paid_off:   'bg-rmpg-800 text-rmpg-300 border-rmpg-700',
-    refinanced: 'bg-blue-900/30 text-blue-400 border-blue-700/40',
+    refinanced: 'bg-gray-900/30 text-gray-400 border-gray-700/40',
     defaulted:  'bg-red-900/30 text-red-400 border-red-700/40',
     expired:    'bg-amber-900/30 text-amber-400 border-amber-700/40',
     cancelled:  'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
     installed:  'bg-green-900/30 text-green-400 border-green-700/40',
     removed:    'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
-    replaced:   'bg-blue-900/30 text-blue-400 border-blue-700/40',
+    replaced:   'bg-gray-900/30 text-gray-400 border-gray-700/40',
     damaged:    'bg-red-900/30 text-red-400 border-red-700/40',
   };
   return (
@@ -83,7 +83,7 @@ export default function FleetCostsTab({
       {summary && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Stat icon={DollarSign} color="text-cyan-400" label="Lifetime Cost" value={fmtCurrency(summary.total_lifetime)} />
+            <Stat icon={DollarSign} color="text-gray-400" label="Lifetime Cost" value={fmtCurrency(summary.total_lifetime)} />
             <Stat icon={Gauge}      color="text-brand-400" label="Cost / Mile"  value={summary.cost_per_mile != null ? fmtCurrency(summary.cost_per_mile, 3) : '-'} />
             <Stat icon={Calendar}   color="text-amber-400" label="Monthly Loan" value={fmtCurrency(summary.monthly_commitment.loan)} />
             <Stat icon={Shield}     color="text-green-400" label="Monthly Ins." value={fmtCurrency(summary.monthly_commitment.insurance)} />
@@ -147,9 +147,9 @@ function Stat({ icon: Icon, label, value, color }: {
 function CostBreakdown({ summary }: { summary: FleetCostSummary }) {
   const total = summary.total_lifetime || 1;
   const rows: { label: string; value: number; color: string }[] = [
-    { label: 'Fuel',        value: summary.categories.fuel,        color: 'bg-cyan-600' },
+    { label: 'Fuel',        value: summary.categories.fuel,        color: 'bg-gray-600' },
     { label: 'Maintenance', value: summary.categories.maintenance, color: 'bg-amber-600' },
-    { label: 'Loan',        value: summary.categories.loans,       color: 'bg-blue-600' },
+    { label: 'Loan',        value: summary.categories.loans,       color: 'bg-gray-600' },
     { label: 'Insurance',   value: summary.categories.insurance,   color: 'bg-green-600' },
     { label: 'Accessories', value: summary.categories.accessories, color: 'bg-purple-600' },
     { label: 'Utilities',   value: summary.categories.utilities,   color: 'bg-pink-600' },
@@ -231,14 +231,14 @@ function LoanList({ records, onAdd, onEdit, onDelete }: {
       <div className="space-y-1.5">
         {records.map((l) => (
           <div key={l.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
-            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-blue-900/20 border border-blue-700/40">
-              <CreditCard className="w-4 h-4 text-blue-400" />
+            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
+              <CreditCard className="w-4 h-4 text-gray-400" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] text-rmpg-200 font-bold">{l.lender || '(no lender)'}</span>
                 <StatusBadge status={l.status} />
-                <span className="text-[10px] text-blue-400 font-mono">{fmtCurrency(l.monthly_payment)}/mo</span>
+                <span className="text-[10px] text-gray-400 font-mono">{fmtCurrency(l.monthly_payment)}/mo</span>
                 {l.interest_rate != null && (
                   <span className="text-[9px] font-mono text-rmpg-500">{l.interest_rate.toFixed(2)}% APR</span>
                 )}

@@ -120,8 +120,8 @@ export default function FuelAnalyticsPage() {
       {/* Totals strip */}
       {overview && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <Stat icon={Fuel} color="text-cyan-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
-          <Stat icon={Fuel} color="text-cyan-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
+          <Stat icon={Fuel} color="text-gray-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
+          <Stat icon={Fuel} color="text-gray-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
           <Stat icon={DollarSign} color="text-green-400" label="Total Cost" value={fmtCurrency(overview.totals.total_cost)} />
           <Stat icon={DollarSign} color="text-amber-400" label="Avg $/Gal" value={overview.totals.avg_cpg != null ? `$${overview.totals.avg_cpg.toFixed(3)}` : '—'} />
           <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={`${overview.totals.flag_rate.toFixed(1)}%`} />
@@ -333,7 +333,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
           <div key={d.month} className="flex-1 flex flex-col items-center justify-end h-full gap-px"
             title={`${d.month}: ${d.gallons.toFixed(1)} gal, $${d.cost.toFixed(2)}, ${d.fills} fills`}>
             <div className="w-full flex items-end justify-center gap-0.5 h-full">
-              <div className="bg-cyan-600/60 w-1/2 border-t border-cyan-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
+              <div className="bg-gray-600/60 w-1/2 border-t border-gray-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
               <div className="bg-amber-600/60 w-1/2 border-t border-amber-400" style={{ height: `${(d.cost / maxCost) * 100}%`, minHeight: '1px' }} />
             </div>
           </div>
@@ -347,7 +347,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
         ))}
       </div>
       <div className="flex justify-center gap-3 mt-2 text-[8px] text-rmpg-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-cyan-400"></span>Gallons</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-gray-400"></span>Gallons</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-400"></span>Cost</span>
       </div>
     </div>

@@ -193,7 +193,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2">
                 <div className="panel-beveled p-2 bg-surface-sunken text-center">
-                  <div className="text-sm font-bold font-mono text-cyan-400">{preview.row_count}</div>
+                  <div className="text-sm font-bold font-mono text-gray-400">{preview.row_count}</div>
                   <div className="text-[8px] text-rmpg-500 uppercase">Rows Detected</div>
                 </div>
                 <div className="panel-beveled p-2 bg-surface-sunken text-center">
