@@ -2456,10 +2456,14 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Chain of Custody (table — keep existing pattern, it works well)
+  // Chain of Custody — flush table layout (section header bar sits
+  // directly above the column header row, matching the LINKED PERSONS /
+  // LINKED VEHICLES / Active Warrants / Incident History pattern that
+  // was confirmed to look right).
   if (data.chain_of_custody && data.chain_of_custody.length > 0) {
     y = checkPageBreak(doc, y, 25);
-    const sec = openAutoSection(doc, 'Chain of Custody', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'Chain of Custody', y);
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const custodyRows = data.chain_of_custody.map(c => [
       fmtTimestamp(c.timestamp),
       (c.action || '').toUpperCase(),
