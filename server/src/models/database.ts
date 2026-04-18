@@ -3824,6 +3824,10 @@ function migrateSchema(): void {
   if (!existingTipFolder) {
     db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_folder_id', '');
   }
+  const existingTipOwner = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_tip_line_owner_user_id'`).get();
+  if (!existingTipOwner) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_owner_user_id', '');
+  }
 
   db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_emails (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
