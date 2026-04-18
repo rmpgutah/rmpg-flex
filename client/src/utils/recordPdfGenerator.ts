@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { isPast, isWithinDays } from './dateUtils';
 import {
   addConfidentialWatermark,
   addClassificationBar,
@@ -35,11 +36,15 @@ import {
   formSectionPageBreak,
   sanitizePdfText,
   displayStatus,
+  finalizePoliceReport,
+  type PersonIdPayload,
+  type FormMetadataPayload,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
+  PDF_VALUE_FONT,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
@@ -77,7 +82,7 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
   doc.text(label.toUpperCase(), x, y + 1.8);
   y += 3.0;
   // Body text — word-wrapped Courier
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   const lineH = 3.2;
@@ -949,14 +954,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     // Dynamic column widths — measure all values, no truncation
     const dValSize = 6; // compact font for district bar
     const dPad = 3; // padding between columns — enough to prevent truncation
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(dValSize);
     // Measure each column's natural width
     const naturalWidths = distFields.map((f) => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       const labelW = doc.getTextWidth(f.label);
-      doc.setFont('courier', 'normal');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(dValSize);
       const valW = doc.getTextWidth(sanitizePdfText(f.value));
       return Math.max(labelW, valW) + dPad;
@@ -973,7 +978,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(255, 255, 255);
       doc.text(f.label, fx, barY + 2.8);
-      doc.setFont('courier', 'bold');
+      doc.setFont(PDF_VALUE_FONT, 'bold');
       doc.setFontSize(dValSize);
       doc.setTextColor(255, 255, 255);
       doc.text(sanitizePdfText(f.value).toUpperCase(), fx, barY + 6.5);
@@ -1230,13 +1235,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
     const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
     const rowH = 4.5;
-    // Column header — matches addTableWithShading style exactly
+    // Column header — light slate fill + dark text to match the
+    // incident-report addTableWithShading styling (so linked-persons
+    // tables read consistently with every other table in the system).
     const cw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
     doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
     let hx = lx;
     for (let i = 0; i < pHeaders.length; i++) {
       const capH = FONT.SIZE_TABLE_HEADER * 0.35;
@@ -1245,7 +1255,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
     y += rowH;
     // Data rows
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const p of data.linked_persons) {
       y = checkPageBreak(doc, y, rowH);
@@ -1278,13 +1288,17 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
     const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
     const rowH = 4.5;
-    // Column header — matches addTableWithShading style
+    // Column header — light slate fill + dark text to match the
+    // incident-report addTableWithShading styling.
     const vcw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
     doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
     let vhx = lx;
     for (let i = 0; i < vHeaders.length; i++) {
       const capH = FONT.SIZE_TABLE_HEADER * 0.35;
@@ -1293,7 +1307,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
     y += rowH;
     // Data rows
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     for (const v of data.linked_vehicles) {
       y = checkPageBreak(doc, y, rowH);
@@ -1328,7 +1342,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('DESCRIPTION', lx, y + 2);
     y += 4.5;
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
@@ -1343,7 +1357,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(...COLOR.TEXT_INVERTED);
       const capH = FONT.SIZE_SECTION_TITLE * 0.35;
       doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
-      doc.setFont('courier', 'normal');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       // Extra padding so text clears the header bar (matching other section body spacing)
@@ -1571,7 +1585,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const n = data.notes[ni];
       y = checkPageBreak(doc, y, 10, prio);
       // Date/time on far left, author on far right — same line
-      doc.setFont('courier', 'bold');
+      doc.setFont(PDF_VALUE_FONT, 'bold');
       doc.setFontSize(6);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const tsText = fmtTimestamp(n.created_at).toUpperCase();
@@ -1581,7 +1595,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.text(authorName, lx + ffw - authorW, y);
       y += 3.5;  // More space between timestamp and content
       // Note content
-      doc.setFont('courier', 'normal');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -1852,7 +1866,10 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Active Flags — parse any format into display strings
+  // Active Flags — parse any format into display strings.
+  // Dedup against flags already rendered as dedicated checkboxes above
+  // (Sex Offender, Veteran, Active BOLO) so the same label doesn't appear
+  // in BOTH the checkbox row and the ACTIVE FLAGS badge list.
   if (data.flags) {
     let flagList: string[] = [];
     const rf: any = data.flags;
@@ -1871,8 +1888,35 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     } else if (Array.isArray(rf)) {
       flagList = rf.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
     }
-    // Clean up: replace underscores, title case
+    // Clean up: replace underscores with spaces
     flagList = flagList.map(f => f.replace(/_/g, ' '));
+
+    // Dedup against the checkbox flags above.
+    const alreadyShown = new Set<string>();
+    const normalize = (s: string) => s.toUpperCase().trim().replace(/\s+/g, ' ');
+    if (data.is_sex_offender) {
+      alreadyShown.add(normalize('Sex Offender'));
+      alreadyShown.add(normalize('Registered Sex Offender'));
+    }
+    if (data.is_veteran) {
+      alreadyShown.add(normalize('Veteran'));
+      alreadyShown.add(normalize('Military Veteran'));
+    }
+    if (data.bolo_active) {
+      alreadyShown.add(normalize('BOLO'));
+      alreadyShown.add(normalize('Active BOLO'));
+      alreadyShown.add(normalize('Be On Lookout'));
+    }
+    if (data.gang_affiliation) alreadyShown.add(normalize('Gang Member'));
+    // Also dedup the list itself against re-listed entries
+    const seen = new Set<string>();
+    flagList = flagList.filter(f => {
+      const key = normalize(f);
+      if (alreadyShown.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     if (flagList.length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
@@ -2472,6 +2516,71 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 
 // ── Fleet Vehicle Status Report ──────────────────────────────
 
+// ── Fleet helpers ──────────────────────────────────────────────────
+/** Compute compliance/status alert flags from a fleet record. */
+function buildFleetAlertFlags(data: FleetPdfData): string[] {
+  const flags: string[] = [];
+
+  // Status-driven flags
+  const s = (data.status || '').toLowerCase();
+  if (s.includes('out') || s === 'out_of_service') flags.push('OUT OF SERVICE');
+  if (s.includes('repair')) flags.push('IN REPAIR');
+  if (s.includes('retired') || s === 'decommissioned') flags.push('DECOMMISSIONED');
+  if (!data.assigned_unit_call_sign) flags.push('UNASSIGNED');
+
+  // Registration expiry
+  if (data.registration_expiry) {
+    if (isPast(data.registration_expiry)) flags.push('REGISTRATION EXPIRED');
+    else if (isWithinDays(data.registration_expiry, 30)) flags.push('REGISTRATION EXPIRING');
+  }
+
+  // Insurance expiry
+  if (data.insurance_expiry) {
+    if (isPast(data.insurance_expiry)) flags.push('INSURANCE EXPIRED');
+    else if (isWithinDays(data.insurance_expiry, 30)) flags.push('INSURANCE EXPIRING');
+  }
+
+  // Service due
+  if (data.next_service_due) {
+    if (isPast(data.next_service_due)) flags.push('SERVICE OVERDUE');
+    else if (isWithinDays(data.next_service_due, 14)) flags.push('SERVICE DUE');
+  }
+
+  // High mileage flag (informational)
+  if (typeof data.current_mileage === 'number' && data.current_mileage >= 150000) {
+    flags.push('HIGH MILEAGE');
+  }
+
+  return flags;
+}
+
+/** Compute a short status suffix for an expiry date: "[EXPIRED]", "[14 DAYS]", "[OK]". */
+function expiryStatusTag(dateStr: string | null | undefined, warnWithinDays = 30): string {
+  if (!dateStr) return '';
+  if (isPast(dateStr)) return '[EXPIRED]';
+  // Compute exact days remaining
+  const d = new Date(dateStr).getTime();
+  const now = Date.now();
+  const days = Math.ceil((d - now) / 86400000);
+  if (days <= warnWithinDays) return `[${days} DAY${days === 1 ? '' : 'S'}]`;
+  return '[OK]';
+}
+
+/** Build a caution/safety text for a fleet record (parallels buildIncidentCautionText). */
+function buildFleetCautionText(data: FleetPdfData, flags: string[]): string {
+  const parts: string[] = [];
+  if (flags.includes('OUT OF SERVICE') || flags.includes('IN REPAIR')) {
+    parts.push(`Vehicle ${data.vehicle_number} is currently ${data.status?.replace(/_/g, ' ')} — not available for deployment.`);
+  }
+  if (flags.includes('REGISTRATION EXPIRED') || flags.includes('INSURANCE EXPIRED')) {
+    parts.push('CRITICAL: Expired compliance documents — vehicle may not be legally operable on public roadways until renewed.');
+  }
+  if (flags.includes('SERVICE OVERDUE')) {
+    parts.push('Preventive maintenance is past due — schedule service immediately to prevent mechanical failure.');
+  }
+  return parts.join(' ');
+}
+
 async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -2529,6 +2638,24 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── Fleet Alerts (parallels incident TACTICAL ALERTS) ──
+  const fleetAlerts = buildFleetAlertFlags(data);
+  if (fleetAlerts.length > 0) {
+    y = checkPageBreak(doc, y, 20);
+    { const sec = openAutoSection(doc, 'Fleet Alerts', y); y = sec.contentY;
+      y += 1;
+      y = addFlagBadges(doc, fleetAlerts, lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+
+    // ── Caution / Advisory banner for critical compliance issues ──
+    const cautionText = buildFleetCautionText(data, fleetAlerts);
+    if (cautionText) {
+      y = checkPageBreak(doc, y, 14);
+      y = addCautionBlock(doc, cautionText, lx, y, ffw);
+    }
+  }
+
   // ── FUEL LOG REPORT ──
   if (reportType === 'fuel_logs' && data.fuel_logs && data.fuel_logs.length > 0) {
     // Use fuel_summary from backend if available, otherwise compute locally
@@ -2567,11 +2694,23 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
 
-    // Fuel logs table — columns: Date, Station, Gallons, $/Gal, Cost, Odometer, Distance, MPG, $/Mile
-    const adjFuelColW = [18, cw - 132, 14, 14, 18, 22, 16, 14, 16];
+    // Fuel logs table — columns: Date, Station, Gallons, $/Gal, Cost,
+    // Odometer, Distance, MPG, $/Mile, MPG-trend flag.
+    // MPG flag column marks each fill-up's efficiency relative to the
+    // vehicle's average so reviewers can spot outlier days at a glance.
+    const avgMpgRef = avgMpg ?? 0;
+    const flagFor = (mpg: number | null): string => {
+      if (mpg == null || !avgMpgRef) return '';
+      const pct = (mpg - avgMpgRef) / avgMpgRef;
+      if (pct >= 0.10) return 'UP';
+      if (pct <= -0.15) return 'LOW';
+      if (pct <= -0.25) return 'BAD';
+      return 'OK';
+    };
+    const adjFuelColW = [18, cw - 144, 14, 14, 18, 22, 16, 14, 16, 12];
     const fuelColPos: number[] = [];
     { let cx = lx; for (const w of adjFuelColW) { fuelColPos.push(cx); cx += w; } }
-    const fuelHeaders = ['Date', 'Station', 'Gal', '$/Gal', 'Cost', 'Odometer', 'Dist', 'MPG', '$/Mi']
+    const fuelHeaders = ['Date', 'Station', 'Gal', '$/Gal', 'Cost', 'Odometer', 'Dist', 'MPG', '$/Mi', 'FLAG']
       .map((label, i) => ({ label, x: fuelColPos[i] }));
     const fuelRows = data.fuel_logs.map(f => {
       const dist = f.calc_distance ?? f.distance ?? null;
@@ -2587,9 +2726,53 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         dist != null && dist > 0 ? dist.toFixed(0) : '',
         mpg != null && mpg > 0 ? mpg.toFixed(1) : '',
         cpm != null ? `$${cpm.toFixed(3)}` : '',
+        flagFor(mpg),
       ];
     });
     y = addTableWithShading(doc, fuelHeaders, fuelRows, y, fuelColPos);
+
+    // ── Per-Station Aggregation ──
+    // Shows which stations the vehicle fuels at and what each station
+    // costs on average — useful for negotiating vendor contracts and
+    // spotting stations with consistently higher prices.
+    const byStation = new Map<string, { visits: number; gallons: number; cost: number; avgPrice: number }>();
+    for (const f of data.fuel_logs) {
+      const key = ((f.station || 'UNKNOWN').trim() || 'UNKNOWN').toUpperCase();
+      const cur = byStation.get(key) || { visits: 0, gallons: 0, cost: 0, avgPrice: 0 };
+      cur.visits += 1;
+      cur.gallons += f.gallons || 0;
+      cur.cost += f.total_cost || 0;
+      byStation.set(key, cur);
+    }
+    const stationRows = Array.from(byStation.entries())
+      .map(([station, s]) => ({
+        station,
+        visits: s.visits,
+        gallons: s.gallons,
+        cost: s.cost,
+        avgPrice: s.gallons > 0 ? s.cost / s.gallons : 0,
+        pctOfTotal: totalGal > 0 ? (s.gallons / totalGal) * 100 : 0,
+      }))
+      .sort((a, b) => b.cost - a.cost);
+
+    if (stationRows.length > 1) {
+      y = checkPageBreak(doc, y, 14 + stationRows.length * 4);
+      { const sec = openAutoSection(doc, `Per-Station Breakdown (${stationRows.length})`, y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+      const stColW = [cw * 0.35, 18, 22, 24, 20, 20];
+      const stColPos: number[] = [];
+      { let cx = lx; for (const w of stColW) { stColPos.push(cx); cx += w; } }
+      const stHeaders = ['STATION', 'VISITS', 'GALLONS', 'TOTAL COST', 'AVG $/GAL', '% OF USE']
+        .map((label, i) => ({ label, x: stColPos[i] }));
+      const stRows = stationRows.map(s => [
+        s.station,
+        String(s.visits),
+        s.gallons.toFixed(1),
+        `$${s.cost.toFixed(2)}`,
+        `$${s.avgPrice.toFixed(2)}`,
+        `${s.pctOfTotal.toFixed(1)}%`,
+      ]);
+      y = addTableWithShading(doc, stHeaders, stRows, y, stColPos);
+    }
   }
 
   // ── MAINTENANCE REPORT ──
@@ -2672,26 +2855,88 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   // ── STATUS REPORT (default) extras ──
   if (reportType === 'status') {
     // ── Service / Compliance ──
+    // Inline status tags ([EXPIRED] / [N DAYS] / [OK]) appended to each
+    // date so at-a-glance readers see compliance state without having to
+    // mentally compute days-until-expiry.
     y = checkPageBreak(doc, y, 18);
     { const sec = openAutoSection(doc, 'Service / Compliance', y); y = sec.contentY;
+      const regVal = data.registration_expiry
+        ? `${fmtDate(data.registration_expiry)}  ${expiryStatusTag(data.registration_expiry)}`.trim()
+        : '';
+      const insVal = data.insurance_expiry
+        ? `${fmtDate(data.insurance_expiry)}  ${expiryStatusTag(data.insurance_expiry)}`.trim()
+        : '';
+      const nxtVal = data.next_service_due
+        ? `${fmtDate(data.next_service_due)}  ${expiryStatusTag(data.next_service_due, 14)}`.trim()
+        : '';
       // Row 1: Registration Expiry, Insurance Expiry
-      const r1a = addFieldPair(doc, 'Registration Expiry', fmtDate(data.registration_expiry), lx, y, hfw);
-      const r1b = addFieldPair(doc, 'Insurance Expiry', fmtDate(data.insurance_expiry), rx, y, hfw);
+      const r1a = addFieldPair(doc, 'Registration Expiry', regVal, lx, y, hfw);
+      const r1b = addFieldPair(doc, 'Insurance Expiry', insVal, rx, y, hfw);
       y = Math.max(r1a, r1b);
-      // Row 2: Next Service Due, Last Service Date
-      const r2a = addFieldPair(doc, 'Next Service Due', fmtDate(data.next_service_due), lx, y, hfw);
+      // Row 2: Next Service Due (with status), Last Service Date (no status)
+      const r2a = addFieldPair(doc, 'Next Service Due', nxtVal, lx, y, hfw);
       const r2b = addFieldPair(doc, 'Last Service Date', fmtDate(data.last_service_date), rx, y, hfw);
       y = Math.max(r2a, r2b);
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
 
-    // ── Equipment ──
+    // ── Equipment Inventory ──
+    // Renders the equipment array as a numbered table (spreadsheet-style)
+    // instead of a single comma-joined string, so each item has its own
+    // line and officers can mark it visually when auditing.
     if (data.equipment && data.equipment.length > 0) {
-      y = checkPageBreak(doc, y, 10);
-      { const sec = openAutoSection(doc, 'Installed Equipment', y); y = sec.contentY;
-        y = addFieldPair(doc, 'Equipment', data.equipment.join(', '), lx, y, ffw);
-        y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-      }
+      y = checkPageBreak(doc, y, 12 + data.equipment.length * 4);
+      { const sec = openAutoSection(doc, `Installed Equipment (${data.equipment.length})`, y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+      const eqColW = [14, ffw - 14];
+      const eqColPos = [lx, lx + eqColW[0]];
+      const eqHeaders = ['ITEM #', 'DESCRIPTION']
+        .map((label, i) => ({ label, x: eqColPos[i] }));
+      const eqRows = data.equipment.map((item, i) => [
+        `${String(i + 1).padStart(3, '0')}`,
+        item || '',
+      ]);
+      y = addTableWithShading(doc, eqHeaders, eqRows, y, eqColPos);
+    }
+
+    // ── Recent Activity Timeline ──
+    // Merged chronological view of fuel + maintenance events (last 8)
+    // so readers get a single-glance history at the end of the status
+    // report without needing to jump to a separate log.
+    const fuelEntries = (data.fuel_logs || []).map(f => ({
+      date: f.fuel_date || '',
+      type: 'FUEL',
+      summary: `${(f.gallons || 0).toFixed(1)} GAL` +
+        (f.total_cost ? ` @ $${f.total_cost.toFixed(2)}` : '') +
+        (f.station ? ` - ${f.station}` : ''),
+      odometer: f.odometer_reading,
+    }));
+    const maintEntries = (data.maintenance_logs || []).map(m => ({
+      date: m.service_date || '',
+      type: 'MAINT',
+      summary: (m.description || '').slice(0, 60) +
+        (m.cost ? ` - $${m.cost.toFixed(2)}` : ''),
+      odometer: m.odometer_reading,
+    }));
+    const timeline = [...fuelEntries, ...maintEntries]
+      .filter(e => e.date)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 8);
+
+    if (timeline.length > 0) {
+      y = checkPageBreak(doc, y, 12 + timeline.length * 4);
+      { const sec = openAutoSection(doc, 'Recent Activity', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+      const tlColW = [22, 18, 32, ffw - 72];
+      const tlColPos: number[] = [];
+      { let cx = lx; for (const w of tlColW) { tlColPos.push(cx); cx += w; } }
+      const tlHeaders = ['DATE', 'TYPE', 'ODOMETER', 'EVENT']
+        .map((label, i) => ({ label, x: tlColPos[i] }));
+      const tlRows = timeline.map(e => [
+        fmtDate(e.date),
+        e.type,
+        e.odometer != null ? Number(e.odometer).toLocaleString() : '',
+        e.summary,
+      ]);
+      y = addTableWithShading(doc, tlHeaders, tlRows, y, tlColPos);
     }
   }
 
@@ -3354,6 +3599,55 @@ export async function generateRecordPdf<T extends RecordPdfType>(
     }
   }
 
+  // Person records get an AAMVA-compatible PDF417 on the right margin,
+  // same format state driver's licenses use so existing LE scanners decode it.
+  if (recordType === 'person') {
+    const pd = data as PersonPdfData;
+    const personPayload: PersonIdPayload = {
+      lastName: pd.last_name || undefined,
+      firstName: pd.first_name || undefined,
+      middleName: pd.middle_name || undefined,
+      dob: pd.date_of_birth || undefined,
+      sex: pd.gender || undefined,
+      address: pd.address || undefined,
+      city: pd.city || undefined,
+      state: pd.state || undefined,
+      zip: pd.zip || undefined,
+      height: pd.height || undefined,
+      weight: pd.weight || undefined,
+      eyeColor: pd.eye_color || undefined,
+      hairColor: pd.hair_color || undefined,
+      race: pd.race || undefined,
+      recordId: pd.id != null ? String(pd.id) : undefined,
+      agencyOri: 'UT0180100',
+    };
+    // No caption above the barcode — footer text already identifies the form.
+    finalizePoliceReport(doc, {
+      barcode: { personPayload },
+    });
+  } else {
+    // All other record types — form metadata with record-specific fields.
+    const recordFormMap: Record<string, { form: string; caseNumber?: string }> = {
+      call:      { form: 'CALL',      caseNumber: (data as CallPdfData).call_number },
+      vehicle:   { form: 'VEHICLE',   caseNumber: (data as VehiclePdfData).license_plate },
+      warrant:   { form: 'WARRANT',   caseNumber: (data as WarrantPdfData).warrant_number },
+      evidence:  { form: 'EVIDENCE',  caseNumber: (data as EvidencePdfData).evidence_number },
+      property:  { form: 'PROPERTY',  caseNumber: (data as PropertyPdfData).name },
+      citation:  { form: 'CITATION',  caseNumber: (data as CitationPdfData).citation_number },
+      fleet:     { form: 'FLEET' },
+      personnel: { form: 'PERSONNEL' },
+    };
+    const meta = recordFormMap[recordType] || { form: String(recordType).toUpperCase() };
+    const formMeta: FormMetadataPayload = {
+      form: meta.form,
+      caseNumber: meta.caseNumber,
+      agency: 'RMPG',
+      agencyOri: 'UT0180100',
+      reportDate: new Date().toISOString().slice(0, 10),
+    };
+    finalizePoliceReport(doc, { barcode: { formMetadata: formMeta } });
+  }
+
   return doc;
 }
 
@@ -3467,6 +3761,9 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
   const contentW = pageW - 2 * margin;
 
   setActiveFormKey('warrant');
+  // Clear any leftover case number from a previous PDF in this session —
+  // BOLO is multi-subject and uses an explicit barcode value below.
+  setActiveCaseNumber('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
@@ -3638,6 +3935,22 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
     }
   }
 
+  // BOLO packet — form metadata with warrant/packet identifier
+  const boloId = subjects.length === 1 && subjects[0].warrants[0]?.warrant_number
+    ? `BOLO-${subjects[0].warrants[0].warrant_number}`
+    : `BOLO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: 'BOLO',
+        caseNumber: boloId,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: new Date().toISOString().slice(0, 10),
+      },
+    },
+  });
+
   return doc;
 }
 
@@ -3664,6 +3977,8 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
   const halfW = (contentW - 4) / 2;
 
   setActiveFormKey('warrant');
+  // Clear case number — summary is agency-wide, explicit barcode below.
+  setActiveCaseNumber('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
@@ -3824,6 +4139,22 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
       addConfidentialWatermark(doc);
     }
   }
+
+  // Warrant summary is agency-wide — encode as form metadata
+  const periodLabel = data.period?.to
+    ? `WRTSUM-${String(data.period.to).replace(/[^0-9]/g, '')}`
+    : `WRTSUM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: 'WARRANT-SUMMARY',
+        caseNumber: periodLabel,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: new Date().toISOString().slice(0, 10),
+      },
+    },
+  });
 
   return doc;
 }

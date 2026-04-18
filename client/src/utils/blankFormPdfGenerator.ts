@@ -22,9 +22,11 @@ import {
   setActiveCaseNumber,
   setGenerationTimestamp,
   sanitizePdfText,
+  finalizePoliceReport,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
+  PDF_VALUE_FONT,
   getContentWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth,
   getThirdWidth, getQuarterWidth,
@@ -40,7 +42,13 @@ export type BlankFormType =
   | 'vehicle'
   | 'property'
   | 'citation'
-  | 'field_interview';
+  | 'field_interview'
+  | 'fleet_pre_trip'
+  | 'fleet_checkout'
+  | 'fleet_damage'
+  | 'fleet_fuel_voucher'
+  | 'fleet_fuel_log'
+  | 'fleet_expense';
 
 export interface BlankFormConfig {
   type: BlankFormType;
@@ -56,6 +64,14 @@ export const BLANK_FORMS: BlankFormConfig[] = [
   { type: 'property',        label: 'Property Record',  formNumber: 'FORM PS-208-BLK', formTitle: 'PROPERTY RECORD' },
   { type: 'citation',        label: 'Citation',         formNumber: 'FORM PS-209-BLK', formTitle: 'CITATION' },
   { type: 'field_interview', label: 'Field Interview',  formNumber: 'FORM PS-211-BLK', formTitle: 'FIELD INTERVIEW CARD' },
+  // Fleet operational forms (printable blank, filled in the field)
+  { type: 'fleet_pre_trip',  label: 'Pre-Trip Inspection', formNumber: 'FORM PS-206-PTI', formTitle: 'PRE-TRIP VEHICLE INSPECTION' },
+  { type: 'fleet_checkout',  label: 'Vehicle Check-Out',   formNumber: 'FORM PS-206-CKO', formTitle: 'FLEET VEHICLE CHECK-OUT' },
+  { type: 'fleet_damage',    label: 'Fleet Damage Report', formNumber: 'FORM PS-206-DMG', formTitle: 'FLEET VEHICLE DAMAGE REPORT' },
+  // Fleet fuel + expense blanks
+  { type: 'fleet_fuel_voucher', label: 'Fuel Voucher',          formNumber: 'FORM PS-206-FV',  formTitle: 'FLEET FUEL PURCHASE VOUCHER' },
+  { type: 'fleet_fuel_log',     label: 'Fuel Log Sheet',        formNumber: 'FORM PS-206-FL',  formTitle: 'FLEET FUEL LOG SHEET' },
+  { type: 'fleet_expense',      label: 'Expense Reimbursement', formNumber: 'FORM PS-206-EXP', formTitle: 'FLEET EXPENSE REIMBURSEMENT' },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -569,6 +585,483 @@ function generateBlankFieldInterviewForm(doc: jsPDF) {
   y = addSignatureBlock(doc, 'Interviewing Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
 }
 
+// ── Fleet Operational Forms (printable blanks) ────────────────
+
+/**
+ * Pre-Trip Inspection — daily driver vehicle check conducted before
+ * going into service. Standard police/government fleet requirement.
+ * 30+ inspection items across exterior / interior / fluids / emergency.
+ */
+function generateBlankPreTripForm(doc: jsPDF) {
+  setActiveFormKey('FORM PS-206-PTI');
+  setActiveCaseNumber('');
+
+  addBlankFormWatermark(doc);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'PRE-TRIP VEHICLE INSPECTION',
+    formNumber: 'FORM PS-206-PTI',
+    reportDate: '',
+  });
+
+  // Header
+  { const sec = openAutoSection(doc, 'Inspection Header', y); y = sec.contentY;
+    y = row4(doc, 'Date', 'Time', 'Vehicle Unit #', 'Call Sign', y);
+    y = row4(doc, 'Officer Name', 'Badge #', 'Starting Odometer', 'Shift', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Exterior Checks
+  y = checkPageBreak(doc, y, 40);
+  { const sec = openAutoSection(doc, 'Exterior Inspection', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Tires (tread, inflation)', 'Lug nuts tight', 'Headlights', 'Taillights'], y);
+    y = addCheckboxRow(doc, ['Brake lights', 'Turn signals', 'Emergency lights', 'Body damage'], y);
+    y = addCheckboxRow(doc, ['Mirrors intact', 'License plate legible', 'Windshield', 'Wipers / fluid'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Interior Checks
+  y = checkPageBreak(doc, y, 40);
+  { const sec = openAutoSection(doc, 'Interior Inspection', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Seatbelts functional', 'Horn works', 'Steering / brakes', 'Parking brake'], y);
+    y = addCheckboxRow(doc, ['Gauges (fuel/temp/oil)', 'AC / heat', 'Defroster', 'Dash cam'], y);
+    y = addCheckboxRow(doc, ['Radio / push-to-talk', 'MDT / computer', 'GPS', 'Interior lights'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Fluids
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'Fluid Levels', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Engine oil', 'Brake fluid', 'Coolant', 'Windshield washer'], y);
+    y = addCheckboxRow(doc, ['Power steering', 'Transmission fluid', 'Fuel (>1/2 tank)'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Emergency Equipment
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'Emergency Equipment', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Fire extinguisher', 'First-aid kit', 'Road flares / cones', 'Biohazard kit'], y);
+    y = addCheckboxRow(doc, ['Tire iron / jack', 'Spare tire', 'Blanket', 'Flashlight'], y);
+    y = addCheckboxRow(doc, ['AED (if equipped)', 'Tow strap', 'Window breaker', 'Tourniquet'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Defects / Issues
+  y = checkPageBreak(doc, y, 40);
+  { const sec = openAutoSection(doc, 'Defects / Issues Noted', y); y = sec.contentY;
+    y += SPACING.SM;
+    y = addLinedArea(doc, y, 6);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Disposition
+  y = checkPageBreak(doc, y, 16);
+  { const sec = openAutoSection(doc, 'Disposition', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Vehicle in service', 'Needs maintenance', 'Out of service', 'Reported to supervisor'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Signature
+  y = checkPageBreak(doc, y, 30);
+  y = addSignatureBlock(doc, 'Inspecting Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+}
+
+/**
+ * Vehicle Check-Out — officer takes custody of a fleet unit.
+ * Logs starting condition + fuel + damage + equipment confirmation.
+ */
+function generateBlankCheckoutForm(doc: jsPDF) {
+  setActiveFormKey('FORM PS-206-CKO');
+  setActiveCaseNumber('');
+
+  addBlankFormWatermark(doc);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'FLEET VEHICLE CHECK-OUT',
+    formNumber: 'FORM PS-206-CKO',
+    reportDate: '',
+  });
+
+  // Assignment
+  { const sec = openAutoSection(doc, 'Assignment', y); y = sec.contentY;
+    y = row4(doc, 'Date', 'Time', 'Vehicle Unit #', 'Call Sign', y);
+    y = row3(doc, 'Officer Name', 'Badge #', 'Supervisor Approval', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Starting Condition
+  { const sec = openAutoSection(doc, 'Starting Condition', y); y = sec.contentY;
+    y = row3(doc, 'Starting Odometer', 'Estimated Return', 'Purpose of Use', y);
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Fuel: Full', '3/4 tank', '1/2 tank', '1/4 tank', 'Empty'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Pre-Existing Damage
+  y = checkPageBreak(doc, y, 32);
+  { const sec = openAutoSection(doc, 'Pre-Existing Damage (note before use)', y); y = sec.contentY;
+    y += SPACING.SM;
+    y = addLinedArea(doc, y, 4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Equipment Verification
+  y = checkPageBreak(doc, y, 28);
+  { const sec = openAutoSection(doc, 'Equipment Verified Present', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Radio', 'MDT', 'Body camera', 'Dash camera'], y);
+    y = addCheckboxRow(doc, ['Fire extinguisher', 'First-aid kit', 'Less-lethal', 'AED'], y);
+    y = addCheckboxRow(doc, ['Patrol bag', 'Shotgun / rifle', 'Keys', 'Fuel card'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Notes
+  y = checkPageBreak(doc, y, 30);
+  { const sec = openAutoSection(doc, 'Additional Notes', y); y = sec.contentY;
+    y += SPACING.SM;
+    y = addLinedArea(doc, y, 4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Signatures
+  y = checkPageBreak(doc, y, 30);
+  y = addSignatureBlock(doc, 'Receiving Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+}
+
+/**
+ * Fleet Damage Report — documents vehicle damage (minor accident,
+ * parking lot incident, vandalism, etc.) for fleet management records.
+ */
+function generateBlankDamageForm(doc: jsPDF) {
+  setActiveFormKey('FORM PS-206-DMG');
+  setActiveCaseNumber('');
+
+  addBlankFormWatermark(doc);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'FLEET VEHICLE DAMAGE REPORT',
+    formNumber: 'FORM PS-206-DMG',
+    reportDate: '',
+  });
+
+  // Incident Header
+  { const sec = openAutoSection(doc, 'Damage Event', y); y = sec.contentY;
+    y = row4(doc, 'Date of Damage', 'Time', 'Vehicle Unit #', 'Call Sign', y);
+    y = row3(doc, 'Incident / Case #', 'LE Agency Report #', 'Insurance Claim #', y);
+    y = rowFull(doc, 'Location of Damage (address / intersection / parking lot)', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Driver / Operator
+  { const sec = openAutoSection(doc, 'Driver / Operator', y); y = sec.contentY;
+    y = row3(doc, 'Officer Name', 'Badge #', 'POST Cert #', y);
+    y = row3(doc, 'Starting Odometer', 'Ending Odometer', 'Speed at Time (MPH)', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Damage Classification
+  y = checkPageBreak(doc, y, 28);
+  { const sec = openAutoSection(doc, 'Damage Classification', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Collision', 'Parking / Low-speed', 'Vandalism', 'Pursuit-related'], y);
+    y = addCheckboxRow(doc, ['Weather / road', 'Animal strike', 'Mechanical failure', 'Other'], y);
+    y = addCheckboxRow(doc, ['Minor (cosmetic)', 'Moderate (body/panel)', 'Major (frame/drivable)', 'Total loss'], y);
+    y = addCheckboxRow(doc, ['Drivable', 'Towed from scene', 'Airbag deployed', 'Injuries reported'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Damage Description
+  y = checkPageBreak(doc, y, 45);
+  { const sec = openAutoSection(doc, 'Damage Description', y); y = sec.contentY;
+    y += SPACING.SM;
+    y = addLinedArea(doc, y, 7);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Other Party (if applicable)
+  y = checkPageBreak(doc, y, 24);
+  { const sec = openAutoSection(doc, 'Other Party (if applicable)', y); y = sec.contentY;
+    y = row4(doc, 'Full Name', 'Phone', 'DL #', 'Plate #', y);
+    y = row2(doc, 'Insurance Carrier', 'Policy #', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Witnesses
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Witnesses', y); y = sec.contentY;
+    y = row3(doc, 'Witness Name', 'Phone', 'Role', y);
+    y = row3(doc, 'Witness Name', 'Phone', 'Role', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Photos / Evidence
+  y = checkPageBreak(doc, y, 16);
+  { const sec = openAutoSection(doc, 'Photos & Evidence Collected', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Scene photos', 'Damage photos (all sides)', 'VIN photo', 'Other-party photos'], y);
+    y = addCheckboxRow(doc, ['Dash cam preserved', 'Body cam preserved', 'Insurance exchange', 'Police report filed'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Signatures — officer + supervisor
+  y = checkPageBreak(doc, y, 50);
+  y = addSignatureBlock(doc, 'Reporting Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+  y = checkPageBreak(doc, y, 30);
+  y = addSignatureBlock(doc, 'Fleet Supervisor', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+}
+
+// ── Fleet Fuel + Expense Forms ────────────────────────────────
+
+/**
+ * Render an empty ruled table of N rows × M columns for manual entry.
+ * Column widths in mm. Used by fuel log / expense forms.
+ */
+function addEmptyEntryTable(
+  doc: jsPDF,
+  headers: string[],
+  colW: number[],
+  rowCount: number,
+  y: number,
+): number {
+  const lx = getLeftX();
+  const rowH = 7;
+  const headerH = 5.5;
+  // Column positions
+  const colX: number[] = [];
+  { let cx = lx; for (const w of colW) { colX.push(cx); cx += w; } }
+  const totalW = colW.reduce((a, b) => a + b, 0);
+
+  y = checkPageBreak(doc, y, headerH + rowCount * rowH + 4);
+
+  // Header row (light slate, matches addTableWithShading)
+  doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
+  doc.rect(lx, y, totalW, headerH, 'F');
+  doc.setDrawColor(...COLOR.BORDER_TABLE);
+  doc.setLineWidth(BORDER.TABLE_ROW);
+  doc.rect(lx, y, totalW, headerH);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+  doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
+  const capH = FONT.SIZE_TABLE_HEADER * 0.35;
+  const hy = y + (headerH + capH) / 2;
+  for (let i = 0; i < headers.length; i++) {
+    doc.text(sanitizePdfText(headers[i]).toUpperCase(), colX[i] + 1, hy);
+  }
+  y += headerH;
+
+  // Ruled empty rows
+  doc.setDrawColor(...COLOR.BORDER_TABLE);
+  doc.setLineWidth(BORDER.TABLE_ROW);
+  for (let r = 0; r < rowCount; r++) {
+    // Alt row zebra
+    if (r % 2 === 0) {
+      doc.setFillColor(...COLOR.BG_ZEBRA);
+      doc.rect(lx, y, totalW, rowH, 'F');
+    }
+    doc.line(lx, y + rowH, lx + totalW, y + rowH);
+    y += rowH;
+  }
+
+  // Column dividers
+  doc.setDrawColor(...COLOR.BORDER_COLUMN);
+  doc.setLineWidth(BORDER.TABLE_COLUMN);
+  const topY = y - rowCount * rowH - headerH;
+  for (let i = 1; i < colX.length; i++) {
+    doc.line(colX[i], topY, colX[i], y);
+  }
+  // Outer
+  doc.setDrawColor(...COLOR.BORDER_TABLE);
+  doc.setLineWidth(BORDER.TABLE_ROW);
+  doc.rect(lx, topY, totalW, rowCount * rowH + headerH);
+
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + 2;
+}
+
+/**
+ * Fuel Voucher — pre-authorization to purchase fuel at an approved
+ * station. Carried by officer; presented at fueling. Records the
+ * authorized amount + vehicle + card + signature.
+ */
+function generateBlankFuelVoucherForm(doc: jsPDF) {
+  setActiveFormKey('FORM PS-206-FV');
+  setActiveCaseNumber('');
+
+  addBlankFormWatermark(doc);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'FLEET FUEL PURCHASE VOUCHER',
+    formNumber: 'FORM PS-206-FV',
+    reportDate: '',
+  });
+
+  // Authorization
+  { const sec = openAutoSection(doc, 'Purchase Authorization', y); y = sec.contentY;
+    y = row4(doc, 'Voucher #', 'Issue Date', 'Issue Time', 'Valid Through', y);
+    y = row3(doc, 'Vehicle Unit #', 'Call Sign', 'Current Odometer', y);
+    y = row3(doc, 'Officer Name', 'Badge #', 'Supervisor Approval', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Payment Method
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'Payment Method', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Fleet card', 'Purchase card', 'Cash (receipt required)', 'Vendor account'], y);
+    y = row3(doc, 'Card / Account Last 4', 'Authorized Amount ($)', 'Fuel Type', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Approved Stations
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Approved Fueling Stations', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Maverik', 'Chevron', 'Holiday', 'Sinclair'], y);
+    y = addCheckboxRow(doc, ['Costco', "Smith's Fuel", 'Phillips 66', 'Other (specify below)'], y);
+    y = rowFull(doc, 'Other Station (name / address)', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Purchase Record (filled at pump)
+  y = checkPageBreak(doc, y, 28);
+  { const sec = openAutoSection(doc, 'Purchase Record (fill at pump)', y); y = sec.contentY;
+    y = row4(doc, 'Date / Time of Purchase', 'Station', 'Pump #', 'Receipt #', y);
+    y = row4(doc, 'Gallons', 'Price per Gallon', 'Total Cost', 'Odometer at Fill', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Receipt attachment note
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Receipt & Notes', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Receipt attached', 'Photo receipt uploaded', 'No receipt (explain below)'], y);
+    y = addLinedArea(doc, y, 3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Signatures
+  y = checkPageBreak(doc, y, 30);
+  y = addSignatureBlock(doc, 'Purchasing Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+}
+
+/**
+ * Fuel Log Sheet — multi-row blank log for tracking every fuel
+ * purchase across a shift / week / month. Handwritten entries.
+ */
+function generateBlankFuelLogForm(doc: jsPDF) {
+  setActiveFormKey('FORM PS-206-FL');
+  setActiveCaseNumber('');
+
+  addBlankFormWatermark(doc);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'FLEET FUEL LOG SHEET',
+    formNumber: 'FORM PS-206-FL',
+    reportDate: '',
+  });
+
+  // Log Header
+  { const sec = openAutoSection(doc, 'Log Header', y); y = sec.contentY;
+    y = row4(doc, 'Vehicle Unit #', 'Call Sign', 'Log Period Start', 'Log Period End', y);
+    y = row3(doc, 'Officer / Driver', 'Badge #', 'Starting Odometer', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Multi-row entry table (15 rows)
+  y = checkPageBreak(doc, y, 14);
+  { const sec = openAutoSection(doc, 'Fuel Entries', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+  // Columns: Date | Time | Station | Gallons | $/Gal | Total $ | Odometer | Pump # | Initials
+  const cols = ['DATE', 'TIME', 'STATION', 'GAL', '$/GAL', 'TOTAL $', 'ODOMETER', 'PUMP #', 'INIT'];
+  const colW = [18, 14, 42, 14, 14, 18, 24, 14, 14];
+  y = addEmptyEntryTable(doc, cols, colW, 15, y);
+
+  // Period Summary
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Period Summary', y); y = sec.contentY;
+    y = row4(doc, 'Total Gallons', 'Total Cost ($)', 'Ending Odometer', 'Miles This Period', y);
+    y = row3(doc, 'Avg $/Gallon', 'Avg MPG', 'Cost per Mile', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Signatures
+  y = checkPageBreak(doc, y, 30);
+  y = addSignatureBlock(doc, 'Reporting Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+}
+
+/**
+ * Expense Reimbursement — tolls, parking, car washes, roadside
+ * incidentals. Multi-row line-item claim with receipts attached.
+ */
+function generateBlankExpenseForm(doc: jsPDF) {
+  setActiveFormKey('FORM PS-206-EXP');
+  setActiveCaseNumber('');
+
+  addBlankFormWatermark(doc);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'FLEET EXPENSE REIMBURSEMENT',
+    formNumber: 'FORM PS-206-EXP',
+    reportDate: '',
+  });
+
+  // Claimant
+  { const sec = openAutoSection(doc, 'Claimant Information', y); y = sec.contentY;
+    y = row4(doc, 'Claim #', 'Submission Date', 'Pay Period', 'Claim Total ($)', y);
+    y = row3(doc, 'Officer Name', 'Badge #', 'Vehicle Unit #', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Expense categories
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Expense Categories (check all that apply)', y); y = sec.contentY;
+    y += 1.5;
+    y = addCheckboxRow(doc, ['Tolls', 'Parking', 'Car wash', 'Tire repair'], y);
+    y = addCheckboxRow(doc, ['Roadside assistance', 'Minor repair (<$50)', 'Supplies (fluids)', 'Lodging'], y);
+    y = addCheckboxRow(doc, ['Meals (on-duty travel)', 'Training material', 'Equipment replacement', 'Other'], y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Itemized line entries (10 rows)
+  y = checkPageBreak(doc, y, 14);
+  { const sec = openAutoSection(doc, 'Itemized Expenses', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+  const cols = ['DATE', 'CATEGORY', 'VENDOR / DESCRIPTION', 'RECEIPT #', 'AMOUNT'];
+  const colW = [20, 28, 92, 20, 26];
+  y = addEmptyEntryTable(doc, cols, colW, 10, y);
+
+  // Summary
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Claim Summary', y); y = sec.contentY;
+    y = row4(doc, 'Subtotal ($)', 'Receipts Attached (#)', 'Line Items (#)', 'Claim Total ($)', y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Narrative / business purpose
+  y = checkPageBreak(doc, y, 32);
+  { const sec = openAutoSection(doc, 'Business Purpose / Notes', y); y = sec.contentY;
+    y += SPACING.SM;
+    y = addLinedArea(doc, y, 4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Signatures — officer certification + supervisor approval
+  y = checkPageBreak(doc, y, 60);
+  y = addSignatureBlock(doc, 'Claiming Officer', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+  y = checkPageBreak(doc, y, 30);
+  y = addSignatureBlock(doc, 'Supervisor / Approver', LAYOUT.PAGE_MARGIN, y, getContentWidth(doc));
+}
+
 // ── Main Export ──────────────────────────────────────────────
 
 const GENERATORS: Record<BlankFormType, (doc: jsPDF) => void> = {
@@ -578,6 +1071,12 @@ const GENERATORS: Record<BlankFormType, (doc: jsPDF) => void> = {
   property: generateBlankPropertyForm,
   citation: generateBlankCitationForm,
   field_interview: generateBlankFieldInterviewForm,
+  fleet_pre_trip: generateBlankPreTripForm,
+  fleet_checkout: generateBlankCheckoutForm,
+  fleet_damage: generateBlankDamageForm,
+  fleet_fuel_voucher: generateBlankFuelVoucherForm,
+  fleet_fuel_log: generateBlankFuelLogForm,
+  fleet_expense: generateBlankExpenseForm,
 };
 
 /**
@@ -606,6 +1105,21 @@ export async function generateBlankForm(formType: BlankFormType): Promise<jsPDF>
     doc.setPage(p);
     addPageFooter(doc, p, totalPages, config.formNumber);
   }
+
+  // Blank forms are empty templates — barcode encodes form identity so a
+  // scanner can identify which form type was filled out when paper copies
+  // are scanned back in.
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: `BLANK-${config.type.toUpperCase()}`,
+        formNumber: config.formNumber,
+        caseNumber: config.formNumber,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+      },
+    },
+  });
 
   return doc;
 }
