@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 
 const ALL_FORMS = [
@@ -34,6 +35,7 @@ function writeFlags(flags: Record<string, boolean>): void {
 }
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 router.get('/flags', (_req: Request, res: Response) => {
