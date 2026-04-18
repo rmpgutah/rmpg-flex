@@ -163,7 +163,7 @@ export default function ReportsTab() {
             icon={Target}
             label="Leads This Month"
             value={String(metrics?.leads_this_month || 0)}
-            color="text-cyan-400"
+            color="text-gray-400"
           />
           <MetricCard
             icon={FileText}
@@ -189,7 +189,7 @@ export default function ReportsTab() {
             <DollarSign className="w-3.5 h-3.5" /> Monthly Revenue
           </div>
           <div className="flex items-center gap-3 mb-2 text-[10px]">
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-500 rounded-sm" /> Invoiced</div>
+            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-gray-500 rounded-sm" /> Invoiced</div>
             <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Paid</div>
           </div>
           <div className="space-y-1.5">
@@ -198,7 +198,7 @@ export default function ReportsTab() {
                 <div className="w-16 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{row.month}</div>
                 <div className="flex-1 space-y-0.5">
                   <div className="flex items-center gap-1">
-                    <div className="h-3 bg-blue-500/70 rounded-sm transition-all" style={{ width: `${(row.invoiced / maxRevenue) * 100}%`, minWidth: row.invoiced > 0 ? '2px' : 0 }} />
+                    <div className="h-3 bg-gray-500/70 rounded-sm transition-all" style={{ width: `${(row.invoiced / maxRevenue) * 100}%`, minWidth: row.invoiced > 0 ? '2px' : 0 }} />
                     <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.invoiced)}</span>
                   </div>
                   <div className="flex items-center gap-1">

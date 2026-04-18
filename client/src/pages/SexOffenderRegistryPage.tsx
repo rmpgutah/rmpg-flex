@@ -393,8 +393,8 @@ export default function SexOffenderRegistryPage() {
                   onClick={() => setSelected(r)}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/50"
                   style={{
-                    background: isSelected ? 'rgba(26,90,158,0.15)' : undefined,
-                    borderLeft: isSelected ? '3px solid #888888' : '3px solid transparent',
+                    background: isSelected ? 'rgba(42,42,42,0.6)' : undefined,
+                    borderLeft: isSelected ? '3px solid #d4a017' : '3px solid transparent',
                   }}
                 >
                   {/* Mugshot Thumbnail */}

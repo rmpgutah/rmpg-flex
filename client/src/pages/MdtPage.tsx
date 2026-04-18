@@ -859,7 +859,7 @@ export default function MdtPage() {
                   {selectedCall.status === 'dispatched' && (
                     <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'enroute')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
                     >
                       <Navigation style={{ width: 10, height: 10 }} /> En Route
                     </button>
@@ -944,7 +944,7 @@ export default function MdtPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Subject Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'person', query: selectedCall.subject_description || '' }); setActiveTab('ncic'); }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
                         title="Run NCIC person query"
                       >
                         NCIC QH
@@ -959,7 +959,7 @@ export default function MdtPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Vehicle Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'vehicle', query: selectedCall.vehicle_description || '' }); setActiveTab('ncic'); }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
                         title="Run NCIC vehicle query"
                       >
                         NCIC QV

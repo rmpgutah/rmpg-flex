@@ -63,6 +63,7 @@ import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
+import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import OfflineStatusBar from './OfflineStatusBar';
 import PinEntryModal from './PinEntryModal';
@@ -1032,7 +1033,7 @@ export default function Layout() {
                     src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none' }}
+                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1042,7 +1043,7 @@ export default function Layout() {
                       color: '#fff',
                       border: '2px solid #aaaaaa',
                       borderRadius: '50%',
-                      boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none',
+                      boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
                     }}
                   >
                     {initials}
@@ -1287,11 +1288,11 @@ export default function Layout() {
                       height: 42,
                       padding: '2px 4px',
                       background: isActive
-                        ? 'linear-gradient(180deg, rgba(26,90,158,0.45) 0%, rgba(26,90,158,0.20) 100%)'
+                        ? 'linear-gradient(180deg, rgba(42,42,42,0.75) 0%, rgba(30,30,30,0.75) 100%)'
                         : isDropdownOpen
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
-                      borderBottom: isActive ? '2px solid #5aa8e8' : '2px solid transparent',
+                      borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
                       color: isActive ? '#ffffff' : '#888888',
                       cursor: 'pointer',
                     }}
@@ -1407,11 +1408,11 @@ export default function Layout() {
                             role="menuitem"
                             style={{
                               color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
+                              background: childActive ? 'rgba(42,42,42,0.60)' : 'transparent',
                             }}
                             onMouseEnter={(e) => {
                               if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(26,90,158,0.2) 0%, rgba(26,90,158,0.1) 100%)';
+                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(42,42,42,0.70) 0%, rgba(30,30,30,0.55) 100%)';
                                 (e.currentTarget as HTMLElement).style.color = '#ffffff';
                               }
                             }}
@@ -1501,6 +1502,9 @@ export default function Layout() {
           gpsLastSent={gps.lastSentAt}
         />
       )}
+
+      {/* Dispatcher Transcript Drawer — toggles with 'T' key */}
+      <DispatcherTranscript />
 
       {/* Profile Modal */}
       <UserProfileModal

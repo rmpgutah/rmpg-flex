@@ -23,9 +23,11 @@ import crypto from 'crypto';
 import config from '../config';
 import multer from 'multer';
 import fs from 'fs';
+import { pathInside } from '../utils/pathSafety';
 
 // PDF upload middleware — 50MB max, temp dir
-const pdfUpload = multer({ dest: '/tmp/rmpg-pdf-uploads', limits: { fileSize: 50 * 1024 * 1024 } });
+const PDF_UPLOAD_DIR = '/tmp/rmpg-pdf-uploads';
+const pdfUpload = multer({ dest: PDF_UPLOAD_DIR, limits: { fileSize: 50 * 1024 * 1024 } });
 
 function safeJsonParse(val: string | null | undefined, fallback: any = null): any {
   if (!val) return fallback;
@@ -3421,6 +3423,10 @@ router.post(
   async (req: Request, res: Response) => {
     ensureTables();
     if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
+    if (!pathInside(req.file.path, PDF_UPLOAD_DIR)) {
+      res.status(400).json({ error: 'Invalid upload path' });
+      return;
+    }
 
     try {
       const buffer = fs.readFileSync(req.file.path);
@@ -6225,6 +6231,10 @@ router.post(
   async (req: Request, res: Response) => {
     ensureTables();
     if (!req.file) { res.status(400).json({ error: 'File is required' }); return; }
+    if (!pathInside(req.file.path, PDF_UPLOAD_DIR)) {
+      res.status(400).json({ error: 'Invalid upload path' });
+      return;
+    }
 
     const { output_format } = req.body as { output_format?: string };
     const format = ['markdown', 'json', 'text'].includes(output_format || '') ? output_format! : 'markdown';
@@ -7866,6 +7876,10 @@ router.post(
   async (req: Request, res: Response) => {
     ensureTables();
     if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
+    if (!pathInside(req.file.path, PDF_UPLOAD_DIR)) {
+      res.status(400).json({ error: 'Invalid upload path' });
+      return;
+    }
 
     const { operations } = req.body as { operations?: string };
     const ops = operations ? (typeof operations === 'string' ? JSON.parse(operations) : operations) : ['extract_text', 'count_pages'];

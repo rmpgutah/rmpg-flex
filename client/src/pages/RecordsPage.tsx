@@ -497,8 +497,8 @@ export default function RecordsPage() {
           <>
             <div className="w-px h-2.5 bg-rmpg-600" />
             <div className="flex items-center gap-1">
-              <Warehouse className="w-2.5 h-2.5 text-cyan-400" />
-              <span className="text-cyan-400 font-bold">{evidenceInStorage}</span>
+              <Warehouse className="w-2.5 h-2.5 text-gray-400" />
+              <span className="text-gray-400 font-bold">{evidenceInStorage}</span>
             </div>
             <div className="flex items-center gap-1">
               <FlaskConical className="w-2.5 h-2.5 text-purple-400" />

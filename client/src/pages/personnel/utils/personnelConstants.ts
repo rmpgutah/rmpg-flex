@@ -93,8 +93,8 @@ export const TRAINING_CATEGORY_COLORS: Record<string, string> = {
   first_aid: 'bg-green-900/50 text-green-400 border border-green-700/50',
   legal: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   communication: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
-  driving: 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50',
-  technology: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
+  driving: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  technology: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   leadership: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
   compliance: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   other: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
@@ -156,7 +156,7 @@ export const DASHCAM_EVENT_COLORS: Record<string, string> = {
   hard_accel: 'bg-orange-900/50 text-orange-400 border border-orange-700/50',
   hard_turn: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   camera_triggered: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
-  video_recorded: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
+  video_recorded: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
 };
 
 export const CHART_TOOLTIP_STYLE = {

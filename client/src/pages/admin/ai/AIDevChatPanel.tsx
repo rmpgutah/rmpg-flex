@@ -534,11 +534,11 @@ export default function AIDevChatPanel() {
           {isStreaming && (
             <div className="flex items-center gap-2">
               <div className="flex gap-0.5">
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
-              <span className="text-[10px] text-blue-400 font-mono">{elapsedSec}s</span>
+              <span className="text-[10px] text-gray-400 font-mono">{elapsedSec}s</span>
             </div>
           )}
         </div>
@@ -604,7 +604,7 @@ export default function AIDevChatPanel() {
           {/* Streaming message */}
           {isStreaming && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20">
                 <Bot className={`w-4.5 h-4.5 text-white ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
               <div className="max-w-[80%]">
@@ -658,10 +658,10 @@ export default function AIDevChatPanel() {
                             return <div key={i} className="text-amber-400 font-bold mt-2 first:mt-0">{line}</div>;
                           }
                           if (line.startsWith('  ├─') || line.startsWith('  └─')) {
-                            return <div key={i} className="text-cyan-400/80">{line}</div>;
+                            return <div key={i} className="text-gray-400/80">{line}</div>;
                           }
                           if (line.startsWith('📁')) {
-                            return <div key={i} className="text-blue-400/70 text-[10px] mt-0.5">{line}</div>;
+                            return <div key={i} className="text-gray-400/70 text-[10px] mt-0.5">{line}</div>;
                           }
                           if (line.match(/^(Tokens|Intent|Engine|Pattern|Theme|Output|Including|Evaluation|Authentication|Checking)/)) {
                             return <div key={i} className="text-gray-400">{line}</div>;
@@ -678,26 +678,26 @@ export default function AIDevChatPanel() {
 
                 {/* Response content — streams alongside reasoning */}
                 {streamingContent ? (
-                  <div className="bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-blue-500/30">
+                  <div className="bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-gray-500/30">
                     <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#303030]">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                      <span className="text-[10px] text-blue-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
+                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-pulse" />
+                      <span className="text-[10px] text-gray-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
                       <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
                     </div>
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">
                       {renderContent(streamingContent)}
-                      <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
+                      <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-0.5" />
                     </div>
                   </div>
                 ) : !thinkingText && (
-                  <div className="bg-[#181818] rounded-sm border border-blue-500/30 overflow-hidden">
+                  <div className="bg-[#181818] rounded-sm border border-gray-500/30 overflow-hidden">
                     <div className="h-0.5 bg-[#0c0c0c] overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-transparent via-blue-500 to-transparent"
+                      <div className="h-full bg-gradient-to-r from-transparent via-gray-500 to-transparent"
                         style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
                     </div>
                     <div className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                        <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
                         <span className="text-sm text-gray-400">
                           {elapsedSec < 3 ? 'Connecting to AI model...' :
                            elapsedSec < 10 ? 'Waiting for response...' :
@@ -724,7 +724,7 @@ export default function AIDevChatPanel() {
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
-              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-blue-500"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-gray-500"
             />
             <button
               onClick={() => {
@@ -744,7 +744,7 @@ export default function AIDevChatPanel() {
             <button
               onClick={() => setShowFileInput(!showFileInput)}
               className={`p-2 rounded transition-colors ${
-                showFileInput || fileContext ? 'text-blue-400 bg-blue-500/10' : 'text-gray-500 hover:text-gray-300'
+                showFileInput || fileContext ? 'text-gray-400 bg-gray-500/10' : 'text-gray-500 hover:text-gray-300'
               }`}
               title="Attach file context"
             >
@@ -757,7 +757,7 @@ export default function AIDevChatPanel() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about the codebase, request changes, debug issues..."
               rows={1}
-              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-blue-500 max-h-32"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-gray-500 max-h-32"
               style={{ minHeight: '36px' }}
               onInput={(e) => {
                 const el = e.currentTarget;
@@ -768,13 +768,13 @@ export default function AIDevChatPanel() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
-              className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-[#181818] disabled:text-gray-500 text-white rounded transition-colors"
+              className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-[#181818] disabled:text-gray-500 text-white rounded transition-colors"
             >
               {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
           {fileContext && (
-            <p className="text-[10px] text-blue-400 mt-1 ml-10">Context: {fileContext}</p>
+            <p className="text-[10px] text-gray-400 mt-1 ml-10">Context: {fileContext}</p>
           )}
         </div>
       </div>

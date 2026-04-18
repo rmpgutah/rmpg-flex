@@ -1813,6 +1813,18 @@ function migrateSchema(): void {
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer
 
+  // ── USERS — Voice persona (Dispatcher Brain TTS preferences) ──
+  addCol('users', 'voice_persona', "TEXT DEFAULT 'en-US-JennyNeural'");
+  addCol('users', 'voice_rate', 'REAL DEFAULT 1.0');
+  addCol('users', 'voice_pitch', 'REAL DEFAULT 0');
+  addCol('users', 'voice_terseness', "TEXT DEFAULT 'standard'");
+  addCol('users', 'voice_brain_enabled', 'INTEGER DEFAULT 0');
+  // Assigned beat for geofence-breach detection (Phase 3). When NULL
+  // the breach check is skipped for that unit so this is opt-in per
+  // unit — e.g. a utility/admin unit with no specific beat has no
+  // expected area.
+  addCol('units', 'assigned_beat', 'TEXT');
+
   // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
   try {
     // SQLite can't ALTER CHECK constraints, so recreate the table

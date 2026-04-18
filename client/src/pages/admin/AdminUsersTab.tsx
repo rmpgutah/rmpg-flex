@@ -276,7 +276,7 @@ export default function AdminUsersTab({
                   className={`px-4 py-3 border-b border-[#242424]/60 cursor-pointer transition-all duration-150 ${
                     selectedUser?.id === user.id
                       ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                      : `hover:bg-[rgba(26,90,158,0.06)] border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
+                      : `hover:bg-[rgba(42,42,42,0.6)] border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -456,7 +456,7 @@ export default function AdminUsersTab({
                 className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                   userDetailTab === tab.id
                     ? 'bg-[#181818] text-white border border-[#242424] border-b-[#181818]'
-                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(26,90,158,0.08)]'
+                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(42,42,42,0.6)]'
                 }`}
               >
                 {tab.label}

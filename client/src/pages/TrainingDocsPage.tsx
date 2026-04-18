@@ -42,7 +42,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   sop: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   training_manual: 'bg-green-900/40 text-green-400 border-green-700/50',
   form: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  reference: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
+  reference: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   general: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
 };
 

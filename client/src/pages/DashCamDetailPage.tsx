@@ -712,7 +712,7 @@ export default function DashCamDetailPage() {
 
             {/* Unit call sign */}
             {video.unit_call_sign && (
-              <span className="text-blue-400 font-bold tracking-wide">
+              <span className="text-gray-400 font-bold tracking-wide">
                 {video.unit_call_sign}
               </span>
             )}

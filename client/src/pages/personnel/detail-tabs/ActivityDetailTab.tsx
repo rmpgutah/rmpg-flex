@@ -31,7 +31,7 @@ function borderColor(action: string): string {
   if (action === 'clock_in' || action === 'user_login') return 'border-l-2 border-l-green-500';
   if (action === 'clock_out' || action === 'user_logout') return 'border-l-2 border-l-amber-500';
   if (action.startsWith('incident')) return 'border-l-2 border-l-brand-500';
-  if (action.startsWith('call')) return 'border-l-2 border-l-blue-500';
+  if (action.startsWith('call')) return 'border-l-2 border-l-gray-500';
   return 'border-l-2 border-l-rmpg-600';
 }
 

@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 // GET /api/use-of-force/stats — Dashboard stats

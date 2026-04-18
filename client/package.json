@@ -35,6 +35,7 @@
     "react-force-graph-2d": "^1.29.1",
     "react-router-dom": "^6.28.0",
     "recharts": "^2.14.1",
+    "sanitize-html": "^2.17.3",
     "source-map": "^0.7.6"
   },
   "overrides": {

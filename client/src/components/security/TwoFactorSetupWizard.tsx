@@ -110,8 +110,8 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {step === 'intro' && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 panel-inset" style={{ background: 'rgba(26,90,158,0.1)' }}>
-              <Shield className="w-5 h-5" style={{ color: '#888888' }} />
+            <div className="p-2 panel-inset" style={{ background: 'rgba(42,42,42,0.6)' }}>
+              <Shield className="w-5 h-5" style={{ color: '#d4a017' }} />
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e0e0e0' }}>

@@ -105,6 +105,7 @@ import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
 import voiceRoutes from './routes/voice';
+import voicePersonaRoutes from './routes/voicePersona';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
@@ -403,6 +404,7 @@ app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/voice-persona', voicePersonaRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
@@ -468,7 +470,7 @@ h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head>
 
 // SPA fallback: serve index.html for non-API, non-download routes (always fresh).
 // Express 5 + path-to-regexp v8 require named wildcards — bare '*' throws at boot.
-app.get('/*splat', (req, res) => {
+app.get('/*splat', apiRateLimit, (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {

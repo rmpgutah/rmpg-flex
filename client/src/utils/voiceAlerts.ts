@@ -7,6 +7,58 @@
 // ============================================================
 
 import { playToneAsync } from './dispatchTones';
+import { renderCallNarrative, type Terseness, type CallSlots } from './narrativeRenderer';
+
+// ─── Terseness adapter (Task 1.6) ───────────────────────────
+// Reads the user's voice persona terseness from localStorage (written
+// by useVoicePersona). In 'terse' / 'narrative' modes we delegate
+// phrasing to renderCallNarrative; 'standard' keeps the existing rich
+// phrase pipeline for backward compatibility.
+
+function currentTerseness(): Terseness {
+  const raw = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('rmpg-voice-terseness')
+    : null;
+  return raw === 'narrative' || raw === 'terse' ? raw : 'standard';
+}
+
+function priorityToNumber(p?: string): number | undefined {
+  if (!p) return undefined;
+  const m = p.match(/^P([1-4])$/);
+  return m ? Number(m[1]) : undefined;
+}
+
+function humanizeType(t?: string): string | undefined {
+  if (!t) return undefined;
+  return t.replace(/_/g, ' ');
+}
+
+function toCallSlots(call: {
+  call_number?: string;
+  priority?: string;
+  incident_type?: string;
+  location?: string;
+  location_address?: string;
+  apartment?: string;
+  zone_code?: string;
+  beat_code?: string;
+  suspect_description?: string;
+  vehicle_description?: string;
+  assigned_units?: string[];
+}): CallSlots {
+  return {
+    call_number: call.call_number,
+    priority: priorityToNumber(call.priority),
+    incident_type: humanizeType(call.incident_type),
+    location_address: call.location_address ?? call.location,
+    apartment: call.apartment,
+    zone_code: call.zone_code,
+    beat_code: call.beat_code,
+    suspect_description: call.suspect_description,
+    vehicle_description: call.vehicle_description,
+    assigned_units: call.assigned_units,
+  };
+}
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -626,6 +678,14 @@ export async function announceDispatchEvent(call: CallFlags & {
   await playToneAsync('alert');
   await delay(TONE_GAP_MS);
 
+  // Terseness adapter: short-circuit rich phrasing for 'terse' or 'narrative'.
+  const t = currentTerseness();
+  if (t !== 'standard') {
+    const text = renderCallNarrative(toCallSlots(call), t);
+    if (text) enqueuePhrases([{ text }]);
+    return;
+  }
+
   const phrases: VoicePhrase[] = [];
 
   // "Dispatch, call 26-CFS00110"
@@ -689,6 +749,14 @@ export async function announceNewCall(call: CallFlags & {
   else if (call.priority === 'P2') await playToneAsync('warning');
   else await playToneAsync('caution');
   await delay(TONE_GAP_MS);
+
+  // Terseness adapter: short-circuit rich phrasing for 'terse' or 'narrative'.
+  const t = currentTerseness();
+  if (t !== 'standard') {
+    const text = renderCallNarrative(toCallSlots(call), t);
+    if (text) enqueuePhrases([{ text }]);
+    return;
+  }
 
   const phrases: VoicePhrase[] = [];
 

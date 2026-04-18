@@ -137,8 +137,8 @@ export default function MapOverlays({
 
             {showTrackingLines && trackingLinesRef.current.length > 0 && (
               <div className="flex items-center gap-1 px-1.5">
-                <Navigation2 className="w-2.5 h-2.5 text-cyan-400" />
-                <span className="text-cyan-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
+                <Navigation2 className="w-2.5 h-2.5 text-gray-400" />
+                <span className="text-gray-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
               </div>
             )}
           </div>
@@ -241,8 +241,8 @@ export default function MapOverlays({
             }}
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
-                ? 'bg-white/90 border border-blue-300 hover:bg-blue-50'
-                : 'bg-surface-deep/95 border border-blue-500/50 hover:bg-blue-900/30'
+                ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
+                : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
             }`}
             style={isMobile
               ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -250,7 +250,7 @@ export default function MapOverlays({
             }
             title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
           >
-            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
+            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
           </button>
         )}
         <MapExportMenu

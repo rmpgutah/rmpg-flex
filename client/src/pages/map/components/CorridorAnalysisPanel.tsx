@@ -89,7 +89,7 @@ export default function CorridorAnalysisPanel({
             <button type="button"
               onClick={onAnalyzeCorridor}
               disabled={loading}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-gray-600/20 border border-gray-500/30 text-gray-300 hover:bg-gray-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
               aria-label="Analyze corridor route"
             >
               {loading ? <Loader2 size={10} className="animate-spin" /> : <Route size={10} />}
@@ -196,7 +196,7 @@ export default function CorridorAnalysisPanel({
                 max={360}
                 value={headingInput}
                 onChange={(e) => setHeadingInput(e.target.value)}
-                className="w-full px-1.5 py-1 rounded-sm text-[9px] font-mono bg-rmpg-700/30 border border-rmpg-700 text-rmpg-200 focus:outline-none focus:border-blue-500/50"
+                className="w-full px-1.5 py-1 rounded-sm text-[9px] font-mono bg-rmpg-700/30 border border-rmpg-700 text-rmpg-200 focus:outline-none focus:border-gray-500/50"
                 placeholder="0-360°"
               />
             </div>

@@ -535,7 +535,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
                   {v.plate_state && (
                     <span className={`px-1 py-0 text-[8px] font-bold border rounded-sm ${
-                      v.plate_state === 'UT' ? 'bg-blue-900/40 text-blue-300 border-blue-700/50' :
+                      v.plate_state === 'UT' ? 'bg-gray-900/40 text-gray-300 border-gray-700/50' :
                       v.plate_state === 'CA' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
                       'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
                     }`}>{v.plate_state}</span>
@@ -664,7 +664,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         </div>
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
-          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-blue-900/30 border border-blue-700/50 text-blue-400 hover:bg-blue-900/50">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
           <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
@@ -680,9 +680,9 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         )}
         {/* Feature 41: History Panel */}
         {vehicleHistory && (
-          <div className="mt-1 p-1.5 text-[10px] bg-blue-900/10 border border-blue-700/30">
+          <div className="mt-1 p-1.5 text-[10px] bg-gray-900/10 border border-gray-700/30">
             <div className="flex justify-between">
-              <span className="text-blue-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
+              <span className="text-gray-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
               <button type="button" onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
             </div>
             {vehicleHistory.incidents?.length > 0 && <div className="text-rmpg-400 mt-0.5">{vehicleHistory.incidents.length} incidents</div>}
@@ -728,7 +728,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           )}
           {(selectedVehicle.commercial_vehicle || selectedVehicle.hazmat) && (
             <div className="flex gap-2 mt-2">
-              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">COMMERCIAL</span>}
+              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">COMMERCIAL</span>}
               {selectedVehicle.hazmat && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">HAZMAT</span>}
             </div>
           )}

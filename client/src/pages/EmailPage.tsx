@@ -17,6 +17,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
 import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
+import sanitizeHtml from 'sanitize-html';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -659,9 +660,24 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
   ({ bodyHtml, onLoad }, ref) => {
     const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
     React.useEffect(() => {
-      const sanitized = bodyHtml
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/\bon\w+\s*=/gi, 'data-blocked=');
+      // Use a vetted sanitizer instead of regex stripping to avoid incomplete
+      // multi-character sanitization bypasses.
+      const sanitized = sanitizeHtml(bodyHtml, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+          'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+          'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
+        ]),
+        allowedAttributes: {
+          a: ['href', 'name', 'target', 'rel'],
+          img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+          '*': ['style', 'class']
+        },
+        allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+        allowedSchemesByTag: {
+          img: ['http', 'https']
+        },
+        disallowedTagsMode: 'discard'
+      });
       // Proxy all external images through our server
       const proxied = proxyEmailImages(sanitized);
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
@@ -676,7 +692,7 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
       return () => URL.revokeObjectURL(url);
     }, [bodyHtml]);
     if (!blobUrl) return null;
-    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} sandbox="allow-same-origin allow-popups" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
   }
 );
 EmailBodyFrame.displayName = 'EmailBodyFrame';

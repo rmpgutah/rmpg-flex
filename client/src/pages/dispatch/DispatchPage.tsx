@@ -1412,25 +1412,22 @@ export default function DispatchPage() {
         damage_description: callData.damage_description || null,
         responding_officer: callData.responding_officer || null,
         action_taken: callData.action_taken || null,
-        // Tactical / safety flags
+        // Extended operational flags — previously silent-dropped from new-call POST (audit 2026-04-10)
         mental_health_crisis: callData.mental_health_crisis ?? false,
         juvenile_involved: callData.juvenile_involved ?? false,
         felony_in_progress: callData.felony_in_progress ?? false,
         officer_safety_caution: callData.officer_safety_caution ?? false,
-        gang_related: callData.gang_related ?? false,
         k9_requested: callData.k9_requested ?? false,
         ems_requested: callData.ems_requested ?? false,
         fire_requested: callData.fire_requested ?? false,
         hazmat: callData.hazmat ?? false,
+        gang_related: callData.gang_related ?? false,
         evidence_collected: callData.evidence_collected ?? false,
         body_camera_active: callData.body_camera_active ?? false,
         photos_taken: callData.photos_taken ?? false,
         trespass_issued: callData.trespass_issued ?? false,
         vehicle_pursuit: callData.vehicle_pursuit ?? false,
         foot_pursuit: callData.foot_pursuit ?? false,
-        secondary_type: callData.secondary_type || null,
-        contact_method: callData.contact_method || null,
-        dispatch_code: callData.dispatch_code || null,
         // PSO Client Request fields
         contract_id: callData.contract_id || null,
         pso_service_type: callData.pso_service_type || null,
@@ -2382,7 +2379,7 @@ export default function DispatchPage() {
         <div className="flex flex-col items-center gap-4">
           <div className="relative w-10 h-10 flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-[#888888] animate-spin" />
-            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(26,90,158,0.25)' }} />
+            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(212,160,23,0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
@@ -2520,7 +2517,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">Response:</span>
-                      <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                      <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
                     </div>
                   );
                 })()}
@@ -2771,7 +2768,7 @@ export default function DispatchPage() {
                       return (
                         <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                           <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                          <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                          <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                         </div>
                       );
                     })()}
@@ -3366,7 +3363,7 @@ export default function DispatchPage() {
                   </span>
                 )}
                 <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
-                <span className="text-rmpg-400">Pending: <strong className="text-blue-400">{pendingCount}</strong></span>
+                <span className="text-rmpg-400">Pending: <strong className="text-gray-400">{pendingCount}</strong></span>
                 <span className="text-rmpg-400">Active: <strong className="text-green-400">{tabCounts.active}</strong></span>
                 {/* Stacked calls indicator */}
                 {(() => {
@@ -3579,7 +3576,7 @@ export default function DispatchPage() {
                       />
                     ) : selectedCall.incident_number ? (
                       <span
-                        className={`text-[10px] font-bold font-mono text-cyan-300 bg-cyan-900/30 border border-cyan-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-cyan-200 transition-colors`}
+                        className={`text-[10px] font-bold font-mono text-gray-300 bg-gray-900/30 border border-gray-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-gray-200 transition-colors`}
                         onClick={(e) => {
                           if (isAdminOrManager && e.shiftKey) {
                             setEditingTimestamp('incident_number');
@@ -3903,9 +3900,9 @@ export default function DispatchPage() {
                     const secs = Math.floor((diff % 60000) / 1000);
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Navigation style={{ width: 10, height: 10 }} className="text-cyan-500" />
+                        <Navigation style={{ width: 10, height: 10 }} className="text-gray-500" />
                         <span className="text-rmpg-400">Response:</span>
-                        <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                        <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
                       </div>
                     );
                   })()}
@@ -3961,10 +3958,10 @@ export default function DispatchPage() {
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
                         color: isActive ? '#999999' : '#666666',
-                        background: isActive ? 'rgba(26,90,158,0.1)' : 'transparent',
-                        borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
+                        background: isActive ? 'rgba(42,42,42,0.6)' : 'transparent',
+                        borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
                       }}
-                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
+                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(42,42,42,0.4)'; } }}
                       onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#666666'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
                       <span className="flex items-center gap-1.5">
@@ -4234,7 +4231,7 @@ export default function DispatchPage() {
                           return (
                             <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                               <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                              <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                              <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                             </div>
                           );
                         })()}
@@ -4360,7 +4357,7 @@ export default function DispatchPage() {
                       {/* Inline ETA from route */}
                       {routeInfo && (
                         <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(136, 136, 136,0.08)', border: '1px solid rgba(136, 136, 136,0.2)', boxShadow: '0 0 8px rgba(136, 136, 136,0.06)' }}>
-                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400">
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-gray-400">
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
                           <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
@@ -5255,7 +5252,7 @@ export default function DispatchPage() {
                                 </span>
                                 <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                                  : visit.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
+                                  : visit.status === 'closed' ? 'bg-gray-900/40 border border-gray-700/50 text-gray-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                                   : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
                                 }`}>

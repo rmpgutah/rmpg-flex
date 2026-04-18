@@ -516,7 +516,12 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     // 6. Auto-create serve queue entry for the process server
     let serveQueueId: number | null = null;
     try {
-      const addrMatch = address ? address.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/) : null;
+      // Cap address length before applying the comma-separated city/state/zip
+      // regex — `[^,]+` against an unbounded user-supplied string is a
+      // polynomial-ReDoS vector (CodeQL js/polynomial-redos #2747).
+      // 1000 chars is far longer than any real US address.
+      const addrCapped = address ? String(address).slice(0, 1000) : null;
+      const addrMatch = addrCapped ? addrCapped.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/) : null;
       const sqResult = db.prepare(`
         INSERT INTO serve_queue (
           call_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,

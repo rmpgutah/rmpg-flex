@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { broadcast } from '../utils/websocket';
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 // ─── GET / — List messages for current user ──────────────────

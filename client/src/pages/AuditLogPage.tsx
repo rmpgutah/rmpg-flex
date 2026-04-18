@@ -391,10 +391,10 @@ const AuditLogPage: React.FC = () => {
             </div>
             <div className="panel-beveled p-3" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2 mb-2">
-                <Filter className="w-4 h-4 text-cyan-400" />
+                <Filter className="w-4 h-4 text-gray-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top User (30d)</span>
               </div>
-              <div className="text-sm font-bold truncate font-mono text-cyan-400">
+              <div className="text-sm font-bold truncate font-mono text-gray-400">
                 {stats.topUsers[0]?.user_name || 'N/A'}
               </div>
               <div className="text-[10px] text-rmpg-500 mt-0.5">
