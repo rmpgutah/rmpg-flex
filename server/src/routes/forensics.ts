@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastRecordUpdate } from '../utils/websocket';
+import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -366,6 +366,15 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
     logActivity(parseInt(req.params.caseId as string), 'exhibit_added', `Exhibit ${exhibit_number}: ${description}`, user.id, user.full_name, result.lastInsertRowid as number);
 
     const newExhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(result.lastInsertRowid);
+
+    // Dispatcher Brain fan-in (Phase 2): evidence-logged rule. The tag
+    // number is the exhibit_number; case number is the forensic case id.
+    broadcastDispatchUpdate({
+      action: 'evidence_logged',
+      tag_number: exhibit_number,
+      case_number: req.params.caseId,
+    });
+
     res.status(201).json({ data: newExhibit });
   } catch (error: any) {
     console.error('Create exhibit error:', error);
