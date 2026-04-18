@@ -3794,6 +3794,18 @@ function migrateSchema(): void {
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_entity ON email_links(entity_type, entity_id)`).run();
   addCol('email_links', 'auto_linked', 'INTEGER DEFAULT 0');
 
+  db.prepare(`CREATE TABLE IF NOT EXISTS user_graph_tokens (
+  user_id INTEGER PRIMARY KEY,
+  access_token_enc TEXT NOT NULL,
+  refresh_token_enc TEXT,
+  token_expires_at INTEGER NOT NULL,
+  mailbox TEXT,
+  scopes TEXT,
+  enrolled_at TEXT NOT NULL,
+  last_sync_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)`).run();
+
   // Seed email auto-link allowlist + tip-line folder config if missing.
   const existingAllowlist = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_autolink_allowlist'`).get();
   if (!existingAllowlist) {
