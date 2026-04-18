@@ -10,12 +10,14 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 import { sendEmail } from '../utils/emailSender';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 // Only managers + admins can send email via the PDF flow

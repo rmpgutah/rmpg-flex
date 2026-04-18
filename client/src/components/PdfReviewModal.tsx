@@ -89,8 +89,14 @@ export async function emailBlob(
   }
 }
 
+// Reject prototype-pollution keys — a path like "__proto__.foo" or
+// "constructor.prototype.foo" could otherwise mutate Object.prototype
+// (CodeQL js/prototype-pollution-utility #2758).
+const FORBIDDEN_PATH_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function setPath<T extends Record<string, any>>(obj: T, path: string, value: unknown): T {
   const keys = path.split('.');
+  if (keys.some((k) => FORBIDDEN_PATH_KEYS.has(k))) return obj;
   const copy: any = Array.isArray(obj) ? [...obj] : { ...obj };
   let cursor: any = copy;
   for (let i = 0; i < keys.length - 1; i++) {
