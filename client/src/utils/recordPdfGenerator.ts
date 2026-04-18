@@ -1228,110 +1228,52 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Persons — clean table: section header + column headers + data rows
+  // Linked Persons — route through the shared addTableWithShading helper
+  // so the table automatically redraws column headers + a
+  // "LINKED PERSONS -- CONTINUED" sub-bar on any page break (no more
+  // orphaned data rows on continuation pages).
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y);
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
-    const rowH = 4.5;
-    // Column header — light slate fill + dark text to match the
-    // incident-report addTableWithShading styling (so linked-persons
-    // tables read consistently with every other table in the system).
-    const cw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
-    let hx = lx;
-    for (let i = 0; i < pHeaders.length; i++) {
-      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
-      doc.text(pHeaders[i], hx + 1, y + (rowH + capH) / 2);
-      hx += pColW[i];
-    }
-    y += rowH;
-    // Data rows
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    for (const p of data.linked_persons) {
-      y = checkPageBreak(doc, y, rowH);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const pVals = [
-        `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
-        (p.role || '').replace(/_/g, ' ').toUpperCase() || '—',
-        (p.dob || '—').toUpperCase(),
-        [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
-        (p.phone || '—').toUpperCase(),
-      ];
-      let dx = lx;
-      for (let i = 0; i < pVals.length; i++) {
-        doc.text(pVals[i], dx + 1.5, y + rowH * 0.65);
-        dx += pColW[i];
-      }
-      y += rowH;
-      // Bottom separator
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y, lx + ffw, y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    const pColPos: number[] = [];
+    { let cx = lx; for (const w of pColW) { pColPos.push(cx); cx += w; } }
+    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE']
+      .map((label, i) => ({ label, x: pColPos[i] }));
+    const pRows = data.linked_persons.map(p => [
+      `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
+      (p.role || '').replace(/_/g, ' ').toUpperCase() || '—',
+      (p.dob || '—').toUpperCase(),
+      [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
+      (p.phone || '—').toUpperCase(),
+    ]);
+    y = addTableWithShading(doc, pHeaders, pRows, y, pColPos, { sectionTitle: 'LINKED PERSONS' });
   }
 
   // Linked Vehicles — clean table: section header + column headers + data rows
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
+    const sec = openAutoSection(doc, 'LINKED VEHICLES', y);
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
-    const rowH = 4.5;
-    // Column header — light slate fill + dark text to match the
-    // incident-report addTableWithShading styling.
-    const vcw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
-    let vhx = lx;
-    for (let i = 0; i < vHeaders.length; i++) {
-      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
-      doc.text(vHeaders[i], vhx + 1, y + (rowH + capH) / 2);
-      vhx += vColW[i];
-    }
-    y += rowH;
-    // Data rows
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    for (const v of data.linked_vehicles) {
-      y = checkPageBreak(doc, y, rowH);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '';
-      const vVals = [
+    const vColPos: number[] = [];
+    { let cx = lx; for (const w of vColW) { vColPos.push(cx); cx += w; } }
+    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER']
+      .map((label, i) => ({ label, x: vColPos[i] }));
+    const vRows = data.linked_vehicles.map(v => {
+      const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase())
+        ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]`
+        : '';
+      return [
         (v.role || '').replace(/_/g, ' ').toUpperCase() || '—',
         [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
         (v.color || '—').toUpperCase(),
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
         ([v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + stolen).toUpperCase() || '—',
       ];
-      let vdx = lx;
-      for (let i = 0; i < vVals.length; i++) {
-        doc.text(vVals[i], vdx + 1.5, y + rowH * 0.65);
-        vdx += vColW[i];
-      }
-      y += rowH;
-      // Bottom separator
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y, lx + ffw, y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    });
+    y = addTableWithShading(doc, vHeaders, vRows, y, vColPos, { sectionTitle: 'LINKED VEHICLES' });
   }
 
   // ── Incident Details — dynamic page break ──
@@ -1974,6 +1916,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       warrantRows,
       y,
       [lx, lx + 29, lx + 49, lx + 72, lx + 127, lx + 152],
+      { sectionTitle: 'ACTIVE WARRANTS' },
     );
   }
 
@@ -2000,6 +1943,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       incidentRows,
       y,
       [lx, lx + 32, lx + 82, lx + 112, lx + 147],
+      { sectionTitle: 'INCIDENT HISTORY' },
     );
   }
 
@@ -2026,6 +1970,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       citationRows,
       y,
       [lx, lx + 32, lx + 57, lx + 85, lx + 152],
+      { sectionTitle: 'CITATION HISTORY' },
     );
   }
 
@@ -2052,6 +1997,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       callRows,
       y,
       [lx, lx + 27, lx + 69, lx + 97, lx + 152],
+      { sectionTitle: 'DISPATCH CALL HISTORY' },
     );
   }
 
@@ -2081,6 +2027,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       crRows,
       y,
       [lx, lx + crCw * 0.13, lx + crCw * 0.45, lx + crCw * 0.55, lx + crCw * 0.70, lx + crCw * 0.87],
+      { sectionTitle: 'CRIMINAL HISTORY' },
     );
   }
 
@@ -2483,6 +2430,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
       custodyRows,
       y,
       [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 65, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 135],
+      { sectionTitle: 'CHAIN OF CUSTODY' },
     );
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2784,7 +2732,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         `$${s.avgPrice.toFixed(2)}`,
         `${s.pctOfTotal.toFixed(1)}%`,
       ]);
-      y = addTableWithShading(doc, stHeaders, stRows, y, stColPos);
+      y = addTableWithShading(doc, stHeaders, stRows, y, stColPos, { sectionTitle: 'PER-STATION BREAKDOWN' });
     }
   }
 
@@ -2908,7 +2856,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         `${String(i + 1).padStart(3, '0')}`,
         item || '',
       ]);
-      y = addTableWithShading(doc, eqHeaders, eqRows, y, eqColPos);
+      y = addTableWithShading(doc, eqHeaders, eqRows, y, eqColPos, { sectionTitle: 'INSTALLED EQUIPMENT' });
     }
 
     // ── Recent Activity Timeline ──
@@ -2949,7 +2897,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         e.odometer != null ? Number(e.odometer).toLocaleString() : '',
         e.summary,
       ]);
-      y = addTableWithShading(doc, tlHeaders, tlRows, y, tlColPos);
+      y = addTableWithShading(doc, tlHeaders, tlRows, y, tlColPos, { sectionTitle: 'RECENT ACTIVITY' });
     }
   }
 

@@ -1677,7 +1677,7 @@ export function addTableWithShading(
   rows: string[][],
   startY: number,
   colPositions: number[],
-  opts?: { lightHeader?: boolean },
+  opts?: { lightHeader?: boolean; sectionTitle?: string },
 ): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -1774,6 +1774,29 @@ export function addTableWithShading(
     y = checkPageBreak(doc, y, rowH + SPACING.SM);
     if (doc.getNumberOfPages() > prevPage) {
       colSegments[colSegments.length - 1].bottom = prevY;
+      // If a section title was provided, redraw a "{title} -- CONTINUED"
+      // section sub-bar on the new page BEFORE the column header row.
+      // Back up y by SECTION_GAP first so the sub-bar sits flush against
+      // the global continuation bar (no visible 1mm gap between them).
+      // The column header row that follows is also flush (drawHeaders
+      // takes the y we just set and draws directly there — no gap).
+      if (opts?.sectionTitle) {
+        y -= SPACING.SECTION_GAP;
+        const subBarH = SPACING.SECTION_HEADER_H;
+        doc.setFillColor(...COLOR.BG_SECTION_HDR);
+        doc.rect(LAYOUT.PAGE_MARGIN, y, cw, subBarH, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+        doc.setTextColor(...COLOR.TEXT_INVERTED);
+        const subCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+        const subTextY = y + (subBarH + subCapH) / 2;
+        doc.text(
+          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
+          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1,
+          subTextY,
+        );
+        y += subBarH;
+      }
       y = drawHeaders(y);
       currentSegTop = y - 1;
       colSegments.push({ top: currentSegTop, bottom: y, page: doc.getNumberOfPages() });
