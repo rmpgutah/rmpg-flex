@@ -582,7 +582,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
 
       {/* ── Google Cloud Console Keys ── */}
-      <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-blue-400" />} keys={GOOGLE_CLOUD_KEYS} />
+      <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-gray-400" />} keys={GOOGLE_CLOUD_KEYS} />
 
       {/* ── Law Enforcement / Government APIs ── */}
       <ApiKeyPanel title="Law Enforcement / Government" icon={<Shield className="w-4 h-4 text-red-400" />} keys={LAW_ENFORCEMENT_KEYS} />
@@ -597,10 +597,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       <ApiKeyPanel title="AI / Machine Learning" icon={<Cpu className="w-4 h-4 text-purple-400" />} keys={AI_ML_KEYS} />
 
       {/* ── Cloud Storage & Infrastructure ── */}
-      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-sky-400" />} keys={CLOUD_STORAGE_KEYS} />
+      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-gray-400" />} keys={CLOUD_STORAGE_KEYS} />
 
       {/* ── Data Services ── */}
-      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-cyan-400" />} keys={DATA_SERVICE_KEYS} />
+      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-gray-400" />} keys={DATA_SERVICE_KEYS} />
 
       {/* ── RapidAPI & Third-Party ── */}
       <ApiKeyPanel title="RapidAPI & Third-Party" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />

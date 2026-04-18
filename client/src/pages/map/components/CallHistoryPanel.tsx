@@ -107,8 +107,8 @@ export default function CallHistoryPanel({
         style={{ background: '#050505', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
-          <Clock size={13} className="text-cyan-400" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+          <Clock size={13} className="text-gray-400" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
             Call History
           </span>
           {/* #40: Call count badge with border */}
@@ -132,7 +132,7 @@ export default function CallHistoryPanel({
       {/* Loading state */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-8 text-rmpg-500 gap-2">
-          <div className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-[9px] font-mono animate-pulse">Loading {days}d history...</span>
           <div className="space-y-1.5 w-full px-3">
             {[1, 2, 3].map((i) => (
@@ -150,14 +150,14 @@ export default function CallHistoryPanel({
             style={{ background: '#050505', border: '1px solid #282828' }}
           >
             <div className="flex items-center gap-1">
-              <Phone size={10} className="text-cyan-400" />
+              <Phone size={10} className="text-gray-400" />
               <span className="text-[9px] font-mono text-rmpg-300">
                 {stats.total} calls
               </span>
             </div>
             {stats.avgResponse != null && (
               <div className="flex items-center gap-1">
-                <TrendingUp size={10} className="text-cyan-400" />
+                <TrendingUp size={10} className="text-gray-400" />
                 <span className="text-[9px] font-mono text-rmpg-300">
                   Avg {formatMinutes(stats.avgResponse)}
                 </span>
@@ -245,7 +245,7 @@ export default function CallHistoryPanel({
                       style={{ borderLeft: `2px solid ${pColor}` }}
                     >
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[9px] font-mono font-bold text-cyan-300">
+                        <span className="text-[9px] font-mono font-bold text-gray-300">
                           {call.call_number}
                         </span>
                         <div className="flex items-center gap-1.5">

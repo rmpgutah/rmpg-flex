@@ -91,7 +91,7 @@ export default function EquipmentDetailTab({
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'issued': return 'border-t-2 border-t-green-500';
-      case 'maintenance': return 'border-t-2 border-t-blue-500';
+      case 'maintenance': return 'border-t-2 border-t-gray-500';
       case 'lost': return 'border-t-2 border-t-red-500';
       case 'damaged': return 'border-t-2 border-t-amber-500';
       default: return 'border-t-2 border-t-rmpg-600';

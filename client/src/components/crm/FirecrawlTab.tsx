@@ -3369,7 +3369,7 @@ function PdfInspectPanel() {
       case 'date': return 'bg-amber-500/10 border-amber-500/30 text-amber-400';
       case 'amount': case 'money': return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
       case 'location': case 'address': return 'bg-purple-500/10 border-purple-500/30 text-purple-400';
-      case 'email': return 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400';
+      case 'email': return 'bg-[#1f1f1f] border-[#2e2e2e] text-gray-300';
       default: return 'bg-rmpg-700/50 border-rmpg-600 text-rmpg-300';
     }
   };
@@ -4581,7 +4581,7 @@ function GenUiPanel() {
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tailwind Classes</div>
               <div className="flex flex-wrap gap-1">
                 {safeArr(result.tailwind_classes).map((cls, i) => (
-                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-[#1f1f1f] border border-[#2e2e2e] text-gray-300">
                     {cls}
                   </span>
                 ))}
@@ -5958,12 +5958,12 @@ function ExamplesPanel() {
   };
 
   const categoryColors: Record<string, string> = {
-    scraping: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+    scraping: 'bg-[#1f1f1f] border-[#2e2e2e] text-gray-300',
     search: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
     extraction: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     monitoring: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
     enrichment: 'bg-pink-500/10 border-pink-500/30 text-pink-400',
-    research: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+    research: 'bg-[#1f1f1f] border-[#2e2e2e] text-gray-300',
   };
 
   if (loading) {
@@ -6645,7 +6645,7 @@ function NewsPanel() {
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1">{article.title}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-blue-500/10 border border-blue-500/30 text-blue-400 shrink-0">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-[#1f1f1f] border border-[#2e2e2e] text-gray-300 shrink-0">
                   {article.source}
                 </span>
               </div>
@@ -9209,8 +9209,8 @@ function CodeAnalyzePanel() {
   const viewHistoryItem = (item: CodeAnalyzeResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   const langColors: Record<string, string> = {
-    TypeScript: 'bg-blue-400', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
-    Go: 'bg-cyan-400', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
+    TypeScript: 'bg-[#888888]', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
+    Go: 'bg-[#aaaaaa]', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
   };
 
   return (
@@ -9476,7 +9476,7 @@ function SkillGenPanel() {
 function SdksPanel() {
   const sdks = [
     { name: 'Python', pkg: 'firecrawl-py', version: '1.5.0', stars: 79, repo: 'https://github.com/mendableai/firecrawl-py', color: 'bg-green-400' },
-    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-cyan-400' },
+    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-[#aaaaaa]' },
     { name: 'Java', pkg: 'java-sdk', version: '0.9.0', stars: 16, repo: 'https://github.com/mendableai/firecrawl-java-sdk', color: 'bg-red-400' },
     { name: 'JavaScript', pkg: 'firecrawl-js', version: '1.5.0', stars: 100, repo: 'https://github.com/mendableai/firecrawl-js', color: 'bg-yellow-400' },
     { name: 'CLI', pkg: 'firecrawl-cli', version: '1.3.0', stars: 231, repo: 'https://github.com/mendableai/firecrawl-cli', color: 'bg-purple-400' },
@@ -10529,7 +10529,7 @@ function SupportBotPanel() {
 
   return (
     <div className="space-y-3">
-      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-blue-400" />
+      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-[#888888]" />
 
       {/* Create Form */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
@@ -10553,7 +10553,7 @@ function SupportBotPanel() {
           {bots.map(bot => (
             <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
               <StatusLed status={bot.status || 'active'} />
-              <Bot className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <Bot className="w-3.5 h-3.5 text-gray-300 shrink-0" />
               <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
               <span className="text-[10px] text-rmpg-500">{bot.total_conversations || 0} chats</span>
               <SmallBtn onClick={() => setActiveBotId(activeBotId === bot.id ? null : bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'}>

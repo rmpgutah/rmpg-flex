@@ -2520,7 +2520,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">Response:</span>
-                      <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                      <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
                     </div>
                   );
                 })()}
@@ -2771,7 +2771,7 @@ export default function DispatchPage() {
                       return (
                         <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                           <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                          <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                          <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                         </div>
                       );
                     })()}
@@ -3366,7 +3366,7 @@ export default function DispatchPage() {
                   </span>
                 )}
                 <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
-                <span className="text-rmpg-400">Pending: <strong className="text-blue-400">{pendingCount}</strong></span>
+                <span className="text-rmpg-400">Pending: <strong className="text-gray-400">{pendingCount}</strong></span>
                 <span className="text-rmpg-400">Active: <strong className="text-green-400">{tabCounts.active}</strong></span>
                 {/* Stacked calls indicator */}
                 {(() => {
@@ -3579,7 +3579,7 @@ export default function DispatchPage() {
                       />
                     ) : selectedCall.incident_number ? (
                       <span
-                        className={`text-[10px] font-bold font-mono text-cyan-300 bg-cyan-900/30 border border-cyan-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-cyan-200 transition-colors`}
+                        className={`text-[10px] font-bold font-mono text-gray-300 bg-gray-900/30 border border-gray-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-gray-200 transition-colors`}
                         onClick={(e) => {
                           if (isAdminOrManager && e.shiftKey) {
                             setEditingTimestamp('incident_number');
@@ -3903,9 +3903,9 @@ export default function DispatchPage() {
                     const secs = Math.floor((diff % 60000) / 1000);
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Navigation style={{ width: 10, height: 10 }} className="text-cyan-500" />
+                        <Navigation style={{ width: 10, height: 10 }} className="text-gray-500" />
                         <span className="text-rmpg-400">Response:</span>
-                        <span className="text-cyan-400 font-bold">{mins}m {secs}s</span>
+                        <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
                       </div>
                     );
                   })()}
@@ -4234,7 +4234,7 @@ export default function DispatchPage() {
                           return (
                             <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                               <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                              <span className="text-cyan-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                              <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                             </div>
                           );
                         })()}
@@ -4360,7 +4360,7 @@ export default function DispatchPage() {
                       {/* Inline ETA from route */}
                       {routeInfo && (
                         <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(136, 136, 136,0.08)', border: '1px solid rgba(136, 136, 136,0.2)', boxShadow: '0 0 8px rgba(136, 136, 136,0.06)' }}>
-                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400">
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-gray-400">
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
                           <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
@@ -5255,7 +5255,7 @@ export default function DispatchPage() {
                                 </span>
                                 <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                                  : visit.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
+                                  : visit.status === 'closed' ? 'bg-gray-900/40 border border-gray-700/50 text-gray-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                                   : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
                                 }`}>

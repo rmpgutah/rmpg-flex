@@ -270,7 +270,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       {/* IP Session Binding */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <MapPin className="w-4 h-4 text-cyan-400" />
+          <MapPin className="w-4 h-4 text-gray-400" />
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">IP Session Binding</h3>
         </div>
 
@@ -326,7 +326,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       {/* Session Management */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <Clock className="w-4 h-4 text-blue-400" />
+          <Clock className="w-4 h-4 text-gray-400" />
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Session Management</h3>
         </div>
 

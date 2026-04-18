@@ -1332,7 +1332,7 @@ export default function IncidentsPage() {
             {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
             {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">Mental Health</span>}
             {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
-            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
+            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">Juvenile</span>}
             {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
             {inc.hazmat && <span className="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 text-[10px] uppercase font-bold border border-yellow-700/40">HAZMAT</span>}
             {inc.body_camera_active && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">BWC</span>}
@@ -1388,7 +1388,7 @@ export default function IncidentsPage() {
               {selectedIncident.call_number ? (
                 <button type="button"
                   onClick={() => navigate('/dispatch')}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-cyan-400 bg-cyan-900/20 border border-cyan-700/40 hover:bg-cyan-900/40 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-gray-400 bg-gray-900/20 border border-gray-700/40 hover:bg-gray-900/40 transition-colors"
                   title="Go to dispatch"
                 >
                   <ExternalLink className="w-3 h-3" />
@@ -1748,7 +1748,7 @@ export default function IncidentsPage() {
                       {offense.statute_number && <span className="font-mono">§{offense.statute_number}</span>}
                       {offense.ucr_code && <span>UCR: {offense.ucr_code}</span>}
                       {offense.suspect_first && <span className="text-red-300">Suspect: {offense.suspect_first} {offense.suspect_last}</span>}
-                      {offense.victim_first && <span className="text-blue-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
+                      {offense.victim_first && <span className="text-gray-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
                       {offense.disposition && <span className="text-green-400">Disp: {offense.disposition}</span>}
                     </div>
                   </div>
@@ -1793,7 +1793,7 @@ export default function IncidentsPage() {
                   }`}>{officer.role}</span>
                   <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
-                  {officer.call_sign && <span className="text-[10px] text-cyan-400">{officer.call_sign}</span>}
+                  {officer.call_sign && <span className="text-[10px] text-gray-400">{officer.call_sign}</span>}
                   {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
                   {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {new Date(officer.arrived_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
                   {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {new Date(officer.departed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}

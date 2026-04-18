@@ -30,7 +30,7 @@ const NODE_COLORS: Record<string, string> = {
   warrant: '#dc2626',
   incident: '#f59e0b',
   call: '#888888',
-  citation: '#6366f1',
+  citation: '#fbbf24',
   vehicle: '#10b981',
   property: '#8b5cf6',
 };

@@ -58,7 +58,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
 };
 
 const STAGE_BADGE_CLASSES: Record<PipelineStage, string> = {
-  new: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
+  new: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
   contacted: 'text-purple-400 bg-purple-900/30 border-purple-700/50',
   qualified: 'text-yellow-400 bg-yellow-900/30 border-yellow-700/50',
   proposal: 'text-amber-400 bg-amber-900/30 border-amber-700/50',
@@ -84,14 +84,14 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
 };
 
 const SOURCE_BADGE_CLASSES: Record<LeadSource, string> = {
-  utah_biz: 'text-cyan-400 bg-cyan-900/30 border-cyan-700/50',
+  utah_biz: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
   construction_permit: 'text-amber-400 bg-amber-900/30 border-amber-700/50',
   commercial_re: 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50',
   liquor_license: 'text-purple-400 bg-purple-900/30 border-purple-700/50',
-  utah_bar: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
+  utah_bar: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
   ut_commerce_collections: 'text-orange-400 bg-orange-900/30 border-orange-700/50',
   ut_consumer_protection: 'text-rose-400 bg-rose-900/30 border-rose-700/50',
-  ut_courts: 'text-indigo-400 bg-indigo-900/30 border-indigo-700/50',
+  ut_courts: 'text-gray-400 bg-gray-900/30 border-gray-700/50',
   google_places: 'text-green-400 bg-green-900/30 border-green-700/50',
   ut_real_estate_licenses: 'text-teal-400 bg-teal-900/30 border-teal-700/50',
   cfpb_complaints: 'text-yellow-400 bg-yellow-900/30 border-yellow-700/50',

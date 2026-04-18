@@ -114,11 +114,11 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
           </div>
         </div>
         <div className="panel-beveled p-3 flex items-center gap-3">
-          <div className="w-8 h-8 flex items-center justify-center bg-blue-900/30 border border-blue-700/40 shrink-0" aria-hidden="true">
-            <Monitor style={{ width: 14, height: 14 }} className="text-blue-400" />
+          <div className="w-8 h-8 flex items-center justify-center bg-gray-900/30 border border-gray-700/40 shrink-0" aria-hidden="true">
+            <Monitor style={{ width: 14, height: 14 }} className="text-gray-400" />
           </div>
           <div>
-            <div className="text-[18px] font-black text-blue-400 tabular-nums leading-tight">
+            <div className="text-[18px] font-black text-gray-400 tabular-nums leading-tight">
               {new Set(activeSessions.map(s => s.user_id)).size}
             </div>
             <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Unique Users Online</div>
@@ -196,7 +196,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
 
       {/* Login History */}
       <div className="flex items-center gap-2 mb-2 border-b border-[#242424] pb-1.5">
-        <History style={{ width: 11, height: 11 }} className="text-blue-400" aria-hidden="true" />
+        <History style={{ width: 11, height: 11 }} className="text-gray-400" aria-hidden="true" />
         <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Recent Login History</span>
       </div>
       <div className="panel-surface mb-4">

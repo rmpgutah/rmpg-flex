@@ -78,7 +78,7 @@ export const PRIORITY_LABELS: Record<CallPriority, string> = {
 export const CALL_STATUS_CLASSES: Record<CallStatus, string> = {
   pending: 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/60',
   dispatched: 'bg-gray-900/50 text-gray-300 border border-gray-600/60',
-  enroute: 'bg-cyan-900/50 text-cyan-300 border border-cyan-600/60',
+  enroute: 'bg-gray-900/50 text-gray-300 border border-gray-600/60',
   onscene: 'bg-red-900/50 text-red-300 border border-red-600/60',
   cleared: 'bg-green-900/50 text-green-300 border border-green-600/60',
   closed: 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50',

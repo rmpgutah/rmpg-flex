@@ -109,8 +109,8 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
       {/* Summary Stats — Top Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Fuel className="w-3.5 h-3.5 mx-auto text-cyan-400 mb-1" />
-          <div className="text-sm font-bold font-mono tabular-nums text-cyan-400">
+          <Fuel className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
+          <div className="text-sm font-bold font-mono tabular-nums text-gray-400">
             {summary ? summary.total_gallons.toFixed(3) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Gallons</div>
@@ -211,8 +211,8 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
             const dist = log.calc_distance ?? log.distance ?? null;
             return (
               <div key={log.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
-                <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-cyan-900/20 border border-cyan-700/40">
-                  <Fuel className="w-4 h-4 text-cyan-400" />
+                <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
+                  <Fuel className="w-4 h-4 text-gray-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

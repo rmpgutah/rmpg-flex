@@ -11,7 +11,7 @@ import { apiFetch } from '../../../hooks/useApi';
 // ─── Types ──────────────────────────────────────────────────
 
 export type HeatmapAdvancedMode = 'density' | 'risk' | 'temporal' | 'comparison';
-export type HeatmapColorScheme = 'heat' | 'risk' | 'blue' | 'green' | 'purple';
+export type HeatmapColorScheme = 'heat' | 'risk' | 'gold' | 'green' | 'purple';
 export type HeatmapResolution = 'fine' | 'medium' | 'coarse';
 
 export interface HeatmapAdvancedOptions {
@@ -94,13 +94,13 @@ const GRADIENTS: Record<HeatmapColorScheme, string[]> = {
     'rgba(244,67,54,0.8)',
     'rgba(183,28,28,1)',
   ],
-  blue: [
+  gold: [
     'rgba(0,0,0,0)',
-    'rgba(173,216,230,0.2)',
-    'rgba(100,149,237,0.4)',
-    'rgba(65,105,225,0.6)',
-    'rgba(0,0,205,0.8)',
-    'rgba(0,0,139,1)',
+    'rgba(253,224,71,0.2)',
+    'rgba(250,204,21,0.4)',
+    'rgba(212,160,23,0.6)',
+    'rgba(180,130,15,0.8)',
+    'rgba(133,77,14,1)',
   ],
   green: [
     'rgba(0,0,0,0)',
@@ -120,14 +120,14 @@ const GRADIENTS: Record<HeatmapColorScheme, string[]> = {
   ],
 };
 
-// Comparison mode uses cool tones for previous period
+// Comparison mode uses neutral tones for previous period (no blue per pure-black theme)
 const COMPARISON_GRADIENT = [
   'rgba(0,0,0,0)',
-  'rgba(100,149,237,0.2)',
-  'rgba(70,130,230,0.35)',
-  'rgba(30,100,220,0.5)',
-  'rgba(0,70,200,0.7)',
-  'rgba(0,40,160,0.9)',
+  'rgba(170,170,170,0.2)',
+  'rgba(140,140,140,0.35)',
+  'rgba(110,110,110,0.5)',
+  'rgba(85,85,85,0.7)',
+  'rgba(60,60,60,0.9)',
 ];
 
 // ─── Hook ───────────────────────────────────────────────────

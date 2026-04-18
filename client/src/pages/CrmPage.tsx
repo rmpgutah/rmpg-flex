@@ -663,7 +663,7 @@ export default function CrmPage() {
               <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
               <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
               <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
-              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-blue-400" />
+              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-gray-400" />
             </div>
 
             {/* Feature 15: Revenue Forecast */}
@@ -691,7 +691,7 @@ export default function CrmPage() {
                 </div>
                 <div className="flex gap-1">
                   {(pipelineSummary.stages || []).map((s: any) => {
-                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-blue-700', qualified: 'bg-cyan-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
+                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-gray-700', qualified: 'bg-gray-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
                     return (
                       <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
                         <div className="text-sm font-bold text-white font-mono tabular-nums">{s.count}</div>
@@ -744,9 +744,9 @@ export default function CrmPage() {
                   )}
                   {(followUps.upcoming?.length || 0) > 0 && (
                     <div>
-                      <div className="text-[9px] text-blue-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
+                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
                       {followUps.upcoming.slice(0, 3).map((l: any) => (
-                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-blue-300">
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-gray-300">
                           <span className="flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">{l.next_follow_up}</span>
                         </div>
@@ -763,7 +763,7 @@ export default function CrmPage() {
               {sourceAnalytics && (
                 <div className="panel-inset p-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                    <BarChart3 className="w-3.5 h-3.5 text-gray-400" />
                     <span className="text-xs font-bold text-white">Lead Sources ({sourceAnalytics.period_days}d)</span>
                   </div>
                   <div className="space-y-1">
@@ -812,7 +812,7 @@ export default function CrmPage() {
               {/* Recent Activity */}
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-3.5 h-3.5 text-blue-400" />
+                  <Activity className="w-3.5 h-3.5 text-gray-400" />
                   <span className="text-xs font-bold text-white">Recent Activity</span>
                 </div>
                 {recentActivity.length === 0 ? (
@@ -828,7 +828,7 @@ export default function CrmPage() {
                         <div className="text-rmpg-300 mt-0.5">
                           <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                             a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                            a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
+                            a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
                             'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                           }`}>{toDisplayLabel(a.activity_type)}</span>
                           {a.subject && <span className="ml-1.5">{a.subject}</span>}
@@ -962,10 +962,10 @@ export default function CrmPage() {
                       <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
                       {clientActivity.map((a: any) => {
                         const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
-                          a.activity_type === 'email' ? 'bg-blue-500' :
+                          a.activity_type === 'email' ? 'bg-gray-500' :
                           a.activity_type === 'meeting' ? 'bg-purple-500' :
                           a.activity_type === 'invoice' ? 'bg-amber-500' :
-                          a.activity_type === 'contract_change' ? 'bg-cyan-500' : 'bg-rmpg-500';
+                          a.activity_type === 'contract_change' ? 'bg-gray-500' : 'bg-rmpg-500';
                         return (
                           <div key={a.id} className="relative mb-2">
                             <div className={`absolute -left-[14px] top-1.5 w-2 h-2 rounded-full ${dotColor}`} />
@@ -973,7 +973,7 @@ export default function CrmPage() {
                               <div className="flex items-center justify-between">
                                 <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                                   a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                                  a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
+                                  a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
                                   a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
                                   'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                                 }`}>{toDisplayLabel(a.activity_type)}</span>
