@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import multer from 'multer';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 
 const VALID_RECORD_TYPES = new Set(['case', 'incident', 'warrant', 'evidence']);
@@ -32,6 +33,7 @@ const upload = multer({
 });
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 router.post('/', upload.single('pdf'), (req: Request, res: Response) => {
