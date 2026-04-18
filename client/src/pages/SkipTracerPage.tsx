@@ -413,7 +413,7 @@ export default function SkipTracerPage() {
                     onClick={() => setSelected(person)}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
-                        ? 'bg-gray-900/20 border-l-2 border-l-blue-500'
+                        ? 'bg-gray-900/20 border-l-2 border-l-gray-500'
                         : 'hover:bg-surface-base border-l-2 border-l-transparent'
                     }`}
                   >

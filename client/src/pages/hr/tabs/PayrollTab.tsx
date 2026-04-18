@@ -568,7 +568,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         {period.status === 'open' && (
                           <>
                             <button type="button" onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
-                              className="p-1 text-rmpg-500 hover:text-cyan-400 transition-colors"><Users size={13} /></button>
+                              className="p-1 text-rmpg-500 hover:text-gray-400 transition-colors"><Users size={13} /></button>
                             <button type="button" onClick={() => handleClosePeriod(period.id)} title="Close period"
                               className="p-1 text-rmpg-500 hover:text-green-400 transition-colors"><Check size={13} /></button>
                             <button type="button" onClick={() => handleDeletePeriod(period.id)} title="Delete"
@@ -779,7 +779,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           <>
                             <td className="px-2 py-2 text-right text-white font-mono">{entry.regular_hours}</td>
                             <td className="px-2 py-2 text-right text-amber-400 font-mono">{entry.overtime_hours || '—'}</td>
-                            <td className="px-2 py-2 text-right text-cyan-400 font-mono">{entry.holiday_hours || '—'}</td>
+                            <td className="px-2 py-2 text-right text-gray-400 font-mono">{entry.holiday_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.pto_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.sick_hours || '—'}</td>
                           </>
@@ -820,7 +820,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       <td className="px-2 py-2" />
                       <td className="px-2 py-2 text-right text-white font-mono font-bold">{entries.reduce((s, e) => s + e.regular_hours, 0)}</td>
                       <td className="px-2 py-2 text-right text-amber-400 font-mono font-bold">{entries.reduce((s, e) => s + e.overtime_hours, 0) || '—'}</td>
-                      <td className="px-2 py-2 text-right text-cyan-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
+                      <td className="px-2 py-2 text-right text-gray-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.pto_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.sick_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-green-400 font-mono font-bold">{formatCurrency(entries.reduce((s, e) => s + e.gross_pay, 0))}</td>

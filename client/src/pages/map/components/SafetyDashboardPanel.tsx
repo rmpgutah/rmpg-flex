@@ -365,7 +365,7 @@ export default function SafetyDashboardPanel({
 
             {/* Icy roads */}
             {environment.icyRoad && (
-              <div className="flex items-center gap-1 text-[10px] text-cyan-400">
+              <div className="flex items-center gap-1 text-[10px] text-gray-400">
                 <Snowflake size={10} />
                 <span>Icy road conditions</span>
               </div>

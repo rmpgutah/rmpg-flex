@@ -31,7 +31,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const borderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-l-green-500';
-      case 'in_progress': return 'border-l-blue-500';
+      case 'in_progress': return 'border-l-gray-500';
       case 'scheduled': return 'border-l-amber-500';
       case 'overdue':
       case 'expired': return 'border-l-red-500';
@@ -42,7 +42,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-t-green-500';
-      case 'in_progress': return 'border-t-blue-500';
+      case 'in_progress': return 'border-t-gray-500';
       case 'scheduled': return 'border-t-amber-500';
       case 'overdue':
       case 'expired': return 'border-t-red-500';

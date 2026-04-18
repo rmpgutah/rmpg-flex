@@ -488,8 +488,8 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           aria-checked={showBreadcrumbs}
           aria-label="Toggle Breadcrumbs layer"
         >
-          {showBreadcrumbs ? <Eye className="w-3 h-3 text-cyan-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-          <Route className="w-3 h-3 text-cyan-400" />
+          {showBreadcrumbs ? <Eye className="w-3 h-3 text-gray-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+          <Route className="w-3 h-3 text-gray-400" />
           <span className="text-[10px] text-rmpg-200 flex-1">Breadcrumbs</span>
         </button>
         {showBreadcrumbs && (
@@ -501,7 +501,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   onClick={() => setBreadcrumbHours(h)}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     breadcrumbHours === h
-                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                       : 'text-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
@@ -535,7 +535,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   onClick={() => setBreadcrumbColorMode(mode)}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     breadcrumbColorMode === mode
-                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                       : 'text-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
@@ -566,7 +566,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       setPlaybackIdx(0);
                       setIsPlaying(false);
                     }}
-                    className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-cyan-600"
+                    className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-gray-600"
                     style={{ borderRadius: 2 }}
                   >
                     <option value="">Replay trail...</option>
@@ -594,7 +594,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                               setIsPlaying(true);
                             }
                           }}
-                          className="p-0.5 rounded-sm hover:bg-cyan-900/40 transition-colors"
+                          className="p-0.5 rounded-sm hover:bg-gray-900/40 transition-colors"
                           title={isPlaying ? 'Pause' : 'Play'}
                         >
                           {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
@@ -614,7 +614,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                               playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
                             }
                           }}
-                          className="flex-1 h-1 accent-cyan-400"
+                          className="flex-1 h-1 accent-gray-400"
                         />
                         <span className="text-[8px] font-mono text-rmpg-400 w-12 text-right">
                           {playbackIdx + 1}/{totalPts}
@@ -628,7 +628,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                             onClick={() => setPlaybackSpeed(spd)}
                             className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                               playbackSpeed === spd
-                                ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                                ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                                 : 'text-rmpg-500 hover:text-rmpg-300'
                             }`}
                           >
@@ -738,7 +738,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           onClick={() => setShowGeoPanel(!showGeoPanel)}
           className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
         >
-          <Globe2 className="w-3 h-3 text-cyan-400" />
+          <Globe2 className="w-3 h-3 text-gray-400" />
           <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
           <span className="text-[9px] text-rmpg-500">
             {Object.values(geoLayerStates).filter((s: any) => s.visible).length}/{geoConfigs.length}
@@ -1018,7 +1018,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                                     key={unit.id}
                                     className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                       assignUnitIds.includes(unit.id)
-                                        ? 'bg-blue-900/30 text-blue-300'
+                                        ? 'bg-gray-900/30 text-gray-300'
                                         : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                     }`}
                                   >
@@ -1032,7 +1032,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                                           setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                         }
                                       }}
-                                      className="w-2.5 h-2.5 accent-blue-500"
+                                      className="w-2.5 h-2.5 accent-gray-500"
                                     />
                                     <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                     {unit.officer_name && (
@@ -1144,7 +1144,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                             <span className="text-emerald-400 font-bold">{stats.assigned}</span> areas
                           </span>
                           <span className="text-[7px] text-rmpg-500">
-                            <span className="text-blue-400 font-bold">{stats.officers}</span> officers
+                            <span className="text-gray-400 font-bold">{stats.officers}</span> officers
                           </span>
                           <span className="text-[7px] text-rmpg-500">
                             <span className="text-amber-400 font-bold">{stats.units}</span> units
@@ -1459,7 +1459,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               <button type="button"
                 onClick={() => setShowGeofences(!showGeofences)}
                 className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showGeofences ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showGeofences ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Radar className="w-3 h-3" />
@@ -1472,7 +1472,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button type="button"
                   onClick={onToggleGeofenceDraw}
                   className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
-                    geofenceDrawingMode ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                    geofenceDrawingMode ? 'bg-gray-900/50 text-gray-300 border border-gray-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
                   Draw
@@ -1518,7 +1518,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               <button type="button"
                 onClick={() => setShowFieldInterviews(!showFieldInterviews)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showFieldInterviews ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showFieldInterviews ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <FileSearch className="w-3 h-3" />
@@ -1535,7 +1535,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       onClick={() => setFiDays(d)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         fiDays === d
-                          ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                          ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                           : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
@@ -1568,7 +1568,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             <button type="button"
               onClick={() => setShowResponseRadius(!showResponseRadius)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                showResponseRadius ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
               }`}
             >
               <Target className="w-3 h-3" />
@@ -1671,7 +1671,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             <button type="button"
               onClick={() => setShowFleetVehicles(!showFleetVehicles)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                showFleetVehicles ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
               }`}
             >
               <Car className="w-3 h-3" />

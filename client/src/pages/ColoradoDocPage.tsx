@@ -48,7 +48,7 @@ function statusClass(status: string | null): string {
     return 'bg-green-900/50 text-green-400 border-green-700/50';
   if (s.includes('escape') || s.includes('abscond'))
     return 'bg-rose-900/60 text-rose-300 border-rose-600/50';
-  return 'bg-blue-900/50 text-blue-400 border-blue-700/50';
+  return 'bg-gray-900/50 text-gray-400 border-gray-700/50';
 }
 
 const timeAgo = (date: string): string => {
@@ -225,7 +225,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('name')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'name'
-                    ? 'bg-[#888888]/30 text-blue-300 border border-[#888888]/50'
+                    ? 'bg-[#888888]/30 text-gray-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -236,7 +236,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('doc')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'doc'
-                    ? 'bg-[#888888]/30 text-blue-300 border border-[#888888]/50'
+                    ? 'bg-[#888888]/30 text-gray-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -277,7 +277,7 @@ export default function ColoradoDocPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888]/20 border border-[#888888]/40 text-blue-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#888888]/30 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888]/20 border border-[#888888]/40 text-gray-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#888888]/30 transition-colors disabled:opacity-40"
               >
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
                 Search
@@ -328,7 +328,7 @@ export default function ColoradoDocPage() {
                           : 'hover:bg-[#181818] text-rmpg-300'
                       }`}
                     >
-                      <td className="px-2.5 py-1.5 font-mono text-blue-400">{r.doc_number}</td>
+                      <td className="px-2.5 py-1.5 font-mono text-gray-400">{r.doc_number}</td>
                       <td className="px-2.5 py-1.5 font-medium">
                         {r.last_name}, {r.first_name}
                         {r.middle_name ? ` ${r.middle_name}` : ''}
@@ -381,7 +381,7 @@ export default function ColoradoDocPage() {
           <div className="w-[380px] border-l border-[#2b2b2b] bg-[#141414] overflow-y-auto flex-shrink-0">
             <div className="p-3 border-b border-[#2b2b2b] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <User size={14} className="text-blue-400" />
+                <User size={14} className="text-gray-400" />
                 <span className="text-xs font-bold text-white">Offender Detail</span>
               </div>
               <button type="button"

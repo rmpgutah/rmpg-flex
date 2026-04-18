@@ -193,7 +193,7 @@ export default function TacticalToolsPanel({
       {/* #31: Command rings section with blue accent */}
       <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #888888', background: 'rgba(136, 136, 136,0.03)' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
-          <Circle size={11} className="text-blue-400" />
+          <Circle size={11} className="text-gray-400" />
           Command Rings
         </div>
         <div className="text-[9px] font-mono text-rmpg-400">
@@ -243,7 +243,7 @@ export default function TacticalToolsPanel({
       {/* Emergency Services */}
       <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #888888' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
-          <Building2 size={11} className="text-cyan-400" />
+          <Building2 size={11} className="text-gray-400" />
           Emergency Services
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">

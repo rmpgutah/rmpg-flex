@@ -7,7 +7,7 @@ import { formatMilitary } from '../utils/fleetFormatters';
 
 const TYPE_BADGE: Record<InspectionType, { bg: string; text: string; border: string }> = {
   pre_trip: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
-  post_trip: { bg: 'bg-cyan-900/30', text: 'text-cyan-400', border: 'border-cyan-700/40' },
+  post_trip: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
   monthly: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700/40' },
   annual: { bg: 'bg-green-900/30', text: 'text-green-400', border: 'border-green-700/40' },
 };
@@ -70,8 +70,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
           <div className="text-[7px] text-rmpg-500 uppercase">Pass Rate</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Calendar className="w-3.5 h-3.5 mx-auto text-cyan-400 mb-1" />
-          <div className="text-[10px] font-bold font-mono text-cyan-400">
+          <Calendar className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
+          <div className="text-[10px] font-bold font-mono text-gray-400">
             {lastInspection ? formatMilitary(lastInspection.inspection_date) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Insp.</div>

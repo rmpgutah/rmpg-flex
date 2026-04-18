@@ -61,11 +61,11 @@ function channelLabel(ch?: string): string {
   return ch === 'outside' ? 'FRONT' : 'REAR';
 }
 function channelColor(ch?: string): string {
-  return ch === 'outside' ? 'text-blue-400' : 'text-purple-400';
+  return ch === 'outside' ? 'text-gray-400' : 'text-purple-400';
 }
 function channelBg(ch?: string): string {
   return ch === 'outside'
-    ? 'bg-blue-900/80 text-blue-300 border border-blue-600/50'
+    ? 'bg-gray-900/80 text-gray-300 border border-gray-600/50'
     : 'bg-purple-900/80 text-purple-300 border border-purple-600/50';
 }
 
@@ -385,7 +385,7 @@ export default function DashCamerasPage() {
               >
                 <td>
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <Video className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+                    <Video className="w-3 h-3 text-gray-400 flex-shrink-0" />
                     <span className="text-xs font-semibold text-rmpg-200 truncate max-w-[180px]" title={v.title}>
                       {v.title}
                     </span>
@@ -433,7 +433,7 @@ export default function DashCamerasPage() {
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
         style={{ background: 'linear-gradient(180deg, #2b2b2b, #181818)', borderBottom: '1px solid #141414' }}>
-        <Video className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+        <Video className="w-3 h-3 text-gray-400 flex-shrink-0" />
         <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
         <button type="button" onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
           <Maximize2 className="w-3 h-3" />
@@ -693,15 +693,15 @@ export default function DashCamerasPage() {
       <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0" role="group" aria-label="Video statistics"
         style={{ borderBottom: '1px solid #141414' }}>
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
-          <Film className="w-3 h-3 text-cyan-400" />
-          <span className="text-[10px] font-mono font-bold text-cyan-400">{stats.total}</span>
+          <Film className="w-3 h-3 text-gray-400" />
+          <span className="text-[10px] font-mono font-bold text-gray-400">{stats.total}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Videos</span>
         </div>
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
 
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
           <span className="led-dot" style={{ width: 5, height: 5, background: '#aaaaaa', boxShadow: '0 0 4px #a0a0a080' }} />
-          <span className="text-[10px] font-mono font-bold text-blue-400">{stats.frontCam}</span>
+          <span className="text-[10px] font-mono font-bold text-gray-400">{stats.frontCam}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Front</span>
         </div>
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />

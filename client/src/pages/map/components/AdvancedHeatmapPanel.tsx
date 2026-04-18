@@ -137,7 +137,7 @@ interface HeatmapPreset {
 const QUICK_PRESETS: HeatmapPreset[] = [
   { key: 'crime', label: 'Crime', mode: 'density', colorScheme: 'heat', radius: 30, accent: '#f97316' },
   { key: 'risk', label: 'Risk', mode: 'risk', colorScheme: 'risk', radius: 25, accent: '#ef4444' },
-  { key: 'temporal', label: 'Temporal', mode: 'temporal', colorScheme: 'blue', radius: 20, accent: '#888888' },
+  { key: 'temporal', label: 'Temporal', mode: 'temporal', colorScheme: 'gold', radius: 20, accent: '#888888' },
   { key: 'night', label: 'Night Shift', mode: 'density', colorScheme: 'purple', radius: 30, hourRange: [19, 7], accent: '#a855f7' },
 ];
 
@@ -386,7 +386,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([Math.min(v, hourRange[1]), hourRange[1]]);
                   }}
-                  className="w-full h-1 accent-blue-500 cursor-pointer"
+                  className="w-full h-1 accent-gray-500 cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>
@@ -401,7 +401,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([hourRange[0], Math.max(v, hourRange[0])]);
                   }}
-                  className="w-full h-1 accent-blue-500 cursor-pointer"
+                  className="w-full h-1 accent-gray-500 cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>

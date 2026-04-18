@@ -96,7 +96,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
     { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-blue-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-gray-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
   ];
 

@@ -35,15 +35,15 @@ const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
 const VIOLATION_STATUS_COLORS: Record<string, string> = {
   open: 'bg-red-900/50 text-red-400 border-red-700/50',
   notice_sent: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  reinspection: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  reinspection: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   resolved: 'bg-green-900/50 text-green-400 border-green-700/50',
   referred: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   voided: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
 };
 
 const TOW_STATUS_COLORS: Record<string, string> = {
-  ordered: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
-  dispatched: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  ordered: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  dispatched: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   in_progress: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border-green-700/50',
   released: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
@@ -353,7 +353,7 @@ export default function CodeEnforcementPage() {
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">PKG TODAY</div>
-              <div className="text-sm font-bold text-blue-400">{stats.parking_citations_today || 0}</div>
+              <div className="text-sm font-bold text-gray-400">{stats.parking_citations_today || 0}</div>
             </div>
           </div>
         )}
@@ -425,7 +425,7 @@ export default function CodeEnforcementPage() {
                         (v as any).severity === 'critical' ? 'bg-red-900/60 text-red-400 border-red-700/50' :
                         (v as any).severity === 'high' || (v as any).severity === 'major' ? 'bg-orange-900/50 text-orange-400 border-orange-700/50' :
                         (v as any).severity === 'moderate' || (v as any).severity === 'medium' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                        'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                        'bg-gray-900/50 text-gray-400 border-gray-700/50'
                       }`}>
                         {((v as any).severity || '').toUpperCase()}
                       </span>
@@ -509,7 +509,7 @@ export default function CodeEnforcementPage() {
                   <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Reinspection</div>
                   <button type="button"
                     onClick={() => setShowReinspection(!showReinspection)}
-                    className="text-[10px] px-2 py-1 border border-blue-700/50 text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 transition-colors"
+                    className="text-[10px] px-2 py-1 border border-gray-700/50 text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 transition-colors"
                   >
                     <Calendar style={{ width: 10, height: 10, display: 'inline', marginRight: 4 }} />
                     Schedule Reinspection
@@ -527,7 +527,7 @@ export default function CodeEnforcementPage() {
                     <button type="button"
                       onClick={handleScheduleReinspection}
                       disabled={!reinspectionDate || schedulingReinspection}
-                      className="text-[10px] px-3 py-1 bg-blue-900/40 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 disabled:opacity-40 transition-colors"
+                      className="text-[10px] px-3 py-1 bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 disabled:opacity-40 transition-colors"
                     >
                       {schedulingReinspection ? 'Scheduling...' : 'Confirm'}
                     </button>
@@ -537,7 +537,7 @@ export default function CodeEnforcementPage() {
                   </div>
                 )}
                 {(selectedViolation as any).reinspection_date && (
-                  <div className="mt-2 text-[10px] text-blue-400 flex items-center gap-1">
+                  <div className="mt-2 text-[10px] text-gray-400 flex items-center gap-1">
                     <Calendar style={{ width: 10, height: 10 }} />
                     Reinspection scheduled: {safeDateStr((selectedViolation as any).reinspection_date)}
                   </div>

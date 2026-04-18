@@ -44,7 +44,7 @@ function calcHours(entry: TimeEntry): string {
 function leftBarColor(status: string): string {
   if (status === 'clocked_in') return 'border-l-green-500';
   if (status === 'on_break') return 'border-l-amber-500';
-  if (status === 'edited') return 'border-l-blue-500';
+  if (status === 'edited') return 'border-l-gray-500';
   return 'border-l-rmpg-500';
 }
 
@@ -134,7 +134,7 @@ export default function TimeLogDetailTab({
           <p className="text-lg font-bold text-brand-400 font-mono">{totalHours.toFixed(1)}</p>
           <p className="field-label">Hours</p>
         </div>
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500">
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-gray-500">
           <p className="text-lg font-bold text-rmpg-100 font-mono">{avgPerEntry.toFixed(1)}</p>
           <p className="field-label">Avg/Entry</p>
         </div>

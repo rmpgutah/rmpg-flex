@@ -53,7 +53,7 @@ function interactionColor(type: string | null | undefined): string {
     case 'community_contact':
     case 'field_training':
     default:
-      return 'bg-cyan-600/70 text-white';
+      return 'bg-[#888888]/70 text-white';
   }
 }
 

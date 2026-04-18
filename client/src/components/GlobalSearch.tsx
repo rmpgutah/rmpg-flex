@@ -83,7 +83,7 @@ const ENTITY_CONFIG = {
     icon: Users,
     label: 'Personnel',
     route: '/personnel',
-    color: 'text-cyan-400',
+    color: 'text-gray-400',
   },
 };
 

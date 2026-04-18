@@ -562,7 +562,7 @@ export default function OfflineMapFallback({
       {selfPosition && !compact && (
         <button type="button"
           onClick={centerOnSelf}
-          className="absolute bottom-20 right-3 z-[1000] p-2 transition-colors hover:border-blue-500"
+          className="absolute bottom-20 right-3 z-[1000] p-2 transition-colors hover:border-[#d4a017]"
           style={{
             background: 'rgba(6, 12, 20, 0.95)',
             border: '1px solid #2a2a2a',

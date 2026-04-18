@@ -671,7 +671,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={() => setRoutePlannerOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
             title="Plan Route"
             aria-label="Plan Route"
           >
@@ -681,7 +681,7 @@ export default function ServePage() {
           <button type="button"
             onClick={handleSyncFromSM}
             disabled={syncing}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-cyan-400 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-700/40 rounded-[2px] transition-all duration-150 disabled:opacity-40 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 disabled:opacity-40 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
             title="Sync from ServeManager"
             aria-label="Sync from ServeManager"
           >
@@ -773,7 +773,7 @@ export default function ServePage() {
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Overdue</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" /> {'<'}24h</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {'<'}3d</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> {'<'}7d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500 inline-block" /> {'<'}7d</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> 7d+</span>
               </div>
             )}
@@ -846,7 +846,7 @@ export default function ServePage() {
                   {/* Stats bar */}
                   <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px]" role="status" aria-label="Route statistics">
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-blue-400" />
+                      <MapPin size={12} className="text-gray-400" />
                       <span className="font-mono tabular-nums text-white">{totalStops}</span> stops
                     </div>
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
@@ -943,7 +943,7 @@ export default function ServePage() {
                   <div className="flex items-center gap-2 pt-2">
                     <button type="button"
                       onClick={() => setRoutePlannerOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                       aria-label="Open Route Planner"
                     >
                       <Route size={12} />
@@ -976,7 +976,7 @@ export default function ServePage() {
                 <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
                 <button type="button"
                   onClick={() => setRoutePlannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                   aria-label="Open Route Planner"
                 >
                   <Route size={12} />
@@ -1021,9 +1021,9 @@ export default function ServePage() {
               <StatCard
                 label="Jobs Remaining"
                 value={(stats?.pending ?? 0) + (stats?.in_progress ?? 0)}
-                color="text-blue-400"
-                bg="bg-blue-900/20"
-                border="border-blue-700/40"
+                color="text-gray-400"
+                bg="bg-gray-900/20"
+                border="border-gray-700/40"
               />
               <StatCard
                 label="Served Today"

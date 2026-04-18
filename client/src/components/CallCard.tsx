@@ -337,7 +337,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
         )}
         {call.case_number && (
-          <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 px-1">
+          <span className="text-[9px] font-mono text-gray-300 bg-[#141414] border border-[#2e2e2e] px-1">
             {call.case_number}
           </span>
         )}
@@ -389,7 +389,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Feature 8: Response time for cleared calls */}
         {['cleared', 'closed', 'archived'].includes(call.status) && (() => {
           const rt = calcResponseTime(call);
-          return rt ? <span className="font-mono text-cyan-400 ml-auto">RT: {rt}</span> : null;
+          return rt ? <span className="font-mono text-gray-300 ml-auto">RT: {rt}</span> : null;
         })()}
       </div>
 

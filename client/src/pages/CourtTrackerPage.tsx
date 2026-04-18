@@ -35,8 +35,8 @@ const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
 ];
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
-  arraignment: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
-  hearing: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  arraignment: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  hearing: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   trial: 'bg-red-900/50 text-red-400 border-red-700/50',
   sentencing: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   motion: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
@@ -46,7 +46,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  scheduled: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   confirmed: 'bg-green-900/50 text-green-400 border-green-700/50',
   continued: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   completed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',

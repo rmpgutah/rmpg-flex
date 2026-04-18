@@ -628,7 +628,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                     collected: 'bg-green-500',
                     transferred: 'bg-gray-500',
                     checked_out: 'bg-amber-500',
-                    returned: 'bg-cyan-500',
+                    returned: 'bg-gray-500',
                     released: 'bg-purple-500',
                     destroyed: 'bg-red-500',
                   };

@@ -381,10 +381,10 @@ export default function TrespassOrdersPage() {
 
       {/* Feature 19: Bulk Create Panel */}
       {bulkMode && (
-        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs">
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-blue-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
-            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-blue-500 hover:text-blue-300"><X style={{ width: 12, height: 12 }} /></button>
+            <span className="text-gray-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
+            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-gray-500 hover:text-gray-300"><X style={{ width: 12, height: 12 }} /></button>
           </div>
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (

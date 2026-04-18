@@ -240,7 +240,7 @@ export default function ServeSkipTracePanel({
             <div className="space-y-4">
               {/* Result Count Badge */}
               <div className="flex items-center gap-2">
-                <span className="text-[11px] px-2 py-0.5 rounded-[2px] bg-[#888888]/20 text-blue-400 border border-[#888888]/40 font-mono">
+                <span className="text-[11px] px-2 py-0.5 rounded-[2px] bg-[#888888]/20 text-gray-400 border border-[#888888]/40 font-mono">
                   {result.resultCount} person(s) found
                 </span>
               </div>
@@ -320,7 +320,7 @@ export default function ServeSkipTracePanel({
                             </div>
                             <button type="button"
                               onClick={() => onAddToRoute(addr)}
-                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-[#888888]/20 hover:bg-[#888888]/40 text-blue-400 border border-[#888888]/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-[#888888]/20 hover:bg-[#888888]/40 text-gray-400 border border-[#888888]/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
                               title="Add to Route"
                             >
                               <Plus size={10} />

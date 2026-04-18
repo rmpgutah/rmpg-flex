@@ -25,7 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
   filed: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   under_review: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   investigation: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  mediation: 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50',
+  mediation: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   resolved: 'bg-green-900/50 text-green-400 border border-green-700/50',
   dismissed: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
   appealed: 'bg-red-900/50 text-red-400 border border-red-700/50',

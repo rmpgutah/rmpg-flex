@@ -351,7 +351,7 @@ export default function RadioPage() {
                   {!isMe && !isInCall && (
                     <button type="button"
                       onClick={() => startCall(u.userId)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 text-blue-400 hover:text-blue-300"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-300"
                       title={`Call ${u.fullName || u.username}`}
                     >
                       <Phone style={{ width: 11, height: 11 }} />
@@ -599,19 +599,19 @@ export default function RadioPage() {
         >
           <Radio style={{ width: 16, height: 16, color: '#aaaaaa', flexShrink: 0 }} />
           <div className="flex-1">
-            <div className="text-[10px] font-mono font-bold text-blue-300 tracking-wider">
+            <div className="text-[10px] font-mono font-bold text-gray-300 tracking-wider">
               PAGE FROM {incomingPage.from_full_name || incomingPage.from_username}
               {incomingPage.from_call_sign ? ` (${incomingPage.from_call_sign})` : ''}
             </div>
             {incomingPage.message && (
-              <div className="text-[10px] font-mono text-blue-400/80 mt-0.5">
+              <div className="text-[10px] font-mono text-gray-400/80 mt-0.5">
                 {incomingPage.message}
               </div>
             )}
           </div>
           <button type="button"
             onClick={dismissPage}
-            className="text-[9px] font-mono text-blue-400 hover:text-white px-2 py-0.5"
+            className="text-[9px] font-mono text-gray-400 hover:text-white px-2 py-0.5"
             style={{ border: '1px solid #88888880' }}
           >
             DISMISS
@@ -631,10 +631,10 @@ export default function RadioPage() {
         >
           <PhoneCall style={{ width: 16, height: 16, color: '#888888', flexShrink: 0 }} />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-mono font-bold text-blue-300 truncate">
+            <div className="text-xs font-mono font-bold text-gray-300 truncate">
               PRIVATE CALL — {activeCall.partnerName}
             </div>
-            <div className="text-[10px] font-mono text-blue-400/70">
+            <div className="text-[10px] font-mono text-gray-400/70">
               {formatCallDuration(callDuration)}
               {callMuted && ' — MUTED'}
             </div>
@@ -675,7 +675,7 @@ export default function RadioPage() {
           }}
         >
           <Phone style={{ width: 14, height: 14, color: '#aaaaaa', animation: 'radioPulse 1.5s ease infinite' }} />
-          <span className="text-xs font-mono text-blue-300">
+          <span className="text-xs font-mono text-gray-300">
             Calling <strong>{ringingTarget.name}</strong>...
           </span>
           <button type="button"
@@ -1055,7 +1055,7 @@ export default function RadioPage() {
               {/* Hint text */}
               <div className="mt-4 text-center">
                 {isInCall ? (
-                  <span className="text-[10px] font-mono text-blue-400">
+                  <span className="text-[10px] font-mono text-gray-400">
                     PTT disabled during private call
                   </span>
                 ) : !micSupported ? (

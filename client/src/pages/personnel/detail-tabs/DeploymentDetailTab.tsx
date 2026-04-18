@@ -38,7 +38,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
     switch (status) {
       case 'completed': return 'border-l-rmpg-500';
       case 'cancelled': return 'border-l-red-500';
-      case 'scheduled': return 'border-l-blue-500';
+      case 'scheduled': return 'border-l-gray-500';
       default: return 'border-l-rmpg-600';
     }
   };

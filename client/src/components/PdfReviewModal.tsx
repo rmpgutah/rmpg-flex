@@ -215,7 +215,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-      <div className="bg-[#141e2b] border border-[#2e2e2e] w-[95vw] h-[90vh] flex flex-col">
+      <div className="bg-[#141414] border border-[#2e2e2e] w-[95vw] h-[90vh] flex flex-col">
         <header className="flex justify-between items-center px-4 py-2 border-b border-[#222]">
           <h2 className="text-[#d4a017] font-bold">
             {schema.meta.title} — Form {schema.meta.formNumber}
@@ -308,7 +308,7 @@ function LabeledEditor<T extends Record<string, any>>({
       </span>
       <input
         aria-label={field.label}
-        className="w-full bg-[#0d1520] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+        className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -363,7 +363,7 @@ function NarrativeEditor<T extends Record<string, any>>({
       <textarea
         aria-label={field.label}
         rows={4}
-        className="w-full bg-[#0d1520] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+        className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -444,7 +444,7 @@ function TableEditor<T extends Record<string, any>>({
                     value={String((row as Record<string, unknown>)[c.key] ?? '')}
                     disabled={disabled}
                     onChange={(e) => updateCell(i, c.key, e.target.value)}
-                    className="w-full bg-[#0d1520] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+                    className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
                   />
                 </td>
               ))}
@@ -472,7 +472,7 @@ function SignaturePlaceholder<T>({ field }: { field: SignatureField<T> }) {
   return (
     <div className="block mb-2 text-xs">
       <span className="block text-gray-400 uppercase mb-1">{field.label}</span>
-      <div className="w-full bg-[#0d1520] border border-dashed border-[#2e2e2e] p-2 text-gray-500 italic">
+      <div className="w-full bg-[#050505] border border-dashed border-[#2e2e2e] p-2 text-gray-500 italic">
         Signature editor coming soon
       </div>
     </div>
