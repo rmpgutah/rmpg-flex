@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastIncidentUpdate } from '../utils/websocket';
+import { broadcastIncidentUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
@@ -520,6 +520,14 @@ router.post('/', async (req: Request, res: Response) => {
     `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
 
     broadcastIncidentUpdate({ action: 'incident_created', id: result.lastInsertRowid, incident });
+    // Dispatcher Brain fan-in (Phase 2): flat-shape broadcast so the
+    // brain's incident-created rule can consume it. Legacy consumers
+    // keep using broadcastIncidentUpdate above.
+    broadcastDispatchUpdate({
+      action: 'incident_created',
+      incident_number: (incident as any)?.incident_number,
+      source_call: (incident as any)?.call_id ?? null,
+    });
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error);

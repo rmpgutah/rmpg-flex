@@ -33,6 +33,44 @@ let currentSource: AudioBufferSourceNode | null = null;
 // Preferred female voices for SpeechSynthesis fallback
 const PREFERRED_VOICES = ['Samantha', 'Karen', 'Zira', 'Jenny'];
 
+// ─── Persona payload helper (Task 1.4) ──────────────────────
+// Reads voice persona from localStorage (written by useVoicePersona.ts)
+// and produces the server-facing payload with rate/pitch already
+// formatted as Edge-TTS strings. Urgent adds a fixed boost
+// (+10% rate, +5Hz pitch) on top of the persona baseline.
+
+export interface EdgeTTSPayload {
+  text: string;
+  urgent: boolean;
+  voice: string;
+  rate: string;   // e.g. '+10%', '-5%'
+  pitch: string;  // e.g. '+5Hz', '-10Hz'
+}
+
+function safeNum(raw: string | null, fallback: number): number {
+  if (raw == null) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function getEdgeTTSPayload(text: string, urgent: boolean = false): EdgeTTSPayload {
+  const voice = localStorage.getItem('rmpg-voice-persona') || 'en-US-JennyNeural';
+  const rateNum = safeNum(localStorage.getItem('rmpg-voice-rate'), 1.0);
+  const pitchNum = safeNum(localStorage.getItem('rmpg-voice-pitch'), 0);
+
+  let ratePct = Math.round((rateNum - 1) * 100);
+  let pitchHz = Math.round(pitchNum);
+  if (urgent) {
+    ratePct += 10;
+    pitchHz += 5;
+  }
+
+  const rate = `${ratePct >= 0 ? '+' : ''}${ratePct}%`;
+  const pitch = `${pitchHz >= 0 ? '+' : ''}${pitchHz}Hz`;
+
+  return { text, urgent, voice, rate, pitch };
+}
+
 // ─── AudioWorklet Registration ─────────────────────────────
 // Inline processor code as Blob URLs to avoid separate public files.
 // Registration is idempotent — only loads once per AudioContext.
@@ -216,7 +254,7 @@ function playSquelchBeep(ctx: AudioContext, startTime: number, type: 'open' | 'c
 
 // ─── Edge-TTS Fetch + Radio Processing ──────────────────────
 
-async function fetchAndPlay(text: string): Promise<void> {
+async function fetchAndPlay(text: string, urgent: boolean = false): Promise<void> {
   const token = localStorage.getItem('rmpg_token');
   const ctx = getAudioContext();
 
@@ -229,7 +267,7 @@ async function fetchAndPlay(text: string): Promise<void> {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(getEdgeTTSPayload(text, urgent)),
   });
 
   if (!res.ok) throw new Error(`TTS request failed: ${res.status}`);
@@ -382,7 +420,7 @@ async function processQueue(): Promise<void> {
     const entry = queue.shift()!;
     try {
       if (isEdgeTTSEnabled()) {
-        await fetchAndPlay(entry.text);
+        await fetchAndPlay(entry.text, entry.urgent);
       } else {
         await speakFallback(entry.text);
       }
@@ -410,6 +448,17 @@ async function processQueue(): Promise<void> {
 export async function speak(text: string, severity?: AlertSeverity): Promise<void> {
   if (!isSoundEnabled()) return;
   if (severity && !shouldPlayAudio(severity)) return;
+
+  // Mirror every spoken line into the transcript buffer so the
+  // DispatcherTranscript drawer and ARIA live regions stay in sync.
+  // Dynamic import avoids a circular module load (edgeTTS -> hook -> React).
+  import('../hooks/useDispatchTranscript')
+    .then((m) => m.pushTranscriptEntry({
+      text,
+      severity: severity ?? 'minor',
+      source: 'system',
+    }))
+    .catch(() => { /* transcript is best-effort */ });
 
   const urgent = severity === 'major';
 

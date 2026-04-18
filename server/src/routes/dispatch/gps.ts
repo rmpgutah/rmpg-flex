@@ -2,10 +2,18 @@ import { Router, Request, Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { broadcastUnitUpdate, broadcastAlert } from '../../utils/websocket';
+import { broadcastUnitUpdate, broadcastAlert, broadcastDispatchUpdate } from '../../utils/websocket';
 import { reverseGeocodeDetailed } from '../../utils/geocode';
 import { localNow } from '../../utils/timeUtils';
 import { auditLog } from '../../utils/auditLogger';
+import { identifyBeat } from '../../utils/geofence';
+
+// Server-side dedup for Dispatcher Brain geofence-breach broadcasts.
+// Map key = call_sign; value = last-broadcast-at (ms). 3min matches
+// the client-side rule cooldown so the WS channel isn't spammed on
+// every GPS tick while a unit is out of beat.
+const GEOFENCE_BREACH_CD_MS = 3 * 60_000;
+const lastGeofenceBreachAt = new Map<string, number>();
 
 // GPS source priority — higher number wins
 const GPS_SOURCE_PRIORITY: Record<string, number> = {
@@ -254,6 +262,40 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
         action: 'unit_position_update',
         unit: { ...updated, speed_mph: latestSpeedMph },
       });
+
+      // Dispatcher Brain geofence-breach emitter (Phase 3). Only runs
+      // when the unit has an assigned_beat configured; compares the
+      // identified beat at the latest GPS position against the
+      // expected beat, broadcasts unit_outside_beat with dedup.
+      try {
+        const assignedBeat: string | null = (updated as any)?.assigned_beat ?? null;
+        const callSign: string | null = (updated as any)?.call_sign ?? null;
+        if (assignedBeat && callSign) {
+          const identified = identifyBeat(latest.lat, latest.lng);
+          const actualBeat = identified?.beat_code ?? null;
+          const outOfBeat = actualBeat !== assignedBeat;
+          if (outOfBeat) {
+            const last = lastGeofenceBreachAt.get(callSign) ?? 0;
+            if (Date.now() - last >= GEOFENCE_BREACH_CD_MS) {
+              lastGeofenceBreachAt.set(callSign, Date.now());
+              broadcastDispatchUpdate({
+                action: 'unit_outside_beat',
+                call_sign: callSign,
+                beat: assignedBeat,
+                current_beat: actualBeat,
+              });
+            }
+          } else {
+            // Back in beat — clear the dedup stamp so a later breach
+            // fires immediately rather than waiting out the cooldown.
+            lastGeofenceBreachAt.delete(callSign);
+          }
+        }
+      } catch (err: any) {
+        // Geofence lookup failures are non-fatal — better to lose a
+        // spoken warning than to 500 on a GPS update.
+        console.error('[GPS] geofence-breach check failed:', err?.message ?? err);
+      }
     }
 
     // ── Speed violation detection ──
