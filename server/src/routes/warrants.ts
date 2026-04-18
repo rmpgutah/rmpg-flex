@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { logSafe } from '../utils/logSafe';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
@@ -1043,7 +1044,7 @@ router.post('/scrapers/:source_key/trigger', requireRole('admin', 'manager'), as
 
     // Fire and forget — returns immediately so UI doesn't block on the scrape
     const { syncSource } = await import('../utils/multiStateWarrantScraper');
-    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${sourceKey}:`, e.message));
+    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${logSafe(sourceKey)}: ${logSafe(e.message)}`));
 
     auditLog(req, 'warrant_updated', 'config', 0, `Scraper manually triggered: ${sourceKey}`);
     return res.json({ success: true, source_key: sourceKey, message: 'Scrape initiated' });

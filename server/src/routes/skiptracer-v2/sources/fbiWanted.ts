@@ -10,6 +10,7 @@ import sanitizeHtml from 'sanitize-html';
 import { BaseDataSource } from './base';
 import { SearchQuery, SourceCategory, SourceResult, WatchlistFlag } from '../types';
 import { localNow } from '../../../utils/timeUtils';
+import { logSafe } from '../../../utils/logSafe';
 
 const API_BASE = 'https://api.fbi.gov/wanted/v1/list';
 
@@ -231,7 +232,7 @@ export default class FbiWantedSource extends BaseDataSource {
         return result;
       });
     } catch (err) {
-      console.error('[FbiWantedSource] Search error:', err);
+      console.error(`[FbiWantedSource] Search error: ${logSafe(err instanceof Error ? err.message : String(err))}`);
       return [];
     }
   }
