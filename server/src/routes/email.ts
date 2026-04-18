@@ -48,6 +48,7 @@ import {
 import { testSMTPConnection } from '../utils/smtpClient';
 import { sendEmail } from '../utils/emailSender';
 import { syncNow, restartEmailPoller } from '../utils/emailPoller';
+import { isUserEnrolled, getUserTokens } from '../utils/userGraphTokens';
 
 const router = Router();
 
@@ -125,12 +126,20 @@ router.use(authenticateToken);
 // ============================================================
 
 // GET /api/email/status — Integration status
-router.get('/status', (_req: Request, res: Response) => {
+router.get('/status', (req: Request, res: Response) => {
   try {
     const status = getStatus();
+    const userId = req.user!.userId;
+    const enrolled = isUserEnrolled(userId);
+    const tokens = enrolled ? getUserTokens(userId) : null;
     const db = getDb();
-    const cached = db.prepare('SELECT COUNT(*) as count FROM email_cache').get() as { count: number };
-    res.json({ ...status, cachedMessages: cached?.count || 0 });
+    const cached = db.prepare('SELECT COUNT(*) as count FROM email_cache WHERE owner_user_id = ?').get(userId) as { count: number };
+    res.json({
+      ...status,
+      enrolled,
+      mailbox: tokens?.mailbox || null,
+      cachedMessages: cached?.count || 0,
+    });
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
