@@ -821,6 +821,22 @@ export default function MenuBar({
           { type: 'action', label: 'Policies & Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
           { type: 'action', label: 'Training Dashboard', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Field Operations Guide', icon: Clipboard, action: () => { setShow10Codes(true); } },
+          { type: 'separator' },
+          {
+            type: 'action',
+            label: 'Dispatch Guide (PDF)',
+            icon: Download,
+            action: async () => {
+              try {
+                // Lazy-import so the jsPDF chunk only loads when a user
+                // actually downloads the guide — keeps the login bundle lean.
+                const { generateDispatchGuidePdf } = await import('../utils/dispatchGuidePdfGenerator');
+                generateDispatchGuidePdf();
+              } catch (err) {
+                console.error('[DispatchGuide] Generation failed:', err);
+              }
+            },
+          },
         ],
       },
       { type: 'separator' },
