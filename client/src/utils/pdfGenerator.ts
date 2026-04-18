@@ -15,13 +15,90 @@ import { getTypeCode, formatIncidentType, type PdfReportType } from './caseNumbe
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
+  PDF_VALUE_FONT,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth, getQuarterWidth,
   getGridStartX, getGridContentWidth,
 } from './pdfTokens';
 import {
   drawNibrsHeader,
+  drawEnhancedNibrsHeader,
+  drawClassificationBar,
+  applyClassificationToAllPages,
+  drawCautionFlagStrip,
+  drawPriorityBar,
+  drawDispatchTimelineStrip,
+  drawChainOfCustodyTable,
+  drawOfficerCertificationBlock,
+  drawBatesStamp,
+  applyBatesToAllPages,
+  drawCode39Barcode,
+  drawBarcodeScanStrip,
+  drawBarcodeCornerStamp,
+  applyBarcodeToAllPages,
+  drawPdf417Barcode,
+  drawPdf417CornerStamp,
+  drawPdf417SideBarcode,
+  applyPdf417ToAllPages,
+  applyPdf417SideToAllPages,
+  encodePersonIdPayload,
+  encodeFormMetadata,
+  drawMugshotFrame,
+  drawDistributionFooter,
+  drawWatermarkVariant,
+  applyWatermarkToAllPages,
+  drawNumberedParagraph,
+  type PersonIdPayload,
+  type FormMetadataPayload,
+  type CautionFlag,
+  type TimelineEvent,
+  type CustodyTransfer,
+  type OfficerSignatureSlot,
+  type EnhancedHeaderConfig,
+  type MugshotMeta,
+  type WatermarkVariant,
+  type PriorityLevel,
 } from './pdfFormHelpers';
+import type { ClassificationLevel } from './pdfTokens';
+
+// ── Re-exports so callers only need to import from pdfGenerator ──
+export {
+  drawEnhancedNibrsHeader,
+  drawClassificationBar,
+  drawCautionFlagStrip,
+  drawPriorityBar,
+  drawDispatchTimelineStrip,
+  drawChainOfCustodyTable,
+  drawOfficerCertificationBlock,
+  drawBatesStamp,
+  drawCode39Barcode,
+  drawBarcodeScanStrip,
+  drawBarcodeCornerStamp,
+  applyBarcodeToAllPages,
+  drawPdf417Barcode,
+  drawPdf417CornerStamp,
+  drawPdf417SideBarcode,
+  applyPdf417ToAllPages,
+  applyPdf417SideToAllPages,
+  encodePersonIdPayload,
+  encodeFormMetadata,
+  drawMugshotFrame,
+  drawDistributionFooter,
+  drawWatermarkVariant,
+  drawNumberedParagraph,
+};
+export type { PersonIdPayload, FormMetadataPayload };
+export type {
+  CautionFlag,
+  TimelineEvent,
+  CustodyTransfer,
+  OfficerSignatureSlot,
+  EnhancedHeaderConfig,
+  MugshotMeta,
+  WatermarkVariant,
+  PriorityLevel,
+  ClassificationLevel,
+};
 
 // ── Status Display Helper — "archived" shows as "CLOSED" in printed documents ──
 export function displayStatus(status: string): string {
@@ -125,7 +202,10 @@ export function sanitizePdfText(text: string): string {
     .replace(/\u2713/g, '[X]')   // ✓ check mark
     .replace(/\u2717/g, '[ ]')   // ✗ cross mark
     .replace(/\u26A0/g, '[!]')   // ⚠ warning
-    .replace(/[^\x00-\xFF]/g, '?'); // Replace any remaining non-Latin-1 chars
+    .replace(/[^\x00-\xFF]/g, '?') // Replace any remaining non-Latin-1 chars
+    .toUpperCase();              // Police-form convention: ALL CAPS (applied
+                                 // globally as the single sanitization chokepoint
+                                 // so every render path emits uppercase text).
 }
 
 /**
@@ -230,7 +310,7 @@ export function addConfidentialWatermark(doc: jsPDF) {
 
   // @ts-expect-error jsPDF GState — visible on both white and dark backgrounds
   doc.setGState(new doc.GState({ opacity: 0.06 }));
-  doc.setFont('courier', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
 
   const cx = pageWidth / 2;
@@ -259,7 +339,7 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.saveGraphicsState();
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.12 }));
-  doc.setFont('courier', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setTextColor(220, 38, 38); // Red
 
   const cx = pageWidth / 2;
@@ -283,7 +363,7 @@ export function addClassificationBar(doc: jsPDF, priority: string, yStart: numbe
 
   doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, yStart, cw, LAYOUT.CLASSIF_BAR_H, 'F');
-  doc.setFont('courier', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_CLASSIF_BAR);
   doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
   doc.text(prio.label, doc.internal.pageSize.getWidth() / 2, yStart + 4.2, { align: 'center' });
@@ -368,7 +448,7 @@ export function addReportHeader(
   metaParts.push(FORM_REVISION);
   metaParts.push(reportDate);
 
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(headerMetaColor[0], headerMetaColor[1], headerMetaColor[2]);
   doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
@@ -387,7 +467,7 @@ export function addReportHeader(
     const prioLabelText = prioShortNames[prioKey]
       || (pKey === 'P1' ? 'P1 - Emergency' : pKey === 'P2' ? 'P2 - Urgent'
         : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
-    doc.setFont('courier', 'bold');
+    doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(5);
     const prioW = doc.getTextWidth(prioLabelText) + 4;
     const prioX = textStartX;
@@ -418,7 +498,7 @@ export function addReportHeader(
 
   // Case number value
   doc.setFontSize(FONT.SIZE_CASE_NUMBER);
-  doc.setFont('courier', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 12, { align: 'center' });
 
   // ── Thin accent line below header (primary color only) ─
@@ -427,7 +507,7 @@ export function addReportHeader(
   doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw, LAYOUT.ACCENT_STRIP_H, 'F');
 
   // ── Reset drawing state ────────────────────────────────
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
@@ -445,13 +525,14 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Section header bar (dark slate) with white text, left-justified
+  // Section header bar (dark slate) with white text, left-justified.
+  // NOTE: no border around this rect — the fill color itself defines the
+  // visual boundary. This prevents a double-line effect when a nested
+  // table or grid is rendered immediately below at the same x coordinates
+  // (the table's own top border is the only stroke at the shared edge,
+  // so the two elements read as visually flush).
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H, 'F');
-  // Thin border around header — matches interior table line weight
-  doc.setDrawColor(...COLOR.BORDER_TABLE);
-  doc.setLineWidth(BORDER.TABLE_ROW);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
@@ -463,7 +544,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
 
   // Reset text color to primary (black) — prevents white text leaking into content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
 
   // Content starts after header bar + content padding (not tight against bar)
   return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y, sectionPage: doc.getNumberOfPages() };
@@ -509,7 +590,11 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 2.3;        // Height reserved for label above value
+  // Height reserved for label above value. Bumped 2.3 → 3.2mm so label
+  // and value don't hug each other — e.g. "INCIDENT NUMBER" → ~1mm gap →
+  // "RKY26-#####-CRM" value. The 0.9mm increase propagates to every
+  // field across every PDF form via this single tokenized constant.
+  const labelH = 3.2;
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
@@ -528,7 +613,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
   const baseBoxH = useReadableText ? 3.2 : 2.6;
   const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
@@ -600,7 +685,7 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
     doc.line(cx - 0.2, cy + 0.8, cx + 1.1, cy - 0.9);
   }
 
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   const safeLabel = sanitizePdfText(label).toUpperCase();
@@ -625,6 +710,18 @@ export function addFlagBadges(
   priority?: string,
 ): number {
   if (!flags || flags.length === 0) return y;
+
+  // Dedup — callers may pass the same flag twice (e.g. from merging
+  // multiple data sources). Normalize case/whitespace for matching so
+  // "Sex Offender" and "SEX OFFENDER" aren't both emitted.
+  const seenFlags = new Set<string>();
+  flags = flags.filter((f) => {
+    const key = sanitizePdfText(f).toUpperCase().trim().replace(/\s+/g, ' ');
+    if (!key || seenFlags.has(key)) return false;
+    seenFlags.add(key);
+    return true;
+  });
+  if (flags.length === 0) return y;
 
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -694,7 +791,7 @@ export function addFlagBadges(
   };
   const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
 
-  doc.setFont('courier', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(fontSize);
 
   let curX = x;
@@ -735,7 +832,7 @@ export function addFlagBadges(
 
   // Reset
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   return curY + pillH + 1.5;
 }
 
@@ -757,7 +854,7 @@ export function addCautionBlock(
 
   const innerPad = 2;
   const maxW = width - innerPad * 2;
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allLines = wordWrapText(doc, sanitizePdfText(cautionText), maxW - 1);
   const lines = allLines.slice(0, 6);
@@ -783,7 +880,7 @@ export function addCautionBlock(
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
 
   // Text content
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(80, 40, 0);
   let textY = y + 6;
@@ -908,7 +1005,7 @@ export function addSignatureBlock(
   // Values — auto-fill from sigData
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
   if (hasSigData) {
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const valY = row2Y + infoRowH - 1.5;
@@ -979,7 +1076,7 @@ export function addStackedSignatures(
     }
   }
 
-  doc.setFont('courier', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text('COMPANY', cx, cy - 1.5, { align: 'center' });
@@ -999,7 +1096,11 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const pageHeight = doc.internal.pageSize.getHeight();
   const cw = getContentWidth(doc);
   const fKey = formKey || activeFormKey;
-  const formNum = FORM_NUMBERS[fKey] || '';
+  // Lookup: if the key is registered in FORM_NUMBERS, use that. Otherwise,
+  // if the key itself already looks like a form identifier (starts with
+  // "FORM ", e.g. "FORM PS-205-BLK" from blank form generator), use it
+  // verbatim. Else empty.
+  const formNum = FORM_NUMBERS[fKey] || (/^FORM\s/i.test(fKey) ? fKey : '');
 
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -1007,19 +1108,25 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Footer text position — pushed up from edge for print margin safety
-  const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 2;
-  const textY = barY + 5;
+  // Footer text position — pulled up to sit inside the printer SAFE PRINT
+  // ZONE (≥8mm from the bottom edge). Previous position at pageHeight-4
+  // was regularly clipped by older inkjets and some lasers that have a
+  // 6mm+ no-print zone at the bottom.
+  const SAFE_PRINT_EDGE_BOTTOM = 8;
+  const textY = pageHeight - SAFE_PRINT_EDGE_BOTTOM;
+
+  // Horizontal anchors also pulled in from the left/right edges.
+  const SAFE_PRINT_EDGE_SIDE = 8;
 
   // Left: Form # + INTERNAL USE ONLY — bold, readable
-  doc.setFont('courier', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
-  doc.text(leftParts.join('  |  '), LAYOUT.PAGE_MARGIN, textY);
+  doc.text(leftParts.join('  |  '), SAFE_PRINT_EDGE_SIDE, textY);
 
   // Right: Page X of Y — bold
-  doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - LAYOUT.PAGE_MARGIN, textY, { align: 'right' });
+  doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - SAFE_PRINT_EDGE_SIDE, textY, { align: 'right' });
 }
 
 /**
@@ -1032,7 +1139,7 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
 export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE): number {
   if (!text) return y;
   text = sanitizePdfText(text);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   const lineH = getPdfTextLineHeight(fontSize, true);
@@ -1124,11 +1231,11 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       if (!hardLine.trim()) continue;
       // Use bold font width for wrapping if line contains bold markers — bold Courier is wider
       const hasBold = /\*\*/.test(hardLine);
-      doc.setFont('courier', hasBold ? 'bold' : 'normal');
+      doc.setFont(PDF_VALUE_FONT, hasBold ? 'bold' : 'normal');
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(hardLine);
       const wrappedLines: string[] = wordWrap(stripped, safeMaxWidth);
-      doc.setFont('courier', 'normal');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];
@@ -1169,7 +1276,7 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
         if (!hasMarkers(lineSeg) && !isLastLine && wrappedLine.trim().length > 0) {
           const words = wrappedLine.split(/\s+/).filter(w => w.length > 0);
           if (words.length > 3) {
-            doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             const textWidth = doc.getTextWidth(words.join(''));
             const extraSpace = (maxWidth - textWidth) / (words.length - 1);
             const fillRatio = textWidth / maxWidth;
@@ -1195,17 +1302,17 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
         while ((segMatch = segRegex.exec(lineSeg)) !== null) {
           if (segMatch.index > lastIdx) {
             const plain = lineSeg.slice(lastIdx, segMatch.index);
-            doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(plain, cursorX, y); cursorX += doc.getTextWidth(plain);
           }
           if (segMatch[2]) {
-            doc.setFont('courier', 'bold'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.setFont(PDF_VALUE_FONT, 'bold'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(segMatch[2], cursorX, y); cursorX += doc.getTextWidth(segMatch[2]);
           } else if (segMatch[3]) {
-            doc.setFont('courier', 'bolditalic'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.setFont(PDF_VALUE_FONT, 'bolditalic'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(segMatch[3], cursorX, y); cursorX += doc.getTextWidth(segMatch[3]);
           } else if (segMatch[4]) {
-            doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(segMatch[4], cursorX, y);
             const tw = doc.getTextWidth(segMatch[4]);
             doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(0.2);
@@ -1216,7 +1323,7 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
         }
         if (lastIdx < lineSeg.length) {
           const plain = lineSeg.slice(lastIdx);
-          doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+          doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
           doc.text(plain, cursorX, y);
         }
         y += lineH;
@@ -1224,7 +1331,7 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       while (charIdx < hardLine.length && hardLine[charIdx] === ' ') charIdx++;
     }
   }
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   return y;
 }
 
@@ -1254,7 +1361,7 @@ export function addNarrativeSection(
   const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(fontSize);
   const stripFmt = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
   const paragraphs = text.split(/\n\n+/);
@@ -1308,7 +1415,7 @@ export function addNarrativeSection(
     doc.setFillColor(246, 246, 250);
     doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(fontSize);
     return contentStartY;
   };
@@ -1367,7 +1474,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
         doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
         const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
-        doc.setFont('courier', 'normal');
+        doc.setFont(PDF_VALUE_FONT, 'normal');
         doc.setFontSize(fontSize);
         return contentStartY;
       };
@@ -1416,7 +1523,7 @@ export function addImageToPage(
     doc.setDrawColor(...COLOR.BORDER_FIELD);
     doc.setLineWidth(BORDER.FIELD);
     doc.rect(x, y, renderW, renderH);
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text('[Image unavailable]', x + renderW / 2, y + renderH / 2, { align: 'center' });
@@ -1455,7 +1562,7 @@ export function addImageGrid(
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(x, y, w, h);
 
-      doc.setFont('courier', 'normal');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
@@ -1468,7 +1575,7 @@ export function addImageGrid(
   }
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   return y;
 }
 
@@ -1495,7 +1602,11 @@ export function addAttachmentsSection(
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
   const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 5) {
+  // Bottom reserve: footer height + safe print zone + BARCODE CLEARANCE.
+  // Barcode is placed at y ∈ [pageH-20, pageH-12], so content must stop
+  // at ≥ pageH-22 (2mm buffer above barcode top). Reserve = 22mm.
+  const BARCODE_CLEARANCE = 15;  // extra space above barcode
+  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - BARCODE_CLEARANCE) {
     doc.addPage();
     addConfidentialWatermark(doc);
 
@@ -1529,11 +1640,14 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header — tight, matching section gap
+    // Content starts below continuation header with the standard SECTION_GAP
+    // so the continuation bar looks visually identical to every other section
+    // header. Previous +4mm extra was removed per user request so the
+    // continuation bar doesn't stand out with excessive spacing below it.
     return contY + contH + SPACING.SECTION_GAP;
   }
   return y;
@@ -1590,15 +1704,20 @@ export function addTableWithShading(
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Dark table header (police report style)
-      doc.setFillColor(...COLOR.BG_TABLE_HDR);
+      // Light slate column header. Border weight MATCHES the inner row
+      // separators and column dividers (BORDER.TABLE_ROW = 0.15) so the
+      // header bar doesn't look "bold on the ends" against thin inner
+      // strokes, and so its extent lands flush with the subsection header
+      // bar above (which has no stroke). All four edges use the same
+      // width + color as the interior breaks for perfect visual uniformity.
+      doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
       doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_OUTER);
-      doc.setLineWidth(BORDER.TABLE_OUTER);
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(BORDER.TABLE_ROW);
       doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH);
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
     }
 
     // Text vertically centered: baseline = top + half height + half cap-height
@@ -1619,7 +1738,7 @@ export function addTableWithShading(
   let currentSegTop = y;
 
   // Data rows — Courier for police typewriter look
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_TABLE_BODY);
 
   for (let i = 0; i < rows.length; i++) {
@@ -1651,7 +1770,7 @@ export function addTableWithShading(
       y = drawHeaders(y);
       currentSegTop = y - 1;
       colSegments.push({ top: currentSegTop, bottom: y, page: doc.getNumberOfPages() });
-      doc.setFont('courier', 'normal');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
     }
 
@@ -1997,7 +2116,10 @@ function addIncidentAlertBadges(
   y = checkPageBreak(doc, y, 8 + rows * cbRowH, priority);
 
   const sec = openAutoSection(doc, label, y);
-  y = sec.contentY + 1;
+  // +2.5 offset accounts for addCheckboxField's boxY = y - 1.8 so the
+  // checkbox square lands below the section header bar instead of clipping
+  // into it. (SECTION_CONTENT_PAD is 0; this offset is checkbox-specific.)
+  y = sec.contentY + 2.5;
 
   const colW = ffw / cols;
   for (let idx = 0; idx < cleanFlags.length; idx += cols) {
@@ -2291,7 +2413,9 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 42, data.priority);
   { const sec = openAutoSection(doc, 'Operational Flags', y); y = sec.contentY;
-    y += 1;
+    // +2.5 offset so checkbox squares land below the header bar (they draw
+    // at boxY = y - 1.8, which would otherwise clip into the dark bar).
+    y += 2.5;
     const flagW = ffw / 6;
     const flagRowH = 4.5; // Must exceed checkbox boxSize (3.2mm) + label clearance
     // Row 1
@@ -2319,16 +2443,12 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW * 4, y);
     addCheckboxField(doc, 'Trespass', !!data.trespass_issued, lx + flagW * 5, y);
     y += flagRowH;
-    // Row 4
+    // Row 4 — final row (was previously duplicated with Row 3 entries;
+    // dedup 2026-04-17: removed the repeated Supvr/LE/Trespass/Foot Pursuit
+    // row since all four labels already appear in Row 2 or Row 3).
     addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, lx, y);
     addCheckboxField(doc, 'Evidence', !!data.evidence_collected, lx + flagW, y);
     addCheckboxField(doc, 'Photos', !!data.photos_taken, lx + flagW * 2, y);
-    addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, lx + flagW * 3, y);
-    y += flagRowH;
-    // Row 4
-    addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, lx, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, lx + flagW, y);
-    addCheckboxField(doc, 'Trespass', !!data.trespass_issued, lx + flagW * 2, y);
     addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, lx + flagW * 3, y);
     y += SPACING.XL;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -2489,7 +2609,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 25, data.priority);
   { const sec = openAutoSection(doc, 'Narrative / Service Notes', y); y = sec.contentY;
     y += SPACING.LG;
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     // Page break callback with continuation header
@@ -2505,7 +2625,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       doc.setTextColor(...COLOR.TEXT_INVERTED);
       const capH2 = FONT.SIZE_SECTION_TITLE * 0.35;
       doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH2) / 2);
-      doc.setFont('courier', 'normal');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       return newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
@@ -2604,7 +2724,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
 
   // Warning Text
   { const sec = openAutoSection(doc, 'Notice', y); y = sec.contentY;
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     const warningText = 'You are hereby notified that you are PROHIBITED from entering, remaining upon, or returning to the above-described property. Any violation of this warning may result in your arrest for Criminal Trespass pursuant to applicable state law. This warning is effective for the period indicated above.';
     y = addWrappedText(doc, warningText, lx, y, ffw, 9);
@@ -3015,7 +3135,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     y += 7;
 
     const tableTopY = y;
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
     for (let i = 0; i < 6; i++) {
       if (i % 2 === 0) {
@@ -3142,7 +3262,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Miranda Advisement', y); y = sec.contentY;
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.text('You have the right to remain silent. Anything you say can and will be used against you in a court of law.', lx, y);
     y += 4;
     doc.text('You have the right to an attorney. If you cannot afford an attorney, one will be appointed for you.', lx, y);
@@ -3416,6 +3536,36 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData)
     }
   }
 
+  // Police-report finalization: vertical PDF417 side barcode on every page
+  // encoding form metadata (form type, case #, agency ORI, date, page n/m).
+  const reportFormMap: Record<string, { form: string; formNumber?: string }> = {
+    incident:        { form: 'INCIDENT',        formNumber: FORM_NUMBERS['incident'] },
+    trespass:        { form: 'TRESPASS',        formNumber: FORM_NUMBERS['trespass'] },
+    accident:        { form: 'ACCIDENT',        formNumber: FORM_NUMBERS['accident'] },
+    medical:         { form: 'MEDICAL',         formNumber: FORM_NUMBERS['medical'] },
+    use_of_force:    { form: 'USE-OF-FORCE',    formNumber: FORM_NUMBERS['use_of_force'] },
+    daily_activity:  { form: 'DAILY-ACTIVITY',  formNumber: FORM_NUMBERS['daily_activity'] },
+    arrest:          { form: 'ARREST',          formNumber: FORM_NUMBERS['arrest'] },
+    process_service: { form: 'PROCESS-SERVICE', formNumber: FORM_NUMBERS['process_service'] },
+  };
+  const fm = reportFormMap[reportType] || { form: String(reportType).toUpperCase() };
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: fm.form,
+        formNumber: fm.formNumber,
+        caseNumber: data.incident_number,
+        reportDate: data.occurred_date || generationTimestamp,
+        officer: data.officer_name,
+        badge: data.badge_number,
+        priority: data.priority,
+        status: data.status,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+      },
+    },
+  });
+
   return doc;
 }
 
@@ -3477,4 +3627,268 @@ export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: 
     console.error('PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${reportType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
+}
+
+// ============================================================
+// Police-Report Finalization (added 2026-04-17)
+// Post-process pass applied to every page: classification banners,
+// Bates stamps, watermark variants, top-of-page barcode scan strip.
+// ============================================================
+
+export interface PoliceReportFinalizeOptions {
+  /** OPT-IN: CJIS classification banners. Omit for no banners. */
+  classification?: ClassificationLevel;
+  /** OPT-IN: Diagonal page watermark. */
+  watermark?: WatermarkVariant;
+  /** OPT-IN: Bates stamp sequence. */
+  bates?: {
+    start?: number;                              // Default: 1
+    prefix?: string;                             // Default: 'RMPG-'
+  };
+  /**
+   * Auto-barcode. DEFAULT: vertical PDF417 side barcode on the right margin
+   * of every page, payload encodes rich form metadata (form type, case #,
+   * agency ORI, date, officer, page #/total).
+   */
+  barcode?: {
+    /**
+     * Barcode presentation mode:
+     *   'side-pdf417'    (default) — vertical PDF417 in right page margin
+     *   'corner-pdf417'            — horizontal PDF417 in bottom-right corner
+     *   'corner-code39'            — compact 1D Code 39 in bottom-right
+     *   'legacy-pdf417'            — alias for corner-pdf417
+     */
+    mode?: 'side-pdf417' | 'corner-pdf417' | 'corner-code39' | 'legacy-pdf417';
+    /**
+     * Structured form metadata embedded in the barcode payload. The caller
+     * supplies form-level fields; the renderer adds PG:n/OF:n per page.
+     */
+    formMetadata?: FormMetadataPayload;
+    /** Override: use this as the entire barcode payload verbatim. */
+    value?: string;
+    /**
+     * Person-record specific: AAMVA-compatible ID payload. When provided,
+     * the mode auto-switches to side-pdf417 and the payload is the encoded
+     * AAMVA block (no per-page metadata appended).
+     */
+    personPayload?: PersonIdPayload;
+    /** Caption rendered alongside the barcode (rotated for side mode). */
+    caption?: string;
+    /** Suppress the barcode entirely. */
+    disabled?: boolean;
+    /** Custom dimensions (mm). Defaults: side 9×90, corner-pdf417 60×18, corner-code39 48×11. */
+    width?: number;
+    height?: number;
+    /** For side mode: which margin to use. Defaults to 'right'. */
+    side?: 'right' | 'left';
+  };
+}
+
+/**
+ * Apply police-report furniture to every page of a completed PDF.
+ *
+ * Default behavior (no options):
+ *   - Auto-barcode corner stamp on every page using activeCaseNumber
+ *   - No classification banners
+ *   - No Bates stamps
+ *   - No watermark
+ *
+ * Classification, Bates, and watermarks are opt-in only.
+ *
+ * Call this as the last step before `doc.save()` or `doc.output()`.
+ */
+export function finalizePoliceReport(
+  doc: jsPDF,
+  opts: PoliceReportFinalizeOptions = {},
+): void {
+  // 1. Watermark (goes under everything else)
+  if (opts.watermark) {
+    applyWatermarkToAllPages(doc, opts.watermark);
+  }
+
+  // 2. Classification banners — OPT-IN only (was default in earlier version).
+  if (opts.classification) {
+    applyClassificationToAllPages(doc, opts.classification);
+  }
+
+  // 3. Bates stamps — opt-in.
+  if (opts.bates) {
+    const start = opts.bates.start ?? 1;
+    applyBatesToAllPages(doc, start, { prefix: opts.bates.prefix });
+  }
+
+  // 4. Auto-barcode — DEFAULT: vertical PDF417 side barcode on every page
+  //    with rich form metadata. Person records use AAMVA-compatible ID data.
+  //    Other records use form metadata (FORM, CASE, ORI, DATE, PG/OF).
+  if (!opts.barcode?.disabled) {
+    // Person payload takes priority: if provided, always use side-pdf417 with
+    // the AAMVA block so the same payload appears on every page.
+    const isPersonBarcode = !!opts.barcode?.personPayload;
+    const mode = isPersonBarcode
+      ? 'side-pdf417'
+      : (opts.barcode?.mode ?? 'side-pdf417');
+
+    if (mode === 'corner-code39') {
+      const value = (opts.barcode?.value || activeCaseNumber || '').trim();
+      if (value) {
+        applyBarcodeToAllPages(doc, value, {
+          width: opts.barcode?.width,
+          height: opts.barcode?.height,
+          stackAboveBates: !!opts.bates,
+        });
+      }
+    } else if (mode === 'corner-pdf417' || mode === 'legacy-pdf417') {
+      const payload = isPersonBarcode
+        ? encodePersonIdPayload(opts.barcode!.personPayload!)
+        : (opts.barcode?.value || activeCaseNumber || '').trim();
+      if (payload) {
+        applyPdf417ToAllPages(doc, payload, {
+          width: opts.barcode?.width,
+          height: opts.barcode?.height,
+          stackAboveBates: !!opts.bates,
+          caption: opts.barcode?.caption || (activeCaseNumber || '').trim() || undefined,
+        });
+      }
+    } else {
+      // Default: side-pdf417 with rich per-page metadata.
+      if (isPersonBarcode) {
+        // Person ID payload — same payload on every page (AAMVA format)
+        const payload = encodePersonIdPayload(opts.barcode!.personPayload!);
+        applyPdf417SideToAllPages(doc, payload, {
+          width: opts.barcode?.width,
+          height: opts.barcode?.height,
+          side: opts.barcode?.side,
+          caption: opts.barcode?.caption,
+        });
+      } else if (opts.barcode?.value) {
+        // Explicit value — same payload on every page.
+        applyPdf417SideToAllPages(doc, opts.barcode.value, {
+          width: opts.barcode?.width,
+          height: opts.barcode?.height,
+          side: opts.barcode?.side,
+          caption: opts.barcode?.caption,
+        });
+      } else {
+        // Synthesize per-page metadata from formMetadata + activeCaseNumber.
+        const base: FormMetadataPayload = {
+          ...(opts.barcode?.formMetadata || {}),
+        };
+        if (!base.caseNumber && activeCaseNumber) base.caseNumber = activeCaseNumber;
+        if (!base.agency) base.agency = 'RMPG';
+        if (!base.agencyOri) base.agencyOri = 'UT0180100';
+
+        // Only render if we have SOMETHING to encode (case # or form).
+        // NO default caption — the footer text already identifies the
+        // form (form# + page#). Rendering a caption above the barcode
+        // just duplicates that info.
+        if (base.caseNumber || base.form || base.formNumber) {
+          applyPdf417SideToAllPages(
+            doc,
+            (pageNum, totalPages) => encodeFormMetadata({
+              ...base,
+              page: pageNum,
+              totalPages,
+            }),
+            {
+              width: opts.barcode?.width,
+              height: opts.barcode?.height,
+              side: opts.barcode?.side,
+              caption: opts.barcode?.caption,  // only if caller explicitly set one
+            },
+          );
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Convenience helper for generators: draw the top-of-page barcode scan strip
+ * between the classification bar and the report header.
+ * Generators call this right after addReportHeader() returns.
+ */
+export function addBarcodeScanStripToReport(
+  doc: jsPDF,
+  y: number,
+  caseNumber: string,
+  opts?: {
+    formKey?: string;
+    agencyOri?: string;
+  },
+): number {
+  const fKey = opts?.formKey || activeFormKey;
+  const formNumber = FORM_NUMBERS[fKey] || '';
+  const generatedAt = generationTimestamp || '';
+  return drawBarcodeScanStrip(doc, y, {
+    caseNumber,
+    formNumber,
+    agencyOri: opts?.agencyOri,
+    generatedAt,
+  });
+}
+
+/**
+ * Build standardized caution flags from a subject's risk data.
+ * Returns empty array if no flags apply — caller can short-circuit.
+ */
+export function buildCautionFlags(subject: {
+  is_armed?: boolean;
+  has_warrant?: boolean | string | null;
+  gang_affiliation?: string | null;
+  violent_history?: boolean;
+  mental_health_crisis?: boolean;
+  medical_alert?: string | null;
+  armed_weapon_type?: string | null;
+}): CautionFlag[] {
+  const flags: CautionFlag[] = [];
+  if (subject.is_armed || subject.armed_weapon_type) {
+    flags.push({
+      kind: 'armed',
+      label: subject.armed_weapon_type
+        ? `ARMED: ${subject.armed_weapon_type}`
+        : 'ARMED & DANGEROUS',
+    });
+  }
+  if (subject.has_warrant) {
+    const label = typeof subject.has_warrant === 'string'
+      ? `WARRANT: ${subject.has_warrant}`
+      : 'ACTIVE WARRANT';
+    flags.push({ kind: 'warrant', label });
+  }
+  if (subject.violent_history) {
+    flags.push({ kind: 'violent', label: 'VIOLENT HISTORY' });
+  }
+  if (subject.gang_affiliation) {
+    flags.push({
+      kind: 'gang',
+      label: `GANG: ${subject.gang_affiliation.toUpperCase()}`,
+    });
+  }
+  if (subject.mental_health_crisis) {
+    flags.push({ kind: 'mental', label: 'MENTAL HEALTH CRISIS' });
+  }
+  if (subject.medical_alert) {
+    flags.push({
+      kind: 'medical',
+      label: `MEDICAL: ${subject.medical_alert.toUpperCase()}`,
+    });
+  }
+  return flags;
+}
+
+/**
+ * Map numeric/string priority to PriorityLevel for drawPriorityBar.
+ */
+export function resolvePriorityLevel(priority: unknown): PriorityLevel {
+  if (typeof priority === 'number') {
+    if (priority <= 1) return 1;
+    if (priority === 2) return 2;
+    if (priority === 3) return 3;
+    return 4;
+  }
+  const s = String(priority || '').toLowerCase();
+  if (s.includes('critical') || s.includes('emerg') || s === '1' || s === 'p1') return 1;
+  if (s.includes('high') || s.includes('urgent') || s === '2' || s === 'p2') return 2;
+  if (s.includes('medium') || s.includes('routine') || s === '3' || s === 'p3') return 3;
+  return 4;
 }
