@@ -93,6 +93,16 @@ function getUserSignature(userId: number): string | null {
   return row?.config_value || null;
 }
 
+/** Verify that a cached message belongs to the authenticated user.
+ *  Returns true if the email exists and is owned by userId. Returns false
+ *  if the email is not cached for this user — callers should respond with 404
+ *  (not 403) to avoid leaking the existence of other users' messages. */
+function userOwnsMessage(graphId: string, userId: number): boolean {
+  const db = getDb();
+  const row = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(graphId) as { owner_user_id: number } | undefined;
+  return !!row && row.owner_user_id === userId;
+}
+
 // ─── PUBLIC: OAuth callback (no JWT — redirect from Microsoft) ───
 
 router.get('/oauth/callback', async (req: Request, res: Response) => {
@@ -197,12 +207,12 @@ router.put('/signature', (req: Request, res: Response) => {
 });
 
 // GET /api/email/unread-count — Unread count (for nav badge)
-router.get('/unread-count', (_req: Request, res: Response) => {
+router.get('/unread-count', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(
-      "SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0"
-    ).get() as { count: number };
+      "SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0 AND owner_user_id = ?"
+    ).get(req.user!.userId) as { count: number };
     res.json({ count: row?.count || 0 });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -230,7 +240,7 @@ router.get('/folders', async (req: Request, res: Response) => {
     } catch {
       // Fall back to cached
       const db = getDb();
-      const folders = db.prepare('SELECT * FROM email_folders ORDER BY display_name').all();
+      const folders = db.prepare('SELECT * FROM email_folders WHERE owner_user_id = ? ORDER BY display_name').all(req.user!.userId);
       res.json(folders.map((f: any) => ({
         id: f.graph_id,
         displayName: f.display_name,
@@ -249,6 +259,15 @@ router.get('/folders', async (req: Request, res: Response) => {
 router.get('/folders/:id/children', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.json([]); return; }
+    // Verify the parent folder belongs to this user (if we have it cached).
+    // If it's not in the cache, allow the Graph call to proceed — Graph will
+    // enforce access against the authenticated mailbox.
+    const db = getDb();
+    const folder = db.prepare('SELECT owner_user_id FROM email_folders WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (folder && folder.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Folder not found', code: 'FOLDER_NOT_FOUND' });
+      return;
+    }
     const client = await getGraphClient();
     const result = await client
       .api(`/me/mailFolders/${req.params.id}/childFolders`)
@@ -389,8 +408,8 @@ router.get('/messages', async (req: Request, res: Response) => {
 
     // Fallback to cached messages
     const db = getDb();
-    const conditions: string[] = [];
-    const params: any[] = [];
+    const conditions: string[] = ['owner_user_id = ?'];
+    const params: any[] = [req.user!.userId];
 
     if (folder && folder !== 'all') {
       conditions.push('folder_id = ?');
@@ -466,23 +485,38 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
 
     const client = await getGraphClient();
     const db = getDb();
+    const userId = req.user!.userId;
+
+    // Filter input ids to those owned by the authenticated user — ignore any
+    // foreign ids silently rather than leaking existence.
+    const cappedIds = ids.slice(0, 50) as string[];
+    const placeholders = cappedIds.map(() => '?').join(',');
+    const ownedRows = cappedIds.length > 0
+      ? db.prepare(
+          `SELECT graph_id FROM email_cache WHERE graph_id IN (${placeholders}) AND owner_user_id = ?`
+        ).all(...cappedIds, userId) as { graph_id: string }[]
+      : [];
+    const ownedIds = new Set(ownedRows.map(r => r.graph_id));
+    const skipped = cappedIds.length - ownedIds.size;
+
     let success = 0;
     let failed = 0;
 
-    for (const id of ids.slice(0, 50)) {
+    for (const id of cappedIds) {
+      if (!ownedIds.has(id)) continue;
       try {
         if (action === 'delete') {
           await client.api(`/me/messages/${id}/move`).post({ destinationId: 'deleteditems' });
-          db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(id);
+          db.prepare('DELETE FROM email_cache WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         } else if (action === 'archive') {
           await client.api(`/me/messages/${id}/move`).post({ destinationId: 'archive' });
-          db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(id);
+          db.prepare('DELETE FROM email_cache WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         } else if (action === 'markRead') {
           await client.api(`/me/messages/${id}`).update({ isRead: true });
-          db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ?').run(id);
+          db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         } else if (action === 'markUnread') {
           await client.api(`/me/messages/${id}`).update({ isRead: false });
-          db.prepare('UPDATE email_cache SET is_read = 0 WHERE graph_id = ?').run(id);
+          db.prepare('UPDATE email_cache SET is_read = 0 WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         }
         success++;
       } catch {
@@ -490,8 +524,8 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
       }
     }
 
-    auditLog(req, 'BATCH_EMAIL', 'email', 0, JSON.stringify({ action, count: ids.length, success, failed }));
-    res.json({ success, failed });
+    auditLog(req, 'BATCH_EMAIL', 'email', 0, JSON.stringify({ action, count: ids.length, success, failed, skipped }));
+    res.json({ success, failed, skipped });
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
@@ -510,10 +544,11 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
     }
     const client = await getGraphClient();
     const db = getDb();
+    const userId = req.user!.userId;
 
     const unread = db.prepare(
-      'SELECT graph_id FROM email_cache WHERE folder_id = ? AND is_read = 0'
-    ).all(folder) as { graph_id: string }[];
+      'SELECT graph_id FROM email_cache WHERE folder_id = ? AND is_read = 0 AND owner_user_id = ?'
+    ).all(folder, userId) as { graph_id: string }[];
 
     let success = 0;
     for (const row of unread.slice(0, 100)) {
@@ -523,7 +558,7 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
       } catch { /* skip individual failures */ }
     }
 
-    db.prepare('UPDATE email_cache SET is_read = 1 WHERE folder_id = ? AND is_read = 0').run(folder);
+    db.prepare('UPDATE email_cache SET is_read = 1 WHERE folder_id = ? AND is_read = 0 AND owner_user_id = ?').run(folder, userId);
 
     auditLog(req, 'MARK_ALL_READ', 'email', 0, JSON.stringify({ folder, count: success }));
     res.json({ success: true, marked: success });
@@ -549,8 +584,8 @@ router.get('/messages/search', async (req: Request, res: Response) => {
     return res.json({ results: [], total: 0 });
   }
 
-  const where: string[] = [];
-  const params: any[] = [];
+  const where: string[] = ['ec.owner_user_id = ?'];
+  const params: any[] = [req.user!.userId];
   if (q.length >= 2) {
     // Sanitize FTS query — drop quote/special chars that break MATCH syntax
     const safeQ = q.replace(/["']/g, ' ').replace(/[^\w\s*]/g, ' ').trim();
@@ -585,6 +620,15 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
       return;
     }
 
+    // Verify ownership if message is cached. If not cached, fall through to
+    // Graph which enforces against the authenticated mailbox.
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
     const client = await getGraphClient();
     const msg = await client
       .api(`/me/messages/${req.params.id}`)
@@ -594,9 +638,8 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
     // Mark as read in Graph
     if (!msg.isRead) {
       client.api(`/me/messages/${req.params.id}`).update({ isRead: true }).catch((err) => { console.error('[Email] Background operation failed:', err.message || err); });
-      // Also update cache
-      const db = getDb();
-      db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ?').run(req.params.id);
+      // Also update cache (scoped to owner)
+      db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ? AND owner_user_id = ?').run(req.params.id, req.user!.userId);
     }
 
     res.json({
@@ -633,6 +676,14 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
     const client = await getGraphClient();
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
@@ -657,6 +708,14 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
 router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
 
     const client = await getGraphClient();
     const attachment = await client
@@ -846,6 +905,14 @@ router.patch('/messages/:id', validateGraphId, async (req: Request, res: Respons
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
     const { isRead, isFlagged } = req.body;
     const client = await getGraphClient();
 
@@ -857,13 +924,12 @@ router.patch('/messages/:id', validateGraphId, async (req: Request, res: Respons
 
     await client.api(`/me/messages/${req.params.id}`).update(updates);
 
-    // Update cache
-    const db = getDb();
+    // Update cache (scoped to owner)
     if (isRead !== undefined) {
-      db.prepare('UPDATE email_cache SET is_read = ? WHERE graph_id = ?').run(isRead ? 1 : 0, req.params.id);
+      db.prepare('UPDATE email_cache SET is_read = ? WHERE graph_id = ? AND owner_user_id = ?').run(isRead ? 1 : 0, req.params.id, req.user!.userId);
     }
     if (isFlagged !== undefined) {
-      db.prepare('UPDATE email_cache SET is_flagged = ? WHERE graph_id = ?').run(isFlagged ? 1 : 0, req.params.id);
+      db.prepare('UPDATE email_cache SET is_flagged = ? WHERE graph_id = ? AND owner_user_id = ?').run(isFlagged ? 1 : 0, req.params.id, req.user!.userId);
     }
 
     res.json({ success: true });
@@ -878,6 +944,14 @@ router.delete('/messages/:id', validateGraphId, async (req: Request, res: Respon
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
     const client = await getGraphClient();
 
     // Move to Deleted Items folder
@@ -885,9 +959,8 @@ router.delete('/messages/:id', validateGraphId, async (req: Request, res: Respon
       destinationId: 'deleteditems',
     });
 
-    // Remove from cache
-    const db = getDb();
-    db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(req.params.id);
+    // Remove from cache (scoped to owner)
+    db.prepare('DELETE FROM email_cache WHERE graph_id = ? AND owner_user_id = ?').run(req.params.id, req.user!.userId);
 
     auditLog(req, 'DELETE_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
     res.json({ success: true });
@@ -905,14 +978,21 @@ router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Res
     const { folderId } = req.body;
     if (!folderId) { res.status(400).json({ error: 'Folder ID required', code: 'FOLDER_ID_REQUIRED' }); return; }
 
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
     const client = await getGraphClient();
     await client.api(`/me/messages/${req.params.id}/move`).post({
       destinationId: folderId,
     });
 
-    // Update cache folder
-    const db = getDb();
-    db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ?').run(folderId, req.params.id);
+    // Update cache folder (scoped to owner)
+    db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ? AND owner_user_id = ?').run(folderId, req.params.id, req.user!.userId);
 
     res.json({ success: true });
   } catch (err: any) {
@@ -1133,6 +1213,12 @@ router.post('/link', (req: Request, res: Response) => {
 router.get('/links/:emailGraphId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // Verify the caller owns this cached email before listing its links.
+    // If not cached, return empty (don't leak existence of another user's email).
+    if (!userOwnsMessage(String(req.params.emailGraphId), req.user!.userId)) {
+      res.json([]);
+      return;
+    }
     const links = db.prepare(`
       SELECT el.*,
         i.incident_number as incident_case_number,
@@ -1160,17 +1246,19 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
 router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // Only surface links where the linked email belongs to the authenticated
+    // user. Don't leak that another user's email was linked to this incident.
     const links = db.prepare(`
       SELECT el.*, ec.subject, ec.from_address, ec.from_name, ec.received_at, ec.body_preview,
         u.full_name as linked_by_name
       FROM email_incident_links el
-      LEFT JOIN email_cache ec ON el.email_graph_id = ec.graph_id
+      INNER JOIN email_cache ec ON el.email_graph_id = ec.graph_id
       LEFT JOIN users u ON el.linked_by = u.id
-      WHERE el.incident_id = ?
+      WHERE el.incident_id = ? AND ec.owner_user_id = ?
       ORDER BY ec.received_at DESC
-    
+
       LIMIT 1000
-    `).all(req.params.incidentId);
+    `).all(req.params.incidentId, req.user!.userId);
     res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -1468,8 +1556,8 @@ router.get('/flagged', async (req: Request, res: Response) => {
     // Fallback to cache
     const db = getDb();
     const rows = db.prepare(
-      'SELECT * FROM email_cache WHERE is_flagged = 1 ORDER BY received_at DESC LIMIT 50'
-    ).all() as any[];
+      'SELECT * FROM email_cache WHERE is_flagged = 1 AND owner_user_id = ? ORDER BY received_at DESC LIMIT 50'
+    ).all(req.user!.userId) as any[];
 
     res.json({
       messages: rows.map((r: any) => ({
@@ -1502,6 +1590,12 @@ router.post('/categorize', (req: Request, res: Response) => {
     const { messageId, subject, bodyPreview } = req.body;
     if (!messageId) { res.status(400).json({ error: 'messageId is required', code: 'MESSAGEID_IS_REQUIRED' }); return; }
 
+    // Verify caller owns this cached message before categorizing it
+    if (!userOwnsMessage(String(messageId), req.user!.userId)) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
     const text = `${subject || ''} ${bodyPreview || ''}`.toLowerCase();
 
     const categories: string[] = [];
@@ -1521,11 +1615,11 @@ router.post('/categorize', (req: Request, res: Response) => {
       }
     }
 
-    // Store categorization in cache
+    // Store categorization in cache (scoped to owner)
     if (categories.length > 0) {
       const db = getDb();
-      db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ?')
-        .run(JSON.stringify(categories), messageId);
+      db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ? AND owner_user_id = ?')
+        .run(JSON.stringify(categories), messageId, req.user!.userId);
     }
 
     res.json({ messageId, categories });
@@ -1538,10 +1632,11 @@ router.post('/categorize', (req: Request, res: Response) => {
 router.post('/categorize/batch', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    // Auto-categorize all uncategorized cached messages
+    const userId = req.user!.userId;
+    // Auto-categorize this user's uncategorized cached messages only
     const uncategorized = db.prepare(
-      "SELECT graph_id, subject, body_preview FROM email_cache WHERE categories IS NULL OR categories = '[]' LIMIT 200"
-    ).all() as any[];
+      "SELECT graph_id, subject, body_preview FROM email_cache WHERE (categories IS NULL OR categories = '[]') AND owner_user_id = ? LIMIT 200"
+    ).all(userId) as any[];
 
     const KEYWORD_MAP: Record<string, string[]> = {
       'incident': ['incident', 'report', 'crime', 'theft', 'assault', 'trespass'],
@@ -1561,8 +1656,8 @@ router.post('/categorize/batch', (req: Request, res: Response) => {
         if (keywords.some(kw => text.includes(kw))) categories.push(category);
       }
       if (categories.length > 0) {
-        db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ?')
-          .run(JSON.stringify(categories), msg.graph_id);
+        db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ? AND owner_user_id = ?')
+          .run(JSON.stringify(categories), msg.graph_id, userId);
         categorized++;
       }
     }
@@ -1645,10 +1740,10 @@ router.get('/threads', async (req: Request, res: Response) => {
       SELECT graph_id, conversation_id, subject, from_address, from_name,
         body_preview, is_read, is_flagged, received_at
       FROM email_cache
-      WHERE folder_id = ?
+      WHERE folder_id = ? AND owner_user_id = ?
       ORDER BY received_at DESC
       LIMIT ?
-    `).all(folder, perPage * 3) as any[];
+    `).all(folder, req.user!.userId, perPage * 3) as any[];
 
     const threads: Record<string, any> = {};
     for (const r of rows) {
@@ -1729,8 +1824,8 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
     // Fallback to cache
     const db = getDb();
     const rows = db.prepare(
-      'SELECT * FROM email_cache WHERE conversation_id = ? ORDER BY received_at ASC'
-    ).all(convId) as any[];
+      'SELECT * FROM email_cache WHERE conversation_id = ? AND owner_user_id = ? ORDER BY received_at ASC'
+    ).all(convId, req.user!.userId) as any[];
 
     res.json({
       conversationId: convId,
