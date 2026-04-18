@@ -1,5 +1,5 @@
 import React from 'react';
-import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route } from 'lucide-react';
+import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
 
@@ -101,9 +101,20 @@ interface Props {
   onAddFuel: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  /** Invoked when the user clicks the "Report" button — parent composes
+   *  the per-vehicle fuel PDF using the vehicle object + logs + summary. */
+  onGenerateReport?: () => void;
+  /** Invoked when the user clicks "Flagged Audit" — parent composes the
+   *  flagged-audit PDF, pre-filtering to logs that have `.flags` set. */
+  onGenerateFlaggedAudit?: () => void;
 }
 
-export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel, onDeleteFuel }: Props) {
+export default function FleetFuelTab({
+  fuelLogs, summary, onAddFuel, onEditFuel, onDeleteFuel,
+  onGenerateReport, onGenerateFlaggedAudit,
+}: Props) {
+  // Count flagged entries so we can label the Audit button + gate visibility
+  const flaggedCount = fuelLogs.filter((l: any) => !!l.flags).length;
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Summary Stats — Top Row */}
@@ -185,9 +196,22 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
         <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
           <Fuel className="w-3 h-3" /> Fuel Log ({fuelLogs.length})
         </h3>
-        <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onAddFuel}>
-          <Plus className="w-3 h-3" /> Add Fuel Log
-        </button>
+        <div className="flex items-center gap-2 print:hidden">
+          {onGenerateFlaggedAudit && flaggedCount > 0 && (
+            <button type="button" className="toolbar-btn text-amber-400" onClick={onGenerateFlaggedAudit}
+              title={`Download flagged-fills audit PDF (${flaggedCount} flagged)`}>
+              <AlertTriangle className="w-3 h-3" /> Audit ({flaggedCount})
+            </button>
+          )}
+          {onGenerateReport && fuelLogs.length > 0 && (
+            <button type="button" className="toolbar-btn" onClick={onGenerateReport} title="Download per-vehicle fuel report PDF">
+              <FileText className="w-3 h-3" /> Report
+            </button>
+          )}
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onAddFuel}>
+            <Plus className="w-3 h-3" /> Add Fuel Log
+          </button>
+        </div>
       </div>
 
       {/* Fuel Log List */}

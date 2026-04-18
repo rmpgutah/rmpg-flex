@@ -238,7 +238,11 @@ export default function FleetPage() {
 
   const fetchFuelLogs = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel`);
+      // Request the full fuel history in one shot (per_page=10000). The
+      // server raised its cap to match so the Fuel tab shows every entry
+      // rather than a paginated slice — lets operators see lifetime
+      // consumption + every flagged fill in the period selector.
+      const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel?per_page=10000`);
       setFuelLogs(data.data || []);
       setFuelSummary(data.summary || null);
     } catch { addToast('Failed to load fuel logs', 'error'); }
