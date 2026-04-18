@@ -44,8 +44,16 @@ interface EmailLike {
   importance: string;
 }
 
+// Cap admin-supplied regex length to prevent ReDoS via complex patterns
+// (CodeQL js/regex-injection #2779, #2780). The patterns are set by admins
+// in the email-rule UI, but a malicious or careless admin could still
+// supply something like `(a+)+$` against a long input. 256 chars is enough
+// for any realistic email-filter pattern.
+const MAX_RULE_REGEX_LEN = 256;
+
 export function matchesConditions(cond: RuleConditions, email: EmailLike): boolean {
   if (cond.sender_regex) {
+    if (cond.sender_regex.length > MAX_RULE_REGEX_LEN) return false;
     try {
       if (!new RegExp(cond.sender_regex, 'i').test(email.from_address || '')) return false;
     } catch {
@@ -53,6 +61,7 @@ export function matchesConditions(cond: RuleConditions, email: EmailLike): boole
     }
   }
   if (cond.subject_regex) {
+    if (cond.subject_regex.length > MAX_RULE_REGEX_LEN) return false;
     try {
       if (!new RegExp(cond.subject_regex, 'i').test(email.subject || '')) return false;
     } catch {

@@ -659,9 +659,20 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
   ({ bodyHtml, onLoad }, ref) => {
     const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
     React.useEffect(() => {
-      const sanitized = bodyHtml
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/\bon\w+\s*=/gi, 'data-blocked=');
+      // Repeat-until-stable strip — the prior single pass could be bypassed
+      // by nested tags like <scr<script>ipt> (CodeQL js/bad-tag-filter #2748).
+      // Defense in depth: the iframe is sandboxed below so even a smuggled
+      // <script> would not execute. Self-closing/no-body <script src=...> is
+      // also matched.
+      let sanitized = bodyHtml;
+      let prev: string;
+      do {
+        prev = sanitized;
+        sanitized = sanitized
+          .replace(/<script\b[^>]*\/>/gi, '')
+          .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+          .replace(/\bon\w+\s*=/gi, 'data-blocked=');
+      } while (sanitized !== prev);
       // Proxy all external images through our server
       const proxied = proxyEmailImages(sanitized);
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
@@ -676,7 +687,7 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
       return () => URL.revokeObjectURL(url);
     }, [bodyHtml]);
     if (!blobUrl) return null;
-    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} sandbox="allow-same-origin allow-popups" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
   }
 );
 EmailBodyFrame.displayName = 'EmailBodyFrame';
