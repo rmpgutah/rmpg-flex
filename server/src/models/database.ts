@@ -3844,6 +3844,30 @@ function migrateSchema(): void {
   addCol('scheduled_emails', 'owner_user_id', 'INTEGER');
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_owner      ON scheduled_emails(owner_user_id, status)`).run();
 
+  // ── PHASE 4: One-shot wipe of pre-Phase-4 email data ──
+  // Idempotent: gated by phase4_migration_done flag in system_config.
+  const phase4Done = db.prepare(
+    "SELECT config_value FROM system_config WHERE config_key = 'phase4_migration_done'"
+  ).get();
+  if (!phase4Done) {
+    console.log('[Phase4] Running one-shot wipe of pre-Phase-4 email data...');
+    db.transaction(() => {
+      db.prepare('DELETE FROM email_rule_matches').run();
+      db.prepare('DELETE FROM email_rules').run();
+      db.prepare('DELETE FROM email_links').run();
+      db.prepare('DELETE FROM scheduled_emails').run();
+      db.prepare('DELETE FROM email_cache').run();
+      db.prepare('DELETE FROM email_folders').run();
+      for (const k of ['ms_email_access_token','ms_email_refresh_token','ms_email_token_expires_at','ms_email_mailbox','ms_email_last_sync']) {
+        db.prepare("DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'").run(k);
+      }
+    })();
+    db.prepare(
+      "INSERT INTO system_config (config_key, config_value, category) VALUES ('phase4_migration_done', ?, 'system')"
+    ).run(localNow());
+    console.log('[Phase4] Migration complete.');
+  }
+
   // ── EMAIL_CACHE — categories for auto-tagging ──
   addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");
 
