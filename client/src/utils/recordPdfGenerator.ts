@@ -2770,47 +2770,79 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
 
   // ── MILEAGE SUMMARY REPORT ──
   if (reportType === 'mileage_summary' && data.fuel_logs && data.fuel_logs.length > 0) {
-    // Group fuel logs by date and calculate distance per day
-    const byDate: Record<string, { distance: number; gallons: number; cost: number }> = {};
+    // Distance resolution order (most trustworthy -> fallback):
+    //   1. calc_distance — backend computes from odometer deltas, most accurate
+    //   2. distance      — legacy user-entered field
+    //   3. odometer delta from earliest -> latest entry (lifetime span)
+    const resolveDistance = (f: any): number => {
+      if (typeof f.calc_distance === 'number' && f.calc_distance > 0) return f.calc_distance;
+      if (typeof f.distance === 'number' && f.distance > 0) return f.distance;
+      return 0;
+    };
+
+    // Group by date
+    const byDate: Record<string, { distance: number; gallons: number; cost: number; odometer: number }> = {};
     for (const f of data.fuel_logs) {
       const dateKey = f.fuel_date?.split('T')[0] || 'Unknown';
-      if (!byDate[dateKey]) byDate[dateKey] = { distance: 0, gallons: 0, cost: 0 };
-      byDate[dateKey].distance += f.distance || 0;
+      if (!byDate[dateKey]) byDate[dateKey] = { distance: 0, gallons: 0, cost: 0, odometer: 0 };
+      byDate[dateKey].distance += resolveDistance(f);
       byDate[dateKey].gallons += f.gallons || 0;
       byDate[dateKey].cost += f.total_cost || 0;
+      // Track the highest odometer reading seen on each date for an
+      // end-of-day snapshot (useful in the table's Odometer column).
+      if (typeof f.odometer_reading === 'number' && f.odometer_reading > byDate[dateKey].odometer) {
+        byDate[dateKey].odometer = f.odometer_reading;
+      }
     }
 
     const sortedDates = Object.keys(byDate).sort();
-    const totalDist = sortedDates.reduce((s, d) => s + byDate[d].distance, 0);
+
+    // Total distance — prefer summed calc_distance, fall back to the
+    // odometer span if every entry had a null distance (which happens
+    // on vehicles where operators never entered odometer readings).
+    let totalDist = sortedDates.reduce((s, d) => s + byDate[d].distance, 0);
+    if (totalDist === 0) {
+      const odos = data.fuel_logs
+        .map((f: any) => typeof f.odometer_reading === 'number' ? f.odometer_reading : null)
+        .filter((n: number | null): n is number => n != null && n > 0);
+      if (odos.length >= 2) {
+        totalDist = Math.max(...odos) - Math.min(...odos);
+      }
+    }
     const totalGal = sortedDates.reduce((s, d) => s + byDate[d].gallons, 0);
     const totalCost = sortedDates.reduce((s, d) => s + byDate[d].cost, 0);
+    const overallMpg = totalGal > 0 && totalDist > 0 ? totalDist / totalGal : null;
 
     y = checkPageBreak(doc, y, 15);
     { const sec = openAutoSection(doc, 'Mileage Summary', y); y = sec.contentY;
-      const thirdW = ffw / 3;
-      const r1a = addFieldPair(doc, 'Total Distance', `${totalDist.toFixed(1)} mi`, lx, y, thirdW);
-      const r1b = addFieldPair(doc, 'Total Fuel', `${totalGal.toFixed(2)} gal`, lx + thirdW, y, thirdW);
-      const r1c = addFieldPair(doc, 'Total Cost', `$${totalCost.toFixed(2)}`, lx + thirdW * 2, y, thirdW);
-      y = Math.max(r1a, r1b, r1c);
+      const qw = ffw / 4;
+      const r1a = addFieldPair(doc, 'Total Distance', `${totalDist.toFixed(1)} mi`, lx, y, qw);
+      const r1b = addFieldPair(doc, 'Total Fuel', `${totalGal.toFixed(2)} gal`, lx + qw, y, qw);
+      const r1c = addFieldPair(doc, 'Total Cost', `$${totalCost.toFixed(2)}`, lx + qw * 2, y, qw);
+      const r1d = addFieldPair(doc, 'Avg MPG', overallMpg != null ? `${overallMpg.toFixed(2)} MPG` : 'N/A', lx + qw * 3, y, qw);
+      y = Math.max(r1a, r1b, r1c, r1d);
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
 
-    // Mileage summary table — standardised via addTableWithShading
-    const mileColW = [30, 30, 30, cw - 90];
+    // Per-day table — Date | Distance | Fuel | Cost | Odometer | MPG
+    const mileColW = [22, 24, 22, 26, 28, cw - 122];
     const mileColPos: number[] = [];
     { let cx = lx; for (const w of mileColW) { mileColPos.push(cx); cx += w; } }
-    const mileHeaders = ['Date', 'Distance (mi)', 'Fuel (gal)', 'Cost']
+    const mileHeaders = ['DATE', 'DISTANCE (MI)', 'FUEL (GAL)', 'COST', 'ODOMETER', 'MPG']
       .map((label, i) => ({ label, x: mileColPos[i] }));
     const mileRows = sortedDates.map(dateKey => {
       const d = byDate[dateKey];
+      const dayMpg = d.gallons > 0 && d.distance > 0 ? d.distance / d.gallons : null;
       return [
         dateKey,
         d.distance > 0 ? d.distance.toFixed(1) : '-',
         d.gallons > 0 ? d.gallons.toFixed(2) : '-',
         d.cost > 0 ? `$${d.cost.toFixed(2)}` : '-',
+        d.odometer > 0 ? d.odometer.toLocaleString() : '-',
+        dayMpg != null ? dayMpg.toFixed(1) : '-',
       ];
     });
-    y = addTableWithShading(doc, mileHeaders, mileRows, y, mileColPos);
+    y = addTableWithShading(doc, mileHeaders, mileRows, y, mileColPos, { sectionTitle: 'MILEAGE SUMMARY' });
   }
 
   // ── STATUS REPORT (default) extras ──
