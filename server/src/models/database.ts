@@ -3794,6 +3794,14 @@ function migrateSchema(): void {
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_entity ON email_links(entity_type, entity_id)`).run();
   addCol('email_links', 'auto_linked', 'INTEGER DEFAULT 0');
 
+  addCol('email_cache',      'owner_user_id', 'INTEGER');
+  addCol('email_folders',    'owner_user_id', 'INTEGER');
+  addCol('email_rules',      'owner_user_id', 'INTEGER');
+
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_owner    ON email_cache(owner_user_id, folder_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_folders_owner  ON email_folders(owner_user_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rules_owner    ON email_rules(owner_user_id, enabled, priority)`).run();
+
   db.prepare(`CREATE TABLE IF NOT EXISTS user_graph_tokens (
   user_id INTEGER PRIMARY KEY,
   access_token_enc TEXT NOT NULL,
@@ -3833,6 +3841,8 @@ function migrateSchema(): void {
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status, scheduled_at)`).run();
+  addCol('scheduled_emails', 'owner_user_id', 'INTEGER');
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_owner      ON scheduled_emails(owner_user_id, status)`).run();
 
   // ── EMAIL_CACHE — categories for auto-tagging ──
   addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");
