@@ -1252,6 +1252,17 @@ export default function IncidentsPage() {
         >
           <ExternalLink className="w-3.5 h-3.5" />
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            const subj = `Incident #${selectedIncident.incident_number}`;
+            window.location.href = `/email?compose=1&subject=${encodeURIComponent(subj)}`;
+          }}
+          className="px-2 py-0.5 text-[10px] border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500"
+          title="Compose email referencing this incident (auto-linked on send)"
+        >
+          EMAIL ABOUT THIS
+        </button>
         <ReportTypeSelector
             incidentType={selectedIncident.type}
             onSelect={async (reportType) => {

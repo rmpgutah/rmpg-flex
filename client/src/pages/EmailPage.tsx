@@ -914,17 +914,18 @@ interface FileAttachment {
 interface ComposeModalProps {
   mode: 'new' | 'reply' | 'reply-all' | 'forward';
   replyMessage?: EmailMessage | null;
+  prefill?: { subject?: string; body?: string } | null;
   onClose: () => void;
   onSent: () => void;
 }
 
-function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps) {
+function ComposeModal({ mode, replyMessage, prefill, onClose, onSent }: ComposeModalProps) {
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
   const [showBcc, setShowBcc] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [subject, setSubject] = useState(prefill?.subject || '');
+  const [body, setBody] = useState(prefill?.body || '');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [redactionPreview, setRedactionPreview] = useState<{ redacted: string; diff: Array<{ original: string; replacement: string; type: string; index: number }> } | null>(null);
@@ -1629,6 +1630,25 @@ export default function EmailPage() {
 
   // Compose
   const [composing, setComposing] = useState<'new' | 'reply' | 'reply-all' | 'forward' | null>(null);
+  const [composePrefill, setComposePrefill] = useState<{ subject?: string; body?: string } | null>(null);
+
+  // Open compose on page mount when arriving from a /email?compose=1&subject=... link
+  // (used by the "Email about this" buttons on case/incident detail pages). The
+  // auto-linker in the poller will pick up Case#/Incident# references in the
+  // subject on the outbound sent-items sync, so no explicit link call is needed.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('compose') === '1') {
+      setComposePrefill({
+        subject: params.get('subject') || undefined,
+        body: params.get('body') || undefined,
+      });
+      setComposing('new');
+      // Clean URL so refresh doesn't reopen the modal.
+      const clean = window.location.pathname;
+      window.history.replaceState({}, '', clean);
+    }
+  }, []);
 
   // Mobile
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
@@ -2699,8 +2719,9 @@ export default function EmailPage() {
         <ComposeModal
           mode={composing}
           replyMessage={fullMessage || selectedMessage}
-          onClose={() => setComposing(null)}
-          onSent={() => { showSnackbar('Email sent'); handleRefresh(); }}
+          prefill={composePrefill}
+          onClose={() => { setComposing(null); setComposePrefill(null); }}
+          onSent={() => { showSnackbar('Email sent'); handleRefresh(); setComposePrefill(null); }}
         />
       )}
     </div>

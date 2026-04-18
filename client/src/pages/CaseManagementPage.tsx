@@ -734,6 +734,17 @@ export default function CaseManagementPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.case_number} — ${selected.title}`} icon={Briefcase}>
+              <button
+                type="button"
+                onClick={() => {
+                  const subj = `Case #${selected.case_number}`;
+                  window.location.href = `/email?compose=1&subject=${encodeURIComponent(subj)}`;
+                }}
+                className="px-2 py-0.5 text-[10px] border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500"
+                title="Compose email referencing this case (auto-linked on send)"
+              >
+                EMAIL ABOUT THIS
+              </button>
             </PanelTitleBar>
 
             {/* Tabs */}
