@@ -161,23 +161,43 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
     }
 
     // Auto-link inbound from allowlisted senders to existing CAD/RMS entities.
+    let linkerRow: any = null;
     try {
-      const row = db.prepare(
-        `SELECT graph_id, from_address, subject,
+      linkerRow = db.prepare(
+        `SELECT ec.graph_id, ec.from_address, ec.from_name, ec.subject, ec.folder_id,
            COALESCE((SELECT body_text FROM email_cache_fts WHERE rowid = ec.id),'') as body_text
          FROM email_cache ec WHERE ec.id = ?`
       ).get(id) as any;
-      if (row && isAllowlistedSender(row.from_address)) {
-        const refs = extractEntityReferences(row.subject || '', row.body_text || '');
+      if (linkerRow && isAllowlistedSender(linkerRow.from_address)) {
+        const refs = extractEntityReferences(linkerRow.subject || '', linkerRow.body_text || '');
         for (const ref of refs) {
           db.prepare(
             `INSERT INTO email_links (email_graph_id, entity_type, entity_id, auto_linked, created_at)
              VALUES (?,?,?,1,?)`
-          ).run(row.graph_id, ref.type, ref.id, localNow());
+          ).run(linkerRow.graph_id, ref.type, ref.id, localNow());
         }
       }
     } catch (err: any) {
       console.warn(`[EmailPoller] Auto-link failed for email #${id}:`, err.message);
+    }
+
+    // Tip-line emails auto-create a pending call_for_service for dispatcher review.
+    // Uses valid schema values (status='pending', priority='P3', source='email')
+    // and minimal required columns (incident_type, location_address are NOT NULL).
+    try {
+      const tipFolderId = getConfigValue('email_tip_line_folder_id');
+      if (tipFolderId && linkerRow && linkerRow.folder_id === tipFolderId) {
+        const caller = linkerRow.from_name || linkerRow.from_address || 'Unknown';
+        const desc = String(linkerRow.body_text || '').slice(0, 4000);
+        db.prepare(
+          `INSERT INTO calls_for_service
+           (incident_type, priority, status, source, caller_name, caller_phone, location_address, description, created_at)
+           VALUES (?, 'P3', 'pending', 'email', ?, '', '', ?, ?)`
+        ).run('Tip Line', caller, desc, localNow());
+        console.log(`[EmailPoller] Tip-line email #${id} created pending CFS`);
+      }
+    } catch (err: any) {
+      console.error(`[EmailPoller] Tip-line CFS creation failed for email #${id}:`, err.message);
     }
   }
 
