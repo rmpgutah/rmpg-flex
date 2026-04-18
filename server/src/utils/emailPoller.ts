@@ -324,7 +324,7 @@ async function processScheduledEmails(): Promise<void> {
       }
       const bodyHtml = renderEmailMarkdown(bodyMarkdown);
 
-      const sent = await sendEmail({
+      const sent = await sendEmail(email.created_by, {
         to: toList,
         cc: ccList,
         bcc: bccList,

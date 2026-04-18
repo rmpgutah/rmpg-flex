@@ -37,12 +37,11 @@ import {
   getAuthorizationUrlForUser,
   verifyOAuthStateForUser,
   exchangeCodeForUserTokens,
-  getGraphClient,
-  testConnection,
+  getGraphClientForUser,
+  isUserAuthorized,
   getStatus,
   isConfigured,
   isEnabled,
-  isAuthorized,
   clearCachedAuth,
 } from '../utils/msGraphClient';
 import { testSMTPConnection } from '../utils/smtpClient';
@@ -223,14 +222,14 @@ router.get('/unread-count', (req: Request, res: Response) => {
 // GET /api/email/folders — List mailbox folders
 router.get('/folders', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) {
+    if (!isUserAuthorized(req.user!.userId)) {
       res.json([]);
       return;
     }
 
     // Try live from Graph, fall back to cache
     try {
-      const client = await getGraphClient();
+      const client = await getGraphClientForUser(req.user!.userId);
       const result = await client
         .api('/me/mailFolders')
         .select('id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount')
@@ -258,7 +257,7 @@ router.get('/folders', async (req: Request, res: Response) => {
 // GET /api/email/folders/:id/children — List child folders
 router.get('/folders/:id/children', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.json([]); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.json([]); return; }
     // Verify the parent folder belongs to this user (if we have it cached).
     // If it's not in the cache, allow the Graph call to proceed — Graph will
     // enforce access against the authenticated mailbox.
@@ -268,7 +267,7 @@ router.get('/folders/:id/children', validateGraphId, async (req: Request, res: R
       res.status(404).json({ error: 'Folder not found', code: 'FOLDER_NOT_FOUND' });
       return;
     }
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const result = await client
       .api(`/me/mailFolders/${req.params.id}/childFolders`)
       .select('id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount')
@@ -284,7 +283,7 @@ router.get('/folders/:id/children', validateGraphId, async (req: Request, res: R
 // POST /api/email/folders — Create a new folder
 router.post('/folders', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
     const { displayName, parentFolderId } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required', code: 'FOLDER_NAME_REQUIRED' }); return; }
     if (displayName.length > 256) { res.status(400).json({ error: 'Folder name must be 256 characters or less', code: 'FOLDER_NAME_MUST_BE' }); return; }
@@ -292,7 +291,7 @@ router.post('/folders', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Invalid parent folder ID', code: 'INVALID_PARENT_FOLDER_ID' }); return;
     }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const apiPath = parentFolderId
       ? `/me/mailFolders/${parentFolderId}/childFolders`
       : '/me/mailFolders';
@@ -309,11 +308,11 @@ router.post('/folders', async (req: Request, res: Response) => {
 // PATCH /api/email/folders/:id — Rename a folder
 router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
     const { displayName } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required', code: 'FOLDER_NAME_REQUIRED' }); return; }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     await client.api(`/me/mailFolders/${req.params.id}`).update({ displayName: displayName.trim() });
     auditLog(req, 'UPDATE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id, displayName }));
     res.json({ success: true });
@@ -326,8 +325,8 @@ router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response
 // DELETE /api/email/folders/:id — Delete a folder
 router.delete('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
-    const client = await getGraphClient();
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    const client = await getGraphClientForUser(req.user!.userId);
     await client.api(`/me/mailFolders/${req.params.id}`).delete();
     auditLog(req, 'DELETE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id }));
     res.json({ success: true });
@@ -351,9 +350,9 @@ router.get('/messages', async (req: Request, res: Response) => {
     const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
 
     // Try live from Graph API
-    if (isAuthorized()) {
+    if (isUserAuthorized(req.user!.userId)) {
       try {
-        const client = await getGraphClient();
+        const client = await getGraphClientForUser(req.user!.userId);
         // Sanitize folder ID to prevent path traversal in Graph API URL
         const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
         let apiPath = safeFolder === 'inbox'
@@ -463,7 +462,7 @@ router.get('/messages', async (req: Request, res: Response) => {
 // IMPORTANT: Must be registered before /messages/:id to avoid Express treating "batch" as an ID
 router.post('/messages/batch', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { action, ids } = req.body;
     if (!action || !Array.isArray(ids) || ids.length === 0) {
@@ -483,7 +482,7 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
       }
     }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const db = getDb();
     const userId = req.user!.userId;
 
@@ -535,14 +534,14 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
 // POST /api/email/messages/mark-all-read — Mark all messages in a folder as read
 router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { folder = 'inbox' } = req.body;
     // Validate folder ID to prevent injection
     if (typeof folder !== 'string' || folder.length > 250) {
       res.status(400).json({ error: 'Invalid folder', code: 'INVALID_FOLDER' }); return;
     }
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const db = getDb();
     const userId = req.user!.userId;
 
@@ -615,7 +614,7 @@ router.get('/messages/search', async (req: Request, res: Response) => {
 // GET /api/email/messages/:id — Full message with body
 router.get('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) {
+    if (!isUserAuthorized(req.user!.userId)) {
       res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' });
       return;
     }
@@ -629,7 +628,7 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
       return;
     }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const msg = await client
       .api(`/me/messages/${req.params.id}`)
       .select('id,conversationId,subject,from,toRecipients,ccRecipients,body,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
@@ -674,7 +673,7 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
 // GET /api/email/messages/:id/attachments — List attachments
 router.get('/messages/:id/attachments', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     // Verify ownership if cached; otherwise Graph enforces mailbox access
     const db = getDb();
@@ -684,7 +683,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
       return;
     }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
       .select('id,name,contentType,size,isInline,contentId')
@@ -707,7 +706,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
 // GET /api/email/messages/:id/attachments/:aid — Download attachment
 router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     // Verify ownership if cached; otherwise Graph enforces mailbox access
     const db = getDb();
@@ -717,7 +716,7 @@ router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Reques
       return;
     }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const attachment = await client
       .api(`/me/messages/${req.params.id}/attachments/${req.params.aid}`)
       .get();
@@ -788,7 +787,7 @@ router.post('/send', async (req: Request, res: Response) => {
       contentType: att.contentType || 'application/octet-stream',
     }));
 
-    const sent = await sendEmail({
+    const sent = await sendEmail(req.user!.userId, {
       to: toList,
       cc: ccList,
       bcc: bccList,
@@ -821,10 +820,10 @@ router.post('/send', async (req: Request, res: Response) => {
 router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Response) => {
   const messageId = String(req.params.id);
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { body } = req.body;
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const signature = getUserSignature(req.user!.userId);
 
     await client.api(`/me/messages/${messageId}/reply`).post({
@@ -844,10 +843,10 @@ router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Re
 router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res: Response) => {
   const messageId = String(req.params.id);
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { body } = req.body;
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const signature = getUserSignature(req.user!.userId);
 
     await client.api(`/me/messages/${messageId}/replyAll`).post({
@@ -868,7 +867,7 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
   const messageId = String(req.params.id);
   let toList: string[] = [];
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { to, body } = req.body;
     if (!to) { res.status(400).json({ error: 'Recipient required', code: 'RECIPIENT_REQUIRED' }); return; }
@@ -881,7 +880,7 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
       }
     }
     if (toList.length > 50) { res.status(400).json({ error: 'Too many recipients (max 50)', code: 'TOO_MANY_RECIPIENTS_MAX' }); return; }
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
 
     const signature = getUserSignature(req.user!.userId);
     await client.api(`/me/messages/${messageId}/forward`).post({
@@ -903,7 +902,7 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
 // PATCH /api/email/messages/:id — Update message (read/unread, flag)
 router.patch('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     // Verify ownership if cached; otherwise Graph enforces mailbox access
     const db = getDb();
@@ -914,7 +913,7 @@ router.patch('/messages/:id', validateGraphId, async (req: Request, res: Respons
     }
 
     const { isRead, isFlagged } = req.body;
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
 
     const updates: any = {};
     if (isRead !== undefined) updates.isRead = isRead;
@@ -942,7 +941,7 @@ router.patch('/messages/:id', validateGraphId, async (req: Request, res: Respons
 // DELETE /api/email/messages/:id — Move to trash
 router.delete('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     // Verify ownership if cached; otherwise Graph enforces mailbox access
     const db = getDb();
@@ -952,7 +951,7 @@ router.delete('/messages/:id', validateGraphId, async (req: Request, res: Respon
       return;
     }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
 
     // Move to Deleted Items folder
     await client.api(`/me/messages/${req.params.id}/move`).post({
@@ -973,7 +972,7 @@ router.delete('/messages/:id', validateGraphId, async (req: Request, res: Respon
 // POST /api/email/messages/:id/move — Move to folder
 router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { folderId } = req.body;
     if (!folderId) { res.status(400).json({ error: 'Folder ID required', code: 'FOLDER_ID_REQUIRED' }); return; }
@@ -986,7 +985,7 @@ router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Res
       return;
     }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     await client.api(`/me/messages/${req.params.id}/move`).post({
       destinationId: folderId,
     });
@@ -1297,15 +1296,15 @@ router.post('/schedule', (req: Request, res: Response) => {
     }
 
     const result = db.prepare(`
-      INSERT INTO scheduled_emails (to_addresses, cc_addresses, bcc_addresses, subject, body, attachments, scheduled_at, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_emails (to_addresses, cc_addresses, bcc_addresses, subject, body, attachments, scheduled_at, created_by, owner_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       JSON.stringify(toList),
       ccList ? JSON.stringify(ccList) : null,
       bccList ? JSON.stringify(bccList) : null,
       subject, body || '',
       attachments ? JSON.stringify(attachments) : null,
-      scheduledAt, req.user!.userId
+      scheduledAt, req.user!.userId, req.user!.userId
     );
 
     auditEmailSend(req, 'SCHEDULE_SEND', {
@@ -1441,9 +1440,19 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
 });
 
 // POST /api/email/admin/test-connection — Test Graph API connection
+// Phase 4: tests the calling admin's own per-user Graph tokens. The
+// admin must enroll via /api/email/oauth/my/authorize before this can
+// succeed. SMTP tested tenant-wide.
 router.post('/admin/test-connection', requireRole('admin'), async (req: Request, res: Response) => {
   try {
-    const graphResult = await testConnection();
+    let graphResult: { success: boolean; mailbox?: string; error?: string };
+    try {
+      const client = await getGraphClientForUser(req.user!.userId);
+      const me = await client.api('/me').select('mail,displayName,userPrincipalName').get();
+      graphResult = { success: true, mailbox: me.mail || me.userPrincipalName || 'unknown' };
+    } catch (err: any) {
+      graphResult = { success: false, error: err?.message || 'Connection failed — enroll this user via OAuth' };
+    }
     const smtpResult = await testSMTPConnection().catch(() => ({ success: false, error: 'SMTP not configured' }));
 
     res.json({
@@ -1523,9 +1532,9 @@ router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: R
 
 router.get('/flagged', async (req: Request, res: Response) => {
   try {
-    if (isAuthorized()) {
+    if (isUserAuthorized(req.user!.userId)) {
       try {
-        const client = await getGraphClient();
+        const client = await getGraphClientForUser(req.user!.userId);
         const result = await client
           .api('/me/messages')
           .filter("flag/flagStatus eq 'flagged'")
@@ -1680,9 +1689,9 @@ router.get('/threads', async (req: Request, res: Response) => {
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
 
-    if (isAuthorized()) {
+    if (isUserAuthorized(req.user!.userId)) {
       try {
-        const client = await getGraphClient();
+        const client = await getGraphClientForUser(req.user!.userId);
         const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
         const apiPath = safeFolder === 'inbox'
           ? '/me/mailFolders/inbox/messages'
@@ -1787,9 +1796,9 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
     const convId = req.params.conversationId;
     if (!convId || convId.length > 250) { res.status(400).json({ error: 'Invalid conversation ID', code: 'INVALID_CONVERSATION_ID' }); return; }
 
-    if (isAuthorized()) {
+    if (isUserAuthorized(req.user!.userId)) {
       try {
-        const client = await getGraphClient();
+        const client = await getGraphClientForUser(req.user!.userId);
         const result = await client
           .api('/me/messages')
           .filter(`conversationId eq '${(convId as string).replace(/'/g, "''")}'`)

@@ -33,7 +33,7 @@ router.post('/email', requireRole('admin', 'manager'), upload.single('pdf'), asy
   const ccList = cc ? (Array.isArray(cc) ? cc : String(cc).split(',').map((s) => s.trim()).filter(Boolean)) : [];
 
   try {
-    const ok = await sendEmail({
+    const ok = await sendEmail(req.user!.userId, {
       to: toList,
       cc: ccList,
       subject: String(subject),

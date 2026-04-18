@@ -82,7 +82,8 @@ const HTML_BODY = `
 
 async function main() {
   console.log(`Sending update email to ${RECIPIENT}...`);
-  const result = await sendEmail({ to: RECIPIENT, subject: SUBJECT, html: HTML_BODY });
+  // CLI script — send as admin (user 1)
+  const result = await sendEmail(1, { to: RECIPIENT, subject: SUBJECT, html: HTML_BODY });
   if (result.ok) {
     console.log(`Email sent successfully via ${result.transport}.`);
   } else {

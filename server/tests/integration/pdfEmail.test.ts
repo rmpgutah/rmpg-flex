@@ -48,7 +48,9 @@ describe('POST /api/pdf-engine/email', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(sendEmailMock).toHaveBeenCalled();
-    const callArg = sendEmailMock.mock.calls[0][0];
+    // Phase 4: sendEmail signature is (userId, options)
+    const [userIdArg, callArg] = sendEmailMock.mock.calls[0];
+    expect(typeof userIdArg).toBe('number');
     expect(callArg.to).toEqual(['court@example.com']);
     expect(callArg.attachments).toHaveLength(1);
     expect(callArg.attachments[0].contentType).toBe('application/pdf');
