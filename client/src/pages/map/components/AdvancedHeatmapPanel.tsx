@@ -104,7 +104,9 @@ const MODE_CONFIG: {
 const COLOR_SCHEME_GRADIENTS: Record<HeatmapColorScheme, string[]> = {
   heat: ['#888888', '#22c55e', '#eab308', '#f97316', '#ef4444'],
   risk: ['#22c55e', '#eab308', '#f97316', '#ef4444', '#7f1d1d'],
-  blue: ['#cccccc', '#888888', '#555555', '#222222', '#171717'],
+  // Renamed from 'blue' (removed from HeatmapColorScheme union during
+  // the Spillman pure-black theme purge) to the current 'gold' variant.
+  gold: ['#cccccc', '#888888', '#555555', '#222222', '#171717'],
   green: ['#86efac', '#22c55e', '#15803d', '#14532d', '#0a2918'],
   purple: ['#c4b5fd', '#a855f7', '#7c3aed', '#5b21b6', '#232323'],
 };

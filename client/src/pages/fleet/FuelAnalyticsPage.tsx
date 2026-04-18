@@ -285,11 +285,11 @@ export default function FuelAnalyticsPage() {
         </div>
 
         {/* Flagged leaderboard */}
-        {overview && overview.flagged_leaderboard.length > 0 && (
+        {overview && (overview.flagged_leaderboard?.length ?? 0) > 0 && (
           <div className="panel-beveled bg-surface-sunken lg:col-span-2">
             <PanelTitleBar title="Flagged-Entry Leaderboard" icon={TrendingDown} />
             <div className="p-2 flex flex-wrap gap-2">
-              {overview.flagged_leaderboard.map((v) => (
+              {(overview.flagged_leaderboard ?? []).map((v) => (
                 <div key={v.id} className="panel-beveled bg-surface-base border border-amber-700/40 p-2 flex items-center gap-2">
                   <AlertTriangle className="w-3 h-3 text-amber-400" />
                   <div>

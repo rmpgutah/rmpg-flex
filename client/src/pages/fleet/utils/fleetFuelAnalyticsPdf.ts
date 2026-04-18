@@ -156,7 +156,7 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
     { header: 'Avg MPG',   width: contentW * 0.12, align: 'right' },
     { header: 'Flag %',    width: contentW * 0.10, align: 'right' },
     { header: 'Mileage',   width: contentW * 0.08, align: 'right' },
-  ], (overview.vehicles || []).filter(v => v.fill_count > 0).map(v => [
+  ], (overview.vehicles || []).filter((v: any) => v.fill_count > 0).map((v: any) => [
     `#${v.vehicle_number} ${[v.year, v.make, v.model].filter(Boolean).join(' ')}`,
     v.fill_count,
     v.total_gallons.toFixed(1),
@@ -206,7 +206,7 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
     { header: 'Fills',       width: contentW * 0.15, align: 'right' },
     { header: 'Spent',       width: contentW * 0.15, align: 'right' },
     { header: 'Avg $/Gal',   width: contentW * 0.15, align: 'right' },
-  ], (overview.top_stations || []).map(s => [
+  ], (overview.top_stations || []).map((s: any) => [
     s.station,
     s.fill_count,
     fmtCurrency(s.total_spent),
@@ -218,7 +218,7 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
     drawSection('FLAGGED-ENTRY LEADERBOARD', [
       { header: 'Vehicle',       width: contentW * 0.70 },
       { header: 'Flagged Fills', width: contentW * 0.30, align: 'right' },
-    ], (overview.flagged_leaderboard || []).map(v => [
+    ], (overview.flagged_leaderboard || []).map((v: any) => [
       `#${v.vehicle_number} ${[v.make, v.model].filter(Boolean).join(' ')}`,
       v.flagged_count,
     ]));

@@ -169,9 +169,13 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
       y += 12;
     }
     let flagStr = '';
-    if (log.flags) {
+    // Backend may attach a `flags` JSON string not present on the
+    // FleetFuelLog interface — inline-cast to read it without widening
+    // the shared type.
+    const logFlags = (log as { flags?: string }).flags;
+    if (logFlags) {
       try {
-        const arr = JSON.parse(log.flags);
+        const arr = JSON.parse(logFlags);
         if (Array.isArray(arr)) flagStr = arr.map((f: string) => f.split(':')[0].toUpperCase()).join(' ');
       } catch { /* ignore */ }
     }

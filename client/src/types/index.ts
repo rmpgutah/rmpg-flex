@@ -1420,6 +1420,9 @@ export interface FleetFuelLog {
   calc_distance?: number | null;
   cost_per_mile?: number | null;
   running_avg_mpg?: number | null;
+  // Optional backend-attached fields (not always present on every log row)
+  flags?: string;              // JSON-encoded flag array, e.g. '["outlier:mpg"]'
+  driver_officer_id?: string;  // officer who filled the tank (if tracked)
 }
 
 export interface FleetFuelSummary {
@@ -1433,6 +1436,88 @@ export interface FleetFuelSummary {
   total_distance?: number | null;
   cost_per_mile?: number | null;
   fuel_cost_per_day?: number | null;
+}
+
+// --- Fuel Analytics + Budget + Cost types (deploy-unblock placeholders) ---
+//
+// These exports exist to satisfy imports in fleet analytics pages/PDFs that
+// were merged to main without accompanying type definitions. The shapes
+// below mirror actual usage but are intentionally permissive (`[key: string]:
+// any`) so future refinement can tighten fields without a breaking migration.
+// TODO: replace with precise interfaces derived from the backend response
+// schemas once the analytics API contracts stabilize.
+
+export interface FuelAnalyticsOverview {
+  vehicles?: Array<Record<string, any>>;
+  top_stations?: Array<Record<string, any>>;
+  flagged_leaderboard?: Array<Record<string, any>>;
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByOfficer {
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByCard {
+  [key: string]: any;
+}
+
+export interface FleetFuelBudget {
+  id?: string;
+  // vehicle_id is numeric per the FuelBudgetModal signature (number | null).
+  // Keep this typed precisely — callers pass it to onSave which declares
+  // number | null, so widening to string | number causes assignability errors.
+  vehicle_id?: number | null;
+  period?: string;
+  budget_amount?: number;
+  [key: string]: any;
+}
+
+export type FuelBudgetPeriod = 'weekly' | 'monthly' | 'quarterly' | 'yearly' | string;
+
+export interface FleetFuelBudgetSummary {
+  total_budget?: number;
+  total_spent?: number;
+  variance?: number;
+  [key: string]: any;
+}
+
+export interface FleetLoan {
+  id?: string;
+  vehicle_id?: string;
+  lender?: string;
+  monthly_payment?: number;
+  [key: string]: any;
+}
+
+export interface FleetInsurancePolicy {
+  id?: string;
+  vehicle_id?: string;
+  carrier?: string;
+  policy_number?: string;
+  premium?: number;
+  [key: string]: any;
+}
+
+export interface FleetAccessory {
+  id?: string;
+  vehicle_id?: string;
+  name?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetUtilityCost {
+  id?: string;
+  vehicle_id?: string;
+  kind?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetCostSummary {
+  total?: number;
+  [key: string]: any;
 }
 
 // --- Fleet Inspections ---
