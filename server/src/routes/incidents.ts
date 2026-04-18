@@ -399,6 +399,12 @@ router.post('/', async (req: Request, res: Response) => {
       patient_status, ems_transport, patient_vitals, treatment_rendered,
       trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
       force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
+      // Extended operational flags (silently dropped before 2026-04-10 — see audit)
+      injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+      officer_safety_caution, k9_requested, ems_requested, fire_requested, hazmat,
+      gang_related, evidence_collected, body_camera_active, photos_taken,
+      trespass_issued, vehicle_pursuit, foot_pursuit,
+      le_notified, supervisor_notified,
     } = req.body;
 
     if (!incident_type) {
@@ -475,6 +481,11 @@ router.post('/', async (req: Request, res: Response) => {
         patient_status, ems_transport, patient_vitals, treatment_rendered,
         trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
         force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
+        injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+        officer_safety_caution, k9_requested, ems_requested, fire_requested, hazmat,
+        gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit,
+        le_notified, supervisor_notified,
         created_at)
       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
@@ -487,6 +498,11 @@ router.post('/', async (req: Request, res: Response) => {
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
         ?)
     `).run(
       incidentNumber, call_id || null, incident_type, priority || 'P3',
@@ -505,6 +521,12 @@ router.post('/', async (req: Request, res: Response) => {
       patient_status || null, ems_transport || null, patient_vitals || null, treatment_rendered || null,
       trespass_warning_issued ? 1 : 0, trespass_effective_date || null, trespass_expiry_date || null, property_boundaries || null,
       force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
+      // Extended operational flags — default to 0 so the DB default wins if the client omits the key
+      injuries_reported ? 1 : 0, mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0,
+      officer_safety_caution ? 1 : 0, k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
+      gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
+      trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
+      le_notified ? 1 : 0, supervisor_notified ? 1 : 0,
       (req.user?.role === 'admin' && req.body.created_at) ? req.body.created_at : localNow(),
     );
 
@@ -617,23 +639,25 @@ router.put('/:id', async (req: Request, res: Response) => {
       force_type: v => v ?? null, force_justification: v => v ?? null,
       subject_injuries: v => v ?? null, officer_injuries: v => v ?? null,
       de_escalation_attempts: v => v ?? null,
-      // PSO Client Request fields
-      pso_service_type: v => v ?? null,
-      pso_attempt_number: v => v != null ? Number(v) || null : null,
-      pso_requestor_name: v => v ?? null,
-      pso_requestor_phone: v => v ?? null,
-      pso_requestor_email: v => v ?? null,
-      pso_billing_code: v => v ?? null,
-      pso_authorization: v => v ?? null,
-      // Process Service fields
-      process_service_type: v => v ?? null,
-      process_served_to: v => v ?? null,
-      process_served_address: v => v ?? null,
-      process_service_result: v => v ?? null,
-      process_served_at: v => v ?? null,
-      process_attempts: v => v != null ? Number(v) || null : null,
-      // Contract / Client
-      contract_id: v => v ?? null,
+      // Extended operational flags (previously silent-dropped — see audit 2026-04-10)
+      injuries_reported: v => v ? 1 : 0,
+      mental_health_crisis: v => v ? 1 : 0,
+      juvenile_involved: v => v ? 1 : 0,
+      felony_in_progress: v => v ? 1 : 0,
+      officer_safety_caution: v => v ? 1 : 0,
+      k9_requested: v => v ? 1 : 0,
+      ems_requested: v => v ? 1 : 0,
+      fire_requested: v => v ? 1 : 0,
+      hazmat: v => v ? 1 : 0,
+      gang_related: v => v ? 1 : 0,
+      evidence_collected: v => v ? 1 : 0,
+      body_camera_active: v => v ? 1 : 0,
+      photos_taken: v => v ? 1 : 0,
+      trespass_issued: v => v ? 1 : 0,
+      vehicle_pursuit: v => v ? 1 : 0,
+      foot_pursuit: v => v ? 1 : 0,
+      le_notified: v => v ? 1 : 0,
+      supervisor_notified: v => v ? 1 : 0,
     };
 
     for (const [key, transform] of Object.entries(iFieldMap)) {
