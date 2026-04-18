@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { auditEmailSend } from '../utils/emailAudit';
+import { redactPII } from '../utils/emailRedactor';
 import { broadcast } from '../utils/websocket';
 import { escapeLike, validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import type { NextFunction } from 'express';
@@ -818,17 +819,45 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
       }
     }
     if (toList.length > 50) { res.status(400).json({ error: 'Too many recipients (max 50)', code: 'TOO_MANY_RECIPIENTS_MAX' }); return; }
+
+    // Redaction gate: if any recipient domain is outside our allowlist AND the
+    // body contains PII AND the officer hasn't confirmed yet, return a preview
+    // for the client modal (ForwardRedactionModal) to display and confirm.
+    const INTERNAL_DOMAINS = ['rmpgutah.us'];
+    const recipientDomains = toList.map(addr => (addr.split('@')[1] || '').toLowerCase());
+    const hasExternal = recipientDomains.some(d =>
+      d && !INTERNAL_DOMAINS.some(id => d === id || d.endsWith('.' + id))
+    );
+    const finalBody = body || '';
+    let redactionApplied = false;
+    if (hasExternal && !req.body.redaction_confirmed) {
+      const { redacted, diff } = redactPII(finalBody);
+      if (diff.length > 0) {
+        res.status(409).json({
+          requires_redaction: true,
+          preview: { redacted, diff },
+        });
+        return;
+      }
+    } else if (hasExternal && req.body.redaction_confirmed) {
+      // Officer reviewed in the modal and is sending the (possibly edited) body.
+      redactionApplied = true;
+    }
+
     const client = await getGraphClient();
 
     const signature = getUserSignature(req.user!.userId);
     await client.api(`/me/messages/${messageId}/forward`).post({
-      comment: textToEmailHtml(body || '', signature || undefined),
+      comment: textToEmailHtml(finalBody, signature || undefined),
       toRecipients: toList.map((email: string) => ({
         emailAddress: { address: email.trim() },
       })),
     });
 
-    auditEmailSend(req, 'FORWARD', { messageId, to: toList, transport: 'graph' });
+    auditEmailSend(req, 'FORWARD', {
+      messageId, to: toList, transport: 'graph',
+      redactedFields: redactionApplied ? ['pii'] : undefined,
+    });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
