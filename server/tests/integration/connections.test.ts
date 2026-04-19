@@ -64,3 +64,16 @@ describe('GET /api/connections/graph', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /api/connections/export/csv', () => {
+  it('includes edges from incident_persons, not just record_links', async () => {
+    const res = await request(app)
+      .get('/api/connections/export/csv')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/csv/);
+    // Seed data from beforeAll: 1 incident_persons row with role='suspect'
+    expect(res.text).toContain('incident_persons');
+    expect(res.text).toContain('suspect');
+  });
+});
