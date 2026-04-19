@@ -259,6 +259,80 @@ describe('GET /api/connections/graph', () => {
     expect(res.body.nodes.some((n: any) => n.type === 'trespass_order' && n.entityId === toid)).toBe(true);
   });
 
+  it('traverses person → serve_job via serve_queue.recipient_person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Serve','Recipient')"
+    ).run().lastInsertRowid);
+    const sjid = Number(d.prepare(
+      "INSERT INTO serve_queue (officer_id, recipient_name, recipient_address, document_type, case_number, status, recipient_person_id) VALUES (?, 'Serve Recipient', '100 Due Process Ln', 'summons', 'CV-001', 'pending', ?)"
+    ).run(uid, pid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${pid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'serve_job' && n.entityId === sjid)).toBe(true);
+  });
+
+  it('traverses serve_job → person via serve_queue.recipient_person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Serve','Target')"
+    ).run().lastInsertRowid);
+    const sjid = Number(d.prepare(
+      "INSERT INTO serve_queue (officer_id, recipient_name, recipient_address, document_type, case_number, status, recipient_person_id) VALUES (?, 'Serve Target', '200 Due Process Ln', 'subpoena', 'CV-002', 'pending', ?)"
+    ).run(uid, pid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=serve_job&id=${sjid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+  });
+
+  it('traverses property → serve_job via serve_queue.property_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const clientId = Number(d.prepare(
+      "INSERT INTO clients (name) VALUES ('Serve Client A')"
+    ).run().lastInsertRowid);
+    const propId = Number(d.prepare(
+      "INSERT INTO properties (client_id, name, address) VALUES (?, 'Serve Prop A', '300 Serve Ln')"
+    ).run(clientId).lastInsertRowid);
+    const sjid = Number(d.prepare(
+      "INSERT INTO serve_queue (officer_id, recipient_name, recipient_address, document_type, case_number, status, property_id) VALUES (?, 'Addressee', '300 Serve Ln', 'summons', 'CV-003', 'pending', ?)"
+    ).run(uid, propId).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=property&id=${propId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'serve_job' && n.entityId === sjid)).toBe(true);
+  });
+
+  it('traverses serve_job → property via serve_queue.property_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const clientId = Number(d.prepare(
+      "INSERT INTO clients (name) VALUES ('Serve Client B')"
+    ).run().lastInsertRowid);
+    const propId = Number(d.prepare(
+      "INSERT INTO properties (client_id, name, address) VALUES (?, 'Serve Prop B', '400 Serve Ln')"
+    ).run(clientId).lastInsertRowid);
+    const sjid = Number(d.prepare(
+      "INSERT INTO serve_queue (officer_id, recipient_name, recipient_address, document_type, case_number, status, property_id) VALUES (?, 'Addressee B', '400 Serve Ln', 'subpoena', 'CV-004', 'pending', ?)"
+    ).run(uid, propId).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=serve_job&id=${sjid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'property' && n.entityId === propId)).toBe(true);
+  });
+
   it('traverses trespass_order → person + property', async () => {
     const d = (await import('../../src/models/database')).getDb();
     const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;

@@ -4263,6 +4263,10 @@ function migrateSchema(): void {
   // Dashcam videos — incident linkage
   addCol('dashcam_videos', 'incident_id', 'INTEGER');
 
+  // Serve queue — person/property FK links for connection graph
+  addCol('serve_queue', 'recipient_person_id', 'INTEGER');
+  addCol('serve_queue', 'property_id', 'INTEGER');
+
   // Training records/requirements — missing columns
   addCol('training_records', 'training_type', 'TEXT');
   addCol('training_records', 'expiration_date', 'TEXT');

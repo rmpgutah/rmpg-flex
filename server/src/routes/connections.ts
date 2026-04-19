@@ -90,6 +90,12 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const t = db.prepare('SELECT order_number, status FROM trespass_orders WHERE id = ?').get(id) as any;
         return t ? `${t.order_number || `TO-${id}`} (${(t.status || 'unknown').toUpperCase()})` : `Trespass #${id}`;
       }
+      case 'serve_job': {
+        const s = db.prepare('SELECT sm_job_id, case_number, document_type, status FROM serve_queue WHERE id = ?').get(id) as any;
+        if (!s) return `Serve #${id}`;
+        const ref = s.sm_job_id ? `SM-${s.sm_job_id}` : s.case_number || `SJ-${id}`;
+        return `${ref}${s.document_type ? ` ${s.document_type}` : ''} (${(s.status || 'pending').toUpperCase()})`;
+      }
       default:
         return `${type} #${id}`;
     }
@@ -145,6 +151,10 @@ function getNodeMetadata(db: any, type: string, id: number): Record<string, any>
       case 'trespass_order': {
         const t = db.prepare('SELECT order_number, person_id, property_id, location, status, order_type, effective_date, expiration_date, issued_by_name FROM trespass_orders WHERE id = ?').get(id) as any;
         return t || {};
+      }
+      case 'serve_job': {
+        const s = db.prepare('SELECT sm_job_id, officer_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip, document_type, case_number, court_name, client_name, attorney_name, priority, deadline, status, attempt_count, recipient_person_id, property_id, serve_date FROM serve_queue WHERE id = ?').get(id) as any;
+        return s || {};
       }
       default:
         return {};
@@ -303,6 +313,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
             });
           }
         } catch (err: any) { console.error('[Connections] trespass_orders(person) query error:', err?.message); }
+
+        try {
+          const sjs = db.prepare(
+            "SELECT id FROM serve_queue WHERE recipient_person_id = ?"
+          ).all(id) as any[];
+          for (const s of sjs) {
+            results.push({
+              type: 'serve_job', id: s.id,
+              relationship: 'serve_recipient',
+              sourceTable: 'serve_queue',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] serve_queue(person) query error:', err?.message); }
         break;
       }
 
@@ -451,6 +474,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
             });
           }
         } catch (err: any) { console.error('[Connections] trespass_orders(property) query error:', err?.message); }
+
+        try {
+          const sjs = db.prepare(
+            "SELECT id FROM serve_queue WHERE property_id = ?"
+          ).all(id) as any[];
+          for (const s of sjs) {
+            results.push({
+              type: 'serve_job', id: s.id,
+              relationship: 'serve_location',
+              sourceTable: 'serve_queue',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] serve_queue(property) query error:', err?.message); }
         break;
       }
 
@@ -531,6 +567,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         } catch (err: any) { console.error('[Connections] trespass_orders(to) query error:', err?.message); }
         break;
       }
+
+      case 'serve_job': {
+        try {
+          const s = db.prepare('SELECT recipient_person_id, property_id FROM serve_queue WHERE id = ?').get(id) as any;
+          if (s?.recipient_person_id) {
+            results.push({ type: 'person', id: s.recipient_person_id, relationship: 'recipient', sourceTable: 'serve_queue' });
+          }
+          if (s?.property_id) {
+            results.push({ type: 'property', id: s.property_id, relationship: 'location', sourceTable: 'serve_queue' });
+          }
+        } catch (err: any) { console.error('[Connections] serve_queue(sj) query error:', err?.message); }
+        break;
+      }
     }
   } catch (err: any) { console.error('[Connections] junction table query error:', err?.message); }
 
@@ -602,7 +651,7 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
 
 // ── Routes ───────────────────────────────────────────────────
 
-const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order'];
+const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order', 'serve_job'];
 
 // GET /connections/graph?type=person&id=123&depth=2
 router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
