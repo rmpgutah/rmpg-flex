@@ -27,9 +27,14 @@ function styleForBeat(feature: any): Style {
   });
 }
 
-export function useOlBeatLayer(map: Map | null): { ready: boolean } {
+export interface OlBeatLayerOptions {
+  visible?: boolean;
+}
+
+export function useOlBeatLayer(map: Map | null, opts: OlBeatLayerOptions = {}): { ready: boolean } {
   const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
   const readyRef = useRef(false);
+  const visible = opts.visible !== false;
 
   useEffect(() => {
     if (!map || layerRef.current) return;
@@ -38,6 +43,7 @@ export function useOlBeatLayer(map: Map | null): { ready: boolean } {
     const layer = new VectorLayer({
       source,
       style: styleForBeat as any,
+      visible,
       // Beats sit above tiles, below markers.
       zIndex: 10,
     });
@@ -71,7 +77,13 @@ export function useOlBeatLayer(map: Map | null): { ready: boolean } {
       }
       readyRef.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
+
+  // Cheap visibility toggle — no rebuild
+  useEffect(() => {
+    if (layerRef.current) layerRef.current.setVisible(visible);
+  }, [visible]);
 
   return { ready: readyRef.current };
 }
