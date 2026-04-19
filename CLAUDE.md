@@ -123,6 +123,35 @@ export default function SomePage() {
 }
 ```
 
+### Client-side PDF smoke tests (introduced 2026-04-18)
+```typescript
+// Pattern for catching regressions in the large v1 PDF generators (which
+// lack structural test coverage). Smoke tests don't validate output
+// correctness — they verify each public generator accepts minimum-viable
+// data and completes without throwing. That's enough to catch the common
+// regressions: missing null-checks on optional fields, broken imports
+// after refactors, signature drift.
+
+// In tests/setup stub fetch for admin-branding endpoint to avoid jsdom
+// network calls. Stub once per beforeEach:
+vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  if (url.includes('/api/admin/config/branding')) {
+    return new Response(JSON.stringify([]), { status: 200 });
+  }
+  return new Response('', { status: 404 });
+}));
+
+// Then exhaustively call each generator type with minimum-viable data:
+it('generates a call PDF from minimal data', async () => {
+  const doc = await generateRecordPdf('call', { call_number: 'X', incident_type: 'Y', priority: '3', status: 'CLEARED', description: '.' });
+  expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+});
+```
+- Smoke test files live at `client/src/utils/__tests__/*.smoke.test.ts`
+- Current coverage: `recordPdfGenerator.smoke.test.ts` (15 tests — all 9 RecordPdfType values + BOLO + WarrantSummary + setActiveOfficerSignature), `pdfGenerator.smoke.test.ts` (9 tests — all 8 PdfReportType values + populated-fields variant)
+- **When touching the big v1 PDF files, the smoke suite is your safety net.** If you split a generator into a new module, a broken import will fail the smoke test before it reaches a user.
+- jsdom prints `HTMLCanvasElement.getContext()` warnings — these are benign (jsPDF's fallbacks handle it).
+
 ### Structured Logging (pino — introduced 2026-04-18)
 ```typescript
 // Server-side logging pattern — use the structured logger, not console.*
