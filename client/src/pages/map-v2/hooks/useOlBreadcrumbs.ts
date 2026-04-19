@@ -72,7 +72,23 @@ function colorForStatus(status: string | null | undefined): string {
   return UNIT_STATUS_HEX[status as UnitStatus] || '#888888';
 }
 
-const MAX_POINTS_PER_TRAIL = 500;
+/** Hard ceiling on rendered points per trail. We decimate longer trails
+ *  to fit under this. 5000 keeps OL responsive with 10+ trails active
+ *  at month scale (10 × 5000 = 50k features → fine for OL Canvas). */
+const MAX_POINTS_PER_TRAIL = 5000;
+
+/** Decimate a trail to at-most `target` points, keeping endpoints and
+ *  evenly-spaced samples between. Cheap O(N) walk. */
+function decimate<T>(arr: T[], target: number): T[] {
+  if (arr.length <= target) return arr;
+  const out: T[] = [];
+  const step = (arr.length - 1) / (target - 1);
+  for (let i = 0; i < target; i++) {
+    const idx = Math.min(arr.length - 1, Math.round(i * step));
+    out.push(arr[idx]);
+  }
+  return out;
+}
 
 /**
  * GPS breadcrumb trails for /map-v2.
@@ -141,8 +157,11 @@ export function useOlBreadcrumbs(
         const pointFeats: Feature<Geometry>[] = [];
         for (const t of (trails || [])) {
           if (!Array.isArray(t.points) || t.points.length < 2) continue;
-          const points = t.points.slice(0, MAX_POINTS_PER_TRAIL);
-          const valid = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+          // Decimate trails longer than the cap (e.g. 1-month views)
+          // before filtering so we keep evenly-spaced samples across
+          // the full time range, not just the first MAX_POINTS_PER_TRAIL.
+          const decimated = decimate(t.points, MAX_POINTS_PER_TRAIL);
+          const valid = decimated.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
           if (valid.length < 2) continue;
 
           const unitColor = colorForUnit(t.call_sign);

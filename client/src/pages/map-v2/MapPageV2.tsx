@@ -103,7 +103,7 @@ export default function MapPageV2() {
   const [safetyDays, setSafetyDays] = useState<30 | 90 | 180>(90);
   const [enforcementDays, setEnforcementDays] = useState<7 | 30 | 90>(30);
   const [enforcementType, setEnforcementType] = useState<'all' | 'traffic' | 'criminal'>('all');
-  const [breadcrumbHours, setBreadcrumbHours] = useState<1 | 4 | 8 | 24>(8);
+  const [breadcrumbHours, setBreadcrumbHours] = useState<1 | 4 | 8 | 24 | 168 | 720>(8);
   const [breadcrumbColor, setBreadcrumbColor] = useState<BreadcrumbColorMode>('unit');
   const [fiDays, setFiDays] = useState<7 | 30 | 90>(30);
   const [incidentDays, setIncidentDays] = useState<7 | 30 | 90>(30);
@@ -406,12 +406,17 @@ export default function MapPageV2() {
       layers: [
         { key: 'tracking', label: 'Tracking Lines', color: '#fbbf24', visible: showTracking, onToggle: () => setShowTracking(v => !v) },
         {
-          key: 'breadcrumbs', label: `Breadcrumbs (${breadcrumbHours}h)`, color: '#14b8a6',
+          key: 'breadcrumbs',
+          label: `Breadcrumbs (${breadcrumbHours >= 720 ? '1mo' : breadcrumbHours >= 168 ? '1w' : breadcrumbHours + 'h'})`,
+          color: '#14b8a6',
           visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v),
           controls: [
-            { kind: 'segmented', label: 'HRS', value: breadcrumbHours,
-              options: [{ value: 1, label: '1' }, { value: 4, label: '4' }, { value: 8, label: '8' }, { value: 24, label: '24' }],
-              onChange: (v) => setBreadcrumbHours(v as 1 | 4 | 8 | 24) },
+            { kind: 'segmented', label: 'WIN', value: breadcrumbHours,
+              options: [
+                { value: 1, label: '1h' }, { value: 4, label: '4h' }, { value: 8, label: '8h' },
+                { value: 24, label: '1d' }, { value: 168, label: '1w' }, { value: 720, label: '1mo' },
+              ],
+              onChange: (v) => setBreadcrumbHours(v as 1 | 4 | 8 | 24 | 168 | 720) },
             { kind: 'segmented', label: 'COLOR', value: breadcrumbColor,
               options: [{ value: 'unit', label: 'Unit' }, { value: 'speed', label: 'Speed' }, { value: 'status', label: 'Status' }],
               onChange: (v) => setBreadcrumbColor(v as BreadcrumbColorMode) },

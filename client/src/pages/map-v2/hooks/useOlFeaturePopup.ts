@@ -185,10 +185,15 @@ interface BreadcrumbRow {
   time?: string;
   road_name?: string | null;
   intersection?: string | null;
+  isStart?: boolean;
+  isEnd?: boolean;
 }
 function popupForBreadcrumb(p: BreadcrumbRow): HTMLDivElement {
-  const root = buildContainer('#14b8a680', 200);
-  root.appendChild(makeRow(p.call_sign || 'Unit', '#14b8a6', 11, 700, { marginTop: '0' }));
+  const borderColor = p.isStart ? '#22c55e' : p.isEnd ? '#ef4444' : '#14b8a680';
+  const titleColor = p.isStart ? '#22c55e' : p.isEnd ? '#ef4444' : '#14b8a6';
+  const tag = p.isStart ? ' \u2022 START' : p.isEnd ? ' \u2022 END' : '';
+  const root = buildContainer(borderColor, 200);
+  root.appendChild(makeRow((p.call_sign || 'Unit') + tag, titleColor, 11, 700, { marginTop: '0' }));
   if (p.officer_name) root.appendChild(makeRow(p.officer_name, '#9ca3af', 9, 400));
 
   // Speed (m/s → mph) + heading + status, all on one informational line block
