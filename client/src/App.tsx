@@ -14,7 +14,8 @@ import LoginPage from './pages/LoginPage';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
-import MapPage from './pages/map';
+// MapPage (Google Maps) retired 2026-04-19 — Google API keys revoked.
+// /map redirects to /map-v2 (OpenLayers). Phase 5 will delete pages/map/.
 const MapPageV2 = lazyRetry(() => import('./pages/map-v2'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
@@ -210,7 +211,7 @@ function AppRoutes() {
           >
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
             <Route path="/dispatch" element={<DispatchPage />} />
-            <Route path="/map" element={<MapPage />} />
+            <Route path="/map" element={<Navigate to="/map-v2" replace />} />
             <Route path="/map-v2" element={<RouteErrorBoundary><MapPageV2 /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
