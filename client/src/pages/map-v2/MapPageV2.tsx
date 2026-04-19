@@ -38,7 +38,13 @@ import MapV2ContextMenu from './components/MapV2ContextMenu';
 import MapV2GeolocateButton from './components/MapV2GeolocateButton';
 import MapV2RecenterButton from './components/MapV2RecenterButton';
 import MapV2CoverageBar from './components/MapV2CoverageBar';
+import MapV2CursorReadout from './components/MapV2CursorReadout';
+import MapV2PresetsButton from './components/MapV2PresetsButton';
 import { useDispatchCoverageStats } from './hooks/useDispatchCoverageStats';
+import { useOlCursorCoords } from './hooks/useOlCursorCoords';
+import { useMapV2Shortcuts } from './hooks/useMapV2Shortcuts';
+import { useLayerPresets, type LayerPreset } from './hooks/useLayerPresets';
+import { useP1AudioAlert } from './hooks/useP1AudioAlert';
 import { useOlAutoPanToP1 } from './hooks/useOlAutoPanToP1';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
@@ -167,12 +173,56 @@ export default function MapPageV2() {
   const geo = useOlGeolocation(map);
   const coverageStats = useDispatchCoverageStats();
   useOlAutoPanToP1(map, { enabled: true });
+  useP1AudioAlert({ enabled: true });
+  const cursorCoords = useOlCursorCoords(map);
+  const { presets, save: savePreset, remove: removePreset } = useLayerPresets();
 
   const recenter = () => {
     if (!map) return;
     map.getView().animate({ center: fromLonLat(SLC_LON_LAT), zoom: 11, duration: 500 });
   };
+
+  // Layer-preset save/apply: capture current visibility into a flat map,
+  // and apply by routing each key to its setter.
+  const captureVisibility = (): Record<string, boolean> => ({
+    beats: showBeats, county: showCounty, municipality: showMunicipality,
+    highway: showHighway, places: showPlaces,
+    heatmap: showHeatmap, safety: showSafety, enforcement: showEnforcement,
+    predictions: showPredictions,
+    incidents: showIncidents, fi: showFi, checkpoints: showCheckpoints,
+    fleet: showFleet,
+    breadcrumbs: showBreadcrumbs, history: showCallHistory,
+    repeat: showRepeat, dwell: showDwell,
+    tracking: showTracking, alerts: showAlerts, geofences: showGeofences,
+  });
+  const applyPreset = (preset: LayerPreset) => {
+    const setters: Record<string, (v: boolean) => void> = {
+      beats: setShowBeats, county: setShowCounty, municipality: setShowMunicipality,
+      highway: setShowHighway, places: setShowPlaces,
+      heatmap: setShowHeatmap, safety: setShowSafety, enforcement: setShowEnforcement,
+      predictions: setShowPredictions,
+      incidents: setShowIncidents, fi: setShowFi, checkpoints: setShowCheckpoints,
+      fleet: setShowFleet,
+      breadcrumbs: setShowBreadcrumbs, history: setShowCallHistory,
+      repeat: setShowRepeat, dwell: setShowDwell,
+      tracking: setShowTracking, alerts: setShowAlerts, geofences: setShowGeofences,
+    };
+    for (const [key, val] of Object.entries(preset.visibility)) {
+      setters[key]?.(val);
+    }
+  };
   const contextMenu = useOlContextMenu(map);
+
+  function toggleFullscreen() {
+    if (!mapDivRef.current) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      mapDivRef.current.requestFullscreen().catch(() => {});
+    }
+  }
+  // Note: useMapV2Shortcuts is wired below after screenshot/geo are defined,
+  // since hook declaration order matters for the closures.
 
   // Tile-source swapping for the style switcher
   useEffect(() => {
@@ -208,6 +258,12 @@ export default function MapPageV2() {
   const daylight = useDaylightPhase();
   const screenshot = useOlScreenshot(map);
   const { isConnected } = useWebSocket();
+  useMapV2Shortcuts(map, {
+    onRecenter: recenter,
+    onToggleFullscreen: toggleFullscreen,
+    onScreenshot: () => screenshot(),
+    onLocate: () => geo.locate(),
+  });
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
@@ -390,6 +446,13 @@ export default function MapPageV2() {
       <MapV2GeolocateButton onLocate={geo.locate} enabled={geo.enabled} />
       <MapV2RecenterButton onClick={recenter} />
       <MapV2CoverageBar stats={coverageStats} />
+      <MapV2CursorReadout coords={cursorCoords} />
+      <MapV2PresetsButton
+        presets={presets}
+        onSave={(name) => savePreset(name, captureVisibility())}
+        onApply={applyPreset}
+        onRemove={removePreset}
+      />
       <MapV2StyleSwitcher value={mapStyle} onChange={setMapStyle} />
       <MapV2ContextMenu
         menu={contextMenu.menu}
