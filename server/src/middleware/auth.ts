@@ -81,30 +81,66 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           // [FIX 5] Actually log the warning in warn mode
           console.warn(`[AUTH] IP change detected for user ${decoded.username}: session IP ${session.ip_address} → request IP ${req.ip}`);
         }
-      } catch { /* DB not available - allow through */ }
+      } catch (err) {
+        // [FIX 9] IP binding is defense-in-depth: log-and-allow on DB error,
+        // but make the failure visible so schema drift doesn't silently disable it.
+        console.error(
+          `[AUTH] IP-binding check failed for user ${decoded.username} (sessionId=${decoded.sessionId}); allowing request through:`,
+          err instanceof Error ? err.message : err
+        );
+      }
     }
 
     req.user = decoded;
 
     // Check system lockdown (admin-only access when active)
     if (req.user && req.user.role !== 'admin') {
+      let lockdownRow: { config_value?: string } | undefined;
       try {
         const db = getDb();
-        const lockdownRow = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'system_lockdown' AND is_active = 1").get() as any;
-        if (lockdownRow?.config_value) {
-          try {
-            const lockdown = JSON.parse(lockdownRow.config_value);
-            if (lockdown.active) {
-              res.status(503).json({
-                error: lockdown.message || 'System is in lockdown mode',
-                code: 'SYSTEM_LOCKDOWN',
-                lockdown: true
-              });
-              return;
-            }
-          } catch {}
+        lockdownRow = db.prepare(
+          "SELECT config_value FROM system_config WHERE config_key = 'system_lockdown' AND is_active = 1"
+        ).get() as { config_value?: string } | undefined;
+      } catch (err) {
+        // [FIX 10] Lockdown is a hard security boundary — fail CLOSED on DB error.
+        // If we can't verify the system isn't locked down, we must assume it might be.
+        console.error(
+          `[AUTH] Lockdown check DB error for user ${req.user.username}; failing closed:`,
+          err instanceof Error ? err.message : err
+        );
+        res.status(503).json({
+          error: 'Unable to verify system status',
+          code: 'LOCKDOWN_CHECK_FAILED',
+        });
+        return;
+      }
+
+      if (lockdownRow?.config_value) {
+        let lockdown: { active?: boolean; message?: string };
+        try {
+          lockdown = JSON.parse(lockdownRow.config_value);
+        } catch (err) {
+          // [FIX 11] Malformed lockdown config is also a fail-closed condition —
+          // a corrupt row must not silently grant access during an active incident.
+          console.error(
+            `[AUTH] Malformed system_lockdown config_value; failing closed:`,
+            err instanceof Error ? err.message : err
+          );
+          res.status(503).json({
+            error: 'System lockdown configuration is invalid',
+            code: 'LOCKDOWN_CONFIG_INVALID',
+          });
+          return;
         }
-      } catch {}
+        if (lockdown.active) {
+          res.status(503).json({
+            error: lockdown.message || 'System is in lockdown mode',
+            code: 'SYSTEM_LOCKDOWN',
+            lockdown: true,
+          });
+          return;
+        }
+      }
     }
 
     next();
