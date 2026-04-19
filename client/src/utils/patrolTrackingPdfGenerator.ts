@@ -229,7 +229,12 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // ── Utility: draw table column headers. Matches the incident-report
   // styling from pdfGenerator.ts#addTableWithShading — light slate fill
   // with dark text, thin border matching inner dividers.
+  // Backs up yPos by SECTION_CONTENT_PAD so the column-header bar sits
+  // FLUSH against the section title bar above it (matches LINKED PERSONS
+  // / LINKED VEHICLES look). Patrol tracking always calls this
+  // immediately after drawSectionHeader so the subtraction is safe.
   function drawColumnHeaders(cols: { label: string; w: number }[]) {
+    yPos -= SPACING.SECTION_CONTENT_PAD;
     const hdrH = 5;
     doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
     doc.rect(margin, yPos, contentW, hdrH, 'F');

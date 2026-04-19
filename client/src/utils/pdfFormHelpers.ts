@@ -565,11 +565,21 @@ export function drawNibrsHeader(
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
 
-    // Case number value
+    // Case number value — auto-scale font down if the text is wider than
+    // the box (e.g. "DONNA MANOR APARTMENTS" overflowing the 42mm box on a
+    // property record). Keeps text inside box edges on every report type.
     doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.setFontSize(FONT.SIZE_CASE_NUMBER);
+    const caseNumberText = sanitizePdfText(config.caseNumber);
+    const availW = caseBoxW - 3;  // 1.5mm padding each side
+    let caseFontSize: number = FONT.SIZE_CASE_NUMBER;
+    doc.setFontSize(caseFontSize);
+    let measuredW = doc.getTextWidth(caseNumberText);
+    if (measuredW > availW && measuredW > 0) {
+      caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
+      doc.setFontSize(caseFontSize);
+    }
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(sanitizePdfText(config.caseNumber), caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+    doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;

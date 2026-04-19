@@ -8,6 +8,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { config } from '../config';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
@@ -192,7 +193,7 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (re
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.id, 10);
+    const personId = parseInt(paramStr(req.params.id), 10);
     if (isNaN(personId)) { res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }); return; }
     let person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
 
@@ -3304,7 +3305,7 @@ router.get('/reports/approval-queue', (req: Request, res: Response) => {
 router.post('/reports/:id/approve', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const now = localNow();
@@ -3336,7 +3337,7 @@ router.post('/reports/:id/approve', (req: Request, res: Response) => {
 router.post('/reports/:id/return', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { reason } = req.body;
@@ -3370,7 +3371,7 @@ router.post('/reports/:id/return', (req: Request, res: Response) => {
 router.get('/cases/:id/solvability', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
@@ -3499,7 +3500,7 @@ router.get('/vehicles/bolo-check', (req: Request, res: Response) => {
 router.post('/persons/:id/photo', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { photo } = req.body; // Base64 data URL
@@ -3557,7 +3558,7 @@ router.get('/location-suggest', (req: Request, res: Response) => {
 router.post('/cases/:id/assign', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { detective_id } = req.body;
@@ -4152,7 +4153,7 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
     const alias = db.prepare('SELECT * FROM person_aliases WHERE id = ? AND person_id = ?').get(req.params.aliasId, req.params.id) as any;
     if (!alias) { res.status(404).json({ error: 'Alias not found', code: 'ALIAS_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_aliases WHERE id = ?').run(req.params.aliasId);
-    auditLog(req, 'DELETE', 'person_alias', parseInt(req.params.aliasId), `Removed alias "${alias.alias_name}" from person #${req.params.id}`);
+    auditLog(req, 'DELETE', 'person_alias', parseInt(paramStr(req.params.aliasId)), `Removed alias "${alias.alias_name}" from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) { console.error('Delete alias error:', error); res.status(500).json({ error: 'Failed to delete alias', code: 'DELETE_ALIAS_ERROR' }); }
 });
@@ -4174,7 +4175,7 @@ router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) 
     const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;
     if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.assocId);
-    auditLog(req, 'DELETE', 'person_associate', parseInt(req.params.assocId), `Removed associate from person #${req.params.id}`);
+    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.assocId)), `Removed associate from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) { console.error('Delete associate error:', error); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_ASSOCIATE_ERROR' }); }
 });

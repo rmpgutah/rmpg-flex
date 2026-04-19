@@ -1228,110 +1228,52 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Persons — clean table: section header + column headers + data rows
+  // Linked Persons — route through the shared addTableWithShading helper
+  // so the table automatically redraws column headers + a
+  // "LINKED PERSONS -- CONTINUED" sub-bar on any page break (no more
+  // orphaned data rows on continuation pages).
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE'];
+    const sec = openAutoSection(doc, 'LINKED PERSONS', y);
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
-    const rowH = 4.5;
-    // Column header — light slate fill + dark text to match the
-    // incident-report addTableWithShading styling (so linked-persons
-    // tables read consistently with every other table in the system).
-    const cw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
-    let hx = lx;
-    for (let i = 0; i < pHeaders.length; i++) {
-      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
-      doc.text(pHeaders[i], hx + 1, y + (rowH + capH) / 2);
-      hx += pColW[i];
-    }
-    y += rowH;
-    // Data rows
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    for (const p of data.linked_persons) {
-      y = checkPageBreak(doc, y, rowH);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const pVals = [
-        `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
-        (p.role || '').replace(/_/g, ' ').toUpperCase() || '—',
-        (p.dob || '—').toUpperCase(),
-        [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
-        (p.phone || '—').toUpperCase(),
-      ];
-      let dx = lx;
-      for (let i = 0; i < pVals.length; i++) {
-        doc.text(pVals[i], dx + 1.5, y + rowH * 0.65);
-        dx += pColW[i];
-      }
-      y += rowH;
-      // Bottom separator
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y, lx + ffw, y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    const pColPos: number[] = [];
+    { let cx = lx; for (const w of pColW) { pColPos.push(cx); cx += w; } }
+    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE']
+      .map((label, i) => ({ label, x: pColPos[i] }));
+    const pRows = data.linked_persons.map(p => [
+      `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
+      (p.role || '').replace(/_/g, ' ').toUpperCase() || '—',
+      (p.dob || '—').toUpperCase(),
+      [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
+      (p.phone || '—').toUpperCase(),
+    ]);
+    y = addTableWithShading(doc, pHeaders, pRows, y, pColPos, { sectionTitle: 'LINKED PERSONS' });
   }
 
   // Linked Vehicles — clean table: section header + column headers + data rows
   if (data.linked_vehicles && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED VEHICLES', y); y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER'];
+    const sec = openAutoSection(doc, 'LINKED VEHICLES', y);
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
-    const rowH = 4.5;
-    // Column header — light slate fill + dark text to match the
-    // incident-report addTableWithShading styling.
-    const vcw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.rect(LAYOUT.PAGE_MARGIN, y, vcw, rowH);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
-    let vhx = lx;
-    for (let i = 0; i < vHeaders.length; i++) {
-      const capH = FONT.SIZE_TABLE_HEADER * 0.35;
-      doc.text(vHeaders[i], vhx + 1, y + (rowH + capH) / 2);
-      vhx += vColW[i];
-    }
-    y += rowH;
-    // Data rows
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    for (const v of data.linked_vehicles) {
-      y = checkPageBreak(doc, y, rowH);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase()) ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]` : '';
-      const vVals = [
+    const vColPos: number[] = [];
+    { let cx = lx; for (const w of vColW) { vColPos.push(cx); cx += w; } }
+    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER']
+      .map((label, i) => ({ label, x: vColPos[i] }));
+    const vRows = data.linked_vehicles.map(v => {
+      const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase())
+        ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]`
+        : '';
+      return [
         (v.role || '').replace(/_/g, ' ').toUpperCase() || '—',
         [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
         (v.color || '—').toUpperCase(),
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
         ([v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + stolen).toUpperCase() || '—',
       ];
-      let vdx = lx;
-      for (let i = 0; i < vVals.length; i++) {
-        doc.text(vVals[i], vdx + 1.5, y + rowH * 0.65);
-        vdx += vColW[i];
-      }
-      y += rowH;
-      // Bottom separator
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y, lx + ffw, y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    });
+    y = addTableWithShading(doc, vHeaders, vRows, y, vColPos, { sectionTitle: 'LINKED VEHICLES' });
   }
 
   // ── Incident Details — dynamic page break ──
@@ -1643,6 +1585,10 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     formTitle: 'PERSON RECORD',
     formNumber: 'FORM PS-202',
     caseNumber: personName,
+    // Label the right-side header box "SUBJECT NAME" for person records
+    // instead of the default "CASE NUMBER" — more semantically accurate
+    // since the value is a name, not an incident identifier.
+    caseNumberLabel: 'SUBJECT NAME',
     reportDate: fmtDate(data.created_at),
   });
 
@@ -1774,14 +1720,15 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── 7. Employment / Demographics ──────────────────────────
+  // ── 7. Employment ─────────────────────────────────────────
+  // Language lives in Subject Identification section above — removed from
+  // here 2026-04-18 to eliminate the duplicate field pair.
   y = checkPageBreak(doc, y, 12, prio);
   { const sec = openAutoSection(doc, 'Employment', y); y = sec.contentY;
-    const thirdW = ffw / 3;
-    const e1 = addFieldPair(doc, 'Employer', data.employer || '', lx, y, thirdW);
-    const e2 = addFieldPair(doc, 'Occupation', data.occupation || '', lx + thirdW, y, thirdW);
-    const e3 = addFieldPair(doc, 'Language', data.language || '', lx + 2 * thirdW, y, thirdW);
-    y = Math.max(e1, e2, e3);
+    const hw = ffw / 2;
+    const e1 = addFieldPair(doc, 'Employer', data.employer || '', lx, y, hw);
+    const e2 = addFieldPair(doc, 'Occupation', data.occupation || '', lx + hw, y, hw);
+    y = Math.max(e1, e2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -1969,6 +1916,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       warrantRows,
       y,
       [lx, lx + 29, lx + 49, lx + 72, lx + 127, lx + 152],
+      { sectionTitle: 'ACTIVE WARRANTS' },
     );
   }
 
@@ -1995,6 +1943,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       incidentRows,
       y,
       [lx, lx + 32, lx + 82, lx + 112, lx + 147],
+      { sectionTitle: 'INCIDENT HISTORY' },
     );
   }
 
@@ -2021,6 +1970,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       citationRows,
       y,
       [lx, lx + 32, lx + 57, lx + 85, lx + 152],
+      { sectionTitle: 'CITATION HISTORY' },
     );
   }
 
@@ -2047,6 +1997,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       callRows,
       y,
       [lx, lx + 27, lx + 69, lx + 97, lx + 152],
+      { sectionTitle: 'DISPATCH CALL HISTORY' },
     );
   }
 
@@ -2076,6 +2027,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       crRows,
       y,
       [lx, lx + crCw * 0.13, lx + crCw * 0.45, lx + crCw * 0.55, lx + crCw * 0.70, lx + crCw * 0.87],
+      { sectionTitle: 'CRIMINAL HISTORY' },
     );
   }
 
@@ -2120,6 +2072,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     formTitle: 'VEHICLE RECORD',
     formNumber: 'FORM PS-203',
     caseNumber: data.license_plate || 'N/A',
+    caseNumberLabel: 'LICENSE PLATE',
   });
 
   // ── Vehicle Identification ──
@@ -2275,6 +2228,7 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     formTitle: 'WARRANT RECORD',
     formNumber: 'FORM PS-204',
     caseNumber: data.warrant_number,
+    caseNumberLabel: 'WARRANT #',
     reportDate: fmtDate(data.created_at),
   });
 
@@ -2397,6 +2351,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     formTitle: 'EVIDENCE / PROPERTY CUSTODY REPORT',
     formNumber: 'FORM PS-205',
     caseNumber: data.evidence_number,
+    caseNumberLabel: 'EVIDENCE #',
   });
 
   // ── Evidence Identification ──
@@ -2448,10 +2403,14 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Chain of Custody (table — keep existing pattern, it works well)
+  // Chain of Custody — flush table layout (section header bar sits
+  // directly above the column header row, matching the LINKED PERSONS /
+  // LINKED VEHICLES / Active Warrants / Incident History pattern that
+  // was confirmed to look right).
   if (data.chain_of_custody && data.chain_of_custody.length > 0) {
     y = checkPageBreak(doc, y, 25);
-    const sec = openAutoSection(doc, 'Chain of Custody', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'Chain of Custody', y);
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const custodyRows = data.chain_of_custody.map(c => [
       fmtTimestamp(c.timestamp),
       (c.action || '').toUpperCase(),
@@ -2471,6 +2430,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
       custodyRows,
       y,
       [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 65, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 135],
+      { sectionTitle: 'CHAIN OF CUSTODY' },
     );
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2604,6 +2564,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     formTitle: reportTitles[reportType] || reportTitles.status,
     formNumber: 'FORM PS-206',
     caseNumber: data.vehicle_number,
+    caseNumberLabel: 'UNIT #',
   });
 
   // ── Vehicle Information ──
@@ -2771,7 +2732,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         `$${s.avgPrice.toFixed(2)}`,
         `${s.pctOfTotal.toFixed(1)}%`,
       ]);
-      y = addTableWithShading(doc, stHeaders, stRows, y, stColPos);
+      y = addTableWithShading(doc, stHeaders, stRows, y, stColPos, { sectionTitle: 'PER-STATION BREAKDOWN' });
     }
   }
 
@@ -2809,47 +2770,79 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
 
   // ── MILEAGE SUMMARY REPORT ──
   if (reportType === 'mileage_summary' && data.fuel_logs && data.fuel_logs.length > 0) {
-    // Group fuel logs by date and calculate distance per day
-    const byDate: Record<string, { distance: number; gallons: number; cost: number }> = {};
+    // Distance resolution order (most trustworthy -> fallback):
+    //   1. calc_distance — backend computes from odometer deltas, most accurate
+    //   2. distance      — legacy user-entered field
+    //   3. odometer delta from earliest -> latest entry (lifetime span)
+    const resolveDistance = (f: any): number => {
+      if (typeof f.calc_distance === 'number' && f.calc_distance > 0) return f.calc_distance;
+      if (typeof f.distance === 'number' && f.distance > 0) return f.distance;
+      return 0;
+    };
+
+    // Group by date
+    const byDate: Record<string, { distance: number; gallons: number; cost: number; odometer: number }> = {};
     for (const f of data.fuel_logs) {
       const dateKey = f.fuel_date?.split('T')[0] || 'Unknown';
-      if (!byDate[dateKey]) byDate[dateKey] = { distance: 0, gallons: 0, cost: 0 };
-      byDate[dateKey].distance += f.distance || 0;
+      if (!byDate[dateKey]) byDate[dateKey] = { distance: 0, gallons: 0, cost: 0, odometer: 0 };
+      byDate[dateKey].distance += resolveDistance(f);
       byDate[dateKey].gallons += f.gallons || 0;
       byDate[dateKey].cost += f.total_cost || 0;
+      // Track the highest odometer reading seen on each date for an
+      // end-of-day snapshot (useful in the table's Odometer column).
+      if (typeof f.odometer_reading === 'number' && f.odometer_reading > byDate[dateKey].odometer) {
+        byDate[dateKey].odometer = f.odometer_reading;
+      }
     }
 
     const sortedDates = Object.keys(byDate).sort();
-    const totalDist = sortedDates.reduce((s, d) => s + byDate[d].distance, 0);
+
+    // Total distance — prefer summed calc_distance, fall back to the
+    // odometer span if every entry had a null distance (which happens
+    // on vehicles where operators never entered odometer readings).
+    let totalDist = sortedDates.reduce((s, d) => s + byDate[d].distance, 0);
+    if (totalDist === 0) {
+      const odos = data.fuel_logs
+        .map((f: any) => typeof f.odometer_reading === 'number' ? f.odometer_reading : null)
+        .filter((n: number | null): n is number => n != null && n > 0);
+      if (odos.length >= 2) {
+        totalDist = Math.max(...odos) - Math.min(...odos);
+      }
+    }
     const totalGal = sortedDates.reduce((s, d) => s + byDate[d].gallons, 0);
     const totalCost = sortedDates.reduce((s, d) => s + byDate[d].cost, 0);
+    const overallMpg = totalGal > 0 && totalDist > 0 ? totalDist / totalGal : null;
 
     y = checkPageBreak(doc, y, 15);
     { const sec = openAutoSection(doc, 'Mileage Summary', y); y = sec.contentY;
-      const thirdW = ffw / 3;
-      const r1a = addFieldPair(doc, 'Total Distance', `${totalDist.toFixed(1)} mi`, lx, y, thirdW);
-      const r1b = addFieldPair(doc, 'Total Fuel', `${totalGal.toFixed(2)} gal`, lx + thirdW, y, thirdW);
-      const r1c = addFieldPair(doc, 'Total Cost', `$${totalCost.toFixed(2)}`, lx + thirdW * 2, y, thirdW);
-      y = Math.max(r1a, r1b, r1c);
+      const qw = ffw / 4;
+      const r1a = addFieldPair(doc, 'Total Distance', `${totalDist.toFixed(1)} mi`, lx, y, qw);
+      const r1b = addFieldPair(doc, 'Total Fuel', `${totalGal.toFixed(2)} gal`, lx + qw, y, qw);
+      const r1c = addFieldPair(doc, 'Total Cost', `$${totalCost.toFixed(2)}`, lx + qw * 2, y, qw);
+      const r1d = addFieldPair(doc, 'Avg MPG', overallMpg != null ? `${overallMpg.toFixed(2)} MPG` : 'N/A', lx + qw * 3, y, qw);
+      y = Math.max(r1a, r1b, r1c, r1d);
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
 
-    // Mileage summary table — standardised via addTableWithShading
-    const mileColW = [30, 30, 30, cw - 90];
+    // Per-day table — Date | Distance | Fuel | Cost | Odometer | MPG
+    const mileColW = [22, 24, 22, 26, 28, cw - 122];
     const mileColPos: number[] = [];
     { let cx = lx; for (const w of mileColW) { mileColPos.push(cx); cx += w; } }
-    const mileHeaders = ['Date', 'Distance (mi)', 'Fuel (gal)', 'Cost']
+    const mileHeaders = ['DATE', 'DISTANCE (MI)', 'FUEL (GAL)', 'COST', 'ODOMETER', 'MPG']
       .map((label, i) => ({ label, x: mileColPos[i] }));
     const mileRows = sortedDates.map(dateKey => {
       const d = byDate[dateKey];
+      const dayMpg = d.gallons > 0 && d.distance > 0 ? d.distance / d.gallons : null;
       return [
         dateKey,
         d.distance > 0 ? d.distance.toFixed(1) : '-',
         d.gallons > 0 ? d.gallons.toFixed(2) : '-',
         d.cost > 0 ? `$${d.cost.toFixed(2)}` : '-',
+        d.odometer > 0 ? d.odometer.toLocaleString() : '-',
+        dayMpg != null ? dayMpg.toFixed(1) : '-',
       ];
     });
-    y = addTableWithShading(doc, mileHeaders, mileRows, y, mileColPos);
+    y = addTableWithShading(doc, mileHeaders, mileRows, y, mileColPos, { sectionTitle: 'MILEAGE SUMMARY' });
   }
 
   // ── STATUS REPORT (default) extras ──
@@ -2895,7 +2888,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         `${String(i + 1).padStart(3, '0')}`,
         item || '',
       ]);
-      y = addTableWithShading(doc, eqHeaders, eqRows, y, eqColPos);
+      y = addTableWithShading(doc, eqHeaders, eqRows, y, eqColPos, { sectionTitle: 'INSTALLED EQUIPMENT' });
     }
 
     // ── Recent Activity Timeline ──
@@ -2936,7 +2929,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         e.odometer != null ? Number(e.odometer).toLocaleString() : '',
         e.summary,
       ]);
-      y = addTableWithShading(doc, tlHeaders, tlRows, y, tlColPos);
+      y = addTableWithShading(doc, tlHeaders, tlRows, y, tlColPos, { sectionTitle: 'RECENT ACTIVITY' });
     }
   }
 
@@ -2970,6 +2963,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     formTitle: reportTitle,
     formNumber: 'FORM PS-207',
     caseNumber: data.badge_number || data.employee_id || 'N/A',
+    caseNumberLabel: 'BADGE #',
   });
 
   // ── Officer Identification (always shown) ──
@@ -3249,6 +3243,10 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     formTitle: 'PROPERTY RECORD',
     formNumber: 'FORM PS-208',
     caseNumber: data.name || 'N/A',
+    // Label the right-side header box "PROPERTY NAME" for property records
+    // — matches the actual value rendered there (e.g. "DONNA MANOR
+    // APARTMENTS") and avoids the semantically incorrect "CASE NUMBER".
+    caseNumberLabel: 'PROPERTY NAME',
   });
 
   // ── Property Information ──
@@ -3412,6 +3410,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     formTitle: 'CITATION / SUMMONS',
     formNumber: 'FORM PS-209',
     caseNumber: data.citation_number,
+    caseNumberLabel: 'CITATION #',
   });
 
   // ── Citation Information ──

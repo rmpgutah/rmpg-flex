@@ -1351,7 +1351,14 @@ export function addNarrativeSection(
   const text = sanitizePdfText(rawText);
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
-  y = sec.contentY;
+  // Extra breathing room between the section header bar and the first
+  // narrative line. Field pairs get their ~2mm label offset from
+  // addFieldPair, but wrapped-text renderers draw directly at the passed
+  // y — without this bump, narrative bodies hug the dark bar above them
+  // (visible on Damage Description / Notes / Access Instructions /
+  // Narrative / Service Notes sections across vehicle / property /
+  // person / serve PDFs).
+  y = sec.contentY + 2;
 
   // Pre-calculate text height for proper background tint sizing
   const lx = getLeftX();
@@ -1670,7 +1677,7 @@ export function addTableWithShading(
   rows: string[][],
   startY: number,
   colPositions: number[],
-  opts?: { lightHeader?: boolean },
+  opts?: { lightHeader?: boolean; sectionTitle?: string },
 ): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -1767,6 +1774,29 @@ export function addTableWithShading(
     y = checkPageBreak(doc, y, rowH + SPACING.SM);
     if (doc.getNumberOfPages() > prevPage) {
       colSegments[colSegments.length - 1].bottom = prevY;
+      // If a section title was provided, redraw a "{title} -- CONTINUED"
+      // section sub-bar on the new page BEFORE the column header row.
+      // Back up y by SECTION_GAP first so the sub-bar sits flush against
+      // the global continuation bar (no visible 1mm gap between them).
+      // The column header row that follows is also flush (drawHeaders
+      // takes the y we just set and draws directly there — no gap).
+      if (opts?.sectionTitle) {
+        y -= SPACING.SECTION_GAP;
+        const subBarH = SPACING.SECTION_HEADER_H;
+        doc.setFillColor(...COLOR.BG_SECTION_HDR);
+        doc.rect(LAYOUT.PAGE_MARGIN, y, cw, subBarH, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+        doc.setTextColor(...COLOR.TEXT_INVERTED);
+        const subCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+        const subTextY = y + (subBarH + subCapH) / 2;
+        doc.text(
+          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
+          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1,
+          subTextY,
+        );
+        y += subBarH;
+      }
       y = drawHeaders(y);
       currentSegTop = y - 1;
       colSegments.push({ top: currentSegTop, bottom: y, page: doc.getNumberOfPages() });
