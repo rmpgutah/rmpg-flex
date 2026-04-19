@@ -29,6 +29,8 @@ import {
 import { useDaylightPhase } from './hooks/useDaylightPhase';
 import { useOlScreenshot } from './hooks/useOlScreenshot';
 import { useOlTrackingLines } from './hooks/useOlTrackingLines';
+import { useOlAlerts } from './hooks/useOlAlerts';
+import MapV2StyleSwitcher, { type MapStyleKey } from './components/MapV2StyleSwitcher';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
@@ -84,6 +86,9 @@ export default function MapPageV2() {
   const [repeatDays, setRepeatDays] = useState<7 | 30 | 90>(30);
   const [repeatMinCount, setRepeatMinCount] = useState<2 | 3 | 5 | 10>(3);
   const [historyDays, setHistoryDays] = useState<1 | 7 | 30>(7);
+  const [showAlerts, setShowAlerts] = useState(true);
+  const [mapStyle, setMapStyle] = useState<MapStyleKey>('dark');
+  const tileLayerRef = useRef<TileLayer<XYZ> | null>(null);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -96,6 +101,7 @@ export default function MapPageV2() {
           '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
       }),
     });
+    tileLayerRef.current = tileLayer;
 
     // Mini-map (top-right corner) — uses the same tile cache to stay
     // offline-capable.
@@ -146,6 +152,24 @@ export default function MapPageV2() {
   useOlEnforcementClusters(map, { visible: showEnforcement, days: enforcementDays, type: enforcementType });
   useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor });
   useOlTrackingLines(map, { visible: showTracking });
+  useOlAlerts(map, { visible: showAlerts });
+
+  // Tile-source swapping for the style switcher
+  useEffect(() => {
+    if (!tileLayerRef.current) return;
+    const url =
+      mapStyle === 'light'
+        ? 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+        : mapStyle === 'voyager'
+          ? 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'
+          : '/tiles/{z}/{x}/{y}.png';
+    tileLayerRef.current.setSource(new XYZ({
+      url,
+      maxZoom: 19,
+      attributions:
+        '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+    }));
+  }, [mapStyle]);
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
   useOlIncidentReports(map, { visible: showIncidents, days: incidentDays });
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
@@ -204,6 +228,7 @@ export default function MapPageV2() {
       id: 'intel',
       title: 'Intelligence',
       layers: [
+        { key: 'alerts', label: 'Active Panic Alerts', color: '#ef4444', visible: showAlerts, onToggle: () => setShowAlerts(v => !v) },
         {
           key: 'heatmap', label: `Heatmap (${heatmapDays}d)`, color: '#ef4444',
           visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v),
@@ -329,6 +354,7 @@ export default function MapPageV2() {
         setMode={setDrawMode}
         onClear={() => setClearVersion(v => v + 1)}
       />
+      <MapV2StyleSwitcher value={mapStyle} onChange={setMapStyle} />
       <MapV2StatusBar daylight={daylight} onScreenshot={screenshot} />
     </div>
   );
