@@ -12,6 +12,7 @@ import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { registerSqliteFunctions } from './sqliteFunctions';
+import { backfillCaseLinks } from '../migrations/2026-04-19-case-links-backfill';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2578,6 +2579,23 @@ function migrateSchema(): void {
   `).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_case ON case_evidence_links(case_id)`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_evidence ON case_evidence_links(evidence_id)`).run();
+
+  // Backfill case_*_links from legacy JSON columns (idempotent, one-time).
+  // Only runs when junction tables are empty AND there is legacy JSON data to
+  // migrate. Safe to leave in place: the guard short-circuits after first run.
+  try {
+    const linksCount = db.prepare('SELECT COUNT(*) as c FROM case_person_links').get() as any;
+    const anyJsonPopulated = db.prepare(
+      "SELECT COUNT(*) as c FROM cases WHERE (linked_persons IS NOT NULL AND linked_persons != '[]' AND linked_persons != '') OR (linked_incidents IS NOT NULL AND linked_incidents != '[]' AND linked_incidents != '') OR (linked_evidence IS NOT NULL AND linked_evidence != '[]' AND linked_evidence != '')"
+    ).get() as any;
+
+    if (linksCount.c === 0 && anyJsonPopulated.c > 0) {
+      backfillCaseLinks(db);
+    }
+  } catch (err: any) {
+    console.error('[DB] case links backfill failed:', err?.message);
+    // Non-fatal — leave legacy JSON columns and proceed
+  }
 
   // ── CODE VIOLATIONS — municipal code enforcement ──
   try {
