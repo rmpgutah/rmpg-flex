@@ -18,6 +18,7 @@ import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
 import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
 import sanitizeHtml from 'sanitize-html';
+import EnrollmentBanner from '../components/email/EnrollmentBanner';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -1535,6 +1536,25 @@ export default function EmailPage() {
   // Status
   const [status, setStatus] = useState<{ configured: boolean; enabled: boolean; authorized: boolean } | null>(null);
 
+  // Phase 4: per-user enrollment gate
+  const [enrolled, setEnrolled] = useState<boolean | null>(null);
+
+  // Fetch enrollment status on mount
+  useEffect(() => {
+    apiFetch<{ enrolled: boolean }>('/api/email/status')
+      .then(s => setEnrolled(s.enrolled))
+      .catch(() => setEnrolled(false));
+  }, []);
+
+  // Handle ?enrolled=1 callback after Microsoft consent
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('enrolled') === '1') {
+      setEnrolled(true);
+      window.history.replaceState({}, '', '/email');
+    }
+  }, []);
+
   // Folders
   const [folders, setFolders] = useState<EmailFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState('inbox');
@@ -2114,6 +2134,10 @@ export default function EmailPage() {
   };
 
   // ─── Render ───
+
+  // Phase 4: per-user enrollment gate
+  if (enrolled === false) return <EnrollmentBanner />;
+  if (enrolled === null) return <div className="p-8 text-center text-xs text-gray-500">Checking enrollment...</div>;
 
   return (
     <div className="flex h-full overflow-hidden">

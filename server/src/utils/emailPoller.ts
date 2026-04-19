@@ -17,6 +17,8 @@ import {
   setConfigValue,
   CONFIG_KEYS,
 } from './msGraphClient';
+import { getGraphClientForUser, isUserAuthorized } from './msGraphClient';
+import { listEnrolledUserIds, markUserSynced, isUserEnrolled } from './userGraphTokens';
 import { sendEmail } from './emailSender';
 import { renderEmailMarkdown } from './emailMarkdown';
 import { evaluateRulesForEmail } from './emailRuleEngine';
@@ -47,7 +49,7 @@ export function startEmailPoller(intervalMs?: number): void {
   console.log(`[EmailPoller] Starting — every ${pollMs / 1000}s`);
 
   intervalHandle = setInterval(() => {
-    syncInbox().catch(err => {
+    syncAllUsers().catch(err => {
       console.error('[EmailPoller] Sync error:', err.message || err);
     });
   }, pollMs);
@@ -55,7 +57,7 @@ export function startEmailPoller(intervalMs?: number): void {
 
   // Initial sync after a delay (let server finish startup)
   setTimeout(() => {
-    syncInbox().catch(err => {
+    syncAllUsers().catch(err => {
       console.error('[EmailPoller] Initial sync error:', err.message || err);
     });
   }, 15_000);
@@ -79,8 +81,8 @@ function getPollIntervalMs(): number {
   return Math.max(60, Math.min(600, seconds)) * 1000; // Clamp 1-10 minutes
 }
 
-/** Sync messages from a given folder into email_cache. */
-async function syncFolder(client: any, folderName: string, folderId: string, limit: number): Promise<number> {
+/** Sync messages from a given folder into email_cache (scoped to one user). */
+async function syncFolder(client: any, userId: number, folderName: string, folderId: string, limit: number): Promise<number> {
   const db = getDb();
   const now = localNow();
 
@@ -95,8 +97,8 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
   let newCount = 0;
 
   const upsert = db.prepare(`
-    INSERT INTO email_cache (graph_id, conversation_id, folder_id, subject, from_address, from_name, to_addresses, cc_addresses, body_preview, body_html, has_attachments, is_read, is_flagged, importance, received_at, sent_at, synced_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO email_cache (owner_user_id, graph_id, conversation_id, folder_id, subject, from_address, from_name, to_addresses, cc_addresses, body_preview, body_html, has_attachments, is_read, is_flagged, importance, received_at, sent_at, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(graph_id) DO UPDATE SET
       is_read = excluded.is_read,
       is_flagged = excluded.is_flagged,
@@ -104,7 +106,7 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
       synced_at = excluded.synced_at
   `);
 
-  const checkExisting = db.prepare('SELECT id FROM email_cache WHERE graph_id = ?');
+  const checkExisting = db.prepare('SELECT id FROM email_cache WHERE graph_id = ? AND owner_user_id = ?');
   const newIds: number[] = [];
 
   const tx = db.transaction(() => {
@@ -121,9 +123,10 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
       })));
       const isFlagged = msg.flag?.flagStatus === 'flagged' ? 1 : 0;
 
-      const existing = checkExisting.get(msg.id) as { id: number } | undefined;
+      const existing = checkExisting.get(msg.id, userId) as { id: number } | undefined;
 
       const info = upsert.run(
+        userId,
         msg.id,
         msg.conversationId || null,
         folderId,
@@ -161,47 +164,76 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
     }
 
     // Auto-link inbound from allowlisted senders to existing CAD/RMS entities.
+    let linkerRow: any = null;
     try {
-      const row = db.prepare(
-        `SELECT graph_id, from_address, subject,
+      linkerRow = db.prepare(
+        `SELECT ec.graph_id, ec.from_address, ec.from_name, ec.subject, ec.folder_id, ec.owner_user_id,
            COALESCE((SELECT body_text FROM email_cache_fts WHERE rowid = ec.id),'') as body_text
          FROM email_cache ec WHERE ec.id = ?`
       ).get(id) as any;
-      if (row && isAllowlistedSender(row.from_address)) {
-        const refs = extractEntityReferences(row.subject || '', row.body_text || '');
+      if (linkerRow && isAllowlistedSender(linkerRow.from_address)) {
+        const refs = extractEntityReferences(linkerRow.subject || '', linkerRow.body_text || '');
         for (const ref of refs) {
           db.prepare(
-            `INSERT INTO email_links (email_graph_id, entity_type, entity_id, auto_linked, created_at)
-             VALUES (?,?,?,1,?)`
-          ).run(row.graph_id, ref.type, ref.id, localNow());
+            `INSERT INTO email_links (email_graph_id, entity_type, entity_id, auto_linked, created_by, created_at)
+             VALUES (?,?,?,1,?,?)`
+          ).run(linkerRow.graph_id, ref.type, ref.id, linkerRow.owner_user_id, localNow());
         }
       }
     } catch (err: any) {
       console.warn(`[EmailPoller] Auto-link failed for email #${id}:`, err.message);
+    }
+
+    // Tip-line emails auto-create a pending call_for_service for dispatcher review.
+    // Scoped to a designated owner via email_tip_line_owner_user_id — without it set,
+    // tip-line is fully OFF so per-user mailboxes don't each spawn duplicate CFS rows.
+    try {
+      const tipFolderId = getConfigValue('email_tip_line_folder_id');
+      const tipOwnerStr = getConfigValue('email_tip_line_owner_user_id');
+      const tipOwnerId = tipOwnerStr ? Number(tipOwnerStr) : null;
+      if (
+        tipFolderId &&
+        tipOwnerId !== null &&
+        !Number.isNaN(tipOwnerId) &&
+        linkerRow &&
+        linkerRow.folder_id === tipFolderId &&
+        linkerRow.owner_user_id === tipOwnerId
+      ) {
+        const caller = linkerRow.from_name || linkerRow.from_address || 'Unknown';
+        const desc = String(linkerRow.body_text || '').slice(0, 4000);
+        db.prepare(
+          `INSERT INTO calls_for_service
+           (incident_type, priority, status, source, caller_name, caller_phone, location_address, description, created_at)
+           VALUES (?, 'P3', 'pending', 'email', ?, '', '', ?, ?)`
+        ).run('Tip Line', caller, desc, localNow());
+        console.log(`[EmailPoller] Tip-line email #${id} created pending CFS`);
+      }
+    } catch (err: any) {
+      console.error(`[EmailPoller] Tip-line CFS creation failed for email #${id}:`, err.message);
     }
   }
 
   return newCount;
 }
 
-/** Sync inbox, sent items, drafts, and custom folders from Microsoft Graph. */
-async function syncInbox(): Promise<void> {
-  if (!isConfigured() || !isEnabled() || !isAuthorized()) return;
+/** Sync inbox, sent items, drafts, and custom folders from Microsoft Graph for a single enrolled user. */
+async function syncInbox(userId: number): Promise<void> {
+  if (!isConfigured() || !isEnabled() || !isUserEnrolled(userId)) return;
 
   try {
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(userId);
 
     // Sync core folders: Inbox (100), Sent Items (50), Drafts (50)
-    const inboxNew = await syncFolder(client, 'inbox', 'inbox', 100);
-    try { await syncFolder(client, 'sentitems', 'sentitems', 50); } catch (e: any) { console.warn('[EmailPoller] sentitems sync failed:', e?.message); }
-    try { await syncFolder(client, 'drafts', 'drafts', 50); } catch (e: any) { console.warn('[EmailPoller] drafts sync failed:', e?.message); }
-    try { await syncFolder(client, 'deleteditems', 'deleteditems', 30); } catch (e: any) { console.warn('[EmailPoller] deleteditems sync failed:', e?.message); }
-    try { await syncFolder(client, 'junkemail', 'junkemail', 20); } catch (e: any) { console.warn('[EmailPoller] junkemail sync failed:', e?.message); }
-    try { await syncFolder(client, 'archive', 'archive', 50); } catch (e: any) { console.warn('[EmailPoller] archive sync failed:', e?.message); }
+    const inboxNew = await syncFolder(client, userId, 'inbox', 'inbox', 100);
+    try { await syncFolder(client, userId, 'sentitems', 'sentitems', 50); } catch (e: any) { console.warn('[EmailPoller] sentitems sync failed:', e?.message); }
+    try { await syncFolder(client, userId, 'drafts', 'drafts', 50); } catch (e: any) { console.warn('[EmailPoller] drafts sync failed:', e?.message); }
+    try { await syncFolder(client, userId, 'deleteditems', 'deleteditems', 30); } catch (e: any) { console.warn('[EmailPoller] deleteditems sync failed:', e?.message); }
+    try { await syncFolder(client, userId, 'junkemail', 'junkemail', 20); } catch (e: any) { console.warn('[EmailPoller] junkemail sync failed:', e?.message); }
+    try { await syncFolder(client, userId, 'archive', 'archive', 50); } catch (e: any) { console.warn('[EmailPoller] archive sync failed:', e?.message); }
 
     // Sync custom user folders
     try {
-      await syncCustomFolders(client);
+      await syncCustomFolders(client, userId);
     } catch (e: any) {
       console.warn('[EmailPoller] Custom folder sync failed:', e?.message);
     }
@@ -209,15 +241,15 @@ async function syncInbox(): Promise<void> {
     // Sync folder counts
     await syncFolders(client);
 
-    // Update last sync timestamp
-    setConfigValue(CONFIG_KEYS.lastSync, localNow());
-
     if (inboxNew > 0) {
       const db = getDb();
       const unreadRow = db.prepare(
-        "SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0"
-      ).get() as { count: number };
+        "SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0 AND owner_user_id = ?"
+      ).get(userId) as { count: number };
 
+      // NOTE: broadcast is currently un-scoped — every connected client gets this
+      // notification when ANY user receives mail. Per-user routing is a follow-up
+      // task; behavior preserved as-is for E1.
       broadcast('email', 'email:new_messages', {
         newCount: inboxNew,
         unread: unreadRow?.count || 0,
@@ -227,17 +259,10 @@ async function syncInbox(): Promise<void> {
     if (err.message?.includes('re-authorization')) return;
     throw err;
   }
-
-  // Process scheduled emails after each sync cycle
-  try {
-    await processScheduledEmails();
-  } catch (err: any) {
-    console.error('[EmailPoller] Scheduled email processing error:', err.message);
-  }
 }
 
-/** Sync messages from custom (non-well-known) folders. */
-async function syncCustomFolders(client: any): Promise<void> {
+/** Sync messages from custom (non-well-known) folders for a given user. */
+async function syncCustomFolders(client: any, userId: number): Promise<void> {
   const db = getDb();
   const wellKnown = new Set(['inbox', 'sentitems', 'drafts', 'deleteditems', 'junkemail', 'archive']);
 
@@ -252,10 +277,32 @@ async function syncCustomFolders(client: any): Promise<void> {
         normalizedName === 'conversationhistory' || normalizedName === 'outbox') continue;
 
     try {
-      await syncFolder(client, folder.graph_id, folder.graph_id, 30);
+      await syncFolder(client, userId, folder.graph_id, folder.graph_id, 30);
     } catch (e: any) {
       console.warn(`[EmailPoller] Folder ${folder.graph_id} sync failed:`, e?.message);
     }
+  }
+}
+
+/** Iterate over every enrolled user and sync their mailbox sequentially. */
+async function syncAllUsers(): Promise<void> {
+  if (!isEnabled()) return;
+  const userIds = listEnrolledUserIds();
+  for (const userId of userIds) {
+    try {
+      await syncInbox(userId);
+      markUserSynced(userId);
+    } catch (err: any) {
+      console.warn(`[EmailPoller] User ${userId} sync failed:`, err.message);
+      // ensureValidTokenForUser already marks needs-reauth on token failures
+    }
+  }
+
+  // Process scheduled emails once per cycle (not per user)
+  try {
+    await processScheduledEmails();
+  } catch (err: any) {
+    console.error('[EmailPoller] Scheduled email processing error:', err.message);
   }
 }
 
@@ -306,7 +353,7 @@ async function processScheduledEmails(): Promise<void> {
       }
       const bodyHtml = renderEmailMarkdown(bodyMarkdown);
 
-      const sent = await sendEmail({
+      const sent = await sendEmail(email.created_by, {
         to: toList,
         cc: ccList,
         bcc: bccList,
@@ -392,10 +439,10 @@ async function syncFolders(client: any): Promise<void> {
   }
 }
 
-/** Force an immediate sync (called from admin route). */
+/** Force an immediate sync (called from admin route). Syncs all enrolled users. */
 export async function syncNow(): Promise<{ synced: number; error?: string }> {
   try {
-    await syncInbox();
+    await syncAllUsers();
     const db = getDb();
     const row = db.prepare('SELECT COUNT(*) as count FROM email_cache').get() as { count: number };
     return { synced: row?.count || 0 };

@@ -3794,6 +3794,26 @@ function migrateSchema(): void {
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_entity ON email_links(entity_type, entity_id)`).run();
   addCol('email_links', 'auto_linked', 'INTEGER DEFAULT 0');
 
+  addCol('email_cache',      'owner_user_id', 'INTEGER');
+  addCol('email_folders',    'owner_user_id', 'INTEGER');
+  addCol('email_rules',      'owner_user_id', 'INTEGER');
+
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_owner    ON email_cache(owner_user_id, folder_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_folders_owner  ON email_folders(owner_user_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rules_owner    ON email_rules(owner_user_id, enabled, priority)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS user_graph_tokens (
+  user_id INTEGER PRIMARY KEY,
+  access_token_enc TEXT NOT NULL,
+  refresh_token_enc TEXT,
+  token_expires_at INTEGER NOT NULL,
+  mailbox TEXT,
+  scopes TEXT,
+  enrolled_at TEXT NOT NULL,
+  last_sync_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)`).run();
+
   // Seed email auto-link allowlist + tip-line folder config if missing.
   const existingAllowlist = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_autolink_allowlist'`).get();
   if (!existingAllowlist) {
@@ -3803,6 +3823,10 @@ function migrateSchema(): void {
   const existingTipFolder = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_tip_line_folder_id'`).get();
   if (!existingTipFolder) {
     db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_folder_id', '');
+  }
+  const existingTipOwner = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_tip_line_owner_user_id'`).get();
+  if (!existingTipOwner) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_owner_user_id', '');
   }
 
   db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_emails (
@@ -3821,6 +3845,23 @@ function migrateSchema(): void {
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status, scheduled_at)`).run();
+  addCol('scheduled_emails', 'owner_user_id', 'INTEGER');
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_owner      ON scheduled_emails(owner_user_id, status)`).run();
+
+  // ── PHASE 4: pre-Phase-4 email data isolation ──
+  // The original Phase 4 design called for wiping pre-Phase-4 email data on
+  // first deploy, but the wipe failed in production because the existing
+  // email_cache_fts virtual table's AFTER DELETE trigger references a
+  // contentless FTS5 'delete' command path that errored on real prod data
+  // (commit ddc6fcb7 / 2026-04-18 deploy). Since every per-user route filters
+  // by `WHERE owner_user_id = ?` and pre-Phase-4 rows have owner_user_id=NULL,
+  // the dormant data is already invisible to officers' inboxes, rule queries,
+  // schedule listings, and link lookups. No wipe is needed.
+  //
+  // The shared-mailbox OAuth tokens (ms_email_access_token, etc.) also stay
+  // in system_config — they are dead code under Phase 4 (no caller invokes
+  // the global getGraphClient()) and will be cleaned up by an admin tool in a
+  // follow-up rather than by an automatic destructive migration.
 
   // ── EMAIL_CACHE — categories for auto-tagging ──
   addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");

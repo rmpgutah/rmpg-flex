@@ -1,6 +1,6 @@
 // server/src/utils/emailSender.ts
 // Unified Email Sender — Graph first, SMTP fallback, structured result.
-import { getGraphClient, isAuthorized, isEnabled, getConfigValue, CONFIG_KEYS } from './msGraphClient';
+import { getGraphClientForUser, isUserAuthorized, isEnabled, getConfigValue, CONFIG_KEYS } from './msGraphClient';
 import { sendViaSMTP, isSmtpConfigured } from './smtpClient';
 import { getDb } from '../models/database';
 import { logSafe } from './logSafe';
@@ -30,16 +30,16 @@ function classifyError(err: any): SendFailureReason {
   return 'unknown';
 }
 
-export async function sendEmail(options: SendEmailOptions): Promise<SendResult> {
+export async function sendEmail(userId: number, options: SendEmailOptions): Promise<SendResult> {
   if (!isEnabled()) {
     console.log('[Email] Integration not enabled — skipping send');
     return { ok: false, reason: 'disabled', detail: 'Email integration not enabled' };
   }
 
   let lastGraphErr: any = null;
-  if (isAuthorized()) {
+  if (isUserAuthorized(userId)) {
     try {
-      const client = await getGraphClient();
+      const client = await getGraphClientForUser(userId);
       const toRecipients = (Array.isArray(options.to) ? options.to : [options.to])
         .map(email => ({ emailAddress: { address: email.trim() } }));
       const ccRecipients = (options.cc || []).map(email => ({ emailAddress: { address: email.trim() } }));
@@ -100,7 +100,9 @@ export async function sendNotificationEmail(userId: number, title: string, body:
     if (!user?.email) return { ok: false, reason: 'rejected_recipient', detail: `No email for user ${userId}` };
     const mailbox = getConfigValue(CONFIG_KEYS.mailbox) || 'RMPG Flex';
     const html = buildNotificationHtml(title, body, user.full_name, mailbox);
-    return await sendEmail({ to: user.email, subject: `[RMPG Flex] ${title}`, html });
+    // Phase 4: notifications sent from tenant admin's mailbox (user 1).
+    // The recipient userId identifies the target; the Graph client is the sender.
+    return await sendEmail(1, { to: user.email, subject: `[RMPG Flex] ${title}`, html });
   } catch (err: any) {
     return { ok: false, reason: 'unknown', detail: err.message || 'Notification failed' };
   }

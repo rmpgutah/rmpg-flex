@@ -129,13 +129,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 
 export async function evaluateRulesForEmail(db: BetterSqlite3.Database, emailId: number): Promise<void> {
   const email = db.prepare(
-    `SELECT ec.id, ec.from_address, ec.subject, ec.has_attachments, ec.importance,
+    `SELECT ec.id, ec.owner_user_id, ec.from_address, ec.subject, ec.has_attachments, ec.importance,
        COALESCE((SELECT body_text FROM email_cache_fts WHERE rowid = ec.id), '') as body_text
      FROM email_cache ec WHERE ec.id = ?`
   ).get(emailId) as any;
   if (!email) return;
 
-  const rules = db.prepare('SELECT * FROM email_rules WHERE enabled = 1 ORDER BY priority ASC').all() as Rule[];
+  // User-owned rules + admin-global rules (owner_user_id IS NULL).
+  const rules = db.prepare(
+    'SELECT * FROM email_rules WHERE enabled = 1 AND (owner_user_id IS NULL OR owner_user_id = ?) ORDER BY priority ASC'
+  ).all(email.owner_user_id) as Rule[];
   for (const rule of rules) {
     let cond: RuleConditions;
     let actions: RuleAction[];

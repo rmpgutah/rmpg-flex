@@ -143,7 +143,9 @@ async function emailSupervisors(panicId: number, panic: any): Promise<void> {
 
     for (const sup of supervisors) {
       if (!sup.email) continue;
-      await sendEmail({
+      // Panic escalation runs from a server-side timer (no req in scope) —
+      // send from admin mailbox (user 1). Per Phase 4 per-user Graph design.
+      await sendEmail(1, {
         to: sup.email,
         subject: `EMERGENCY: Unacknowledged Panic Alert - ${user?.full_name || 'Unknown Officer'}`,
         html: `<h2 style="color:red;">Panic Alert - Unacknowledged</h2>
