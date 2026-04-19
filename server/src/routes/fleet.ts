@@ -2728,7 +2728,7 @@ router.get('/fuel/analytics/by-card', (req: Request, res: Response) => {
     `).all(bounds.start, bounds.end) as any[];
 
     const enriched = rows.map(r => {
-      const limit = Math.min(100000, Math.max(1, (Number(r.monthly_limit)) || 100000));
+      const limit = Number(r.monthly_limit) || 0;
       const pct = limit > 0 ? Math.round((r.spent / limit) * 1000) / 10 : null;
       let cardStatus: 'ok' | 'watch' | 'over' | 'unlimited';
       if (!limit) cardStatus = 'unlimited';
