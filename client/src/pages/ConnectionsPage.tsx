@@ -83,6 +83,10 @@ export default function ConnectionsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveFlash, setSaveFlash] = useState(false);
+  const [loadDropdownOpen, setLoadDropdownOpen] = useState(false);
+  const [investigations, setInvestigations] = useState<any[]>([]);
+  const [loadingInvestigations, setLoadingInvestigations] = useState(false);
+  const pendingLayoutRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -144,7 +148,18 @@ export default function ConnectionsPage() {
           };
         });
         const hydratedEdges: SimEdge[] = data.edges.map(e => ({ ...e }));
-        setNodes(hydrated);
+        if (pendingLayoutRef.current) {
+          const layout = pendingLayoutRef.current;
+          pendingLayoutRef.current = null;
+          const pinned: SimNode[] = hydrated.map(n => {
+            const p = layout[n.id];
+            if (p) return { ...n, x: p.x, y: p.y, fx: p.x, fy: p.y };
+            return n;
+          });
+          setNodes(pinned);
+        } else {
+          setNodes(hydrated);
+        }
         setEdges(hydratedEdges);
       } catch (err) {
         console.error('graph fetch err:', err);
@@ -281,6 +296,34 @@ export default function ConnectionsPage() {
     }
   }
 
+  async function openLoadDropdown() {
+    setLoadDropdownOpen(true);
+    setLoadingInvestigations(true);
+    try {
+      const list = await apiFetch<any[]>('/connections/investigations');
+      setInvestigations(list || []);
+    } catch (err) {
+      console.error('load list err:', err);
+    } finally {
+      setLoadingInvestigations(false);
+    }
+  }
+
+  async function openInvestigation(id: number) {
+    setLoadDropdownOpen(false);
+    try {
+      const row = await apiFetch<any>(`/connections/investigations/${id}`);
+      const seedNodes = JSON.parse(row.seed_nodes || '[]');
+      if (!Array.isArray(seedNodes) || seedNodes.length === 0) return;
+      const first = seedNodes[0];
+      pendingLayoutRef.current = row.pinned_layout ? JSON.parse(row.pinned_layout) : null;
+      setSeed({ type: first.type, id: first.id, label: row.name || `${first.type} #${first.id}` });
+      setSelectedNodeId(null);
+    } catch (err) {
+      console.error('load investigation err:', err);
+    }
+  }
+
   function toggleType(t: string) {
     setHiddenTypes(prev => {
       const next = new Set(prev);
@@ -315,6 +358,46 @@ export default function ConnectionsPage() {
           >
             SAVE INVESTIGATION
           </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={openLoadDropdown}
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017]"
+              style={{ borderRadius: 2 }}
+            >
+              LOAD INVESTIGATION
+            </button>
+            {loadDropdownOpen && (
+              <div
+                role="dialog"
+                aria-label="Load investigation"
+                className="absolute right-0 z-40 mt-1 w-80 bg-surface-raised border border-[#222222]"
+                style={{ borderRadius: 2 }}
+              >
+                {loadingInvestigations && <div className="p-3 text-xs text-gray-400">Loading...</div>}
+                {!loadingInvestigations && investigations.length === 0 && (
+                  <div className="p-3 text-xs text-gray-500">No saved investigations yet.</div>
+                )}
+                {!loadingInvestigations && investigations.length > 0 && (
+                  <ul className="max-h-80 overflow-y-auto">
+                    {investigations.map(inv => (
+                      <li
+                        key={inv.id}
+                        onClick={() => openInvestigation(inv.id)}
+                        className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-[#1a1a1a]"
+                      >
+                        <div className="font-semibold">{inv.name}</div>
+                        {inv.description && <div className="text-xs text-gray-500 mt-0.5">{inv.description}</div>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="p-2 border-t border-[#222222] text-right">
+                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-gray-400 hover:text-[#d4a017]">Close</button>
+                </div>
+              </div>
+            )}
+          </div>
           {saveFlash && (
             <span className="text-xs text-green-400 ml-2">Saved</span>
           )}

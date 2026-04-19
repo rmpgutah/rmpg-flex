@@ -580,3 +580,95 @@ describe('ConnectionsPage - save investigation', () => {
     expect(mockFetch.mock.calls.length).toBe(callsBeforeCancel);
   });
 });
+
+describe('ConnectionsPage - load investigation', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('lists saved investigations in a dropdown', async () => {
+    mockFetch
+      .mockResolvedValueOnce([
+        { id: 1, user_id: 1, name: 'Jones case', description: null, seed_nodes: '[{"type":"person","id":42}]', pinned_layout: null, annotations: null, shared_user_ids: '[]' },
+        { id: 2, user_id: 1, name: 'Smith burglary', description: 'repeat offender', seed_nodes: '[{"type":"person","id":99}]', pinned_layout: null, annotations: null, shared_user_ids: '[]' },
+      ]);
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Jones case/i)).toBeInTheDocument();
+      expect(screen.getByText(/Smith burglary/i)).toBeInTheDocument();
+    });
+  });
+
+  it('opening an investigation sets the seed and requests the graph', async () => {
+    mockFetch
+      .mockResolvedValueOnce([
+        { id: 1, user_id: 1, name: 'Jones case', seed_nodes: '[{"type":"person","id":42}]', pinned_layout: null, annotations: null, shared_user_ids: '[]' },
+      ])
+      .mockResolvedValueOnce({
+        id: 1, user_id: 1, name: 'Jones case',
+        seed_nodes: '[{"type":"person","id":42}]',
+        pinned_layout: '{"person-42":{"x":100,"y":200}}',
+        annotations: null,
+        shared_user_ids: '[]',
+      })
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
+    await waitFor(() => screen.getByText(/Jones case/i));
+    fireEvent.click(screen.getByText(/Jones case/i));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/connections/graph?type=person&id=42')
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('seed-display')).toBeInTheDocument();
+    });
+  });
+
+  it('applies pinned_layout to nodes after loading', async () => {
+    mockFetch
+      .mockResolvedValueOnce([
+        { id: 1, user_id: 1, name: 'Pinned case', seed_nodes: '[{"type":"person","id":42}]', pinned_layout: null, annotations: null, shared_user_ids: '[]' },
+      ])
+      .mockResolvedValueOnce({
+        id: 1, user_id: 1, name: 'Pinned case',
+        seed_nodes: '[{"type":"person","id":42}]',
+        pinned_layout: '{"person-42":{"x":250,"y":350},"incident-1":{"x":600,"y":150}}',
+        annotations: null,
+        shared_user_ids: '[]',
+      })
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-1', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
+    await waitFor(() => screen.getByText(/Pinned case/i));
+    fireEvent.click(screen.getByText(/Pinned case/i));
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('svg g[data-testid="zoom-target"] circle').length).toBeGreaterThanOrEqual(2);
+    });
+
+    await waitFor(() => {
+      const nodeGroups = container.querySelectorAll('svg g[data-testid="zoom-target"] > g');
+      const foundPinned = Array.from(nodeGroups).some(g => {
+        const circle = g.querySelector('circle');
+        if (!circle) return false;
+        const cx = Number(circle.getAttribute('cx'));
+        return Math.abs(cx - 600) < 20 || Math.abs(cx - 250) < 20;
+      });
+      expect(foundPinned).toBe(true);
+    }, { timeout: 3000 });
+  });
+});
