@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type Map from 'ol/Map';
+import type OlMap from 'ol/Map';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import Feature from 'ol/Feature';
@@ -126,7 +126,7 @@ function buildPopupNode(kind: MarkerKind, payload: Unit | CallForService): HTMLD
   return root;
 }
 
-export function useOlLiveMarkers(map: Map | null): void {
+export function useOlLiveMarkers(map: OlMap | null): void {
   const sourceRef = useRef<VectorSource | null>(null);
   const overlayRef = useRef<Overlay | null>(null);
   const overlayElRef = useRef<HTMLDivElement | null>(null);
