@@ -2530,6 +2530,55 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
+  // ── CASE JUNCTION TABLES — indexed replacement for JSON LIKE scans in Connections traversal ──
+  // Task 3.1 of Connections Analyst Tool. Task 3.2 backfills from cases.linked_persons/
+  // linked_incidents/linked_evidence JSON arrays; Task 3.3 switches routes/connections.ts
+  // to these indexed joins instead of `LIKE '%id%'` full-table scans.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_person_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      person_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, person_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpl_case ON case_person_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpl_person ON case_person_links(person_id)`).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_incident_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      incident_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, incident_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cil_case ON case_incident_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cil_incident ON case_incident_links(incident_id)`).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_evidence_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      evidence_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, evidence_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (evidence_id) REFERENCES evidence(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_case ON case_evidence_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_evidence ON case_evidence_links(evidence_id)`).run();
+
   // ── CODE VIOLATIONS — municipal code enforcement ──
   try {
     db.exec(`
