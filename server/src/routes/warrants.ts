@@ -97,7 +97,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPageNum = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPageNum = Math.max(1, parseInt(per_page as string, 10) || 50);
     const offset = (pageNum - 1) * perPageNum;
 
     const countRow = db.prepare(`

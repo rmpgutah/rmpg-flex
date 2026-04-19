@@ -122,7 +122,7 @@ router.get('/map', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
-    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit as string, 10) || 500));
+    const limit = Math.max(1, parseInt(req.query.limit as string, 10) || 500);
 
     const statusFilter = req.query.status
       ? String(req.query.status).split(',').filter(s => s.length > 0 && s.length < 50).slice(0, 10)
@@ -2299,7 +2299,7 @@ router.get('/mni/search', requireRole('admin', 'manager', 'supervisor', 'officer
     const db = getDb();
     const q = (req.query.q as string || '').trim();
     if (q.length < 2) { res.status(400).json({ error: 'Search query must be at least 2 characters' }); return; }
-    const limit = Math.min(50, parseInt(req.query.limit as string, 10) || 25);
+    const limit = parseInt(req.query.limit as string, 10) || 25;
     const like = `%${q}%`;
 
     // Search persons table

@@ -347,7 +347,7 @@ router.get('/messages', async (req: Request, res: Response) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
+    const perPage = Math.max(1, parseInt(per_page as string, 10) || 25);
 
     // Try live from Graph API
     if (isUserAuthorized(req.user!.userId)) {
@@ -576,7 +576,7 @@ router.get('/messages/search', async (req: Request, res: Response) => {
   const before = req.query.before ? String(req.query.before) : '';
   const flagged = req.query.flagged === '1';
   const hasAttachment = req.query.has_attachment === '1';
-  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '25'), 10)));
+  const limit = Math.max(1, parseInt(String(req.query.limit || '25'), 10));
   const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10));
 
   if (!q && !folder && !from && !after && !before && !flagged && !hasAttachment) {
@@ -1687,7 +1687,7 @@ router.get('/threads', async (req: Request, res: Response) => {
   try {
     const { folder = 'inbox', page = '1', per_page = '25' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
+    const perPage = Math.max(1, parseInt(per_page as string, 10) || 25);
 
     if (isUserAuthorized(req.user!.userId)) {
       try {

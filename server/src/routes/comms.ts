@@ -108,7 +108,7 @@ router.get('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { channel, unreadOnly, thread_id, limit = '50' } = req.query;
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.max(1, parseInt(limit as string, 10) || 50);
 
     let whereClause = 'WHERE (m.to_user_id = ? OR m.to_user_id IS NULL OR m.from_user_id = ?)';
     const params: any[] = [req.user!.userId, req.user!.userId];
@@ -652,7 +652,7 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
       params.push(to);
     }
 
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
+    const limitNum = Math.max(1, parseInt(limit as string, 10) || 100);
     const offsetNum = Math.max(0, parseInt(offset as string, 10) || 0);
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM radio_transcripts rt ${whereClause}`).get(...params) as any;
