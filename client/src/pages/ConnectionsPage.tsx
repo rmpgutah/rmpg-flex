@@ -86,6 +86,9 @@ export default function ConnectionsPage() {
   const [loadDropdownOpen, setLoadDropdownOpen] = useState(false);
   const [investigations, setInvestigations] = useState<any[]>([]);
   const [loadingInvestigations, setLoadingInvestigations] = useState(false);
+  const [annotations, setAnnotations] = useState<Record<string, string>>({});
+  const [editingAnnotationFor, setEditingAnnotationFor] = useState<string | null>(null);
+  const [annotationDraft, setAnnotationDraft] = useState('');
   const pendingLayoutRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
@@ -278,6 +281,7 @@ export default function ConnectionsPage() {
         description: saveDescription.trim() || undefined,
         seed_nodes: [{ type: seed.type, id: seed.id }],
         pinned_layout: pinnedLayout,
+        annotations: Object.keys(annotations).length > 0 ? annotations : undefined,
       };
       await apiFetch('/connections/investigations', {
         method: 'POST',
@@ -317,6 +321,7 @@ export default function ConnectionsPage() {
       if (!Array.isArray(seedNodes) || seedNodes.length === 0) return;
       const first = seedNodes[0];
       pendingLayoutRef.current = row.pinned_layout ? JSON.parse(row.pinned_layout) : null;
+      setAnnotations(row.annotations ? JSON.parse(row.annotations) : {});
       setSeed({ type: first.type, id: first.id, label: row.name || `${first.type} #${first.id}` });
       setSelectedNodeId(null);
     } catch (err) {
@@ -451,7 +456,7 @@ export default function ConnectionsPage() {
           </div>
           <button
             type="button"
-            onClick={() => setSeed(null)}
+            onClick={() => { setSeed(null); setAnnotations({}); }}
             className="text-xs text-gray-400 hover:text-[#d4a017]"
             aria-label="Clear seed"
           >
@@ -520,6 +525,7 @@ export default function ConnectionsPage() {
                 <g
                   key={n.id}
                   onClick={() => handleNodeClick(n)}
+                  data-has-annotation={annotations[n.id] ? 'true' : 'false'}
                   style={{ cursor: 'pointer', opacity: dim ? 0.25 : 1 }}
                 >
                   {inPath && (
@@ -546,6 +552,15 @@ export default function ConnectionsPage() {
                   >
                     {n.label.length > 22 ? n.label.slice(0, 20) + '…' : n.label}
                   </text>
+                  {annotations[n.id] && (
+                    <text
+                      x={n.x + r - 4} y={n.y - r + 8}
+                      fontSize={10} fill="#d4a017" fontFamily="monospace" fontWeight="bold"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      ✎
+                    </text>
+                  )}
                 </g>
               );
             })}
@@ -572,7 +587,7 @@ export default function ConnectionsPage() {
           )}
           {selectedNodeId && !pathFrom && (
             <div
-              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 flex items-center gap-2 text-xs text-gray-300 z-20"
+              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 flex items-center gap-2 text-xs text-gray-300 z-20 max-w-md"
               style={{ borderRadius: 2 }}
             >
               <span>Selected: {nodes.find(n => n.id === selectedNodeId)?.label}</span>
@@ -586,6 +601,21 @@ export default function ConnectionsPage() {
               >
                 Start Path
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingAnnotationFor(selectedNodeId);
+                  setAnnotationDraft(annotations[selectedNodeId] || '');
+                }}
+                className="text-[#d4a017] hover:underline uppercase font-semibold"
+              >
+                {annotations[selectedNodeId] ? 'Edit note' : 'Add note'}
+              </button>
+              {annotations[selectedNodeId] && (
+                <span className="text-gray-400 italic border-l border-[#222222] pl-2 ml-1">
+                  {annotations[selectedNodeId]}
+                </span>
+              )}
             </div>
           )}
           {pathFrom && (
@@ -635,6 +665,63 @@ export default function ConnectionsPage() {
         </div>
       )}
       </div>
+
+      {editingAnnotationFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div role="dialog" className="w-96 bg-surface-raised border border-[#222222] p-4 space-y-3" style={{ borderRadius: 2 }}>
+            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">
+              Note for {nodes.find(n => n.id === editingAnnotationFor)?.label}
+            </h2>
+            <textarea
+              aria-label={`Note for ${nodes.find(n => n.id === editingAnnotationFor)?.label}`}
+              className="w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-28"
+              style={{ borderRadius: 2 }}
+              value={annotationDraft}
+              onChange={e => setAnnotationDraft(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setEditingAnnotationFor(null); setAnnotationDraft(''); }}
+                className="px-3 py-1.5 text-xs text-gray-300 hover:text-[#d4a017]"
+              >
+                Cancel
+              </button>
+              {annotations[editingAnnotationFor] && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnnotations(prev => {
+                      const next = { ...prev };
+                      delete next[editingAnnotationFor!];
+                      return next;
+                    });
+                    setEditingAnnotationFor(null);
+                    setAnnotationDraft('');
+                  }}
+                  className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300"
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const k = editingAnnotationFor!;
+                  setAnnotations(prev => ({ ...prev, [k]: annotationDraft }));
+                  setEditingAnnotationFor(null);
+                  setAnnotationDraft('');
+                }}
+                className="px-3 py-1.5 text-xs bg-[#d4a017] text-black font-semibold hover:bg-[#e0b030]"
+                style={{ borderRadius: 2 }}
+              >
+                Save note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {saveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">

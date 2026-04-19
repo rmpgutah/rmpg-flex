@@ -672,3 +672,136 @@ describe('ConnectionsPage - load investigation', () => {
     }, { timeout: 3000 });
   });
 });
+
+describe('ConnectionsPage - annotations', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('selecting a node shows an Add note action; saving stores the annotation', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-1', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(container.querySelectorAll('svg circle').length).toBeGreaterThanOrEqual(2));
+
+    const incLabel = screen.getByText('I-1');
+    fireEvent.click(incLabel.closest('g') as any);
+
+    const addNoteBtn = await screen.findByRole('button', { name: /add note|edit note/i });
+    fireEvent.click(addNoteBtn);
+
+    const textarea = await screen.findByLabelText(/note for/i);
+    fireEvent.change(textarea, { target: { value: 'Cold case, primary suspect unclear' } });
+    fireEvent.click(screen.getByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Cold case, primary suspect unclear/i)).toBeInTheDocument();
+    });
+  });
+
+  it('annotated nodes show a visual indicator', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-1', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'ja' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+    await waitFor(() => expect(container.querySelectorAll('svg circle').length).toBeGreaterThanOrEqual(2));
+
+    fireEvent.click(screen.getByText('I-1').closest('g') as any);
+    fireEvent.click(await screen.findByRole('button', { name: /add note/i }));
+    fireEvent.change(await screen.findByLabelText(/note for/i), { target: { value: 'foo' } });
+    fireEvent.click(screen.getByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      const annotatedGroups = container.querySelectorAll('svg g[data-has-annotation="true"]');
+      expect(annotatedGroups.length).toBe(1);
+    });
+  });
+
+  it('SAVE INVESTIGATION includes annotations in payload', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      })
+      .mockResolvedValueOnce({ id: 100, user_id: 1, name: 'test' });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'ja' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+    await waitFor(() => screen.getByTestId('seed-display'));
+
+    const janeGroup = screen.getAllByText('Jane').find(el => el.closest('svg'));
+    fireEvent.click(janeGroup!.closest('g') as any);
+    fireEvent.click(await screen.findByRole('button', { name: /add note/i }));
+    fireEvent.change(await screen.findByLabelText(/note for/i), { target: { value: 'watchlist' } });
+    fireEvent.click(screen.getByRole('button', { name: /save note/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /save investigation/i }));
+    await waitFor(() => screen.getByRole('dialog', { name: /save investigation/i }));
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'test' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      const postCall = mockFetch.mock.calls.find(c =>
+        typeof c[0] === 'string' && c[0].includes('/connections/investigations') && c[1]?.method === 'POST'
+      );
+      expect(postCall).toBeTruthy();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.annotations).toBeTruthy();
+      expect(body.annotations['person-42']).toBe('watchlist');
+    });
+  });
+
+  it('LOAD INVESTIGATION restores annotations', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{
+        id: 5, user_id: 1, name: 'WithNote',
+        seed_nodes: '[{"type":"person","id":42}]',
+        pinned_layout: null,
+        annotations: '{"person-42":"prior arrest"}',
+        shared_user_ids: '[]',
+      }])
+      .mockResolvedValueOnce({
+        id: 5, user_id: 1, name: 'WithNote',
+        seed_nodes: '[{"type":"person","id":42}]',
+        pinned_layout: null,
+        annotations: '{"person-42":"prior arrest"}',
+        shared_user_ids: '[]',
+      })
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
+    await waitFor(() => screen.getByText(/WithNote/i));
+    fireEvent.click(screen.getByText(/WithNote/i));
+
+    await waitFor(() => {
+      const annotatedGroups = container.querySelectorAll('svg g[data-has-annotation="true"]');
+      expect(annotatedGroups.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
