@@ -2670,7 +2670,7 @@ router.get('/export/full', requireRole('admin'), (req: Request, res: Response) =
 router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 500);
+    const limit = parseInt(String(req.query.limit || '50'), 10);
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const rows = db.prepare(`
@@ -3498,7 +3498,7 @@ router.post('/audit/purge-before', requireRole('admin'), (req: Request, res: Res
 router.get('/audit/user/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '200'), 10), 1000);
+    const limit = parseInt(String(req.query.limit || '200'), 10);
     const rows = db.prepare('SELECT * FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(parseInt(paramStr(req.params.userId), 10), limit);
     res.json({ entries: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
