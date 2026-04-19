@@ -15,6 +15,7 @@ import {
   Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp, X,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import FormModal from '../components/FormModal';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -284,7 +285,7 @@ export default function ForensicLabPage() {
   const [showFilters, setShowFilters] = useState(false);
   // Analysis modal
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
   // Exhibit modal
   const [showExhibitModal, setShowExhibitModal] = useState(false);
   const [exhibitForm, setExhibitForm] = useState({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
@@ -497,7 +498,7 @@ export default function ForensicLabPage() {
         body: JSON.stringify(analysisForm),
       });
       setShowAnalysisModal(false);
-      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
       console.error('Add analysis error:', err);
@@ -790,9 +791,9 @@ export default function ForensicLabPage() {
       <div className="flex flex-col h-full bg-surface-base">
         {/* Detail Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
-          <button type="button" onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors">
+          <IconButton onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors" aria-label="Back to case list">
             <ChevronLeft size={16} />
-          </button>
+          </IconButton>
           <Microscope size={16} className="text-brand-400" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -1616,9 +1617,9 @@ export default function ForensicLabPage() {
                       <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-purple-900/20 text-purple-400">{link.entity_type}</span>
                       <span className="text-xs text-rmpg-200 flex-1">{link.entity_label || `${link.entity_type} #${link.entity_id}`}</span>
                       <span className="text-[9px] text-rmpg-500">{link.relationship}</span>
-                      <button type="button" onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link">
+                      <IconButton onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link" aria-label="Remove link">
                         <Unlink size={12} />
-                      </button>
+                      </IconButton>
                     </div>
                   ))}
                 </div>
@@ -1659,6 +1660,16 @@ export default function ForensicLabPage() {
                   onChange={e => setAnalysisForm(f => ({ ...f, methodology: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Describe the examination method..."
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Equipment Used</label>
+                <input
+                  type="text"
+                  value={analysisForm.equipment_used}
+                  onChange={e => setAnalysisForm(f => ({ ...f, equipment_used: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="e.g. Cellebrite UFED, FTK Imager, GC-MS"
                 />
               </div>
               <div>
@@ -1881,7 +1892,7 @@ export default function ForensicLabPage() {
       {fetchError && (
         <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3" /> {fetchError}
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+          <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></IconButton>
         </div>
       )}
       {/* Header */}

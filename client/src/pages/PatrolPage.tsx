@@ -23,6 +23,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
@@ -672,9 +673,9 @@ const PatrolPage: React.FC = () => {
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 flex items-center gap-2 text-xs text-red-300 flex-shrink-0">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-200">
+          <IconButton onClick={() => setError(null)} className="text-red-400 hover:text-red-200" aria-label="Dismiss error">
             <X className="w-3.5 h-3.5" />
-          </button>
+          </IconButton>
         </div>
       )}
 
@@ -731,7 +732,7 @@ const PatrolPage: React.FC = () => {
         <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
           <div className="flex items-center justify-between mb-1">
             <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
-            <button type="button" onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300"><X className="w-3 h-3" /></button>
+            <IconButton onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300" aria-label="Close optimized route"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
@@ -750,7 +751,7 @@ const PatrolPage: React.FC = () => {
         <div className="mx-3 mt-2 p-2 bg-green-900/20 border border-green-700/50 text-xs text-green-300">
           <div className="flex items-center justify-between mb-1">
             <span className="font-bold">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
-            <button type="button" onClick={() => setPatrolLog(null)} className="text-green-500 hover:text-green-300"><X className="w-3 h-3" /></button>
+            <IconButton onClick={() => setPatrolLog(null)} className="text-green-500 hover:text-green-300" aria-label="Close patrol log"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{patrolLog.total_checkpoints_scanned}</span></div>
@@ -776,7 +777,7 @@ const PatrolPage: React.FC = () => {
         <div className="mx-3 mt-2 p-2 bg-amber-900/20 border border-amber-700/50 text-xs text-amber-300">
           <div className="flex items-center justify-between mb-1">
             <span className="font-bold">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
-            <button type="button" onClick={() => setExceptions(null)} className="text-amber-500 hover:text-amber-300"><X className="w-3 h-3" /></button>
+            <IconButton onClick={() => setExceptions(null)} className="text-amber-500 hover:text-amber-300" aria-label="Close exceptions"><X className="w-3 h-3" /></IconButton>
           </div>
           {exceptions.missed_checkpoints?.length > 0 && (
             <div className="mb-1">
@@ -808,7 +809,7 @@ const PatrolPage: React.FC = () => {
         <div className="mx-3 mt-2 p-2 bg-purple-900/20 border border-purple-700/50 text-xs text-purple-300">
           <div className="flex items-center justify-between mb-1">
             <span className="font-bold">Time Tracking — {timeTracking.date}</span>
-            <button type="button" onClick={() => setTimeTracking(null)} className="text-purple-500 hover:text-purple-300"><X className="w-3 h-3" /></button>
+            <IconButton onClick={() => setTimeTracking(null)} className="text-purple-500 hover:text-purple-300" aria-label="Close time tracking"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-white">{timeTracking.total_patrol_minutes} min</span></div>
@@ -881,46 +882,51 @@ const PatrolPage: React.FC = () => {
                       </td>
                       <td>
                         <div className="flex justify-end gap-2">
-                          <button type="button"
+                          <IconButton
                             onClick={() => handleShowQr(checkpoint.qr_code)}
                             className="text-brand-400 hover:text-brand-300"
                             title="Show QR Code"
+                            aria-label={`Show QR code for ${checkpoint.name}`}
                           >
                             <Eye className="w-4 h-4" />
-                          </button>
+                          </IconButton>
                           {!checkpoint.archived_at && (
                             <>
-                              <button type="button"
+                              <IconButton
                                 onClick={() => handleEditCheckpoint(checkpoint)}
                                 className="text-amber-400 hover:text-amber-300"
                                 title="Edit"
+                                aria-label={`Edit ${checkpoint.name}`}
                               >
                                 <Pencil className="w-4 h-4" />
-                              </button>
-                              <button type="button"
+                              </IconButton>
+                              <IconButton
                                 onClick={() => handleArchiveCheckpoint(checkpoint.id)}
                                 className="text-rmpg-400 hover:text-rmpg-300"
                                 title="Archive"
+                                aria-label={`Archive ${checkpoint.name}`}
                               >
                                 <Archive className="w-4 h-4" />
-                              </button>
-                              <button type="button"
+                              </IconButton>
+                              <IconButton
                                 onClick={() => setDeleteConfirmId(checkpoint.id)}
                                 className="text-red-400 hover:text-red-300"
                                 title="Delete"
+                                aria-label={`Delete ${checkpoint.name}`}
                               >
                                 <Trash2 className="w-4 h-4" />
-                              </button>
+                              </IconButton>
                             </>
                           )}
                           {checkpoint.archived_at && (
-                            <button type="button"
+                            <IconButton
                               onClick={() => handleUnarchiveCheckpoint(checkpoint.id)}
                               className="text-green-400 hover:text-green-300"
                               title="Unarchive"
+                              aria-label={`Unarchive ${checkpoint.name}`}
                             >
                               <RotateCcw className="w-4 h-4" />
-                            </button>
+                            </IconButton>
                           )}
                         </div>
                       </td>
@@ -1372,12 +1378,13 @@ const PatrolPage: React.FC = () => {
           <div className="panel-beveled bg-surface-base p-6 max-w-lg w-full mx-4">
             <div className="flex justify-between items-center mb-4">
               <h2 id={qrModalTitleId} className="text-xl font-bold text-white">QR Code</h2>
-              <button type="button"
+              <IconButton
                 onClick={() => setShowQrModal(false)}
                 className="text-rmpg-300 hover:text-white"
+                aria-label="Close"
               >
                 <X className="w-6 h-6" />
-              </button>
+              </IconButton>
             </div>
 
             <div className="bg-surface-sunken panel-inset p-8 text-center">

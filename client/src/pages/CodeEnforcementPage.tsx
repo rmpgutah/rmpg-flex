@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
@@ -531,9 +532,9 @@ export default function CodeEnforcementPage() {
                     >
                       {schedulingReinspection ? 'Scheduling...' : 'Confirm'}
                     </button>
-                    <button type="button" onClick={() => { setShowReinspection(false); setReinspectionDate(''); }} className="text-rmpg-500 hover:text-white">
+                    <IconButton onClick={() => { setShowReinspection(false); setReinspectionDate(''); }} className="text-rmpg-500 hover:text-white" aria-label="Cancel reinspection">
                       <X style={{ width: 12, height: 12 }} />
-                    </button>
+                    </IconButton>
                   </div>
                 )}
                 {(selectedViolation as any).reinspection_date && (
@@ -640,7 +641,7 @@ export default function CodeEnforcementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
-              <button type="button" onClick={() => setVFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setVFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -720,7 +721,7 @@ export default function CodeEnforcementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
-              <button type="button" onClick={() => setTFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setTFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

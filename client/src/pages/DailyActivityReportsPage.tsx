@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -226,9 +227,9 @@ export default function DailyActivityReportsPage() {
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
           <ExportButton exportUrl="/api/dar/export/csv" exportFilename="daily_activity_reports_export.csv" />
-          <button type="button" onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)">
+          <IconButton onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)" aria-label="Refresh">
             <RefreshCw style={{ width: 11, height: 11 }} />
-          </button>
+          </IconButton>
           <button type="button" onClick={() => { setCreateFormOpen(true); setAutoPopulateData(null); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
@@ -451,7 +452,7 @@ export default function DailyActivityReportsPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setCreateFormOpen(false)}>
           <div className="panel-surface w-full max-w-md mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
-              <button type="button" onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setCreateFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>

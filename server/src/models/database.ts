@@ -4319,6 +4319,9 @@ function migrateSchema(): void {
   addCol('forensic_exhibits', 'is_biohazard', 'INTEGER DEFAULT 0');
   addCol('forensic_exhibits', 'current_custodian', 'TEXT');
   addCol('forensic_exhibits', 'current_custodian_id', 'INTEGER');
+  // Client form sends `examination_requested` (what examination the intake officer
+  // wants performed) — was silently dropped before 2026-04-19.
+  addCol('forensic_exhibits', 'examination_requested', 'TEXT');
 
   // Feature 42-43: Vehicle registration & insurance
   addCol('vehicles_records', 'registration_expiry', 'TEXT');
@@ -5235,6 +5238,18 @@ function migrateSchema(): void {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
+
+  // ── FIELD INTERVIEWS — columns referenced by INSERT but missing from CREATE TABLE ──
+  // Route handler (server/src/routes/fieldInterviews.ts) inserts these; production DB
+  // has them via ad-hoc ALTER, but fresh DBs would crash with
+  // "table field_interviews has no column named X" on first FI creation.
+  addCol('field_interviews', 'date', 'TEXT');
+  addCol('field_interviews', 'gang_affiliation', 'TEXT');
+  addCol('field_interviews', 'section_id', 'INTEGER');
+  addCol('field_interviews', 'zone_id', 'INTEGER');
+  addCol('field_interviews', 'beat_id', 'INTEGER');
+  addCol('field_interviews', 'zone_beat', 'TEXT');
+  addCol('field_interviews', 'updated_at', 'TEXT');
 
   console.log('Schema migration completed.');
 }
