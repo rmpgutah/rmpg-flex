@@ -39,6 +39,9 @@ import MapV2GeolocateButton from './components/MapV2GeolocateButton';
 import MapV2RecenterButton from './components/MapV2RecenterButton';
 import MapV2CoverageBar from './components/MapV2CoverageBar';
 import MapV2CursorReadout from './components/MapV2CursorReadout';
+import MapV2HoverTooltip from './components/MapV2HoverTooltip';
+import MapV2Legend from './components/MapV2Legend';
+import { useOlHoverTooltip } from './hooks/useOlHoverTooltip';
 import MapV2PresetsButton from './components/MapV2PresetsButton';
 import { useDispatchCoverageStats } from './hooks/useDispatchCoverageStats';
 import { useOlCursorCoords } from './hooks/useOlCursorCoords';
@@ -175,6 +178,7 @@ export default function MapPageV2() {
   useOlAutoPanToP1(map, { enabled: true });
   useP1AudioAlert({ enabled: true });
   const cursorCoords = useOlCursorCoords(map);
+  const hoverTooltip = useOlHoverTooltip(map);
   const { presets, save: savePreset, remove: removePreset } = useLayerPresets();
 
   const recenter = () => {
@@ -447,6 +451,8 @@ export default function MapPageV2() {
       <MapV2RecenterButton onClick={recenter} />
       <MapV2CoverageBar stats={coverageStats} />
       <MapV2CursorReadout coords={cursorCoords} />
+      <MapV2HoverTooltip tooltip={hoverTooltip} />
+      <MapV2Legend bottomOffset={120} />
       <MapV2PresetsButton
         presets={presets}
         onSave={(name) => savePreset(name, captureVisibility())}
