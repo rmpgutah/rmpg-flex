@@ -21,9 +21,12 @@ import {
   useOlPatrolCheckpoints,
   useOlFleetVehicles,
 } from './hooks/useOlOperationalLayers';
+import { useDaylightPhase } from './hooks/useDaylightPhase';
+import { useOlScreenshot } from './hooks/useOlScreenshot';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
 import MapV2DrawToolbar from './components/MapV2DrawToolbar';
+import MapV2StatusBar from './components/MapV2StatusBar';
 
 const SLC_LON_LAT: [number, number] = [-111.891, 40.760];
 
@@ -104,6 +107,8 @@ export default function MapPageV2() {
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
   useOlFleetVehicles(map, { visible: showFleet });
   const addressSearch = useOlAddressSearch(map);
+  const daylight = useDaylightPhase();
+  const screenshot = useOlScreenshot(map);
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
@@ -173,6 +178,7 @@ export default function MapPageV2() {
         setMode={setDrawMode}
         onClear={() => setClearVersion(v => v + 1)}
       />
+      <MapV2StatusBar daylight={daylight} onScreenshot={screenshot} />
     </div>
   );
 }
