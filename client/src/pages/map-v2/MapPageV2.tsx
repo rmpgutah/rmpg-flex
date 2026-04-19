@@ -16,6 +16,11 @@ import { useOlAddressSearch } from './hooks/useOlAddressSearch';
 import { useOlSafetyZones, useOlEnforcementClusters } from './hooks/useOlTacticalLayers';
 import { useOlBreadcrumbs } from './hooks/useOlBreadcrumbs';
 import { useOlFieldInterviews } from './hooks/useOlFieldInterviews';
+import {
+  useOlIncidentReports,
+  useOlPatrolCheckpoints,
+  useOlFleetVehicles,
+} from './hooks/useOlOperationalLayers';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
 import MapV2DrawToolbar from './components/MapV2DrawToolbar';
@@ -46,6 +51,9 @@ export default function MapPageV2() {
   const [showEnforcement, setShowEnforcement] = useState(false);
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(false);
   const [showFi, setShowFi] = useState(false);
+  const [showIncidents, setShowIncidents] = useState(false);
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
+  const [showFleet, setShowFleet] = useState(false);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -92,6 +100,9 @@ export default function MapPageV2() {
   useOlEnforcementClusters(map, { visible: showEnforcement, days: 30 });
   useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: 8 });
   useOlFieldInterviews(map, { visible: showFi, days: 30 });
+  useOlIncidentReports(map, { visible: showIncidents, days: 30 });
+  useOlPatrolCheckpoints(map, { visible: showCheckpoints });
+  useOlFleetVehicles(map, { visible: showFleet });
   const addressSearch = useOlAddressSearch(map);
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
@@ -134,6 +145,9 @@ export default function MapPageV2() {
     { key: 'enforcement', label: 'Enforcement (30d)', color: '#a855f7', visible: showEnforcement, onToggle: () => setShowEnforcement(v => !v) },
     { key: 'breadcrumbs', label: 'Breadcrumbs (8h)', color: '#14b8a6', visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v) },
     { key: 'fi', label: 'Field Interviews (30d)', color: '#06b6d4', visible: showFi, onToggle: () => setShowFi(v => !v) },
+    { key: 'incidents', label: 'Incident Reports (30d)', color: '#ef4444', visible: showIncidents, onToggle: () => setShowIncidents(v => !v) },
+    { key: 'checkpoints', label: 'Patrol Checkpoints', color: '#22c55e', visible: showCheckpoints, onToggle: () => setShowCheckpoints(v => !v) },
+    { key: 'fleet', label: 'Fleet Vehicles', color: '#fbbf24', visible: showFleet, onToggle: () => setShowFleet(v => !v) },
   ];
 
   return (
