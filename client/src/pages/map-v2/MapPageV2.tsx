@@ -10,6 +10,7 @@ import { useOlBeatLayer } from './hooks/useOlBeatLayer';
 import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
 import { useOlGeoJsonLayer } from './hooks/useOlGeoJsonLayer';
 import { useOlDrawTool, type DrawMode } from './hooks/useOlDrawTool';
+import { useOlDragDispatch } from './hooks/useOlDragDispatch';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
 import MapV2DrawToolbar from './components/MapV2DrawToolbar';
 
@@ -74,6 +75,7 @@ export default function MapPageV2() {
   useOlBeatLayer(map, { visible: showBeats });
   useOlLiveMarkers(map);
   useOlDrawTool(map, { mode: drawMode, clearVersion });
+  useOlDragDispatch(map);
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
