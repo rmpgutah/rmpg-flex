@@ -76,7 +76,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
 router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name, c.name as client_name
@@ -252,7 +252,7 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
   try {
     const db = getDb();
     const { clientId } = req.params;
-    const limit = parseInt(req.query.limit as string, 10) || 100;
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name

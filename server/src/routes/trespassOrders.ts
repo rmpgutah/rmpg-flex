@@ -29,7 +29,7 @@ function generateOrderNumber(db: ReturnType<typeof getDb>): string {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, property_id, search, archived, page = '1', per_page = '50' } = req.query;
+    const { status, property_id, search, archived, page = '1', per_page = '100000' } = req.query;
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
@@ -48,7 +48,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.max(1, parseInt(per_page as string, 10) || 50);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM trespass_orders t ${where}`).get(...params) as any;

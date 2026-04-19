@@ -368,7 +368,7 @@ router.get('/dashcam-events', requireRole('admin', 'manager', 'supervisor', 'off
   try {
     const db = getDb();
     const { from, to, device_id, event_type, limit: limitStr } = req.query;
-    const limit = parseInt(limitStr as string, 10) || 100;
+    const limit = Math.min(100000, Math.max(1, (parseInt(limitStr as string, 10)) || 100000));
 
     let query = `
       SELECT d.*, u.call_sign, usr.full_name as officer_name
@@ -421,7 +421,7 @@ router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manage
     if (isNaN(officerId)) { res.status(400).json({ error: 'Invalid officer ID' }); return; }
 
     const { from, to, event_type, limit: limitStr } = req.query;
-    const limit = parseInt(String(limitStr), 10) || 100;
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(limitStr), 10)) || 100000));
 
     const units = db.prepare('SELECT id FROM units WHERE officer_id = ?').all(officerId) as { id: number }[];
     if (units.length === 0) { res.json({ events: [], total: 0 }); return; }

@@ -57,9 +57,9 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { search, tier, status, risk_level, page = '1', limit = '25' } = req.query;
+    const { search, tier, status, risk_level, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit as string, 10) || 25);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';

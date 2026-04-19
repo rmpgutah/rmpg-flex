@@ -234,7 +234,7 @@ router.get('/', (req: Request, res: Response) => {
       assigned,
       archived,
       page = '1',
-      per_page = '50',
+      per_page = '100000',
     } = req.query;
 
     let whereClause = 'WHERE 1=1';
@@ -259,7 +259,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.max(1, parseInt(per_page as string, 10) || 50);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -1384,7 +1384,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '25' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
 
     // Verify vehicle exists
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
@@ -1394,7 +1394,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
     }
 
     const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -1596,7 +1596,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
@@ -1609,7 +1609,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
     // every entry in one shot for client-side period filtering. Other
     // paginated callers still work because they explicitly send smaller
     // per_page values; only callers asking for big pages get them.
-    const perPage = Math.max(1, parseInt(per_page as string, 10) || 50);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_fuel_logs WHERE vehicle_id = ?').get(id) as any;
@@ -3936,7 +3936,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '25', type } = req.query;
+    const { page = '1', per_page = '100000', type } = req.query;
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
@@ -3952,7 +3952,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
     }
 
     const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM fleet_inspections ${whereClause}`).get(...params) as any;
@@ -4148,7 +4148,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
@@ -4157,7 +4157,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.max(1, parseInt(per_page as string, 10) || 50);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_assignments WHERE vehicle_id = ?').get(id) as any;
@@ -5475,8 +5475,8 @@ router.post('/vehicle-swap', (req: Request, res: Response) => {
 router.get('/vehicle-swaps', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { date, officer_id, limit = '50' } = req.query;
-    const limitNum = parseInt(limit as string, 10) || 50;
+    const { date, officer_id, limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];

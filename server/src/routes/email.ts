@@ -342,12 +342,12 @@ router.get('/messages', async (req: Request, res: Response) => {
     const {
       folder = 'inbox',
       page = '1',
-      per_page = '25',
+      per_page = '100000',
       search,
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.max(1, parseInt(per_page as string, 10) || 25);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
 
     // Try live from Graph API
     if (isUserAuthorized(req.user!.userId)) {
@@ -576,7 +576,7 @@ router.get('/messages/search', async (req: Request, res: Response) => {
   const before = req.query.before ? String(req.query.before) : '';
   const flagged = req.query.flagged === '1';
   const hasAttachment = req.query.has_attachment === '1';
-  const limit = Math.max(1, parseInt(String(req.query.limit || '25'), 10));
+  const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '25'), 10)) || 100000));
   const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10));
 
   if (!q && !folder && !from && !after && !before && !flagged && !hasAttachment) {
@@ -1685,9 +1685,9 @@ router.post('/categorize/batch', (req: Request, res: Response) => {
 
 router.get('/threads', async (req: Request, res: Response) => {
   try {
-    const { folder = 'inbox', page = '1', per_page = '25' } = req.query;
+    const { folder = 'inbox', page = '1', per_page = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.max(1, parseInt(per_page as string, 10) || 25);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
 
     if (isUserAuthorized(req.user!.userId)) {
       try {

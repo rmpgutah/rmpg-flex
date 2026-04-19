@@ -85,7 +85,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { vehicle_id, unit_id, case_number, search, limit: limitStr, offset: offsetStr } = req.query;
-    const limit = parseInt(String(limitStr), 10) || 50;
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(limitStr), 10)) || 100000));
     const offset = Math.max(0, Math.min(parseInt(String(offsetStr), 10) || 0, 10000));
 
     let query = `

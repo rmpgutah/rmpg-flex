@@ -122,7 +122,7 @@ export default function RecordsPage() {
   const fetchPersons = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingPersons(true); setError(null); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100&archived=${showArchived}`);
+      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100000&archived=${showArchived}`);
       setPersons((Array.isArray(res?.data) ? res.data : []).map(mapDbPerson));
     } catch (err) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load persons');
@@ -134,7 +134,7 @@ export default function RecordsPage() {
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingVehicles(true); setError(null); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100&archived=${showArchived}`);
+      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100000&archived=${showArchived}`);
       setVehicles((Array.isArray(res?.data) ? res.data : []).map(mapDbVehicle));
     } catch (err) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load vehicles');
@@ -158,7 +158,7 @@ export default function RecordsPage() {
   const fetchEvidence = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoadingEvidence(true);
     try {
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=200&archived=${showArchived}`);
+      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=100000&archived=${showArchived}`);
       setEvidence(res?.data || []);
     } catch {
       setEvidence([]);
