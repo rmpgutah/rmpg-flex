@@ -7,7 +7,8 @@ import CollapsibleSection from './CollapsibleSection';
 
 interface GraphNode {
   id: string;
-  type: 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident';
+  type: 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident'
+      | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job';
   label: string;
   subLabel?: string;
   x: number;
@@ -32,6 +33,12 @@ const NODE_COLORS: Record<string, string> = {
   property: '#8b5cf6',
   evidence: '#ef4444',
   case: '#3b82f6',
+  warrant: '#dc2626',
+  citation: '#fbbf24',
+  arrest: '#ef4444',
+  field_interview: '#64748b',
+  trespass_order: '#a855f7',
+  serve_job: '#14b8a6',
 };
 
 const NODE_RADIUS: Record<string, number> = {
@@ -41,6 +48,12 @@ const NODE_RADIUS: Record<string, number> = {
   property: 16,
   evidence: 16,
   case: 16,
+  warrant: 18,
+  citation: 16,
+  arrest: 18,
+  field_interview: 14,
+  trespass_order: 16,
+  serve_job: 16,
 };
 
 // ── Force simulation (simple spring + repulsion) ─────────────
