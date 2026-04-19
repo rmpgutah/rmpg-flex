@@ -148,6 +148,52 @@ function popupForHistory(p: HistoryRow): HTMLDivElement {
   return root;
 }
 
+interface BreadcrumbRow {
+  call_sign?: string;
+  officer_name?: string;
+  speed?: number | null;
+  heading?: number | null;
+  status?: string | null;
+  call_number?: string | null;
+  call_type?: string | null;
+  time?: string;
+  road_name?: string | null;
+  intersection?: string | null;
+}
+function popupForBreadcrumb(p: BreadcrumbRow): HTMLDivElement {
+  const root = buildContainer('#14b8a680', 200);
+  root.appendChild(makeRow(p.call_sign || 'Unit', '#14b8a6', 11, 700, { marginTop: '0' }));
+  if (p.officer_name) root.appendChild(makeRow(p.officer_name, '#9ca3af', 9, 400));
+
+  // Speed (m/s → mph) + heading + status, all on one informational line block
+  const speedMph = (typeof p.speed === 'number' && Number.isFinite(p.speed))
+    ? (p.speed * 2.237).toFixed(0) + ' mph'
+    : null;
+  const headingDeg = (typeof p.heading === 'number' && Number.isFinite(p.heading))
+    ? Math.round(p.heading) + '°'
+    : null;
+
+  const metricLine: string[] = [];
+  if (speedMph) metricLine.push(speedMph);
+  if (headingDeg) metricLine.push(`hdg ${headingDeg}`);
+  if (metricLine.length) {
+    root.appendChild(makeRow(metricLine.join(' · '), '#e5e7eb', 9, 700, { marginTop: '4px' }));
+  }
+  if (p.status) {
+    root.appendChild(makeRow(p.status, '#888888', 9, 400, { textTransform: 'uppercase', letterSpacing: '0.5px' }));
+  }
+  if (p.call_number) {
+    const callLine = p.call_type ? `${p.call_number} · ${p.call_type}` : p.call_number;
+    root.appendChild(makeRow(callLine, '#fbbf24', 9, 400, { marginTop: '4px' }));
+  }
+  if (p.road_name) {
+    const roadLine = p.intersection ? `${p.road_name} @ ${p.intersection}` : p.road_name;
+    root.appendChild(makeRow(roadLine, '#888888', 8, 400));
+  }
+  if (p.time) root.appendChild(makeRow(fmtDate(p.time), '#666666', 8, 400, { marginTop: '4px' }));
+  return root;
+}
+
 // ─── Hook ─────────────────────────────────────────────────
 
 const POPUP_BUILDERS: Record<string, (payload: any) => HTMLDivElement> = {
@@ -161,6 +207,7 @@ const POPUP_BUILDERS: Record<string, (payload: any) => HTMLDivElement> = {
   dwell: popupForDwell,
   prediction: popupForPrediction,
   call_history: popupForHistory,
+  breadcrumb: popupForBreadcrumb,
 };
 
 /**

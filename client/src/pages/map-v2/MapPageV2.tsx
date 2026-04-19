@@ -15,7 +15,7 @@ import { useOlDragDispatch } from './hooks/useOlDragDispatch';
 import { useOlHeatmap } from './hooks/useOlHeatmap';
 import { useOlAddressSearch } from './hooks/useOlAddressSearch';
 import { useOlSafetyZones, useOlEnforcementClusters } from './hooks/useOlTacticalLayers';
-import { useOlBreadcrumbs } from './hooks/useOlBreadcrumbs';
+import { useOlBreadcrumbs, type BreadcrumbColorMode } from './hooks/useOlBreadcrumbs';
 import { useOlFieldInterviews } from './hooks/useOlFieldInterviews';
 import {
   useOlIncidentReports,
@@ -76,6 +76,7 @@ export default function MapPageV2() {
   const [enforcementDays, setEnforcementDays] = useState<7 | 30 | 90>(30);
   const [enforcementType, setEnforcementType] = useState<'all' | 'traffic' | 'criminal'>('all');
   const [breadcrumbHours, setBreadcrumbHours] = useState<1 | 4 | 8 | 24>(8);
+  const [breadcrumbColor, setBreadcrumbColor] = useState<BreadcrumbColorMode>('unit');
   const [fiDays, setFiDays] = useState<7 | 30 | 90>(30);
   const [incidentDays, setIncidentDays] = useState<7 | 30 | 90>(30);
   const [repeatDays, setRepeatDays] = useState<7 | 30 | 90>(30);
@@ -126,7 +127,7 @@ export default function MapPageV2() {
   useOlHeatmap(map, { visible: showHeatmap, days: heatmapDays, mode: heatmapMode });
   useOlSafetyZones(map, { visible: showSafety, days: safetyDays });
   useOlEnforcementClusters(map, { visible: showEnforcement, days: enforcementDays, type: enforcementType });
-  useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours });
+  useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor });
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
   useOlIncidentReports(map, { visible: showIncidents, days: incidentDays });
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
@@ -258,6 +259,9 @@ export default function MapPageV2() {
             { kind: 'segmented', label: 'HRS', value: breadcrumbHours,
               options: [{ value: 1, label: '1' }, { value: 4, label: '4' }, { value: 8, label: '8' }, { value: 24, label: '24' }],
               onChange: (v) => setBreadcrumbHours(v as 1 | 4 | 8 | 24) },
+            { kind: 'segmented', label: 'COLOR', value: breadcrumbColor,
+              options: [{ value: 'unit', label: 'Unit' }, { value: 'speed', label: 'Speed' }, { value: 'status', label: 'Status' }],
+              onChange: (v) => setBreadcrumbColor(v as BreadcrumbColorMode) },
           ],
         },
         {
