@@ -215,3 +215,94 @@ describe('ConnectionsPage - pan/zoom', () => {
     });
   });
 });
+
+describe('ConnectionsPage - type filter', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('renders a checkbox for each node type present in the graph', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+          { id: 'warrant-5', type: 'warrant', entityId: 5, label: 'W-005', metadata: {}, depth: 1 },
+        ],
+        edges: [
+          { source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' },
+          { source: 'person-42', target: 'warrant-5', relationship: 'warrant_active', sourceTable: 'warrants' },
+        ],
+      });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Show person/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Show incident/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Show warrant/i)).toBeInTheDocument();
+    });
+  });
+
+  it('unchecking a type hides those nodes AND their edges', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+          { id: 'warrant-5', type: 'warrant', entityId: 5, label: 'W-005', metadata: {}, depth: 1 },
+        ],
+        edges: [
+          { source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' },
+          { source: 'person-42', target: 'warrant-5', relationship: 'warrant_active', sourceTable: 'warrants' },
+        ],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+
+    await waitFor(() => expect(container.querySelectorAll('svg circle').length).toBeGreaterThanOrEqual(3));
+
+    fireEvent.click(screen.getByLabelText(/Show incident/i));
+
+    await waitFor(() => {
+      const circles = container.querySelectorAll('svg g[data-testid="zoom-target"] circle');
+      expect(circles.length).toBe(2);
+      const lines = container.querySelectorAll('svg line');
+      expect(lines.length).toBe(1);
+    });
+  });
+
+  it('always keeps the seed node visible even if its type is unchecked', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'person-99', type: 'person', entityId: 99, label: 'Other Person', metadata: {}, depth: 1 },
+        ],
+        edges: [
+          { source: 'person-42', target: 'person-99', relationship: 'co_suspect', sourceTable: 'incident_persons' },
+        ],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+
+    await waitFor(() => expect(container.querySelectorAll('svg circle').length).toBe(2));
+
+    fireEvent.click(screen.getByLabelText(/Show person/i));
+
+    await waitFor(() => {
+      const circles = container.querySelectorAll('svg g[data-testid="zoom-target"] circle');
+      expect(circles.length).toBe(1);
+    });
+  });
+});

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Network, Loader2 } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
@@ -72,6 +72,7 @@ export default function ConnectionsPage() {
   const [edges, setEdges] = useState<SimEdge[]>([]);
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -196,6 +197,40 @@ export default function ConnectionsPage() {
 
   const hasOnlySeed = seed && nodes.length === 1;
 
+  const availableTypes = useMemo(
+    () => Array.from(new Set(nodes.map(n => n.type))).sort(),
+    [nodes]
+  );
+
+  const visibleNodes = useMemo(() => {
+    if (!seed) return nodes;
+    return nodes.filter(n => {
+      if (n.type === seed.type && n.entityId === seed.id) return true;
+      return !hiddenTypes.has(n.type);
+    });
+  }, [nodes, hiddenTypes, seed]);
+
+  const visibleNodeIds = useMemo(
+    () => new Set(visibleNodes.map(n => n.id)),
+    [visibleNodes]
+  );
+
+  const visibleEdges = useMemo(() => {
+    return edges.filter(e => {
+      const src = typeof e.source === 'string' ? e.source : (e.source as SimNode).id;
+      const tgt = typeof e.target === 'string' ? e.target : (e.target as SimNode).id;
+      return visibleNodeIds.has(src) && visibleNodeIds.has(tgt);
+    });
+  }, [edges, visibleNodeIds]);
+
+  function toggleType(t: string) {
+    setHiddenTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t); else next.add(t);
+      return next;
+    });
+  }
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
@@ -257,10 +292,11 @@ export default function ConnectionsPage() {
         </div>
       )}
 
+      <div className="flex-1 flex gap-2 min-h-0" style={{ minHeight: 400 }}>
       <div
         data-testid="graph-canvas"
         className="flex-1 bg-surface-sunken border border-[#222222] relative overflow-hidden"
-        style={{ borderRadius: 2, minHeight: 400 }}
+        style={{ borderRadius: 2 }}
       >
         {loadingGraph && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-[#d4a017] gap-2 z-10">
@@ -286,7 +322,7 @@ export default function ConnectionsPage() {
             preserveAspectRatio="xMidYMid meet"
           >
             <g ref={gRef} data-testid="zoom-target" transform={transform}>
-            {edges.map((e, i) => {
+            {visibleEdges.map((e, i) => {
               const src = typeof e.source === 'string' ? nodes.find(n => n.id === e.source) : (e.source as SimNode);
               const tgt = typeof e.target === 'string' ? nodes.find(n => n.id === e.target) : (e.target as SimNode);
               if (!src || !tgt) return null;
@@ -299,7 +335,7 @@ export default function ConnectionsPage() {
                 </g>
               );
             })}
-            {nodes.map(n => {
+            {visibleNodes.map(n => {
               const r = NODE_RADIUS[n.type] || 16;
               const color = NODE_COLORS[n.type] || '#888';
               const isSelected = selectedNodeId === n.id;
@@ -346,6 +382,34 @@ export default function ConnectionsPage() {
           </button>
           </>
         )}
+      </div>
+      {availableTypes.length > 0 && (
+        <div
+          className="w-40 bg-surface-raised border border-[#222222] p-2 space-y-1 overflow-y-auto"
+          style={{ borderRadius: 2 }}
+        >
+          <div className="text-[#d4a017] text-xs uppercase font-semibold mb-2">Filter by Type</div>
+          {availableTypes.map(t => (
+            <label
+              key={t}
+              className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-[#d4a017]"
+            >
+              <input
+                type="checkbox"
+                checked={!hiddenTypes.has(t)}
+                onChange={() => toggleType(t)}
+                aria-label={`Show ${t}`}
+                className="accent-[#d4a017]"
+              />
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ backgroundColor: NODE_COLORS[t] || '#888' }}
+              />
+              <span className="uppercase">{t}</span>
+            </label>
+          ))}
+        </div>
+      )}
       </div>
     </div>
   );
