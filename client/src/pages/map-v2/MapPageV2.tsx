@@ -51,6 +51,8 @@ import { useP1AudioAlert } from './hooks/useP1AudioAlert';
 import MapV2Compass from './components/MapV2Compass';
 import MapV2NowClock from './components/MapV2NowClock';
 import MapV2ToastStack from './components/MapV2ToastStack';
+import MapV2GpxExportButton from './components/MapV2GpxExportButton';
+import { downloadGpx } from './utils/breadcrumbAnalysis';
 import { useOlClickRipple } from './hooks/useOlClickRipple';
 import { useOlBeatActivity } from './hooks/useOlBeatActivity';
 import { useOlAutoPanToP1 } from './hooks/useOlAutoPanToP1';
@@ -105,6 +107,14 @@ export default function MapPageV2() {
   const [enforcementType, setEnforcementType] = useState<'all' | 'traffic' | 'criminal'>('all');
   const [breadcrumbHours, setBreadcrumbHours] = useState<1 | 4 | 8 | 24 | 168 | 720>(8);
   const [breadcrumbColor, setBreadcrumbColor] = useState<BreadcrumbColorMode>('unit');
+  const [bcShowStops, setBcShowStops] = useState(false);
+  const [bcShowSpeedWarnings, setBcShowSpeedWarnings] = useState(false);
+  const [bcShowHardBrakes, setBcShowHardBrakes] = useState(false);
+  const [bcShowStatusChanges, setBcShowStatusChanges] = useState(false);
+  const [bcShowArrows, setBcShowArrows] = useState(false);
+  const [bcShowMilestones, setBcShowMilestones] = useState(false);
+  const [bcShowHull, setBcShowHull] = useState(false);
+  const [bcHideOffDuty, setBcHideOffDuty] = useState(false);
   const [fiDays, setFiDays] = useState<7 | 30 | 90>(30);
   const [incidentDays, setIncidentDays] = useState<7 | 30 | 90>(30);
   const [repeatDays, setRepeatDays] = useState<7 | 30 | 90>(30);
@@ -177,7 +187,13 @@ export default function MapPageV2() {
   useOlHeatmap(map, { visible: showHeatmap, days: heatmapDays, mode: heatmapMode });
   useOlSafetyZones(map, { visible: showSafety, days: safetyDays });
   useOlEnforcementClusters(map, { visible: showEnforcement, days: enforcementDays, type: enforcementType });
-  useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor });
+  const breadcrumbResult = useOlBreadcrumbs(map, {
+    visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor,
+    showStops: bcShowStops, showSpeedWarnings: bcShowSpeedWarnings,
+    showHardBrakes: bcShowHardBrakes, showStatusChanges: bcShowStatusChanges,
+    showArrows: bcShowArrows, showMilestones: bcShowMilestones, showHull: bcShowHull,
+    hideOffDuty: bcHideOffDuty,
+  });
   useOlTrackingLines(map, { visible: showTracking });
   useOlAlerts(map, { visible: showAlerts });
   useOlGeofences(map, { visible: showGeofences });
@@ -422,6 +438,15 @@ export default function MapPageV2() {
               onChange: (v) => setBreadcrumbColor(v as BreadcrumbColorMode) },
           ],
         },
+        // Advanced breadcrumb derived overlays — each toggleable independently
+        { key: 'bc-stops', label: 'BC: Stops (\u22655min)', color: '#fbbf24', visible: bcShowStops, onToggle: () => setBcShowStops(v => !v) },
+        { key: 'bc-warn', label: 'BC: Speed >80mph', color: '#ef4444', visible: bcShowSpeedWarnings, onToggle: () => setBcShowSpeedWarnings(v => !v) },
+        { key: 'bc-brake', label: 'BC: Hard Brakes', color: '#dc2626', visible: bcShowHardBrakes, onToggle: () => setBcShowHardBrakes(v => !v) },
+        { key: 'bc-status', label: 'BC: Status Changes', color: '#a855f7', visible: bcShowStatusChanges, onToggle: () => setBcShowStatusChanges(v => !v) },
+        { key: 'bc-arrows', label: 'BC: Direction Arrows', color: '#14b8a6', visible: bcShowArrows, onToggle: () => setBcShowArrows(v => !v) },
+        { key: 'bc-miles', label: 'BC: Mile Milestones', color: '#14b8a6', visible: bcShowMilestones, onToggle: () => setBcShowMilestones(v => !v) },
+        { key: 'bc-hull', label: 'BC: Coverage Hull', color: '#14b8a6', visible: bcShowHull, onToggle: () => setBcShowHull(v => !v) },
+        { key: 'bc-onduty', label: 'BC: Hide Off-Duty', color: '#888888', visible: bcHideOffDuty, onToggle: () => setBcHideOffDuty(v => !v) },
         {
           key: 'history', label: `Call History (${historyDays}d)`, color: '#9ca3af',
           visible: showCallHistory, onToggle: () => setShowCallHistory(v => !v),
@@ -477,6 +502,10 @@ export default function MapPageV2() {
       <MapV2Compass map={map} />
       <MapV2NowClock />
       <MapV2ToastStack />
+      <MapV2GpxExportButton
+        trailCount={breadcrumbResult.trails.length}
+        onExport={() => downloadGpx(breadcrumbResult.trails)}
+      />
       <MapV2PresetsButton
         presets={presets}
         onSave={(name) => savePreset(name, captureVisibility())}
