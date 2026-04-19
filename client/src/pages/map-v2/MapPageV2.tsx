@@ -11,6 +11,7 @@ import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
 import { useOlGeoJsonLayer } from './hooks/useOlGeoJsonLayer';
 import { useOlDrawTool, type DrawMode } from './hooks/useOlDrawTool';
 import { useOlDragDispatch } from './hooks/useOlDragDispatch';
+import { useOlHeatmap } from './hooks/useOlHeatmap';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
 import MapV2DrawToolbar from './components/MapV2DrawToolbar';
 
@@ -35,6 +36,7 @@ export default function MapPageV2() {
   const [showMunicipality, setShowMunicipality] = useState(true);
   const [showPlaces, setShowPlaces] = useState(false);
   const [showBeats, setShowBeats] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -76,6 +78,7 @@ export default function MapPageV2() {
   useOlLiveMarkers(map);
   useOlDrawTool(map, { mode: drawMode, clearVersion });
   useOlDragDispatch(map);
+  useOlHeatmap(map, { visible: showHeatmap, days: 30, mode: 'all' });
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
@@ -112,6 +115,7 @@ export default function MapPageV2() {
     { key: 'beats', label: 'Beats', color: '#22c55e', visible: showBeats, onToggle: () => setShowBeats(v => !v), count: 719 },
     { key: 'highway', label: 'Highways', color: '#fbbf24', visible: showHighway, onToggle: () => setShowHighway(v => !v), count: 3 },
     { key: 'places', label: 'Places', color: '#a78bfa', visible: showPlaces, onToggle: () => setShowPlaces(v => !v), count: 462 },
+    { key: 'heatmap', label: 'Heatmap (30d)', color: '#ef4444', visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v) },
   ];
 
   return (
