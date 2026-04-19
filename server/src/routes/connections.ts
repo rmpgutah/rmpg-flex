@@ -1031,4 +1031,156 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
   }
 });
 
+// ─── INVESTIGATIONS CRUD ────────────────────────────────────
+// Saved Connections Analyst workspaces: user-owned graph + pinned
+// layout + annotations. Private by default; read-shared via the
+// explicit `shared_user_ids` JSON array. Only the owner writes.
+
+const INVESTIGATION_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+
+function canReadInvestigation(inv: any, userId: number): boolean {
+  if (inv.user_id === userId) return true;
+  try {
+    const shared = JSON.parse(inv.shared_user_ids || '[]');
+    return Array.isArray(shared) && shared.includes(userId);
+  } catch { return false; }
+}
+
+// POST /connections/investigations
+router.post('/investigations', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const { name, description, seed_nodes, pinned_layout, annotations, shared_user_ids } = req.body || {};
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'name is required', code: 'NAME_REQUIRED' });
+    }
+
+    const info = db.prepare(
+      `INSERT INTO connection_investigations (user_id, name, description, seed_nodes, pinned_layout, annotations, shared_user_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      userId,
+      name.trim(),
+      description || null,
+      JSON.stringify(seed_nodes || []),
+      pinned_layout ? JSON.stringify(pinned_layout) : null,
+      annotations ? JSON.stringify(annotations) : null,
+      JSON.stringify(shared_user_ids || []),
+    );
+
+    const created = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(Number(info.lastInsertRowid));
+    auditLog(req, 'CREATE', 'connection_investigation', Number(info.lastInsertRowid), `Investigation: ${name.trim()}`);
+    res.status(201).json(created);
+  } catch (err: any) {
+    console.error('[Connections] investigation create error:', err?.message);
+    res.status(500).json({ error: 'Create failed', code: 'INV_CREATE_FAILED' });
+  }
+});
+
+// GET /connections/investigations — mine + shared-with-me
+router.get('/investigations', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const rows = db.prepare(
+      `SELECT * FROM connection_investigations ORDER BY updated_at DESC LIMIT 500`
+    ).all() as any[];
+    const visible = rows.filter(r => canReadInvestigation(r, userId));
+    res.json(visible);
+  } catch (err: any) {
+    console.error('[Connections] investigations list error:', err?.message);
+    res.status(500).json({ error: 'List failed', code: 'INV_LIST_FAILED' });
+  }
+});
+
+// GET /connections/investigations/:id
+router.get('/investigations/:id', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const id = Number(req.params.id);
+    if (isNaN(id) || id < 1) return res.status(400).json({ error: 'Invalid id' });
+
+    const row = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(id) as any;
+    if (!row) return res.status(404).json({ error: 'Not found', code: 'INV_NOT_FOUND' });
+    if (!canReadInvestigation(row, userId)) return res.status(403).json({ error: 'Forbidden', code: 'INV_FORBIDDEN' });
+
+    auditLog(req, 'READ' as any, 'connection_investigation', id, 'Investigation read');
+    res.json(row);
+  } catch (err: any) {
+    console.error('[Connections] investigation read error:', err?.message);
+    res.status(500).json({ error: 'Read failed', code: 'INV_READ_FAILED' });
+  }
+});
+
+// PUT /connections/investigations/:id — owner only
+router.put('/investigations/:id', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const id = Number(req.params.id);
+    if (isNaN(id) || id < 1) return res.status(400).json({ error: 'Invalid id' });
+
+    const row = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(id) as any;
+    if (!row) return res.status(404).json({ error: 'Not found', code: 'INV_NOT_FOUND' });
+    if (row.user_id !== userId) return res.status(403).json({ error: 'Only owner can update', code: 'INV_NOT_OWNER' });
+
+    const { name, description, seed_nodes, pinned_layout, annotations, shared_user_ids } = req.body || {};
+
+    const updates: string[] = [];
+    const params: any[] = [];
+    if (name !== undefined) { updates.push('name = ?'); params.push(String(name).trim()); }
+    if (description !== undefined) { updates.push('description = ?'); params.push(description); }
+    if (seed_nodes !== undefined) { updates.push('seed_nodes = ?'); params.push(JSON.stringify(seed_nodes)); }
+    if (pinned_layout !== undefined) { updates.push('pinned_layout = ?'); params.push(pinned_layout ? JSON.stringify(pinned_layout) : null); }
+    if (annotations !== undefined) { updates.push('annotations = ?'); params.push(annotations ? JSON.stringify(annotations) : null); }
+    if (shared_user_ids !== undefined) { updates.push('shared_user_ids = ?'); params.push(JSON.stringify(shared_user_ids)); }
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+
+    if (updates.length === 1) return res.json(row);  // nothing to update besides timestamp
+
+    params.push(id);
+    db.prepare(`UPDATE connection_investigations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    const updated = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(id);
+    auditLog(req, 'UPDATE', 'connection_investigation', id, 'Investigation updated');
+    res.json(updated);
+  } catch (err: any) {
+    console.error('[Connections] investigation update error:', err?.message);
+    res.status(500).json({ error: 'Update failed', code: 'INV_UPDATE_FAILED' });
+  }
+});
+
+// DELETE /connections/investigations/:id — owner only
+router.delete('/investigations/:id', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const id = Number(req.params.id);
+    if (isNaN(id) || id < 1) return res.status(400).json({ error: 'Invalid id' });
+
+    const row = db.prepare('SELECT user_id FROM connection_investigations WHERE id = ?').get(id) as any;
+    if (!row) return res.status(404).json({ error: 'Not found', code: 'INV_NOT_FOUND' });
+    if (row.user_id !== userId) return res.status(403).json({ error: 'Only owner can delete', code: 'INV_NOT_OWNER' });
+
+    db.prepare('DELETE FROM connection_investigations WHERE id = ?').run(id);
+    auditLog(req, 'DELETE', 'connection_investigation', id, 'Investigation deleted');
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Connections] investigation delete error:', err?.message);
+    res.status(500).json({ error: 'Delete failed', code: 'INV_DELETE_FAILED' });
+  }
+});
+
 export default router;

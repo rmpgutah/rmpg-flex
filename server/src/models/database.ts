@@ -2580,6 +2580,28 @@ function migrateSchema(): void {
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_case ON case_evidence_links(case_id)`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_evidence ON case_evidence_links(evidence_id)`).run();
 
+  // Connections Analyst Tool — saved investigations (Phase 4.2)
+  // An investigation is a user-owned graph workspace: seed nodes + pinned
+  // layout + free-text annotations. Private by default; read-shared via the
+  // explicit `shared_user_ids` JSON array. Only the owner can update/delete.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS connection_investigations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      seed_nodes TEXT NOT NULL DEFAULT '[]',
+      pinned_layout TEXT,
+      annotations TEXT,
+      shared_user_ids TEXT NOT NULL DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_ci_user ON connection_investigations(user_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_ci_updated ON connection_investigations(updated_at)`).run();
+
   // Backfill case_*_links from legacy JSON columns (idempotent, one-time).
   // Only runs when junction tables are empty AND there is legacy JSON data to
   // migrate. Safe to leave in place: the guard short-circuits after first run.
