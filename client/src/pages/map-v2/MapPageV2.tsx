@@ -31,8 +31,11 @@ import { useOlScreenshot } from './hooks/useOlScreenshot';
 import { useOlTrackingLines } from './hooks/useOlTrackingLines';
 import { useOlAlerts } from './hooks/useOlAlerts';
 import { useOlContextMenu } from './hooks/useOlContextMenu';
+import { useOlGeolocation } from './hooks/useOlGeolocation';
+import { useOlGeofences } from './hooks/useOlGeofences';
 import MapV2StyleSwitcher, { type MapStyleKey } from './components/MapV2StyleSwitcher';
 import MapV2ContextMenu from './components/MapV2ContextMenu';
+import MapV2GeolocateButton from './components/MapV2GeolocateButton';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
@@ -89,6 +92,7 @@ export default function MapPageV2() {
   const [repeatMinCount, setRepeatMinCount] = useState<2 | 3 | 5 | 10>(3);
   const [historyDays, setHistoryDays] = useState<1 | 7 | 30>(7);
   const [showAlerts, setShowAlerts] = useState(true);
+  const [showGeofences, setShowGeofences] = useState(false);
   const [mapStyle, setMapStyle] = useState<MapStyleKey>('dark');
   const tileLayerRef = useRef<TileLayer<XYZ> | null>(null);
 
@@ -155,6 +159,8 @@ export default function MapPageV2() {
   useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor });
   useOlTrackingLines(map, { visible: showTracking });
   useOlAlerts(map, { visible: showAlerts });
+  useOlGeofences(map, { visible: showGeofences });
+  const geo = useOlGeolocation(map);
   const contextMenu = useOlContextMenu(map);
 
   // Tile-source swapping for the style switcher
@@ -216,6 +222,13 @@ export default function MapPageV2() {
   });
 
   const sections: LayerSection[] = [
+    {
+      id: 'persisted',
+      title: 'Persisted',
+      layers: [
+        { key: 'geofences', label: 'Geofences', color: '#a855f7', visible: showGeofences, onToggle: () => setShowGeofences(v => !v) },
+      ],
+    },
     {
       id: 'core',
       title: 'Core',
@@ -357,6 +370,7 @@ export default function MapPageV2() {
         setMode={setDrawMode}
         onClear={() => setClearVersion(v => v + 1)}
       />
+      <MapV2GeolocateButton onLocate={geo.locate} enabled={geo.enabled} />
       <MapV2StyleSwitcher value={mapStyle} onChange={setMapStyle} />
       <MapV2ContextMenu
         menu={contextMenu.menu}
