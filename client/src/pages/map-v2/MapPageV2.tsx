@@ -12,7 +12,9 @@ import { useOlGeoJsonLayer } from './hooks/useOlGeoJsonLayer';
 import { useOlDrawTool, type DrawMode } from './hooks/useOlDrawTool';
 import { useOlDragDispatch } from './hooks/useOlDragDispatch';
 import { useOlHeatmap } from './hooks/useOlHeatmap';
+import { useOlAddressSearch } from './hooks/useOlAddressSearch';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
+import MapV2AddressSearch from './components/MapV2AddressSearch';
 import MapV2DrawToolbar from './components/MapV2DrawToolbar';
 
 const SLC_LON_LAT: [number, number] = [-111.891, 40.760];
@@ -79,6 +81,7 @@ export default function MapPageV2() {
   useOlDrawTool(map, { mode: drawMode, clearVersion });
   useOlDragDispatch(map);
   useOlHeatmap(map, { visible: showHeatmap, days: 30, mode: 'all' });
+  const addressSearch = useOlAddressSearch(map);
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
@@ -128,6 +131,13 @@ export default function MapPageV2() {
       <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-[#141414] border border-[#222222] text-[#d4a017] font-mono text-[10px] uppercase tracking-wider pointer-events-none">
         MAP V2 · OpenLayers · live units + calls
       </div>
+      <MapV2AddressSearch
+        results={addressSearch.results}
+        searching={addressSearch.searching}
+        onSearch={addressSearch.search}
+        onSelect={addressSearch.selectAddress}
+        onClear={addressSearch.clearPin}
+      />
       <MapV2LayersPanel layers={layers} />
       <MapV2DrawToolbar
         mode={drawMode}
