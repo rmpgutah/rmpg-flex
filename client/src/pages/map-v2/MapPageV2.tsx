@@ -9,7 +9,15 @@ import { defaults as defaultControls, ScaleLine, Attribution } from 'ol/control'
 import { useOlBeatLayer } from './hooks/useOlBeatLayer';
 import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
 import { useOlGeoJsonLayer } from './hooks/useOlGeoJsonLayer';
+import { useOlDrawTool, type DrawMode } from './hooks/useOlDrawTool';
+import { useOlDragDispatch } from './hooks/useOlDragDispatch';
+import { useOlHeatmap } from './hooks/useOlHeatmap';
+import { useOlAddressSearch } from './hooks/useOlAddressSearch';
+import { useOlSafetyZones, useOlEnforcementClusters } from './hooks/useOlTacticalLayers';
+import { useOlBreadcrumbs } from './hooks/useOlBreadcrumbs';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
+import MapV2AddressSearch from './components/MapV2AddressSearch';
+import MapV2DrawToolbar from './components/MapV2DrawToolbar';
 
 const SLC_LON_LAT: [number, number] = [-111.891, 40.760];
 
@@ -22,12 +30,20 @@ export default function MapPageV2() {
   const mapInstanceRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
 
+  // Drawing-tool state
+  const [drawMode, setDrawMode] = useState<DrawMode>(null);
+  const [clearVersion, setClearVersion] = useState(0);
+
   // Layer visibility toggles (default: county off, others on for situational orientation)
   const [showCounty, setShowCounty] = useState(false);
   const [showHighway, setShowHighway] = useState(true);
   const [showMunicipality, setShowMunicipality] = useState(true);
   const [showPlaces, setShowPlaces] = useState(false);
   const [showBeats, setShowBeats] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showSafety, setShowSafety] = useState(false);
+  const [showEnforcement, setShowEnforcement] = useState(false);
+  const [showBreadcrumbs, setShowBreadcrumbs] = useState(false);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -67,6 +83,13 @@ export default function MapPageV2() {
 
   useOlBeatLayer(map, { visible: showBeats });
   useOlLiveMarkers(map);
+  useOlDrawTool(map, { mode: drawMode, clearVersion });
+  useOlDragDispatch(map);
+  useOlHeatmap(map, { visible: showHeatmap, days: 30, mode: 'all' });
+  useOlSafetyZones(map, { visible: showSafety, days: 90 });
+  useOlEnforcementClusters(map, { visible: showEnforcement, days: 30 });
+  useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: 8 });
+  const addressSearch = useOlAddressSearch(map);
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
@@ -103,6 +126,10 @@ export default function MapPageV2() {
     { key: 'beats', label: 'Beats', color: '#22c55e', visible: showBeats, onToggle: () => setShowBeats(v => !v), count: 719 },
     { key: 'highway', label: 'Highways', color: '#fbbf24', visible: showHighway, onToggle: () => setShowHighway(v => !v), count: 3 },
     { key: 'places', label: 'Places', color: '#a78bfa', visible: showPlaces, onToggle: () => setShowPlaces(v => !v), count: 462 },
+    { key: 'heatmap', label: 'Heatmap (30d)', color: '#ef4444', visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v) },
+    { key: 'safety', label: 'Safety Zones (90d)', color: '#ef4444', visible: showSafety, onToggle: () => setShowSafety(v => !v) },
+    { key: 'enforcement', label: 'Enforcement (30d)', color: '#a855f7', visible: showEnforcement, onToggle: () => setShowEnforcement(v => !v) },
+    { key: 'breadcrumbs', label: 'Breadcrumbs (8h)', color: '#14b8a6', visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v) },
   ];
 
   return (
@@ -115,7 +142,19 @@ export default function MapPageV2() {
       <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-[#141414] border border-[#222222] text-[#d4a017] font-mono text-[10px] uppercase tracking-wider pointer-events-none">
         MAP V2 · OpenLayers · live units + calls
       </div>
+      <MapV2AddressSearch
+        results={addressSearch.results}
+        searching={addressSearch.searching}
+        onSearch={addressSearch.search}
+        onSelect={addressSearch.selectAddress}
+        onClear={addressSearch.clearPin}
+      />
       <MapV2LayersPanel layers={layers} />
+      <MapV2DrawToolbar
+        mode={drawMode}
+        setMode={setDrawMode}
+        onClear={() => setClearVersion(v => v + 1)}
+      />
     </div>
   );
 }
