@@ -325,6 +325,7 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
       exhibit_type = 'other', description, quantity = 1, condition_received,
       storage_location, storage_temp, collected_by, collected_date,
       collection_method, hash_md5, hash_sha256, notes,
+      examination_requested, // previously silent-dropped (gotcha #38)
     } = req.body;
 
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required', code: 'DESCRIPTION_IS_REQUIRED' });
@@ -353,14 +354,14 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
         forensic_case_id, exhibit_number, exhibit_type, description, quantity,
         condition_received, storage_location, storage_temp, collected_by,
         collected_date, collection_method, hash_md5, hash_sha256,
-        chain_of_custody, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        chain_of_custody, notes, examination_requested, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.params.caseId, exhibit_number, exhibit_type, description.trim(), quantity,
       condition_received || null, storage_location || null, storage_temp || null,
       collected_by || null, collected_date || null, collection_method || null,
       hash_md5 || null, hash_sha256 || null, initialCustody,
-      notes || null, now, now,
+      notes || null, examination_requested || null, now, now,
     );
 
     logActivity(parseInt(req.params.caseId as string), 'exhibit_added', `Exhibit ${exhibit_number}: ${description}`, user.id, user.full_name, result.lastInsertRowid as number);

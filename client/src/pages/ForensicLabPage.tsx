@@ -284,7 +284,7 @@ export default function ForensicLabPage() {
   const [showFilters, setShowFilters] = useState(false);
   // Analysis modal
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
   // Exhibit modal
   const [showExhibitModal, setShowExhibitModal] = useState(false);
   const [exhibitForm, setExhibitForm] = useState({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
@@ -497,7 +497,7 @@ export default function ForensicLabPage() {
         body: JSON.stringify(analysisForm),
       });
       setShowAnalysisModal(false);
-      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
       console.error('Add analysis error:', err);
@@ -1659,6 +1659,16 @@ export default function ForensicLabPage() {
                   onChange={e => setAnalysisForm(f => ({ ...f, methodology: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Describe the examination method..."
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Equipment Used</label>
+                <input
+                  type="text"
+                  value={analysisForm.equipment_used}
+                  onChange={e => setAnalysisForm(f => ({ ...f, equipment_used: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="e.g. Cellebrite UFED, FTK Imager, GC-MS"
                 />
               </div>
               <div>

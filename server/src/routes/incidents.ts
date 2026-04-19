@@ -406,6 +406,12 @@ router.post('/', async (req: Request, res: Response) => {
       gang_related, evidence_collected, body_camera_active, photos_taken,
       trespass_issued, vehicle_pursuit, foot_pursuit,
       le_notified, supervisor_notified,
+      // PSO / Process Service fields (silently dropped before 2026-04-19 — gotcha #38 regression)
+      contract_id, pso_service_type, pso_attempt_number,
+      pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+      pso_billing_code, pso_authorization,
+      process_service_type, process_served_to, process_served_address,
+      process_service_result, process_served_at, process_attempts,
     } = req.body;
 
     if (!incident_type) {
@@ -487,6 +493,11 @@ router.post('/', async (req: Request, res: Response) => {
         gang_related, evidence_collected, body_camera_active, photos_taken,
         trespass_issued, vehicle_pursuit, foot_pursuit,
         le_notified, supervisor_notified,
+        contract_id, pso_service_type, pso_attempt_number,
+        pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+        pso_billing_code, pso_authorization,
+        process_service_type, process_served_to, process_served_address,
+        process_service_result, process_served_at, process_attempts,
         created_at)
       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
@@ -504,6 +515,11 @@ router.post('/', async (req: Request, res: Response) => {
         ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
         ?)
     `).run(
       incidentNumber, call_id || null, incident_type, priority || 'P3',
@@ -528,6 +544,12 @@ router.post('/', async (req: Request, res: Response) => {
       gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
       trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
       le_notified ? 1 : 0, supervisor_notified ? 1 : 0,
+      // PSO / Process Service — previously silent-dropped; see gotcha #38
+      contract_id || null, pso_service_type || null, pso_attempt_number ?? null,
+      pso_requestor_name || null, pso_requestor_phone || null, pso_requestor_email || null,
+      pso_billing_code || null, pso_authorization || null,
+      process_service_type || null, process_served_to || null, process_served_address || null,
+      process_service_result || null, process_served_at || null, process_attempts ?? 0,
       (req.user?.role === 'admin' && req.body.created_at) ? req.body.created_at : localNow(),
     );
 
@@ -659,6 +681,21 @@ router.put('/:id', async (req: Request, res: Response) => {
       foot_pursuit: v => v ? 1 : 0,
       le_notified: v => v ? 1 : 0,
       supervisor_notified: v => v ? 1 : 0,
+      // PSO / Process Service — previously silent-dropped in PUT handler (gotcha #38)
+      contract_id: v => v ?? null,
+      pso_service_type: v => v ?? null,
+      pso_attempt_number: v => v ?? null,
+      pso_requestor_name: v => v ?? null,
+      pso_requestor_phone: v => v ?? null,
+      pso_requestor_email: v => v ?? null,
+      pso_billing_code: v => v ?? null,
+      pso_authorization: v => v ?? null,
+      process_service_type: v => v ?? null,
+      process_served_to: v => v ?? null,
+      process_served_address: v => v ?? null,
+      process_service_result: v => v ?? null,
+      process_served_at: v => v ?? null,
+      process_attempts: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(iFieldMap)) {
