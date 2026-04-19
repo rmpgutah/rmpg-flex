@@ -12,6 +12,7 @@ import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { registerSqliteFunctions } from './sqliteFunctions';
+import { backfillCaseLinks } from '../migrations/2026-04-19-case-links-backfill';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2530,6 +2531,94 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
+  // ── CASE JUNCTION TABLES — indexed replacement for JSON LIKE scans in Connections traversal ──
+  // Task 3.1 of Connections Analyst Tool. Task 3.2 backfills from cases.linked_persons/
+  // linked_incidents/linked_evidence JSON arrays; Task 3.3 switches routes/connections.ts
+  // to these indexed joins instead of `LIKE '%id%'` full-table scans.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_person_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      person_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, person_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpl_case ON case_person_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpl_person ON case_person_links(person_id)`).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_incident_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      incident_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, incident_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cil_case ON case_incident_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cil_incident ON case_incident_links(incident_id)`).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_evidence_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      evidence_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, evidence_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (evidence_id) REFERENCES evidence(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_case ON case_evidence_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_evidence ON case_evidence_links(evidence_id)`).run();
+
+  // Connections Analyst Tool — saved investigations (Phase 4.2)
+  // An investigation is a user-owned graph workspace: seed nodes + pinned
+  // layout + free-text annotations. Private by default; read-shared via the
+  // explicit `shared_user_ids` JSON array. Only the owner can update/delete.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS connection_investigations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      seed_nodes TEXT NOT NULL DEFAULT '[]',
+      pinned_layout TEXT,
+      annotations TEXT,
+      shared_user_ids TEXT NOT NULL DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_ci_user ON connection_investigations(user_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_ci_updated ON connection_investigations(updated_at)`).run();
+
+  // Backfill case_*_links from legacy JSON columns (idempotent, one-time).
+  // Only runs when junction tables are empty AND there is legacy JSON data to
+  // migrate. Safe to leave in place: the guard short-circuits after first run.
+  try {
+    const linksCount = db.prepare('SELECT COUNT(*) as c FROM case_person_links').get() as any;
+    const anyJsonPopulated = db.prepare(
+      "SELECT COUNT(*) as c FROM cases WHERE (linked_persons IS NOT NULL AND linked_persons != '[]' AND linked_persons != '') OR (linked_incidents IS NOT NULL AND linked_incidents != '[]' AND linked_incidents != '') OR (linked_evidence IS NOT NULL AND linked_evidence != '[]' AND linked_evidence != '')"
+    ).get() as any;
+
+    if (linksCount.c === 0 && anyJsonPopulated.c > 0) {
+      backfillCaseLinks(db);
+    }
+  } catch (err: any) {
+    console.error('[DB] case links backfill failed:', err?.message);
+    // Non-fatal — leave legacy JSON columns and proceed
+  }
+
   // ── CODE VIOLATIONS — municipal code enforcement ──
   try {
     db.exec(`
@@ -4262,6 +4351,10 @@ function migrateSchema(): void {
 
   // Dashcam videos — incident linkage
   addCol('dashcam_videos', 'incident_id', 'INTEGER');
+
+  // Serve queue — person/property FK links for connection graph
+  addCol('serve_queue', 'recipient_person_id', 'INTEGER');
+  addCol('serve_queue', 'property_id', 'INTEGER');
 
   // Training records/requirements — missing columns
   addCol('training_records', 'training_type', 'TEXT');

@@ -145,7 +145,7 @@ router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const { title, case_type = 'general', priority: requestedPriority, summary, lead_investigator_id, linked_call_id } = req.body;
+    const { title, case_type = 'general', priority: requestedPriority, summary, lead_investigator_id, linked_call_id, linked_persons, linked_incidents, linked_evidence } = req.body;
     if (!title || (typeof title === 'string' && title.trim().length === 0)) return res.status(400).json({ error: 'Title is required', code: 'MISSING_TITLE' });
     if (typeof title === 'string' && title.length > 500) return res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_TOO_LONG' });
 
@@ -166,19 +166,48 @@ router.post('/', (req: Request, res: Response) => {
     }
 
     const case_number = generateCaseNumber(db, case_type);
-    const result = db.prepare(`
-      INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
-        summary, linked_calls, created_by, created_at, updated_at, opened_date)
-      VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
-      linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
-      req.user!.userId, now, now, localToday());
 
-    // Update the linked call with this case_id for bidirectional linkage
-    if (linked_call_id) {
-      db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
-        .run(result.lastInsertRowid, case_number, linked_call_id);
-    }
+    // Normalize link arrays up front so tx can mirror-write
+    const personsArr: number[] = Array.isArray(linked_persons) ? linked_persons.map((n: any) => Number(n)).filter(Number.isFinite) : [];
+    const incidentsArr: number[] = Array.isArray(linked_incidents) ? linked_incidents.map((n: any) => Number(n)).filter(Number.isFinite) : [];
+    const evidenceArr: number[] = Array.isArray(linked_evidence) ? linked_evidence.map((n: any) => Number(n)).filter(Number.isFinite) : [];
+
+    const tx = db.transaction(() => {
+      const info = db.prepare(`
+        INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
+          summary, linked_calls, linked_persons, linked_incidents, linked_evidence,
+          created_by, created_at, updated_at, opened_date)
+        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
+        linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
+        JSON.stringify(personsArr),
+        JSON.stringify(incidentsArr),
+        JSON.stringify(evidenceArr),
+        req.user!.userId, now, now, localToday());
+      const newId = Number(info.lastInsertRowid);
+
+      if (linked_call_id) {
+        db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
+          .run(newId, case_number, linked_call_id);
+      }
+
+      // Mirror-write to junction tables (Task 3.3)
+      if (personsArr.length > 0) {
+        const ins = db.prepare('INSERT OR IGNORE INTO case_person_links (case_id, person_id) VALUES (?, ?)');
+        for (const pid of personsArr) ins.run(newId, pid);
+      }
+      if (incidentsArr.length > 0) {
+        const ins = db.prepare('INSERT OR IGNORE INTO case_incident_links (case_id, incident_id) VALUES (?, ?)');
+        for (const iid of incidentsArr) ins.run(newId, iid);
+      }
+      if (evidenceArr.length > 0) {
+        const ins = db.prepare('INSERT OR IGNORE INTO case_evidence_links (case_id, evidence_id) VALUES (?, ?)');
+        for (const eid of evidenceArr) ins.run(newId, eid);
+      }
+
+      return info;
+    });
+    const result = tx();
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'create', 'case', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title: cleanTitle }), now);
@@ -223,7 +252,35 @@ router.put('/:id', (req: Request, res: Response) => {
     }
 
     params.push(id);
-    db.prepare(`UPDATE cases SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Normalize link arrays from body for mirror-write (Task 3.3)
+    const hasPersons = Array.isArray(req.body.linked_persons);
+    const hasIncidents = Array.isArray(req.body.linked_incidents);
+    const hasEvidence = Array.isArray(req.body.linked_evidence);
+    const personsArr: number[] = hasPersons ? req.body.linked_persons.map((n: any) => Number(n)).filter(Number.isFinite) : [];
+    const incidentsArr: number[] = hasIncidents ? req.body.linked_incidents.map((n: any) => Number(n)).filter(Number.isFinite) : [];
+    const evidenceArr: number[] = hasEvidence ? req.body.linked_evidence.map((n: any) => Number(n)).filter(Number.isFinite) : [];
+
+    db.transaction(() => {
+      db.prepare(`UPDATE cases SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      // Mirror-write: replace junction rows to reflect the new array (delete-then-insert)
+      if (hasPersons) {
+        db.prepare('DELETE FROM case_person_links WHERE case_id = ?').run(id);
+        const ins = db.prepare('INSERT OR IGNORE INTO case_person_links (case_id, person_id) VALUES (?, ?)');
+        for (const pid of personsArr) ins.run(id, pid);
+      }
+      if (hasIncidents) {
+        db.prepare('DELETE FROM case_incident_links WHERE case_id = ?').run(id);
+        const ins = db.prepare('INSERT OR IGNORE INTO case_incident_links (case_id, incident_id) VALUES (?, ?)');
+        for (const iid of incidentsArr) ins.run(id, iid);
+      }
+      if (hasEvidence) {
+        db.prepare('DELETE FROM case_evidence_links WHERE case_id = ?').run(id);
+        const ins = db.prepare('INSERT OR IGNORE INTO case_evidence_links (case_id, evidence_id) VALUES (?, ?)');
+        for (const eid of evidenceArr) ins.run(id, eid);
+      }
+    })();
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'update', 'case', ?, ?, ?)`).run(req.user!.userId, id, JSON.stringify({ fields: Object.keys(req.body) }), now);
