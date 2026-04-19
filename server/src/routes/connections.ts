@@ -70,6 +70,10 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const i = db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
         return i ? `${i.incident_number || ''} ${i.incident_type}`.trim() : `Incident #${id}`;
       }
+      case 'warrant': {
+        const w = db.prepare('SELECT warrant_number, status FROM warrants WHERE id = ?').get(id) as any;
+        return w ? `${w.warrant_number || `W-${id}`} (${w.status || '?'})` : `Warrant #${id}`;
+      }
       default:
         return `${type} #${id}`;
     }
@@ -105,6 +109,10 @@ function getNodeMetadata(db: any, type: string, id: number): Record<string, any>
       case 'incident': {
         const i = db.prepare('SELECT incident_number, incident_type, status, priority, location_address FROM incidents WHERE id = ?').get(id) as any;
         return i || {};
+      }
+      case 'warrant': {
+        const w = db.prepare('SELECT warrant_number, status, type, offense_level, subject_person_id, charge_description FROM warrants WHERE id = ?').get(id) as any;
+        return w || {};
       }
       default:
         return {};
@@ -196,6 +204,21 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         for (const cp of clientPersons) {
           results.push({ type: 'property', id: cp.property_id, relationship: cp.relationship, sourceTable: 'client_persons' });
         }
+
+        // warrants → person's active/open warrants
+        try {
+          const warrants = db.prepare(
+            "SELECT id, status FROM warrants WHERE subject_person_id = ?"
+          ).all(id) as any[];
+          for (const w of warrants) {
+            results.push({
+              type: 'warrant',
+              id: w.id,
+              relationship: `warrant_${(w.status || '').toLowerCase()}`,
+              sourceTable: 'warrants',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] warrants(person) query error:', err?.message); }
         break;
       }
 
@@ -334,6 +357,16 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
         break;
       }
+
+      case 'warrant': {
+        try {
+          const w = db.prepare('SELECT subject_person_id FROM warrants WHERE id = ?').get(id) as any;
+          if (w?.subject_person_id) {
+            results.push({ type: 'person', id: w.subject_person_id, relationship: 'subject', sourceTable: 'warrants' });
+          }
+        } catch (err: any) { console.error('[Connections] warrants(warrant) query error:', err?.message); }
+        break;
+      }
     }
   } catch (err: any) { console.error('[Connections] junction table query error:', err?.message); }
 
@@ -405,7 +438,7 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
 
 // ── Routes ───────────────────────────────────────────────────
 
-const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident'];
+const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant'];
 
 // GET /connections/graph?type=person&id=123&depth=2
 router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {

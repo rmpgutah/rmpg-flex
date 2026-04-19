@@ -63,6 +63,41 @@ describe('GET /api/connections/graph', () => {
     const res = await request(app).get(`/api/connections/graph?type=person&id=${personId}`);
     expect(res.status).toBe(401);
   });
+
+  it('traverses person → warrant via subject_person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    // Look up an existing user id for entered_by (warrants.entered_by is NOT NULL FK to users)
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const wid = d.prepare(
+      "INSERT INTO warrants (warrant_number, subject_person_id, type, status, charge_description, entered_by) VALUES ('W-001', ?, 'arrest', 'active', 'Test charge', ?)"
+    ).run(personId, uid).lastInsertRowid;
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${personId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'warrant' && n.entityId === Number(wid))).toBe(true);
+  });
+
+  it('traverses warrant → person via subject_person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const pRow = d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Jane', 'Warrant-Subject')"
+    ).run();
+    const pid = Number(pRow.lastInsertRowid);
+    const wid = Number(d.prepare(
+      "INSERT INTO warrants (warrant_number, subject_person_id, type, status, charge_description, entered_by) VALUES ('W-002', ?, 'arrest', 'active', 'Test charge', ?)"
+    ).run(pid, uid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=warrant&id=${wid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+  });
 });
 
 describe('GET /api/connections/export/csv', () => {
