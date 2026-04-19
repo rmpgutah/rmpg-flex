@@ -328,6 +328,7 @@ export default function ConnectionsPage() {
       setSelectedNodeId(null);
     } catch (err) {
       console.error('load investigation err:', err);
+      alert('Failed to load investigation — the saved data may be corrupted. See console for details.');
     }
   }
 

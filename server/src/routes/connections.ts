@@ -1088,10 +1088,19 @@ router.get('/investigations', requireRole(...INVESTIGATION_ROLES), (req: Request
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
 
-    const rows = db.prepare(
-      `SELECT * FROM connection_investigations ORDER BY updated_at DESC LIMIT 500`
-    ).all() as any[];
-    const visible = rows.filter(r => canReadInvestigation(r, userId));
+    // Filter in SQL so legitimate shared investigations aren't silently dropped at scale.
+    // shared_user_ids is a JSON array like '[1,2,3]'. Normalize to ',1,2,3,' and match
+    // ',<userId>,' so that `1` doesn't falsely match inside `12`.
+    const sharedPattern = `%,${userId},%`;
+    const visible = db.prepare(
+      `SELECT * FROM connection_investigations
+       WHERE user_id = ?
+          OR ',' || REPLACE(REPLACE(shared_user_ids, '[', ''), ']', '') || ',' LIKE ?
+       ORDER BY updated_at DESC
+       LIMIT 500`
+    ).all(userId, sharedPattern) as any[];
+
+    auditLog(req, 'READ', 'connection_investigation' as any, 0, `Investigation list: ${visible.length} items`);
     res.json(visible);
   } catch (err: any) {
     console.error('[Connections] investigations list error:', err?.message);

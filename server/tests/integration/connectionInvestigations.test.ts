@@ -101,9 +101,14 @@ describe('GET /api/connections/investigations/:id', () => {
 
   it('returns 403 for an investigation the user does not own or share', async () => {
     const d = (await import('../../src/models/database')).getDb();
-    const id = Number(d.prepare("INSERT INTO connection_investigations (user_id, name, seed_nodes, shared_user_ids) VALUES (?, 'private-other', '[]', '[]')").run(otherUserId).lastInsertRowid);
+    // Admin-owned, not shared. The officer (otherUser) must be blocked.
+    const id = Number(d.prepare(
+      "INSERT INTO connection_investigations (user_id, name, seed_nodes, shared_user_ids) VALUES (?, 'private-admin', '[]', '[]')"
+    ).run(adminId).lastInsertRowid);
 
-    const res = await request(app).get(`/api/connections/investigations/${id}`).set('Authorization', `Bearer ${otherUserToken ? adminToken : adminToken}`);
+    const res = await request(app)
+      .get(`/api/connections/investigations/${id}`)
+      .set('Authorization', `Bearer ${otherUserToken}`);
     expect(res.status).toBe(403);
   });
 
