@@ -148,6 +148,20 @@ function popupForHistory(p: HistoryRow): HTMLDivElement {
   return root;
 }
 
+interface PanicRow { id: number; officer_name?: string | null; officer_badge?: string | null; status: string; alert_type?: string | null; created_at?: string; }
+function popupForPanic(p: PanicRow): HTMLDivElement {
+  const root = buildContainer('#ef4444', 200);
+  root.appendChild(makeRow('PANIC ALERT', '#ef4444', 12, 800, { marginTop: '0', letterSpacing: '1px' }));
+  if (p.officer_name) {
+    const officer = p.officer_badge ? `${p.officer_name} (#${p.officer_badge})` : p.officer_name;
+    root.appendChild(makeRow(officer, '#e5e7eb', 9, 700, { marginTop: '4px' }));
+  }
+  if (p.alert_type) root.appendChild(makeRow(p.alert_type, '#fbbf24', 9, 400, { textTransform: 'uppercase' }));
+  root.appendChild(makeRow(p.status, '#ef4444', 9, 700, { marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }));
+  if (p.created_at) root.appendChild(makeRow(fmtDate(p.created_at), '#666666', 8, 400, { marginTop: '4px' }));
+  return root;
+}
+
 interface BreadcrumbRow {
   call_sign?: string;
   officer_name?: string;
@@ -208,6 +222,7 @@ const POPUP_BUILDERS: Record<string, (payload: any) => HTMLDivElement> = {
   prediction: popupForPrediction,
   call_history: popupForHistory,
   breadcrumb: popupForBreadcrumb,
+  panic: popupForPanic,
 };
 
 /**
