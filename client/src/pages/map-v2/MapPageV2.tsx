@@ -166,18 +166,24 @@ export default function MapPageV2() {
   // Tile-source swapping for the style switcher
   useEffect(() => {
     if (!tileLayerRef.current) return;
-    const url =
-      mapStyle === 'light'
-        ? 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
-        : mapStyle === 'voyager'
-          ? 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'
-          : '/tiles/{z}/{x}/{y}.png';
-    tileLayerRef.current.setSource(new XYZ({
-      url,
-      maxZoom: 19,
-      attributions:
-        '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
-    }));
+    let url: string;
+    let attributions: string;
+    if (mapStyle === 'light') {
+      url = 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
+      attributions = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+    } else if (mapStyle === 'voyager') {
+      url = 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
+      attributions = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+    } else if (mapStyle === 'detail') {
+      // Esri Dark Gray Canvas — denser building/road detail than CartoDB
+      // dark_matter while preserving the all-black aesthetic. Live only.
+      url = 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+      attributions = '© <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a>, HERE, Garmin, Foursquare, FAO, METI/NASA, USGS';
+    } else {
+      url = '/tiles/{z}/{x}/{y}.png';
+      attributions = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+    }
+    tileLayerRef.current.setSource(new XYZ({ url, maxZoom: 19, attributions }));
   }, [mapStyle]);
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
   useOlIncidentReports(map, { visible: showIncidents, days: incidentDays });

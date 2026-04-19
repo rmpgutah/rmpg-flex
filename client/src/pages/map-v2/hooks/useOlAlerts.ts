@@ -33,13 +33,19 @@ const PANIC_STYLE = new Style({
     stroke: new Stroke({ color: '#fef2f2', width: 2 }),
   }),
 });
-const PANIC_HALO = new Style({
-  image: new CircleStyle({
-    radius: 14,
-    fill: new Fill({ color: '#ef444433' }),
-    stroke: new Stroke({ color: '#ef444488', width: 1 }),
-  }),
-});
+
+/** Halo style is regenerated on each pulse-tick frame via setHaloPulse(). */
+function makeHaloStyle(radius: number, opacity: number): Style {
+  // Hex alpha 00-FF from 0..1 opacity
+  const a = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, '0');
+  return new Style({
+    image: new CircleStyle({
+      radius,
+      fill: new Fill({ color: `#ef4444${Math.round(opacity * 0x33).toString(16).padStart(2, '0')}` }),
+      stroke: new Stroke({ color: `#ef4444${a}`, width: 1.5 }),
+    }),
+  });
+}
 
 /**
  * Active panic-alert overlay for /map-v2.
@@ -69,7 +75,7 @@ export function useOlAlerts(map: OlMap | null, opts: { visible: boolean }): void
     if (!map || layerRef.current) return;
     const haloSource = new VectorSource();
     haloSourceRef.current = haloSource;
-    const haloLayer = new VectorLayer({ source: haloSource, style: PANIC_HALO, visible: opts.visible, zIndex: 109 });
+    const haloLayer = new VectorLayer({ source: haloSource, style: makeHaloStyle(14, 0.55), visible: opts.visible, zIndex: 109 });
     haloLayerRef.current = haloLayer;
     map.addLayer(haloLayer);
 
@@ -79,7 +85,20 @@ export function useOlAlerts(map: OlMap | null, opts: { visible: boolean }): void
     layerRef.current = layer;
     map.addLayer(layer);
 
+    // Pulse loop: oscillate halo radius 14↔22, opacity 0.6↔0.15, ~1.2 Hz
+    const startMs = Date.now();
+    const tick = () => {
+      if (!haloLayerRef.current) return;
+      const t = (Date.now() - startMs) / 1000;
+      const phase = (Math.sin(t * 2 * Math.PI / 0.85) + 1) / 2; // 0..1, ~1.2Hz
+      const radius = 14 + phase * 8;
+      const opacity = 0.55 - phase * 0.4;
+      haloLayerRef.current.setStyle(makeHaloStyle(radius, Math.max(0.1, opacity)));
+    };
+    const pulseTimer = setInterval(tick, 60);
+
     return () => {
+      clearInterval(pulseTimer);
       if (layerRef.current) { map.removeLayer(layerRef.current); layerRef.current = null; }
       if (haloLayerRef.current) { map.removeLayer(haloLayerRef.current); haloLayerRef.current = null; }
       sourceRef.current = null;
