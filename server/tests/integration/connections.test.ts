@@ -333,6 +333,80 @@ describe('GET /api/connections/graph', () => {
     expect(res.body.nodes.some((n: any) => n.type === 'property' && n.entityId === propId)).toBe(true);
   });
 
+  it('uses case_person_links (not JSON-LIKE scan) for person → case traversal', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Case','LinkTest')"
+    ).run().lastInsertRowid);
+    const caseId = Number(d.prepare(
+      "INSERT INTO cases (case_number, title, case_type, status, created_by) VALUES ('CASE-LNK-01','T','investigation','open',1)"
+    ).run().lastInsertRowid);
+    d.prepare("INSERT INTO case_person_links (case_id, person_id) VALUES (?, ?)").run(caseId, pid);
+    // Important: we deliberately leave cases.linked_persons NULL — the graph must STILL find the link via the junction table
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${pid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'case' && n.entityId === caseId)).toBe(true);
+  });
+
+  it('uses case_incident_links for incident → case traversal', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const incId = Number(d.prepare(
+      "INSERT INTO incidents (incident_number, incident_type, status, officer_id) VALUES ('I-LNK-01','theft','submitted',1)"
+    ).run().lastInsertRowid);
+    const caseId = Number(d.prepare(
+      "INSERT INTO cases (case_number, title, case_type, status, created_by) VALUES ('CASE-LNK-02','T','investigation','open',1)"
+    ).run().lastInsertRowid);
+    d.prepare("INSERT INTO case_incident_links (case_id, incident_id) VALUES (?, ?)").run(caseId, incId);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=incident&id=${incId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'case' && n.entityId === caseId)).toBe(true);
+  });
+
+  it('uses case_evidence_links for evidence → case traversal', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const incForEv = Number(d.prepare(
+      "INSERT INTO incidents (incident_number, incident_type, status, officer_id) VALUES ('I-LNK-EV','theft','submitted',1)"
+    ).run().lastInsertRowid);
+    const evId = Number(d.prepare(
+      "INSERT INTO evidence (evidence_number, description, incident_id) VALUES ('EV-LNK-01','test',?)"
+    ).run(incForEv).lastInsertRowid);
+    const caseId = Number(d.prepare(
+      "INSERT INTO cases (case_number, title, case_type, status, created_by) VALUES ('CASE-LNK-03','T','investigation','open',1)"
+    ).run().lastInsertRowid);
+    d.prepare("INSERT INTO case_evidence_links (case_id, evidence_id) VALUES (?, ?)").run(caseId, evId);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=evidence&id=${evId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'case' && n.entityId === caseId)).toBe(true);
+  });
+
+  it('case → linked persons/incidents/evidence now uses junction tables (not JSON parse)', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const pid = Number(d.prepare("INSERT INTO persons (first_name, last_name) VALUES ('Case','FwdTest')").run().lastInsertRowid);
+    const caseId = Number(d.prepare(
+      "INSERT INTO cases (case_number, title, case_type, status, created_by) VALUES ('CASE-LNK-FWD','T','investigation','open',1)"
+    ).run().lastInsertRowid);
+    d.prepare("INSERT INTO case_person_links (case_id, person_id) VALUES (?, ?)").run(caseId, pid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=case&id=${caseId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+  });
+
   it('traverses trespass_order → person + property', async () => {
     const d = (await import('../../src/models/database')).getDb();
     const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;

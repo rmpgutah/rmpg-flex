@@ -223,16 +223,15 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           results.push({ type: 'vehicle', id: v.id, relationship: 'owner', sourceTable: 'vehicles_records' });
         }
 
-        // cases.linked_persons (JSON array) → cases
-        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
-        for (const c of casesWithPerson) {
-          try {
-            const linkedIds = JSON.parse(c.linked_persons || '[]');
-            if (linkedIds.includes(id) || linkedIds.includes(String(id))) {
-              results.push({ type: 'case', id: c.id, relationship: 'linked', sourceTable: 'cases' });
-            }
-          } catch { /* skip malformed JSON */ }
-        }
+        // case_person_links → cases (indexed junction table, replaces JSON-LIKE scan)
+        try {
+          const caseLinks = db.prepare(
+            "SELECT case_id FROM case_person_links WHERE person_id = ?"
+          ).all(id) as any[];
+          for (const c of caseLinks) {
+            results.push({ type: 'case', id: c.case_id, relationship: 'linked', sourceTable: 'case_person_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_person_links query error:', err?.message); }
 
         // client_persons → properties (via client_id)
         const clientPersons = db.prepare(`
@@ -403,46 +402,43 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           results.push({ type: 'property', id: inc.property_id, relationship: 'location', sourceTable: 'incidents' });
         }
 
-        // cases.linked_incidents (JSON array) → cases
-        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
-        for (const c of casesWithInc) {
-          try {
-            const linkedIds = JSON.parse(c.linked_incidents || '[]');
-            if (linkedIds.includes(id) || linkedIds.includes(String(id))) {
-              results.push({ type: 'case', id: c.id, relationship: 'linked', sourceTable: 'cases' });
-            }
-          } catch { /* skip */ }
-        }
+        // case_incident_links → cases (indexed junction table, replaces JSON-LIKE scan)
+        try {
+          const caseLinks = db.prepare(
+            "SELECT case_id FROM case_incident_links WHERE incident_id = ?"
+          ).all(id) as any[];
+          for (const c of caseLinks) {
+            results.push({ type: 'case', id: c.case_id, relationship: 'linked', sourceTable: 'case_incident_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_incident_links query error:', err?.message); }
         break;
       }
 
       case 'case': {
-        const caseRow = db.prepare('SELECT linked_incidents, linked_persons, linked_evidence FROM cases WHERE id = ?').get(id) as any;
-        if (caseRow) {
-          // linked_incidents → incidents
-          try {
-            const incIds = JSON.parse(caseRow.linked_incidents || '[]');
-            for (const incId of incIds) {
-              results.push({ type: 'incident', id: Number(incId), relationship: 'linked', sourceTable: 'cases' });
-            }
-          } catch { /* skip */ }
-
-          // linked_persons → persons
-          try {
-            const personIds = JSON.parse(caseRow.linked_persons || '[]');
-            for (const pId of personIds) {
-              results.push({ type: 'person', id: Number(pId), relationship: 'linked', sourceTable: 'cases' });
-            }
-          } catch { /* skip */ }
-
-          // linked_evidence → evidence
-          try {
-            const evIds = JSON.parse(caseRow.linked_evidence || '[]');
-            for (const evId of evIds) {
-              results.push({ type: 'evidence', id: Number(evId), relationship: 'linked', sourceTable: 'cases' });
-            }
-          } catch { /* skip */ }
-        }
+        try {
+          const persons = db.prepare(
+            "SELECT person_id FROM case_person_links WHERE case_id = ?"
+          ).all(id) as any[];
+          for (const r of persons) {
+            results.push({ type: 'person', id: r.person_id, relationship: 'linked', sourceTable: 'case_person_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_person_links(case) query error:', err?.message); }
+        try {
+          const incidents = db.prepare(
+            "SELECT incident_id FROM case_incident_links WHERE case_id = ?"
+          ).all(id) as any[];
+          for (const r of incidents) {
+            results.push({ type: 'incident', id: r.incident_id, relationship: 'linked', sourceTable: 'case_incident_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_incident_links(case) query error:', err?.message); }
+        try {
+          const evidence = db.prepare(
+            "SELECT evidence_id FROM case_evidence_links WHERE case_id = ?"
+          ).all(id) as any[];
+          for (const r of evidence) {
+            results.push({ type: 'evidence', id: r.evidence_id, relationship: 'linked', sourceTable: 'case_evidence_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_evidence_links(case) query error:', err?.message); }
         break;
       }
 
@@ -497,16 +493,15 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           results.push({ type: 'incident', id: evRow.incident_id, relationship: 'collected_from', sourceTable: 'evidence' });
         }
 
-        // cases.linked_evidence (JSON array) → cases
-        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
-        for (const c of casesWithEv) {
-          try {
-            const linkedIds = JSON.parse(c.linked_evidence || '[]');
-            if (linkedIds.includes(id) || linkedIds.includes(String(id))) {
-              results.push({ type: 'case', id: c.id, relationship: 'linked', sourceTable: 'cases' });
-            }
-          } catch { /* skip */ }
-        }
+        // case_evidence_links → cases (indexed junction table, replaces JSON-LIKE scan)
+        try {
+          const caseLinks = db.prepare(
+            "SELECT case_id FROM case_evidence_links WHERE evidence_id = ?"
+          ).all(id) as any[];
+          for (const c of caseLinks) {
+            results.push({ type: 'case', id: c.case_id, relationship: 'linked', sourceTable: 'case_evidence_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_evidence_links query error:', err?.message); }
         break;
       }
 
