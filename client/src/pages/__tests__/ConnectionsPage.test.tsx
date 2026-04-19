@@ -306,3 +306,52 @@ describe('ConnectionsPage - type filter', () => {
     });
   });
 });
+
+describe('ConnectionsPage - depth slider', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('renders a depth slider that defaults to 2', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+
+    const slider = await screen.findByLabelText(/Graph depth/i);
+    expect((slider as HTMLInputElement).value).toBe('2');
+    expect((slider as HTMLInputElement).min).toBe('1');
+    expect((slider as HTMLInputElement).max).toBe('3');
+  });
+
+  it('changing the slider refetches the graph with the new depth', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      })
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/connections/graph?type=person&id=42&depth=2'));
+    });
+
+    fireEvent.change(screen.getByLabelText(/Graph depth/i), { target: { value: '3' } });
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/connections/graph?type=person&id=42&depth=3'));
+    });
+  });
+});

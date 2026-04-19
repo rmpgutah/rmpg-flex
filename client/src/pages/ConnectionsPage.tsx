@@ -73,6 +73,7 @@ export default function ConnectionsPage() {
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+  const [graphDepth, setGraphDepth] = useState(2);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -119,7 +120,7 @@ export default function ConnectionsPage() {
     (async () => {
       try {
         const data = await apiFetch<{ nodes: ServerNode[]; edges: ServerEdge[] }>(
-          `/connections/graph?type=${seed.type}&id=${seed.id}&depth=2`
+          `/connections/graph?type=${seed.type}&id=${seed.id}&depth=${graphDepth}`
         );
         if (cancelled) return;
         const isSeedNode = (n: ServerNode) => n.type === seed.type && n.entityId === seed.id;
@@ -145,7 +146,7 @@ export default function ConnectionsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [seed]);
+  }, [seed, graphDepth]);
 
   // Force simulation
   useEffect(() => {
@@ -281,6 +282,21 @@ export default function ConnectionsPage() {
           <span className="text-[#d4a017] text-xs uppercase font-semibold">{seed.type}</span>
           <span className="font-semibold">{seed.label}</span>
           <span className="text-gray-500 text-xs ml-auto">#{seed.id}</span>
+          <div className="flex items-center gap-2 border-l border-[#222222] pl-3">
+            <label htmlFor="depth-slider" className="uppercase font-semibold text-xs text-gray-400">Depth</label>
+            <input
+              id="depth-slider"
+              type="range"
+              min={1}
+              max={3}
+              step={1}
+              value={graphDepth}
+              onChange={e => setGraphDepth(Number(e.target.value))}
+              className="accent-[#d4a017]"
+              aria-label="Graph depth"
+            />
+            <span className="text-[#d4a017] font-mono w-4 text-center text-xs">{graphDepth}</span>
+          </div>
           <button
             type="button"
             onClick={() => setSeed(null)}
