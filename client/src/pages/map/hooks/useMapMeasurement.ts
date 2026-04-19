@@ -60,16 +60,8 @@ function computeSphericalArea(path: google.maps.LatLngLiteral[]): number {
   // Filter out non-finite coordinates
   const validPath = path.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   if (validPath.length < 3) return 0;
-  // Try the Google geometry library first
-  if (
-    typeof google !== 'undefined' &&
-    google.maps?.geometry?.spherical?.computeArea
-  ) {
-    const latLngs = validPath.map((p) => new google.maps.LatLng(p.lat, p.lng));
-    return google.maps.geometry.spherical.computeArea(latLngs);
-  }
 
-  // Fallback: spherical excess formula
+  // Spherical excess formula
   const R = 6371000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
 
