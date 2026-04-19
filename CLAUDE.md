@@ -123,6 +123,31 @@ export default function SomePage() {
 }
 ```
 
+### Structured Logging (pino — introduced 2026-04-18)
+```typescript
+// Server-side logging pattern — use the structured logger, not console.*
+import { logger } from '../utils/logger';
+
+logger.info('server started');                               // operational milestone
+logger.warn({ err, scheduler: 'x' }, 'scheduler failed');    // recoverable issue
+logger.error({ err }, 'database query failed');              // real error
+logger.fatal({ err }, 'uncaught exception');                 // crash-path only
+
+// Inside route handlers, prefer the per-request child logger (carries request ID):
+router.get('/foo', (req, res) => {
+  (req as any).log.info({ userId: req.user.id }, 'fetching foo');
+  // ...
+});
+```
+- **Structured over stringly-typed:** put variables in the object arg (`logger.info({ userId, ip }, 'msg')`), not in template strings. Pino indexes the JSON for search in production.
+- **Errors go under `err`:** `logger.error({ err }, 'message')` lets pino's serializer capture stack traces. Don't do `logger.error(err, ...)` or `logger.error({ error: err }, ...)`.
+- **Request IDs are automatic:** `httpLogger` middleware attaches `req.log` with a per-request ID, echoed back to clients via `X-Request-Id` response header. An `x-request-id` from nginx/upstream is honored if present.
+- **Tainted strings still need `logSafe`:** any string derived from request body, query params, or scraper output should be wrapped in `logSafe(value)` before logging (CR/LF stripping, length cap). Pino alone doesn't prevent log injection.
+- **Redaction:** `authorization`, `cookie`, `password*`, `token*`, `totp*` fields are auto-redacted at any nesting depth in the logger config.
+- **Noisy routes ignored:** `/api/health`, `/assets/*`, `/tiles/*`, `/sw.js`, `/favicon.ico` skip per-request logging.
+- **ASCII startup banner stays `console.log`** — one-shot decorative output, not machine-read.
+- **Existing 2,300+ console.* calls are NOT yet migrated** — they'll migrate opportunistically as other work touches those files. Only index.ts + auth middleware + global error handler went live with the introduction (2026-04-18). New code must use `logger`.
+
 ### Design System (Spillman Flex / Motorola Solutions — Pure Black Theme)
 ```
 Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken), #000000 (deep)
