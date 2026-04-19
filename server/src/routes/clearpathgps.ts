@@ -704,19 +704,39 @@ router.get('/mappings', (req: Request, res: Response) => {
 });
 
 // POST /api/clearpathgps/mappings — Create officer-vehicle mapping
+//
+// Backward-compat: accept either canonical (officer_id, cpgps_vehicle_id)
+// or legacy client field names (unit_id → resolved to officer_id via the
+// units table; cpg_device_id → cpgps_vehicle_id; cpg_display_name →
+// call_sign). Closes the field-name drift that was 400-ing the Admin →
+// ClearPathGPS Integration "Save mapping" action.
 router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { officer_id, cpgps_vehicle_id, call_sign } = req.body;
+    const body = req.body || {};
+    let officer_id = body.officer_id;
+    const cpgps_vehicle_id = body.cpgps_vehicle_id || body.cpg_device_id;
+    const call_sign = body.call_sign || body.cpg_display_name || null;
+
+    if (!officer_id && body.unit_id) {
+      const unit = db.prepare('SELECT officer_id FROM units WHERE id = ?')
+        .get(Number(body.unit_id)) as { officer_id?: number } | undefined;
+      if (unit?.officer_id) officer_id = unit.officer_id;
+    }
+
     if (!officer_id || !cpgps_vehicle_id) {
-      res.status(400).json({ error: 'officer_id and cpgps_vehicle_id required', code: 'OFFICERID_AND_CPGPSVEHICLEID_REQUIRED' });
+      res.status(400).json({
+        error: 'officer_id (or unit_id) and cpgps_vehicle_id (or cpg_device_id) required',
+        code: 'OFFICERID_AND_CPGPSVEHICLEID_REQUIRED',
+        hint: 'Provide officer_id directly or unit_id (will be resolved to officer_id), plus cpgps_vehicle_id or cpg_device_id.',
+      });
       return;
     }
     db.prepare(`
       INSERT OR REPLACE INTO cpgps_officer_mappings (officer_id, cpgps_vehicle_id, call_sign, active)
       VALUES (?, ?, ?, 1)
-    `).run(officer_id, cpgps_vehicle_id, call_sign || null);
-    res.json({ success: true });
+    `).run(officer_id, cpgps_vehicle_id, call_sign);
+    res.json({ success: true, officer_id, cpgps_vehicle_id });
   } catch (error: any) {
     console.error('ClearPathGPS create mapping error:', error);
     res.status(500).json({ error: 'Failed to clearpathgps create mapping', code: 'CLEARPATHGPS_CREATE_MAPPING_ERROR' });
