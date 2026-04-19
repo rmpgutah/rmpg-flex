@@ -37,32 +37,38 @@ ensure_deps() {
   fi
 }
 
-printf '⤷ pre-push: full quality gate (server tests + route guard + client types + client tests)\n'
+printf '⤷ pre-push: full quality gate (routes + server types + server tests + client types + client tests)\n'
 START=$(date +%s)
 
 ensure_deps "$ROOT/server"
 ensure_deps "$ROOT/client"
 
-echo "  [1/4] Route collision guard..."
+echo "  [1/5] Route collision guard..."
 (cd "$ROOT/server" && npm run --silent check:routes) || {
   echo "✗ pre-push: route collision detected — run 'cd server && npm run check:routes' to see conflicts"
   exit 1
 }
 
-echo "  [2/4] Server vitest (461 tests across 39 files)..."
+echo "  [2/5] Server TypeScript..."
+(cd "$ROOT/server" && npx tsc --noEmit) || {
+  echo "✗ pre-push: server typecheck failed — run 'cd server && npx tsc --noEmit' to see errors"
+  exit 1
+}
+
+echo "  [3/5] Server vitest (461 tests across 39 files)..."
 (cd "$ROOT/server" && npx vitest run --reporter=dot) || {
   echo "✗ pre-push: server tests failed — run 'cd server && npx vitest run' to see failures"
   echo "           (use 'git push --no-verify' to bypass in an emergency; CI will still gate the PR)"
   exit 1
 }
 
-echo "  [3/4] Client TypeScript..."
+echo "  [4/5] Client TypeScript..."
 (cd "$ROOT/client" && npx tsc --noEmit) || {
   echo "✗ pre-push: client typecheck failed — run 'cd client && npx tsc --noEmit' to see errors"
   exit 1
 }
 
-echo "  [4/4] Client vitest..."
+echo "  [5/5] Client vitest..."
 (cd "$ROOT/client" && npx vitest run --reporter=dot) || {
   echo "✗ pre-push: client tests failed — run 'cd client && npx vitest run' to see failures"
   exit 1

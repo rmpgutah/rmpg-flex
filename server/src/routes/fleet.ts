@@ -2103,7 +2103,11 @@ router.post('/fuel/import/preview', requireRole('admin', 'manager'), (req: Reque
       const ok = /\.csv$/i.test(file.originalname || '') ||
                  file.mimetype === 'text/csv' ||
                  file.mimetype === 'application/vnd.ms-excel';
-      cb(ok ? null : new Error('Only .csv files are allowed'), ok);
+      if (ok) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only .csv files are allowed'));
+      }
     },
   });
   csvUpload.single('file')(req, res, (multerErr: any) => {

@@ -8,6 +8,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { geocodeAddress } from '../utils/geocode';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
@@ -298,7 +299,7 @@ router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Reque
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const incidentId = parseInt(req.params.id, 10);
+    const incidentId = parseInt(paramStr(req.params.id), 10);
     if (isNaN(incidentId)) {
       res.status(400).json({ error: 'Invalid incident ID', code: 'INVALID_INCIDENT_ID' });
       return;
@@ -1744,7 +1745,7 @@ router.put('/:id/link-call', requireRole('admin', 'manager', 'supervisor', 'offi
   try {
     const db = getDb();
     const { call_id } = req.body;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid incident ID' }); return; }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;

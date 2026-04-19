@@ -189,7 +189,7 @@ cd client && npx tsc --noEmit  # TypeScript typecheck (deploy script runs this)
 # Manual invocations still available:
 cd server && npx vitest run         # Full server suite — 461 tests across 39 files, ~3s (requires `npm install` in server/ first)
 cd server && npm run check:routes   # Route-collision guard — 114 files, 0 duplicate METHOD+path handlers expected
-cd server && npx tsc --noEmit       # 52 pre-existing @types/express 5.x errors are OK (string|string[] params, TS2345/TS2339)
+cd server && npx tsc --noEmit       # 0 errors (fixed 2026-04-18 via paramStr() helper; now a hard gate in all 3 layers)
 
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
@@ -333,7 +333,7 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
 19. **edge-tts-universal** — must use `Function('return import("edge-tts-universal")')()` to avoid tsx ESM resolver crash at startup. Lazy-loads on first TTS request.
 20. **VPS npm install** — requires `--legacy-peer-deps` flag due to peer dependency conflicts
-21. **Deploy typecheck gate** — `deploy.sh` runs `cd client && npx tsc --noEmit` as a hard gate. The project ships with 0 client TS errors as of 2026-04-18; if the gate starts failing, fix the TS errors rather than reaching for the "Direct deploy" bypass above — bypassing hides real regressions. Server TS is NOT gated in deploy (by design — 52 pre-existing `@types/express` 5.x errors where `req.params.X` is `string | string[]` are orthogonal to runtime behavior; count was 28 pre-worktree-install and grew as more route files were written against the un-gated type).
+21. **Deploy typecheck gate** — `deploy.sh` runs both server and client `npx tsc --noEmit` as hard gates (as of 2026-04-18). Both ship with 0 TS errors; if either gate fails, fix the errors rather than reaching for the "Direct deploy" bypass above — bypassing hides real regressions. The Express 5 `req.params.X: string | string[]` noise (previously 52 tolerated errors) is now handled via the `paramStr()` / `paramNum()` helpers in `server/src/utils/reqHelpers.ts` — use those at the read site (e.g. `parseInt(paramStr(req.params.id), 10)`) rather than `as string` casts so the coercion is visible.
 22. **Vite bundle splitting** — `vite.config.ts` has `manualChunks` for vendor-react, vendor-pdf, vendor-icons. Each gets 1-year immutable cache via nginx `/assets/` location block.
 23. **nginx gzip** — configured in `/etc/nginx/conf.d/performance.conf` (level 6), NOT in nginx.conf (those lines are commented out). Don't uncomment nginx.conf gzip — it creates duplicates.
 24. **calls_for_service columns** — 22+ columns added via addCol for PSO, tactical flags, timestamps. The redispatch INSERT has 74 columns — verify column count matches if modifying.

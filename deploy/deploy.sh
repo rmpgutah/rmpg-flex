@@ -90,15 +90,19 @@ if [ "$UPLOAD_CODE" = true ]; then
   ensure_deps "$PROJECT_DIR/client"
   ensure_deps "$PROJECT_DIR/server"
 
-  echo "    [1/3] Client typecheck..."
+  echo "    [1/4] Server typecheck..."
+  (cd "$PROJECT_DIR/server" && npx tsc --noEmit) || { echo "FAILED: Server typecheck errors — fix before deploying"; exit 1; }
+  echo "          ✓ Server types OK"
+
+  echo "    [2/4] Client typecheck..."
   (cd "$PROJECT_DIR/client" && npx tsc --noEmit) || { echo "FAILED: Client typecheck errors — fix before deploying"; exit 1; }
   echo "          ✓ Client types OK"
 
-  echo "    [2/3] Server tests (461 tests across 39 files)..."
+  echo "    [3/4] Server tests (461 tests across 39 files)..."
   (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — run 'cd server && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Server tests pass"
 
-  echo "    [3/3] Client tests..."
+  echo "    [4/4] Client tests..."
   (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — run 'cd client && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Client tests pass"
 

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   server-tests:
-    name: Server tests + route collision guard
+    name: Server typecheck + tests + route guard
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,6 +33,9 @@ jobs:
       - name: Route collision guard
         working-directory: server
         run: npm run check:routes
+      - name: Server TypeScript check
+        working-directory: server
+        run: npx tsc --noEmit
       - name: Server vitest suite
         working-directory: server
         run: npx vitest run --reporter=default
