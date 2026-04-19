@@ -20,10 +20,18 @@ import {
   useOlIncidentReports,
   useOlPatrolCheckpoints,
   useOlFleetVehicles,
+  useOlRepeatAddresses,
+  useOlDwellTime,
+  useOlCallHistory,
+  useOlPredictions,
 } from './hooks/useOlOperationalLayers';
-import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
+import { useDaylightPhase } from './hooks/useDaylightPhase';
+import { useOlScreenshot } from './hooks/useOlScreenshot';
+import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
+import { useWebSocket } from '../../context/WebSocketContext';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
 import MapV2DrawToolbar from './components/MapV2DrawToolbar';
+import MapV2StatusBar from './components/MapV2StatusBar';
 
 const SLC_LON_LAT: [number, number] = [-111.891, 40.760];
 
@@ -54,6 +62,10 @@ export default function MapPageV2() {
   const [showIncidents, setShowIncidents] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showFleet, setShowFleet] = useState(false);
+  const [showRepeat, setShowRepeat] = useState(false);
+  const [showDwell, setShowDwell] = useState(false);
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [showPredictions, setShowPredictions] = useState(false);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -103,7 +115,14 @@ export default function MapPageV2() {
   useOlIncidentReports(map, { visible: showIncidents, days: 30 });
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
   useOlFleetVehicles(map, { visible: showFleet });
+  useOlRepeatAddresses(map, { visible: showRepeat, days: 30, minCount: 3 });
+  useOlDwellTime(map, { visible: showDwell });
+  useOlCallHistory(map, { visible: showCallHistory, days: 7 });
+  useOlPredictions(map, { visible: showPredictions });
   const addressSearch = useOlAddressSearch(map);
+  const daylight = useDaylightPhase();
+  const screenshot = useOlScreenshot(map);
+  const { isConnected } = useWebSocket();
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
@@ -134,20 +153,48 @@ export default function MapPageV2() {
     zIndex: 9,
   });
 
-  const layers: LayerToggleConfig[] = [
-    { key: 'county', label: 'Counties', color: '#888888', visible: showCounty, onToggle: () => setShowCounty(v => !v), count: 29 },
-    { key: 'municipality', label: 'Municipalities', color: '#60a5fa', visible: showMunicipality, onToggle: () => setShowMunicipality(v => !v), count: 261 },
-    { key: 'beats', label: 'Beats', color: '#22c55e', visible: showBeats, onToggle: () => setShowBeats(v => !v), count: 719 },
-    { key: 'highway', label: 'Highways', color: '#fbbf24', visible: showHighway, onToggle: () => setShowHighway(v => !v), count: 3 },
-    { key: 'places', label: 'Places', color: '#a78bfa', visible: showPlaces, onToggle: () => setShowPlaces(v => !v), count: 462 },
-    { key: 'heatmap', label: 'Heatmap (30d)', color: '#ef4444', visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v) },
-    { key: 'safety', label: 'Safety Zones (90d)', color: '#ef4444', visible: showSafety, onToggle: () => setShowSafety(v => !v) },
-    { key: 'enforcement', label: 'Enforcement (30d)', color: '#a855f7', visible: showEnforcement, onToggle: () => setShowEnforcement(v => !v) },
-    { key: 'breadcrumbs', label: 'Breadcrumbs (8h)', color: '#14b8a6', visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v) },
-    { key: 'fi', label: 'Field Interviews (30d)', color: '#06b6d4', visible: showFi, onToggle: () => setShowFi(v => !v) },
-    { key: 'incidents', label: 'Incident Reports (30d)', color: '#ef4444', visible: showIncidents, onToggle: () => setShowIncidents(v => !v) },
-    { key: 'checkpoints', label: 'Patrol Checkpoints', color: '#22c55e', visible: showCheckpoints, onToggle: () => setShowCheckpoints(v => !v) },
-    { key: 'fleet', label: 'Fleet Vehicles', color: '#fbbf24', visible: showFleet, onToggle: () => setShowFleet(v => !v) },
+  const sections: LayerSection[] = [
+    {
+      id: 'core',
+      title: 'Core',
+      layers: [
+        { key: 'beats', label: 'Beats', color: '#22c55e', visible: showBeats, onToggle: () => setShowBeats(v => !v), count: 719 },
+        { key: 'municipality', label: 'Municipalities', color: '#60a5fa', visible: showMunicipality, onToggle: () => setShowMunicipality(v => !v), count: 261 },
+        { key: 'highway', label: 'Highways', color: '#fbbf24', visible: showHighway, onToggle: () => setShowHighway(v => !v), count: 3 },
+        { key: 'county', label: 'Counties', color: '#888888', visible: showCounty, onToggle: () => setShowCounty(v => !v), count: 29 },
+        { key: 'places', label: 'Places', color: '#a78bfa', visible: showPlaces, onToggle: () => setShowPlaces(v => !v), count: 462 },
+      ],
+    },
+    {
+      id: 'intel',
+      title: 'Intelligence',
+      layers: [
+        { key: 'heatmap', label: 'Heatmap (30d)', color: '#ef4444', visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v) },
+        { key: 'safety', label: 'Safety Zones (90d)', color: '#ef4444', visible: showSafety, onToggle: () => setShowSafety(v => !v) },
+        { key: 'enforcement', label: 'Enforcement (30d)', color: '#a855f7', visible: showEnforcement, onToggle: () => setShowEnforcement(v => !v) },
+        { key: 'predictions', label: 'Predicted Hotspots', color: '#ec4899', visible: showPredictions, onToggle: () => setShowPredictions(v => !v) },
+      ],
+    },
+    {
+      id: 'operational',
+      title: 'Operational',
+      layers: [
+        { key: 'incidents', label: 'Incident Reports (30d)', color: '#ef4444', visible: showIncidents, onToggle: () => setShowIncidents(v => !v) },
+        { key: 'fi', label: 'Field Interviews (30d)', color: '#06b6d4', visible: showFi, onToggle: () => setShowFi(v => !v) },
+        { key: 'checkpoints', label: 'Patrol Checkpoints', color: '#22c55e', visible: showCheckpoints, onToggle: () => setShowCheckpoints(v => !v) },
+        { key: 'fleet', label: 'Fleet Vehicles', color: '#fbbf24', visible: showFleet, onToggle: () => setShowFleet(v => !v) },
+      ],
+    },
+    {
+      id: 'history',
+      title: 'History',
+      layers: [
+        { key: 'breadcrumbs', label: 'Breadcrumbs (8h)', color: '#14b8a6', visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v) },
+        { key: 'history', label: 'Call History (7d)', color: '#9ca3af', visible: showCallHistory, onToggle: () => setShowCallHistory(v => !v) },
+        { key: 'repeat', label: 'Repeat Addresses (30d)', color: '#f97316', visible: showRepeat, onToggle: () => setShowRepeat(v => !v) },
+        { key: 'dwell', label: 'Dwell Time', color: '#fbbf24', visible: showDwell, onToggle: () => setShowDwell(v => !v) },
+      ],
+    },
   ];
 
   return (
@@ -157,9 +204,6 @@ export default function MapPageV2() {
         className="absolute inset-0"
         style={{ background: '#0a0a0a' }}
       />
-      <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-[#141414] border border-[#222222] text-[#d4a017] font-mono text-[10px] uppercase tracking-wider pointer-events-none">
-        MAP V2 · OpenLayers · live units + calls
-      </div>
       <MapV2AddressSearch
         results={addressSearch.results}
         searching={addressSearch.searching}
@@ -167,12 +211,13 @@ export default function MapPageV2() {
         onSelect={addressSearch.selectAddress}
         onClear={addressSearch.clearPin}
       />
-      <MapV2LayersPanel layers={layers} />
+      <MapV2LayersPanel sections={sections} isConnected={isConnected} />
       <MapV2DrawToolbar
         mode={drawMode}
         setMode={setDrawMode}
         onClear={() => setClearVersion(v => v + 1)}
       />
+      <MapV2StatusBar daylight={daylight} onScreenshot={screenshot} />
     </div>
   );
 }

@@ -30,6 +30,9 @@ export interface OlPointLayerOptions<T> {
   extractCoords: (row: T) => { lat: number; lng: number } | null;
   /** Optional log tag for debug warnings */
   debugTag?: string;
+  /** Optional adapter to extract the row array from an envelope response.
+   *  Default: treat the response as the array directly. */
+  extractRows?: (raw: any) => T[];
 }
 
 /**
@@ -88,10 +91,12 @@ export function useOlPointLayer<T>(map: OlMap | null, opts: OlPointLayerOptions<
   useEffect(() => {
     if (!opts.visible || !sourceRef.current) return;
     let cancelled = false;
-    apiFetch<T[]>(opts.url)
+    apiFetch<any>(opts.url)
       .then((data) => {
         if (cancelled || !sourceRef.current) return;
-        const rows = Array.isArray(data) ? data : [];
+        const rows: T[] = opts.extractRows
+          ? opts.extractRows(data)
+          : (Array.isArray(data) ? data : []);
         const feats: Feature<Geometry>[] = [];
         for (const r of rows) {
           const coords = opts.extractCoords(r);
