@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'ol/ol.css';
 import Map from 'ol/Map';
 import View from 'ol/View';
@@ -6,15 +6,17 @@ import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 import { fromLonLat } from 'ol/proj';
 import { defaults as defaultControls, ScaleLine, Attribution } from 'ol/control';
+import { useOlBeatLayer } from './hooks/useOlBeatLayer';
+import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
 
 const SLC_LON_LAT: [number, number] = [-111.891, 40.760];
 
 export default function MapPageV2() {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<Map | null>(null);
+  const [map, setMap] = useState<Map | null>(null);
 
   useEffect(() => {
-    if (!mapDivRef.current || mapRef.current) return;
+    if (!mapDivRef.current || map) return;
 
     const tileLayer = new TileLayer({
       source: new XYZ({
@@ -25,7 +27,7 @@ export default function MapPageV2() {
       }),
     });
 
-    mapRef.current = new Map({
+    const instance = new Map({
       target: mapDivRef.current,
       layers: [tileLayer],
       view: new View({
@@ -39,12 +41,16 @@ export default function MapPageV2() {
         new Attribution({ collapsible: false }),
       ]),
     });
+    setMap(instance);
 
     return () => {
-      mapRef.current?.setTarget(undefined);
-      mapRef.current = null;
+      instance.setTarget(undefined);
+      setMap(null);
     };
-  }, []);
+  }, [map]);
+
+  useOlBeatLayer(map);
+  useOlLiveMarkers(map);
 
   return (
     <div className="relative w-full h-full bg-[#0a0a0a]">
@@ -54,7 +60,7 @@ export default function MapPageV2() {
         style={{ background: '#0a0a0a' }}
       />
       <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-[#141414] border border-[#222222] text-[#d4a017] font-mono text-[10px] uppercase tracking-wider pointer-events-none">
-        MAP V2 · OpenLayers · Beta
+        MAP V2 · OpenLayers · Beta · 719 beats · live units + calls
       </div>
     </div>
   );
