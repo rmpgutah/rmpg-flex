@@ -13,6 +13,7 @@ import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { sendCsv } from '../../utils/csvExport';
 import { isLegalTransition, LEGAL_TRANSITIONS } from './callLifecycle';
 import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
+import { paramStr } from '../../utils/reqHelpers';
 
 const router = Router();
 
@@ -1887,7 +1888,7 @@ function getCallOrNull(id: string | number): any {
 router.post('/calls/:id/backup', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const call = getCallOrNull(req.params.id);
+    const call = getCallOrNull(paramStr(req.params.id));
     if (!call) {
       res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
@@ -1934,7 +1935,7 @@ router.post('/calls/:id/backup', validateParamIdMiddleware, requireRole('admin',
 router.post('/calls/:id/ems', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const call = getCallOrNull(req.params.id);
+    const call = getCallOrNull(paramStr(req.params.id));
     if (!call) {
       res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
@@ -1979,7 +1980,7 @@ router.post('/calls/:id/ems', validateParamIdMiddleware, requireRole('admin', 'm
 router.post('/calls/:id/k9', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const call = getCallOrNull(req.params.id);
+    const call = getCallOrNull(paramStr(req.params.id));
     if (!call) {
       res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
@@ -2023,7 +2024,7 @@ router.post('/calls/:id/k9', validateParamIdMiddleware, requireRole('admin', 'ma
 router.post('/calls/:id/acknowledge', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const call = getCallOrNull(req.params.id);
+    const call = getCallOrNull(paramStr(req.params.id));
     if (!call) {
       res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
@@ -2071,7 +2072,7 @@ router.post('/calls/:id/acknowledge', validateParamIdMiddleware, requireRole('ad
 router.post('/calls/:id/pursuit', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const call = getCallOrNull(req.params.id);
+    const call = getCallOrNull(paramStr(req.params.id));
     if (!call) {
       res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;

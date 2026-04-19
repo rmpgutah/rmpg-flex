@@ -1,0 +1,78 @@
+#!/usr/bin/env sh
+# Husky pre-push hook — last local guardrail before code reaches GitHub/VPS.
+#
+# Layered gate architecture:
+#   1. Husky pre-push (here)  — fast, local, runs on every `git push`
+#   2. GitHub Actions PR tests — runs in CI on PR open/update and push to main
+#   3. deploy/deploy.sh        — gates the VPS deploy itself
+#
+# Policy: full suite (chosen 2026-04-18). Runs everything CI runs, so a clean
+# local push means a green CI. ~8s total — acceptable for a repo with frequent
+# pushes from multiple worktrees (see gotcha #43) where CI-feedback latency
+# matters more than push-command latency.
+#
+# Emergency bypass: `git push --no-verify` — CI (layer 2) + deploy.sh (layer 3)
+# will still catch regressions, so bypass is safe for a genuine hotfix path.
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Skip when nothing to push (rebase/force-push flows, already-pushed branches).
+if [ "$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo 0)" = "0" ]; then
+  echo "⤷ pre-push: no commits ahead of origin/main — skipping gate"
+  exit 0
+fi
+
+# Self-heal in worktrees where deps weren't installed yet (mirrors deploy.sh).
+ensure_deps() {
+  dir="$1"
+  if [ ! -d "$dir/node_modules" ]; then
+    echo "  (installing $dir deps — worktree missing node_modules)"
+    (cd "$dir" && npm install --silent --no-audit --no-fund) || {
+      echo "✗ pre-push: npm install failed in $dir"
+      exit 1
+    }
+  fi
+}
+
+printf '⤷ pre-push: full quality gate (routes + server types + server tests + client types + client tests)\n'
+START=$(date +%s)
+
+ensure_deps "$ROOT/server"
+ensure_deps "$ROOT/client"
+
+echo "  [1/5] Route collision guard..."
+(cd "$ROOT/server" && npm run --silent check:routes) || {
+  echo "✗ pre-push: route collision detected — run 'cd server && npm run check:routes' to see conflicts"
+  exit 1
+}
+
+echo "  [2/5] Server TypeScript..."
+(cd "$ROOT/server" && npx tsc --noEmit) || {
+  echo "✗ pre-push: server typecheck failed — run 'cd server && npx tsc --noEmit' to see errors"
+  exit 1
+}
+
+echo "  [3/5] Server vitest (461 tests across 39 files)..."
+(cd "$ROOT/server" && npx vitest run --reporter=dot) || {
+  echo "✗ pre-push: server tests failed — run 'cd server && npx vitest run' to see failures"
+  echo "           (use 'git push --no-verify' to bypass in an emergency; CI will still gate the PR)"
+  exit 1
+}
+
+echo "  [4/5] Client TypeScript..."
+(cd "$ROOT/client" && npx tsc --noEmit) || {
+  echo "✗ pre-push: client typecheck failed — run 'cd client && npx tsc --noEmit' to see errors"
+  exit 1
+}
+
+echo "  [5/5] Client vitest..."
+(cd "$ROOT/client" && npx vitest run --reporter=dot) || {
+  echo "✗ pre-push: client tests failed — run 'cd client && npx vitest run' to see failures"
+  exit 1
+}
+
+END=$(date +%s)
+printf '✓ pre-push: all gates passed in %ss\n' "$((END - START))"

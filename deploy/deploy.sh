@@ -73,20 +73,37 @@ fi
 echo "    SSH connection OK"
 
 # ─── Pre-deploy Quality Gates ────────────────────────────
+# Self-heal in worktrees: if node_modules is missing, install before gating
+# so the gate fails on *code quality*, not on setup.
+ensure_deps() {
+  local dir="$1"
+  if [ ! -d "$dir/node_modules" ]; then
+    echo "    (installing $dir deps — worktree missing node_modules)"
+    (cd "$dir" && npm install --silent --no-audit --no-fund) \
+      || { echo "FAILED: npm install in $dir — fix before deploying"; exit 1; }
+  fi
+}
+
 if [ "$UPLOAD_CODE" = true ]; then
   echo ""
   echo ">>> Running pre-deploy quality gates..."
+  ensure_deps "$PROJECT_DIR/client"
+  ensure_deps "$PROJECT_DIR/server"
 
-  echo "    [1/3] Client typecheck..."
+  echo "    [1/4] Server typecheck..."
+  (cd "$PROJECT_DIR/server" && npx tsc --noEmit) || { echo "FAILED: Server typecheck errors — fix before deploying"; exit 1; }
+  echo "          ✓ Server types OK"
+
+  echo "    [2/4] Client typecheck..."
   (cd "$PROJECT_DIR/client" && npx tsc --noEmit) || { echo "FAILED: Client typecheck errors — fix before deploying"; exit 1; }
   echo "          ✓ Client types OK"
 
-  echo "    [2/3] Server tests..."
-  (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — fix before deploying"; exit 1; }
+  echo "    [3/4] Server tests (461 tests across 39 files)..."
+  (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — run 'cd server && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Server tests pass"
 
-  echo "    [3/3] Client tests..."
-  (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — fix before deploying"; exit 1; }
+  echo "    [4/4] Client tests..."
+  (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — run 'cd client && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Client tests pass"
 
   echo ""

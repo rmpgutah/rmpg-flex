@@ -8,6 +8,7 @@ import { localNow } from '../utils/timeUtils';
 import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/universalWarrantScanner';
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
@@ -961,8 +962,8 @@ router.get('/scrapers/:source_key', (req: Request, res: Response) => {
     if (!source) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
     res.json({
       ...source,
-      metrics_24h: getSourceMetrics(req.params.source_key, 24),
-      metrics_7d: getSourceMetrics(req.params.source_key, 168),
+      metrics_24h: getSourceMetrics(paramStr(req.params.source_key), 24),
+      metrics_7d: getSourceMetrics(paramStr(req.params.source_key), 168),
     });
   } catch (err: any) {
     console.error('GET /scrapers/:source_key error:', err);
@@ -1037,7 +1038,7 @@ router.post('/scrapers/bulk', requireRole('admin', 'manager'), (req: Request, re
 // POST /api/warrants/scrapers/:source_key/trigger — force immediate scrape
 router.post('/scrapers/:source_key/trigger', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
-    const sourceKey = req.params.source_key;
+    const sourceKey = paramStr(req.params.source_key);
     const db = getDb();
     const exists = db.prepare('SELECT source_key FROM warrant_scraper_config WHERE source_key = ?').get(sourceKey);
     if (!exists) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });

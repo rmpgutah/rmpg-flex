@@ -25,6 +25,7 @@ import { scheduleArrestSync } from './utils/arrestScraper';
 import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
+import { logger, httpLogger } from './utils/logger';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -139,13 +140,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
-// Fix 73: Add request ID for tracing
-app.use((_req, _res, next) => {
-  const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  _req.headers['x-request-id'] = _req.headers['x-request-id'] || requestId;
-  _res.setHeader('X-Request-ID', _req.headers['x-request-id'] as string);
-  next();
-});
+// Structured logging + per-request X-Request-Id tracing via pino-http.
+// Replaces the prior timestamp+random-suffix scheme with crypto.randomUUID().
+// Attaches req.log (child logger carrying request ID) for downstream handlers.
+app.use(httpLogger);
 
 // Fix 72: Add response compression for large GeoJSON payloads
 // Using built-in compression by setting headers — actual compression handled by reverse proxy in production
@@ -491,9 +489,9 @@ app.get('/*splat', apiRateLimit, (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  // Log with request context for debugging
-  const requestId = req.headers['x-request-id'] || 'unknown';
-  console.error(`Unhandled Express error [${requestId}] ${req.method} ${req.path}:`, err?.message || err, err?.stack || '');
+  // req.log is the pino child logger attached by httpLogger; it already
+  // carries the request ID, method, and url, so just pass the error.
+  (req as any).log?.error({ err }, 'unhandled express error') ?? logger.error({ err, method: req.method, path: req.path }, 'unhandled express error');
   if (!res.headersSent) {
     const status = err?.status || err?.statusCode || 500;
     res.status(status).json({ error: err?.message || 'Internal server error' });
@@ -504,18 +502,18 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
 try {
   // Initialize database
   initDatabase();
-  console.log('Database initialized');
+  logger.info('database initialized');
 
-  // Fix 78: Set SQLite query timeout for long-running queries (30 seconds)
+  // Set SQLite query timeout for long-running queries (30 seconds)
   try {
     const db = getDb();
     db.pragma('busy_timeout = 30000');
-    console.log('SQLite busy_timeout set to 30000ms');
+    logger.info('SQLite busy_timeout set to 30000ms');
   } catch (e: any) {
-    console.warn('Could not set SQLite busy_timeout:', e?.message);
+    logger.warn({ err: e }, 'could not set SQLite busy_timeout');
   }
 
-  // Fix 80: Database migration versioning check on startup
+  // Database migration versioning check on startup
   try {
     const db = getDb();
     // Ensure migration_version table exists
@@ -527,12 +525,12 @@ try {
     const versionRow = db.prepare('SELECT version FROM migration_version WHERE id = 1').get() as any;
     if (!versionRow) {
       db.prepare("INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime('now','localtime'))").run();
-      console.log('Database migration version initialized: v1');
+      logger.info('database migration version initialized: v1');
     } else {
-      console.log(`Database migration version: v${versionRow.version}`);
+      logger.info({ version: versionRow.version }, 'database migration version loaded');
     }
   } catch (e: any) {
-    console.warn('Migration version check skipped:', e?.message);
+    logger.warn({ err: e }, 'migration version check skipped');
   }
 
   // Determine server type based on SSL availability
@@ -563,7 +561,7 @@ try {
       });
       const redirectServer = http.createServer(redirectApp);
       redirectServer.listen(config.ssl.httpRedirectPort, () => {
-        console.log(`HTTP→HTTPS redirect active on port ${config.ssl.httpRedirectPort}`);
+        logger.info({ port: config.ssl.httpRedirectPort }, 'HTTP→HTTPS redirect active');
       });
     }
   } else {
@@ -573,7 +571,7 @@ try {
 
   // Initialize WebSocket on the primary server
   initWebSocket(primaryServer);
-  console.log('WebSocket server initialized');
+  logger.info('WebSocket server initialized');
 
   // Start listening
   const listenPort = config.ssl.enabled ? config.httpsPort : config.port;
@@ -589,6 +587,19 @@ try {
   primaryServer.keepAliveTimeout = 120000; // 2 min keepalive
 
   primaryServer.listen(listenPort, listenHost, () => {
+    // Structured one-liner for log aggregation (prod journalctl / search tools).
+    logger.info(
+      {
+        version: SERVER_VERSION,
+        env: config.nodeEnv,
+        domain: config.primaryDomain,
+        protocol,
+        port: listenPort,
+        ssl: config.ssl.enabled,
+      },
+      'server listening'
+    );
+    // Decorative ASCII banner stays on console (human-read, one-shot at boot).
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
     console.log(`║         RMPG Flex CAD/RMS Server v${SERVER_VERSION.padEnd(14)}║`);
@@ -626,50 +637,50 @@ try {
     try {
       startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
     } catch (err: any) {
-      console.warn('[Patrol Monitor] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'patrol-monitor' }, 'failed to start scheduler');
     }
 
     // Start midnight daily patrol report scheduler
     try {
       startDailyReportScheduler();
     } catch (err: any) {
-      console.warn('[Daily Report] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'daily-report' }, 'failed to start scheduler');
     }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
     try {
       scheduleOfacSync();
     } catch (err: any) {
-      console.warn('[OFAC Sync] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'ofac-sync' }, 'failed to start scheduler');
     }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
     try {
       startHealthChecker();
     } catch (err: any) {
-      console.warn('[Health Checker] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'health-checker' }, 'failed to start scheduler');
     }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {
       scheduleUtahWarrantSync();
     } catch (err: any) {
-      console.warn('[Utah Warrants] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'utah-warrants' }, 'failed to start scheduler');
     }
 
     // Start arrest records auto-sync (JailBase API, hourly with exponential backoff)
     try {
       scheduleArrestSync();
-      console.log('[Arrests] Auto-sync scheduler started');
+      logger.info({ scheduler: 'arrests' }, 'auto-sync scheduler started');
     } catch (err: any) {
-      console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'arrests' }, 'failed to start sync scheduler');
     }
 
     // Start multi-state warrant scraper (polls configured sources on schedule)
     try {
       scheduleWarrantScraper();
     } catch (err: any) {
-      console.warn('[Warrant Scraper] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'warrant-scraper' }, 'failed to start scheduler');
     }
 
     // Nightly warrant scraper maintenance
@@ -682,19 +693,19 @@ try {
       const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
       if (nightlyInterval.unref) nightlyInterval.unref();
     } catch (err: any) {
-      console.warn('[Scraper Nightly] Failed to schedule:', err?.message || err);
+      logger.warn({ err, scheduler: 'scraper-nightly' }, 'failed to schedule');
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
     setInterval(() => {
       try { checkWelfareWatches(); } catch (err: any) {
-        console.error('[WELFARE] Timer error:', err?.message);
+        logger.error({ err, source: 'welfare-timer' }, 'timer error');
       }
     }, 30_000);
 
     setInterval(() => {
       try { generatePursuitUpdates(); } catch (err: any) {
-        console.error('[PURSUIT] Timer error:', err?.message);
+        logger.error({ err, source: 'pursuit-timer' }, 'timer error');
       }
     }, 30_000);
 
@@ -708,7 +719,7 @@ try {
         ).all() as { id: number; first_name: string; last_name: string }[];
 
         if (unchecked.length > 0) {
-          console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
+          logger.info({ source: 'ofac-backfill', count: unchecked.length }, 'screening unchecked person records');
           let matches = 0;
           const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
           for (const p of unchecked) {
@@ -728,40 +739,36 @@ try {
               }
             } catch { /* skip individual failures */ }
           }
-          console.log(`[OFAC Backfill] Complete — ${unchecked.length} screened, ${matches} match(es) found`);
+          logger.info({ source: 'ofac-backfill', screened: unchecked.length, matches }, 'backfill complete');
         } else {
-          console.log('[OFAC Backfill] All person records already screened');
+          logger.info({ source: 'ofac-backfill' }, 'all person records already screened');
         }
       } catch (err) {
-        console.warn('[OFAC Backfill] Failed:', (err as Error).message);
+        logger.warn({ err, source: 'ofac-backfill' }, 'backfill failed');
       }
     }, 60_000); // 60s delay — after OFAC sync (15s) has time to complete
   });
 } catch (error) {
-  console.error('Failed to start server:', error);
+  logger.fatal({ err: error }, 'failed to start server');
   process.exit(1);
 }
 
 // ─── Process-level crash protection ──────────────────────────
 // Log unhandled errors instead of dying silently.
 process.on('uncaughtException', (err) => {
-  console.error('═══ UNCAUGHT EXCEPTION ═══');
-  console.error(err);
-  console.error('Server will continue running. Please investigate the above error.');
+  logger.fatal({ err }, 'uncaught exception — server continuing, investigate immediately');
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('═══ UNHANDLED PROMISE REJECTION ═══');
-  console.error('Reason:', reason);
-  console.error('Server will continue running. Please investigate the above error.');
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ err: reason }, 'unhandled promise rejection — server continuing, investigate immediately');
 });
 
 // ─── Graceful Shutdown ────────────────────────────────
 // Close server and database connections cleanly on SIGTERM/SIGINT
 function gracefulShutdown(signal: string) {
-  console.log(`\n[${signal}] Graceful shutdown initiated...`);
+  logger.info({ signal }, 'graceful shutdown initiated');
   const shutdownTimeout = setTimeout(() => {
-    console.error('Shutdown timed out after 15s — forcing exit');
+    logger.error('shutdown timed out after 15s — forcing exit');
     process.exit(1);
   }, 15000);
 
@@ -771,14 +778,14 @@ function gracefulShutdown(signal: string) {
     const db = getDb();
     if (db) {
       db.close();
-      console.log('Database connection closed');
+      logger.info('database connection closed');
     }
   } catch (e: any) {
-    console.warn('Shutdown cleanup error:', e?.message);
+    logger.warn({ err: e }, 'shutdown cleanup error');
   }
 
   clearTimeout(shutdownTimeout);
-  console.log('Shutdown complete');
+  logger.info('shutdown complete');
   process.exit(0);
 }
 
