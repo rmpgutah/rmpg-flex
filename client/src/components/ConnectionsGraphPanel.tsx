@@ -7,7 +7,7 @@ import CollapsibleSection from './CollapsibleSection';
 
 interface GraphNode {
   id: string;
-  type: 'person' | 'warrant' | 'incident' | 'call' | 'citation' | 'vehicle' | 'property';
+  type: 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident';
   label: string;
   subLabel?: string;
   x: number;
@@ -27,22 +27,20 @@ interface GraphEdge {
 
 const NODE_COLORS: Record<string, string> = {
   person: '#d4a017',
-  warrant: '#dc2626',
   incident: '#f59e0b',
-  call: '#888888',
-  citation: '#fbbf24',
   vehicle: '#10b981',
   property: '#8b5cf6',
+  evidence: '#ef4444',
+  case: '#3b82f6',
 };
 
 const NODE_RADIUS: Record<string, number> = {
   person: 28,
-  warrant: 18,
   incident: 18,
-  call: 14,
-  citation: 16,
   vehicle: 16,
   property: 16,
+  evidence: 16,
+  case: 16,
 };
 
 // ── Force simulation (simple spring + repulsion) ─────────────
@@ -113,72 +111,26 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
   const fetchGraph = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<any>(`/records/persons/${personId}/system-history`);
-      const newNodes: GraphNode[] = [];
-      const newEdges: GraphEdge[] = [];
+      const data = await apiFetch<{ nodes: any[]; edges: any[] }>(
+        `/connections/graph?type=person&id=${personId}&depth=1`
+      );
       const centerX = 300, centerY = 200;
-
-      // Center node: the person
-      newNodes.push({
-        id: `person-${personId}`,
-        type: 'person',
-        label: personName.toUpperCase(),
-        x: centerX, y: centerY, vx: 0, vy: 0, pinned: true,
-      });
-
-      // Warrants
-      (data.warrants || []).forEach((w: any, i: number) => {
-        const id = `warrant-${w.id}`;
-        newNodes.push({
-          id, type: 'warrant',
-          label: w.warrant_number || `W-${w.id}`,
-          subLabel: (w.status || '').toUpperCase(),
-          x: centerX + 120 + Math.random() * 40, y: centerY - 80 + i * 50 + Math.random() * 20,
+      const newNodes: GraphNode[] = data.nodes.map((n, i) => {
+        const isSeed = n.type === 'person' && String(n.entityId) === String(personId);
+        return {
+          id: n.id,
+          type: n.type,
+          label: (n.label || '').toUpperCase(),
+          subLabel: n.metadata?.status || n.metadata?.incident_type || '',
+          x: isSeed ? centerX : centerX + Math.cos(i) * 140 + Math.random() * 20,
+          y: isSeed ? centerY : centerY + Math.sin(i) * 140 + Math.random() * 20,
           vx: 0, vy: 0,
-        });
-        newEdges.push({ source: `person-${personId}`, target: id, label: 'WARRANT' });
+          pinned: isSeed,
+        };
       });
-
-      // Incidents
-      (data.incidents || []).forEach((inc: any, i: number) => {
-        const id = `incident-${inc.id}`;
-        newNodes.push({
-          id, type: 'incident',
-          label: inc.incident_number || `I-${inc.id}`,
-          subLabel: (inc.role || '').toUpperCase(),
-          x: centerX - 120 + Math.random() * 40, y: centerY - 60 + i * 45 + Math.random() * 20,
-          vx: 0, vy: 0,
-        });
-        newEdges.push({ source: `person-${personId}`, target: id, label: inc.role?.toUpperCase() || 'LINKED' });
-      });
-
-      // Calls
-      (data.calls || []).forEach((c: any, i: number) => {
-        const id = `call-${c.id}`;
-        newNodes.push({
-          id, type: 'call',
-          label: c.call_number || `C-${c.id}`,
-          subLabel: (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
-          x: centerX + Math.random() * 60, y: centerY + 100 + i * 40 + Math.random() * 20,
-          vx: 0, vy: 0,
-        });
-        newEdges.push({ source: `person-${personId}`, target: id, label: 'DISPATCH' });
-      });
-
-      // Citations
-      (data.citations || []).forEach((cit: any, i: number) => {
-        const id = `citation-${cit.id}`;
-        newNodes.push({
-          id, type: 'citation',
-          label: cit.citation_number || `CIT-${cit.id}`,
-          subLabel: (cit.status || '').toUpperCase(),
-          x: centerX - 60 + Math.random() * 40, y: centerY + 120 + i * 40 + Math.random() * 20,
-          vx: 0, vy: 0,
-        });
-        newEdges.push({ source: `person-${personId}`, target: id, label: 'CITATION' });
-      });
-
-      // Run force simulation
+      const newEdges: GraphEdge[] = data.edges.map(e => ({
+        source: e.source, target: e.target, label: (e.relationship || '').toUpperCase(),
+      }));
       simulate(newNodes, newEdges);
 
       // Normalize positions to fit viewport
