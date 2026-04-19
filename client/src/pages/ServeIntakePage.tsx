@@ -10,6 +10,7 @@ import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Bu
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 
 interface UploadedFile {
   name: string;
@@ -132,7 +133,11 @@ export default function ServeIntakePage() {
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-rmpg-600 rounded-sm p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 transition-all"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload PDF documents: drag and drop or press Enter to browse"
+        className="border-2 border-dashed border-rmpg-600 rounded-sm p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 focus:outline-none focus:border-rmpg-400 focus:ring-2 focus:ring-[#d4a017]/40 transition-all"
         style={{ background: 'var(--surface-sunken)' }}
       >
         <Upload className="w-10 h-10 text-rmpg-500 mx-auto mb-3" />
@@ -170,7 +175,7 @@ export default function ServeIntakePage() {
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
               )}
               <span className="text-[9px] text-rmpg-500">{f.text.length} chars</span>
-              <button onClick={() => removeFile(i)} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+              <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
             </div>
           ))}
         </div>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
+import IconButton from '../../components/IconButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 // ─── Types ───────────────────────────────────────────────────
@@ -865,9 +866,9 @@ export default function SkipTracerV2Page() {
                 >
                   {inputType}
                 </span>
-                <button type="button" onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-white">
+                <IconButton onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-white" aria-label="Clear query">
                   <X size={12} />
-                </button>
+                </IconButton>
               </>
             )}
             <button type="button"
@@ -1040,7 +1041,7 @@ export default function SkipTracerV2Page() {
           <div className="p-3 border border-red-900/50 rounded-sm bg-red-950/30 text-red-300 text-[11px] flex items-center gap-2">
             <AlertTriangle size={14} className="flex-shrink-0" />
             <span className="flex-1">{error}</span>
-            <button type="button" onClick={() => handleSearch()} className="text-red-400 hover:text-red-300"><RefreshCw size={12} /></button>
+            <IconButton onClick={() => handleSearch()} className="text-red-400 hover:text-red-300" aria-label="Retry search"><RefreshCw size={12} /></IconButton>
           </div>
         )}
 
@@ -1690,7 +1691,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <Bookmark size={16} className="text-[#888888]" /> Saved Dossiers
         </h2>
-        <button type="button" onClick={loadDossiers} className="text-[#556677] hover:text-white p-1"><RefreshCw size={14} /></button>
+        <IconButton onClick={loadDossiers} className="text-[#556677] hover:text-white p-1" aria-label="Refresh dossiers"><RefreshCw size={14} /></IconButton>
       </div>
 
       <div className="relative mb-3">
@@ -1721,12 +1722,12 @@ export default function SkipTracerV2Page() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="View">
+                  <IconButton onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="View" aria-label="View dossier">
                     <Eye size={13} />
-                  </button>
-                  <button type="button" onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="Export PDF">
+                  </IconButton>
+                  <IconButton onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="Export PDF" aria-label="Export dossier PDF">
                     <Download size={13} />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
             </div>
@@ -1744,7 +1745,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <History size={16} className="text-[#888888]" /> Search History
         </h2>
-        <button type="button" onClick={loadHistory} className="text-[#556677] hover:text-white p-1"><RefreshCw size={14} /></button>
+        <IconButton onClick={loadHistory} className="text-[#556677] hover:text-white p-1" aria-label="Refresh history"><RefreshCw size={14} /></IconButton>
       </div>
 
       {historyLoading ? (
@@ -1783,9 +1784,9 @@ export default function SkipTracerV2Page() {
                       {h.searcher_name && <span>&middot; {h.searcher_name}</span>}
                     </div>
                   </div>
-                  <button type="button" onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#a0a0a0] hover:bg-surface-raised/50 rounded-sm" title="Re-run">
+                  <IconButton onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#a0a0a0] hover:bg-surface-raised/50 rounded-sm" title="Re-run" aria-label="Re-run search">
                     <RefreshCw size={13} />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
             );
@@ -1803,9 +1804,9 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <Database size={16} className="text-[#888888]" /> Data Sources ({sources.length})
         </h2>
-        <button type="button" onClick={loadSources} disabled={sourcesLoading} className="text-[#556677] hover:text-white p-1">
+        <IconButton onClick={loadSources} disabled={sourcesLoading} className="text-[#556677] hover:text-white p-1" aria-label="Refresh sources">
           <RefreshCw size={14} className={sourcesLoading ? 'animate-spin' : ''} />
-        </button>
+        </IconButton>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1862,9 +1863,9 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <BarChart3 size={16} className="text-[#888888]" /> Usage Statistics
         </h2>
-        <button type="button" onClick={loadStats} disabled={statsLoading} className="text-[#556677] hover:text-white p-1">
+        <IconButton onClick={loadStats} disabled={statsLoading} className="text-[#556677] hover:text-white p-1" aria-label="Refresh stats">
           <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} />
-        </button>
+        </IconButton>
       </div>
 
       {statsLoading ? (
