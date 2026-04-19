@@ -5,7 +5,7 @@ import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 import { fromLonLat } from 'ol/proj';
-import { defaults as defaultControls, ScaleLine, Attribution } from 'ol/control';
+import { defaults as defaultControls, ScaleLine, Attribution, FullScreen, ZoomSlider, OverviewMap } from 'ol/control';
 import { useOlBeatLayer } from './hooks/useOlBeatLayer';
 import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
 import { useOlFeaturePopup } from './hooks/useOlFeaturePopup';
@@ -28,6 +28,11 @@ import {
 } from './hooks/useOlOperationalLayers';
 import { useDaylightPhase } from './hooks/useDaylightPhase';
 import { useOlScreenshot } from './hooks/useOlScreenshot';
+import { useOlTrackingLines } from './hooks/useOlTrackingLines';
+import { useOlAlerts } from './hooks/useOlAlerts';
+import { useOlContextMenu } from './hooks/useOlContextMenu';
+import MapV2StyleSwitcher, { type MapStyleKey } from './components/MapV2StyleSwitcher';
+import MapV2ContextMenu from './components/MapV2ContextMenu';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
@@ -59,6 +64,7 @@ export default function MapPageV2() {
   const [showSafety, setShowSafety] = useState(false);
   const [showEnforcement, setShowEnforcement] = useState(false);
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(false);
+  const [showTracking, setShowTracking] = useState(true);
   const [showFi, setShowFi] = useState(false);
   const [showIncidents, setShowIncidents] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
@@ -82,6 +88,9 @@ export default function MapPageV2() {
   const [repeatDays, setRepeatDays] = useState<7 | 30 | 90>(30);
   const [repeatMinCount, setRepeatMinCount] = useState<2 | 3 | 5 | 10>(3);
   const [historyDays, setHistoryDays] = useState<1 | 7 | 30>(7);
+  const [showAlerts, setShowAlerts] = useState(true);
+  const [mapStyle, setMapStyle] = useState<MapStyleKey>('dark');
+  const tileLayerRef = useRef<TileLayer<XYZ> | null>(null);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -93,6 +102,13 @@ export default function MapPageV2() {
         attributions:
           '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
       }),
+    });
+    tileLayerRef.current = tileLayer;
+
+    // Mini-map (top-right corner) — uses the same tile cache to stay
+    // offline-capable.
+    const overviewTileLayer = new TileLayer({
+      source: new XYZ({ url: '/tiles/{z}/{x}/{y}.png', maxZoom: 15 }),
     });
 
     const instance = new Map({
@@ -107,6 +123,15 @@ export default function MapPageV2() {
       controls: defaultControls({ attribution: false }).extend([
         new ScaleLine({ units: 'us', minWidth: 80 }),
         new Attribution({ collapsible: false }),
+        new FullScreen({ tipLabel: 'Toggle full-screen' }),
+        new ZoomSlider(),
+        new OverviewMap({
+          collapsed: true,
+          collapseLabel: '\u00BB',
+          label: '\u00AB',
+          tipLabel: 'Overview map',
+          layers: [overviewTileLayer],
+        }),
       ]),
     });
     mapInstanceRef.current = instance;
@@ -128,6 +153,26 @@ export default function MapPageV2() {
   useOlSafetyZones(map, { visible: showSafety, days: safetyDays });
   useOlEnforcementClusters(map, { visible: showEnforcement, days: enforcementDays, type: enforcementType });
   useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor });
+  useOlTrackingLines(map, { visible: showTracking });
+  useOlAlerts(map, { visible: showAlerts });
+  const contextMenu = useOlContextMenu(map);
+
+  // Tile-source swapping for the style switcher
+  useEffect(() => {
+    if (!tileLayerRef.current) return;
+    const url =
+      mapStyle === 'light'
+        ? 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+        : mapStyle === 'voyager'
+          ? 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'
+          : '/tiles/{z}/{x}/{y}.png';
+    tileLayerRef.current.setSource(new XYZ({
+      url,
+      maxZoom: 19,
+      attributions:
+        '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+    }));
+  }, [mapStyle]);
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
   useOlIncidentReports(map, { visible: showIncidents, days: incidentDays });
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
@@ -186,6 +231,7 @@ export default function MapPageV2() {
       id: 'intel',
       title: 'Intelligence',
       layers: [
+        { key: 'alerts', label: 'Active Panic Alerts', color: '#ef4444', visible: showAlerts, onToggle: () => setShowAlerts(v => !v) },
         {
           key: 'heatmap', label: `Heatmap (${heatmapDays}d)`, color: '#ef4444',
           visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v),
@@ -252,6 +298,7 @@ export default function MapPageV2() {
       id: 'history',
       title: 'History',
       layers: [
+        { key: 'tracking', label: 'Tracking Lines', color: '#fbbf24', visible: showTracking, onToggle: () => setShowTracking(v => !v) },
         {
           key: 'breadcrumbs', label: `Breadcrumbs (${breadcrumbHours}h)`, color: '#14b8a6',
           visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v),
@@ -309,6 +356,21 @@ export default function MapPageV2() {
         mode={drawMode}
         setMode={setDrawMode}
         onClear={() => setClearVersion(v => v + 1)}
+      />
+      <MapV2StyleSwitcher value={mapStyle} onChange={setMapStyle} />
+      <MapV2ContextMenu
+        menu={contextMenu.menu}
+        onClose={contextMenu.close}
+        onSearchNearby={(lat, lng) => {
+          // Reuse the address search bar's underlying mechanism — pan
+          // and drop a pin at the right-click point so the user has
+          // an immediate visual anchor.
+          addressSearch.selectAddress({
+            display_name: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+            latitude: lat,
+            longitude: lng,
+          });
+        }}
       />
       <MapV2StatusBar daylight={daylight} onScreenshot={screenshot} />
     </div>

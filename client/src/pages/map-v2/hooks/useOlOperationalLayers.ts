@@ -37,6 +37,7 @@ export function useOlIncidentReports(map: OlMap | null, opts: { visible: boolean
     color: '#ef4444cc',
     radius: 4,
     kind: 'incident',
+    cluster: true,
     extractCoords: (r) =>
       r.latitude != null && r.longitude != null ? { lat: r.latitude, lng: r.longitude } : null,
     debugTag: 'incident reports',
@@ -88,6 +89,7 @@ export function useOlRepeatAddresses(
     color: '#f97316cc',
     radius: 5,
     kind: 'repeat_address',
+    cluster: true,
     extractCoords: (r) =>
       Number.isFinite(r.lat) && Number.isFinite(r.lng) ? { lat: r.lat, lng: r.lng } : null,
     debugTag: 'repeat addresses',
@@ -120,6 +122,7 @@ export function useOlCallHistory(
     color: '#9ca3afaa',
     radius: 3,
     kind: 'call_history',
+    cluster: true,
     extractCoords: (r) =>
       Number.isFinite(r.latitude) && Number.isFinite(r.longitude)
         ? { lat: r.latitude, lng: r.longitude }
