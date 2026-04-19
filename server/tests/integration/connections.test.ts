@@ -213,6 +213,75 @@ describe('GET /api/connections/graph', () => {
     expect(res.status).toBe(200);
     expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
   });
+
+  it('traverses person → trespass_order via trespass_orders.person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const clientId = Number(d.prepare(
+      "INSERT INTO clients (name) VALUES ('Trespass Client A')"
+    ).run().lastInsertRowid);
+    const propId = Number(d.prepare(
+      "INSERT INTO properties (client_id, name, address) VALUES (?, 'Prop A', '1 Banned Way')"
+    ).run(clientId).lastInsertRowid);
+    const toid = Number(d.prepare(
+      "INSERT INTO trespass_orders (order_number, person_id, subject_first_name, subject_last_name, property_id, location, status, issued_by) VALUES ('TO-001', ?, 'Test', 'Suspect', ?, '1 Banned Way', 'active', ?)"
+    ).run(personId, propId, uid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${personId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'trespass_order' && n.entityId === toid)).toBe(true);
+  });
+
+  it('traverses property → trespass_order via trespass_orders.property_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Trespass','Person')"
+    ).run().lastInsertRowid);
+    const clientId = Number(d.prepare(
+      "INSERT INTO clients (name) VALUES ('Trespass Client B')"
+    ).run().lastInsertRowid);
+    const propId = Number(d.prepare(
+      "INSERT INTO properties (client_id, name, address) VALUES (?, 'Prop B', '2 Banned Way')"
+    ).run(clientId).lastInsertRowid);
+    const toid = Number(d.prepare(
+      "INSERT INTO trespass_orders (order_number, person_id, subject_first_name, subject_last_name, property_id, location, status, issued_by) VALUES ('TO-002', ?, 'Trespass', 'Person', ?, '2 Banned Way', 'active', ?)"
+    ).run(pid, propId, uid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=property&id=${propId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'trespass_order' && n.entityId === toid)).toBe(true);
+  });
+
+  it('traverses trespass_order → person + property', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Banned','Guy')"
+    ).run().lastInsertRowid);
+    const clientId = Number(d.prepare(
+      "INSERT INTO clients (name) VALUES ('Trespass Client C')"
+    ).run().lastInsertRowid);
+    const propId = Number(d.prepare(
+      "INSERT INTO properties (client_id, name, address) VALUES (?, 'Prop C', '3 Banned Way')"
+    ).run(clientId).lastInsertRowid);
+    const toid = Number(d.prepare(
+      "INSERT INTO trespass_orders (order_number, person_id, subject_first_name, subject_last_name, property_id, location, status, issued_by) VALUES ('TO-003', ?, 'Banned', 'Guy', ?, '3 Banned Way', 'active', ?)"
+    ).run(pid, propId, uid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=trespass_order&id=${toid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+    expect(res.body.nodes.some((n: any) => n.type === 'property' && n.entityId === propId)).toBe(true);
+  });
 });
 
 describe('GET /api/connections/export/csv', () => {

@@ -86,6 +86,10 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const f = db.prepare('SELECT fi_number, location FROM field_interviews WHERE id = ?').get(id) as any;
         return f ? `${f.fi_number || `FI-${id}`}${f.location ? ` @ ${f.location}` : ''}` : `FI #${id}`;
       }
+      case 'trespass_order': {
+        const t = db.prepare('SELECT order_number, status FROM trespass_orders WHERE id = ?').get(id) as any;
+        return t ? `${t.order_number || `TO-${id}`} (${(t.status || 'unknown').toUpperCase()})` : `Trespass #${id}`;
+      }
       default:
         return `${type} #${id}`;
     }
@@ -137,6 +141,10 @@ function getNodeMetadata(db: any, type: string, id: number): Record<string, any>
       case 'field_interview': {
         const f = db.prepare('SELECT fi_number, person_id, location, contact_reason, contact_type, action_taken, officer_name, status, created_at FROM field_interviews WHERE id = ?').get(id) as any;
         return f || {};
+      }
+      case 'trespass_order': {
+        const t = db.prepare('SELECT order_number, person_id, property_id, location, status, order_type, effective_date, expiration_date, issued_by_name FROM trespass_orders WHERE id = ?').get(id) as any;
+        return t || {};
       }
       default:
         return {};
@@ -282,6 +290,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
             });
           }
         } catch (err: any) { console.error('[Connections] field_interviews(person) query error:', err?.message); }
+
+        try {
+          const tos = db.prepare(
+            "SELECT id, status FROM trespass_orders WHERE person_id = ?"
+          ).all(id) as any[];
+          for (const t of tos) {
+            results.push({
+              type: 'trespass_order', id: t.id,
+              relationship: 'trespassed_from',
+              sourceTable: 'trespass_orders',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] trespass_orders(person) query error:', err?.message); }
         break;
       }
 
@@ -417,6 +438,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
             results.push({ type: 'person', id: cp.person_id, relationship: cp.relationship, sourceTable: 'client_persons' });
           }
         }
+
+        try {
+          const tos = db.prepare(
+            "SELECT id, status FROM trespass_orders WHERE property_id = ?"
+          ).all(id) as any[];
+          for (const t of tos) {
+            results.push({
+              type: 'trespass_order', id: t.id,
+              relationship: 'trespass_on_location',
+              sourceTable: 'trespass_orders',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] trespass_orders(property) query error:', err?.message); }
         break;
       }
 
@@ -482,6 +516,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
             results.push({ type: 'person', id: f.person_id, relationship: 'subject', sourceTable: 'field_interviews' });
           }
         } catch (err: any) { console.error('[Connections] field_interviews(fi) query error:', err?.message); }
+        break;
+      }
+
+      case 'trespass_order': {
+        try {
+          const t = db.prepare('SELECT person_id, property_id FROM trespass_orders WHERE id = ?').get(id) as any;
+          if (t?.person_id) {
+            results.push({ type: 'person', id: t.person_id, relationship: 'subject', sourceTable: 'trespass_orders' });
+          }
+          if (t?.property_id) {
+            results.push({ type: 'property', id: t.property_id, relationship: 'location', sourceTable: 'trespass_orders' });
+          }
+        } catch (err: any) { console.error('[Connections] trespass_orders(to) query error:', err?.message); }
         break;
       }
     }
@@ -555,7 +602,7 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
 
 // ── Routes ───────────────────────────────────────────────────
 
-const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation', 'arrest', 'field_interview'];
+const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order'];
 
 // GET /connections/graph?type=person&id=123&depth=2
 router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
