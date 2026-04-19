@@ -481,3 +481,69 @@ describe('GET /api/connections/export/csv', () => {
     expect(res.text).toContain('suspect');
   });
 });
+
+describe('GET /api/connections/path', () => {
+  it('returns shortest path (2 hops) between linked person and incident', async () => {
+    const res = await request(app)
+      .get(`/api/connections/path?fromType=person&fromId=${personId}&toType=incident&toId=${incidentId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.path).toHaveLength(2);
+    expect(res.body.path[0].type).toBe('person');
+    expect(res.body.path[1].type).toBe('incident');
+    expect(res.body.edges).toHaveLength(1);
+  });
+
+  it('finds 3-hop path through an intermediate node', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const pa = Number(d.prepare("INSERT INTO persons (first_name, last_name) VALUES ('Path','A')").run().lastInsertRowid);
+    const pb = Number(d.prepare("INSERT INTO persons (first_name, last_name) VALUES ('Path','B')").run().lastInsertRowid);
+    const inc = Number(d.prepare("INSERT INTO incidents (incident_number, incident_type, status, officer_id) VALUES ('I-PATH-1','theft','submitted',1)").run().lastInsertRowid);
+    d.prepare("INSERT INTO incident_persons (incident_id, person_id, role, added_by) VALUES (?, ?, 'suspect', 1)").run(inc, pa);
+    d.prepare("INSERT INTO incident_persons (incident_id, person_id, role, added_by) VALUES (?, ?, 'witness', 1)").run(inc, pb);
+
+    const res = await request(app)
+      .get(`/api/connections/path?fromType=person&fromId=${pa}&toType=person&toId=${pb}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.path).toHaveLength(3);
+    expect(res.body.path[0].entityId).toBe(pa);
+    expect(res.body.path[1].type).toBe('incident');
+    expect(res.body.path[1].entityId).toBe(inc);
+    expect(res.body.path[2].entityId).toBe(pb);
+    expect(res.body.edges).toHaveLength(2);
+  });
+
+  it('returns 404 when no path exists', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const isolated = Number(d.prepare("INSERT INTO persons (first_name, last_name) VALUES ('Lonely','Island')").run().lastInsertRowid);
+    const res = await request(app)
+      .get(`/api/connections/path?fromType=person&fromId=${personId}&toType=person&toId=${isolated}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NO_PATH');
+  });
+
+  it('returns a zero-hop path when from === to', async () => {
+    const res = await request(app)
+      .get(`/api/connections/path?fromType=person&fromId=${personId}&toType=person&toId=${personId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.path).toHaveLength(1);
+    expect(res.body.edges).toHaveLength(0);
+  });
+
+  it('rejects invalid from/to types with 400', async () => {
+    const res = await request(app)
+      .get(`/api/connections/path?fromType=unicorn&fromId=1&toType=person&toId=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('requires authentication', async () => {
+    const res = await request(app)
+      .get(`/api/connections/path?fromType=person&fromId=${personId}&toType=incident&toId=${incidentId}`);
+    expect(res.status).toBe(401);
+  });
+});

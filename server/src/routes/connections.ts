@@ -667,6 +667,85 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
   return { nodes: Array.from(nodeMap.values()), edges };
 }
 
+// ── Shortest-path BFS ────────────────────────────────────────
+
+const PATH_MAX_DEPTH = 6;  // practical cap — deeper paths are analyst-unfriendly
+
+function findShortestPath(
+  db: any,
+  fromType: string,
+  fromId: number,
+  toType: string,
+  toId: number
+): { path: GNode[]; edges: GEdge[] } | null {
+  const fromKey = `${fromType}-${fromId}`;
+  const toKey = `${toType}-${toId}`;
+
+  if (fromKey === toKey) {
+    return {
+      path: [{
+        id: fromKey,
+        type: fromType,
+        entityId: fromId,
+        label: getRecordLabel(db, fromType, fromId),
+        metadata: getNodeMetadata(db, fromType, fromId),
+        depth: 0,
+      }],
+      edges: [],
+    };
+  }
+
+  // BFS with parent pointers. Each entry: (nodeKey, parentKey, relationshipFromParent, sourceTable, depth).
+  type Entry = { key: string; type: string; id: number; parent: string | null; rel: string; srcTable: string; depth: number };
+  const visited = new Map<string, Entry>();
+  visited.set(fromKey, { key: fromKey, type: fromType, id: fromId, parent: null, rel: '', srcTable: '', depth: 0 });
+  const queue: Entry[] = [visited.get(fromKey)!];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.depth >= PATH_MAX_DEPTH) continue;
+
+    const connections = findConnections(db, current.type, current.id);
+    for (const conn of connections) {
+      const ckey = `${conn.type}-${conn.id}`;
+      if (visited.has(ckey)) continue;
+      const entry: Entry = {
+        key: ckey, type: conn.type, id: conn.id,
+        parent: current.key, rel: conn.relationship, srcTable: conn.sourceTable,
+        depth: current.depth + 1,
+      };
+      visited.set(ckey, entry);
+
+      if (ckey === toKey) {
+        // Walk parent pointers back to the seed
+        const chain: Entry[] = [];
+        let cur: Entry | undefined = entry;
+        while (cur) {
+          chain.unshift(cur);
+          cur = cur.parent ? visited.get(cur.parent) : undefined;
+        }
+        const path: GNode[] = chain.map(e => ({
+          id: e.key, type: e.type, entityId: e.id,
+          label: getRecordLabel(db, e.type, e.id),
+          metadata: getNodeMetadata(db, e.type, e.id),
+          depth: e.depth,
+        }));
+        const edges: GEdge[] = chain.slice(1).map(e => ({
+          source: e.parent!,
+          target: e.key,
+          relationship: e.rel,
+          sourceTable: e.srcTable,
+        }));
+        return { path, edges };
+      }
+
+      queue.push(entry);
+    }
+  }
+
+  return null;
+}
+
 // ── Routes ───────────────────────────────────────────────────
 
 const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order', 'serve_job'];
@@ -697,6 +776,48 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
   } catch (error: any) {
     console.error('Connection graph error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to build connection graph', code: 'FAILED_TO_BUILD_CONNECTION' });
+  }
+});
+
+// GET /connections/path?fromType=X&fromId=Y&toType=A&toId=B
+router.get('/path', requireRole('admin','manager','supervisor','officer','dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { fromType, fromId, toType, toId } = req.query;
+
+    if (!fromType || !fromId || !toType || !toId) {
+      return res.status(400).json({
+        error: 'fromType, fromId, toType, and toId are all required',
+        code: 'PATH_PARAMS_REQUIRED',
+      });
+    }
+    if (!VALID_TYPES.includes(String(fromType))) {
+      return res.status(400).json({ error: `Invalid fromType. Must be one of: ${VALID_TYPES.join(', ')}` });
+    }
+    if (!VALID_TYPES.includes(String(toType))) {
+      return res.status(400).json({ error: `Invalid toType. Must be one of: ${VALID_TYPES.join(', ')}` });
+    }
+    if (isNaN(Number(fromId)) || Number(fromId) < 1 || isNaN(Number(toId)) || Number(toId) < 1) {
+      return res.status(400).json({ error: 'fromId and toId must be positive integers' });
+    }
+
+    const result = findShortestPath(db, String(fromType), Number(fromId), String(toType), Number(toId));
+    if (!result) {
+      return res.status(404).json({
+        error: `No path found within ${PATH_MAX_DEPTH} hops`,
+        code: 'NO_PATH',
+      });
+    }
+
+    auditLog(
+      req, 'SEARCH', 'record_link', Number(fromId),
+      `Path search: ${fromType} #${fromId} → ${toType} #${toId} (${result.edges.length} hops)`
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Connection path error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to find path', code: 'PATH_FAILED' });
   }
 });
 
