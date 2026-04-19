@@ -639,7 +639,7 @@ router.get('/imports/:forensicCaseId', (req: Request, res: Response) => {
 router.get('/imports', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
+    const limit = parseInt((req.query.limit as string) || '50', 10);
     const rows = db.prepare(`
       SELECT i.*, fc.lab_number, fc.title as case_title
       FROM iped_imports i

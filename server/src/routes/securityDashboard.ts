@@ -64,7 +64,7 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
   try {
     const db = getDb();
     const userId = req.user!.userId;
-    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 200);
+    const limit = parseInt(String(req.query.limit || '50'), 10);
     const offset = Math.max(0, Math.min(parseInt(String(req.query.offset || '0'), 10), 10000));
 
     const userRow = db.prepare('SELECT username FROM users WHERE id = ?')
@@ -158,7 +158,7 @@ router.delete('/trusted-devices/:id', validateParamIdMiddleware, authenticateTok
 router.get('/notifications', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 200);
+    const limit = parseInt(String(req.query.limit || '50'), 10);
     const offset = Math.max(0, Math.min(parseInt(String(req.query.offset || '0'), 10), 10000));
 
     const rows = db.prepare(`
@@ -448,7 +448,7 @@ router.get('/suspicious-activity', authenticateToken, requireRole('admin', 'mana
 router.get('/login-geo', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '100'), 10), 500);
+    const limit = parseInt(String(req.query.limit || '100'), 10);
     const onlyFailed = req.query.only_failed === '1' || req.query.only_failed === 'true';
 
     let where = "WHERE created_at >= datetime('now', 'localtime', '-30 days')";
@@ -523,7 +523,7 @@ function parseBrowserFromUA(ua: string): string {
 router.get('/event-timeline', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '100'), 10), 500);
+    const limit = parseInt(String(req.query.limit || '100'), 10);
     const days = Math.min(90, Math.max(1, parseInt(String(req.query.days || '7'), 10)));
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 

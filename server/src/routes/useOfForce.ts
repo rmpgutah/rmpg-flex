@@ -33,7 +33,7 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const { status, officer_id, force_type, force_level, page = '1', per_page = '50', search } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPage = Math.max(1, parseInt(per_page as string, 10) || 50);
     const offset = (pageNum - 1) * perPage;
 
     let where = 'WHERE 1=1';
