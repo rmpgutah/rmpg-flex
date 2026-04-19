@@ -53,6 +53,15 @@ interface MapV2LayersPanelProps {
  */
 export default function MapV2LayersPanel({ sections, isConnected }: MapV2LayersPanelProps) {
   const [open, setOpen] = useState(true);
+  const [search, setSearch] = useState('');
+
+  // Filter sections by search query (matches against layer label)
+  const filteredSections = !search.trim() ? sections : sections
+    .map((sec) => ({
+      ...sec,
+      layers: sec.layers.filter((l) => l.label.toLowerCase().includes(search.toLowerCase())),
+    }))
+    .filter((sec) => sec.layers.length > 0);
 
   if (!open) {
     return (
@@ -98,9 +107,24 @@ export default function MapV2LayersPanel({ sections, isConnected }: MapV2LayersP
         </button>
       </div>
 
+      {/* Search bar */}
+      <div className="px-2 py-1 bg-[#0d0d0d] border-b border-[#1a1a1a]">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter layers…"
+          aria-label="Filter layers by name"
+          className="w-full bg-[#141414] border border-[#222222] outline-none px-1.5 py-0.5 text-[#e5e7eb] placeholder:text-[#666666] font-mono text-[10px] normal-case"
+        />
+      </div>
+
       {/* Sections */}
-      <div className="divide-y divide-[#1a1a1a]">
-        {sections.map((sec) => {
+      <div className="divide-y divide-[#1a1a1a] max-h-[70vh] overflow-y-auto">
+        {filteredSections.length === 0 && search.trim() && (
+          <div className="px-2 py-2 text-[#666666] text-[9px]">No layers match</div>
+        )}
+        {filteredSections.map((sec) => {
           const allOn = sec.layers.every((l) => l.visible);
           const anyOn = sec.layers.some((l) => l.visible);
           const massToggle = (target: boolean) => {

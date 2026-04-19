@@ -48,6 +48,11 @@ import { useOlCursorCoords } from './hooks/useOlCursorCoords';
 import { useMapV2Shortcuts } from './hooks/useMapV2Shortcuts';
 import { useLayerPresets, type LayerPreset } from './hooks/useLayerPresets';
 import { useP1AudioAlert } from './hooks/useP1AudioAlert';
+import MapV2Compass from './components/MapV2Compass';
+import MapV2NowClock from './components/MapV2NowClock';
+import MapV2ToastStack from './components/MapV2ToastStack';
+import { useOlClickRipple } from './hooks/useOlClickRipple';
+import { useOlBeatActivity } from './hooks/useOlBeatActivity';
 import { useOlAutoPanToP1 } from './hooks/useOlAutoPanToP1';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
@@ -76,6 +81,7 @@ export default function MapPageV2() {
   const [showMunicipality, setShowMunicipality] = useState(true);
   const [showPlaces, setShowPlaces] = useState(false);
   const [showBeats, setShowBeats] = useState(true);
+  const [showBeatHeat, setShowBeatHeat] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showSafety, setShowSafety] = useState(false);
   const [showEnforcement, setShowEnforcement] = useState(false);
@@ -161,7 +167,9 @@ export default function MapPageV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useOlBeatLayer(map, { visible: showBeats });
+  const beatActivity = useOlBeatActivity();
+  useOlBeatLayer(map, { visible: showBeats, heatMode: showBeatHeat, beatActivity });
+  useOlClickRipple(map);
   useOlLiveMarkers(map);
   useOlFeaturePopup(map);
   useOlDrawTool(map, { mode: drawMode, clearVersion });
@@ -310,7 +318,15 @@ export default function MapPageV2() {
       id: 'core',
       title: 'Core',
       layers: [
-        { key: 'beats', label: 'Beats', color: '#22c55e', visible: showBeats, onToggle: () => setShowBeats(v => !v), count: 719 },
+        {
+          key: 'beats', label: showBeatHeat ? 'Beats (Heat)' : 'Beats', color: '#22c55e',
+          visible: showBeats, onToggle: () => setShowBeats(v => !v), count: 719,
+          controls: [
+            { kind: 'segmented', label: 'COLOR', value: showBeatHeat ? 'heat' : 'sector',
+              options: [{ value: 'sector', label: 'Sector' }, { value: 'heat', label: 'Calls' }],
+              onChange: (v) => setShowBeatHeat(v === 'heat') },
+          ],
+        },
         { key: 'municipality', label: 'Municipalities', color: '#60a5fa', visible: showMunicipality, onToggle: () => setShowMunicipality(v => !v), count: 261 },
         { key: 'highway', label: 'Highways', color: '#fbbf24', visible: showHighway, onToggle: () => setShowHighway(v => !v), count: 3 },
         { key: 'county', label: 'Counties', color: '#888888', visible: showCounty, onToggle: () => setShowCounty(v => !v), count: 29 },
@@ -453,6 +469,9 @@ export default function MapPageV2() {
       <MapV2CursorReadout coords={cursorCoords} />
       <MapV2HoverTooltip tooltip={hoverTooltip} />
       <MapV2Legend bottomOffset={120} />
+      <MapV2Compass map={map} />
+      <MapV2NowClock />
+      <MapV2ToastStack />
       <MapV2PresetsButton
         presets={presets}
         onSave={(name) => savePreset(name, captureVisibility())}

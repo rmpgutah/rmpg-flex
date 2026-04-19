@@ -56,7 +56,25 @@ function unitStyle(u: Unit): Style[] {
       stroke: new StrokeStyle({ color: '#000000', width: 3 }),
     }),
   });
-  return [SHADOW, main];
+  // Initials below the dot — quick visual ID without opening popup
+  const initials = (u.officer_name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 3)
+    .toUpperCase();
+  if (!initials) return [SHADOW, main];
+  const initialsStyle = new Style({
+    text: new TextStyle({
+      text: initials,
+      offsetY: 16,
+      font: '600 8px ui-monospace, monospace',
+      fill: new FillStyle({ color: '#9ca3af' }),
+      stroke: new StrokeStyle({ color: '#000000', width: 2 }),
+    }),
+  });
+  return [SHADOW, main, initialsStyle];
 }
 
 const PRIORITY_RADIUS: Record<string, number> = {
