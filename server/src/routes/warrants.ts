@@ -33,7 +33,7 @@ router.get('/', (req: Request, res: Response) => {
       expiring_days,
       person_id,
       page = '1',
-      per_page = '50',
+      per_page = '100000',
     } = req.query;
 
     let whereClause = 'WHERE 1=1';
@@ -97,7 +97,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPageNum = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPageNum = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPageNum;
 
     const countRow = db.prepare(`
@@ -574,7 +574,7 @@ router.get('/unified', (req: Request, res: Response) => {
 
     // Pagination
     const pageNum = parseInt(req.query.page as string, 10) || 1;
-    const perPage = parseInt(req.query.per_page as string, 10) || 50;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(req.query.per_page as string, 10)) || 100000));
     const total = filtered.length;
     const paged = filtered.slice((pageNum - 1) * perPage, pageNum * perPage);
 
@@ -693,7 +693,7 @@ router.get('/scraped/status', (req: Request, res: Response) => {
 router.get('/watch/runs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const runs = db.prepare(`
       SELECT * FROM warrant_watch_runs
@@ -975,7 +975,7 @@ router.get('/scrapers/:source_key', (req: Request, res: Response) => {
 router.get('/scrapers/:source_key/runs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.max(1, Math.min(200, parseInt((req.query.limit as string) || '50', 10) || 50));
+    const limit = Math.min(100000, Math.max(1, (parseInt((req.query.limit as string) || '50', 10)) || 100000));
     const offset = Math.max(0, parseInt((req.query.offset as string) || '0', 10) || 0);
     const runs = db.prepare(`
       SELECT * FROM warrant_scraper_runs

@@ -371,7 +371,7 @@ export default function IncidentsPage() {
   const fetchIncidents = useCallback(async (options?: { silent?: boolean }) => {
     try {
       if (!options?.silent) setError(null);
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/incidents?limit=200&archived=${showArchived}`);
+      const res = await apiFetch<{ data: any[]; pagination: any }>(`/incidents?limit=100000&archived=${showArchived}`);
       setIncidents((Array.isArray(res?.data) ? res.data : []).map(mapDbIncident));
     } catch (err: any) {
       if (!options?.silent) setError(err.message ?? 'Failed to load incidents');

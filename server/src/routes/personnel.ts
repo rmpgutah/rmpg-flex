@@ -1870,7 +1870,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.get('/personnel/activity/:userId', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
       const activity = db.prepare(`
         SELECT al.*, u.full_name as user_name, u.badge_number
