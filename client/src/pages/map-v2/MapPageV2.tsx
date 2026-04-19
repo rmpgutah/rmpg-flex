@@ -15,6 +15,7 @@ import { useOlHeatmap } from './hooks/useOlHeatmap';
 import { useOlAddressSearch } from './hooks/useOlAddressSearch';
 import { useOlSafetyZones, useOlEnforcementClusters } from './hooks/useOlTacticalLayers';
 import { useOlBreadcrumbs } from './hooks/useOlBreadcrumbs';
+import { useOlFieldInterviews } from './hooks/useOlFieldInterviews';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
 import MapV2DrawToolbar from './components/MapV2DrawToolbar';
@@ -44,6 +45,7 @@ export default function MapPageV2() {
   const [showSafety, setShowSafety] = useState(false);
   const [showEnforcement, setShowEnforcement] = useState(false);
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(false);
+  const [showFi, setShowFi] = useState(false);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -89,6 +91,7 @@ export default function MapPageV2() {
   useOlSafetyZones(map, { visible: showSafety, days: 90 });
   useOlEnforcementClusters(map, { visible: showEnforcement, days: 30 });
   useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: 8 });
+  useOlFieldInterviews(map, { visible: showFi, days: 30 });
   const addressSearch = useOlAddressSearch(map);
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
@@ -130,6 +133,7 @@ export default function MapPageV2() {
     { key: 'safety', label: 'Safety Zones (90d)', color: '#ef4444', visible: showSafety, onToggle: () => setShowSafety(v => !v) },
     { key: 'enforcement', label: 'Enforcement (30d)', color: '#a855f7', visible: showEnforcement, onToggle: () => setShowEnforcement(v => !v) },
     { key: 'breadcrumbs', label: 'Breadcrumbs (8h)', color: '#14b8a6', visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v) },
+    { key: 'fi', label: 'Field Interviews (30d)', color: '#06b6d4', visible: showFi, onToggle: () => setShowFi(v => !v) },
   ];
 
   return (
