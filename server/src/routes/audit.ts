@@ -24,7 +24,7 @@ router.get('/logs', (req: Request, res: Response) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
+    const limitNum = Math.max(1, parseInt(limit as string, 10) || 100);
     const offset = (pageNum - 1) * limitNum;
 
     const db = getDb();

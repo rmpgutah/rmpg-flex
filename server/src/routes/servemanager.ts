@@ -326,7 +326,7 @@ router.get('/jobs', async (req: Request, res: Response) => {
     const { source = 'cache', page = '1', per_page = '50', q, status, service_status: svcStatus } = req.query;
 
     if (source === 'live') {
-      const cappedPerPage = Math.min(100, Math.max(1, parseInt(String(per_page), 10) || 50));
+      const cappedPerPage = Math.max(1, parseInt(String(per_page), 10) || 50);
       const params: Record<string, string> = {
         page: String(Math.max(1, parseInt(String(page), 10) || 1)),
         per_page: String(cappedPerPage),
@@ -347,7 +347,7 @@ router.get('/jobs', async (req: Request, res: Response) => {
 
     // Cache mode
     const pageNum = Math.max(1, parseInt(String(page)));
-    const limit = Math.min(100, Math.max(1, parseInt(String(per_page))));
+    const limit = Math.max(1, parseInt(String(per_page)));
     const offset = (pageNum - 1) * limit;
 
     const conditions: string[] = [];

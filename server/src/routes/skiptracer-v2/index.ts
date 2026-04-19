@@ -303,7 +303,7 @@ router.get('/dossiers', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const q = (req.query.q as string) || '';
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
 
     let sql = `
@@ -503,7 +503,7 @@ router.delete('/dossiers/:id', requireRole('admin'), (req: Request, res: Respons
 router.get('/history', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
     const q = (req.query.q as string) || '';
 
