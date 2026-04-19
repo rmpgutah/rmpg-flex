@@ -98,6 +98,53 @@ describe('GET /api/connections/graph', () => {
     expect(res.status).toBe(200);
     expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
   });
+
+  it('traverses person → citation via citations.person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const cid = Number(d.prepare(
+      "INSERT INTO citations (citation_number, type, status, person_id, violation_date) VALUES ('C-001', 'traffic', 'issued', ?, '2026-04-19')"
+    ).run(personId).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${personId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'citation' && n.entityId === cid)).toBe(true);
+  });
+
+  it('traverses vehicle → citation via citations.vehicle_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const vid = Number(d.prepare(
+      "INSERT INTO vehicles_records (plate_number, state, make, model) VALUES ('ABC123','UT','Ford','F-150')"
+    ).run().lastInsertRowid);
+    const cid = Number(d.prepare(
+      "INSERT INTO citations (citation_number, type, status, vehicle_id, violation_date) VALUES ('C-002', 'traffic', 'issued', ?, '2026-04-19')"
+    ).run(vid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=vehicle&id=${vid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'citation' && n.entityId === cid)).toBe(true);
+  });
+
+  it('traverses citation → person via citations.person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Cit','Subject')"
+    ).run().lastInsertRowid);
+    const cid = Number(d.prepare(
+      "INSERT INTO citations (citation_number, type, status, person_id, violation_date) VALUES ('C-003', 'traffic', 'issued', ?, '2026-04-19')"
+    ).run(pid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=citation&id=${cid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+  });
 });
 
 describe('GET /api/connections/export/csv', () => {

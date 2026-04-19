@@ -74,6 +74,10 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const w = db.prepare('SELECT warrant_number, status FROM warrants WHERE id = ?').get(id) as any;
         return w ? `${w.warrant_number || `W-${id}`} (${w.status || '?'})` : `Warrant #${id}`;
       }
+      case 'citation': {
+        const c = db.prepare('SELECT citation_number, status FROM citations WHERE id = ?').get(id) as any;
+        return c ? `${c.citation_number || `CIT-${id}`} (${c.status || '?'})` : `Citation #${id}`;
+      }
       default:
         return `${type} #${id}`;
     }
@@ -113,6 +117,10 @@ function getNodeMetadata(db: any, type: string, id: number): Record<string, any>
       case 'warrant': {
         const w = db.prepare('SELECT warrant_number, status, type, offense_level, subject_person_id, charge_description FROM warrants WHERE id = ?').get(id) as any;
         return w || {};
+      }
+      case 'citation': {
+        const c = db.prepare('SELECT citation_number, type, status, person_id, vehicle_id, violation_date, violation_description, offense_level, fine_amount FROM citations WHERE id = ?').get(id) as any;
+        return c || {};
       }
       default:
         return {};
@@ -219,36 +227,68 @@ function findConnections(db: any, type: string, id: number): Connection[] {
             });
           }
         } catch (err: any) { console.error('[Connections] warrants(person) query error:', err?.message); }
+
+        try {
+          const citations = db.prepare(
+            "SELECT id, status FROM citations WHERE person_id = ?"
+          ).all(id) as any[];
+          for (const c of citations) {
+            results.push({
+              type: 'citation', id: c.id,
+              relationship: `citation_${(c.status || '').toLowerCase()}`,
+              sourceTable: 'citations',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] citations(person) query error:', err?.message); }
         break;
       }
 
       case 'vehicle': {
         // incident_vehicles → incidents
-        const incVehicles = db.prepare('SELECT incident_id, role FROM incident_vehicles WHERE vehicle_id = ?').all(id) as any[];
-        for (const iv of incVehicles) {
-          results.push({ type: 'incident', id: iv.incident_id, relationship: iv.role, sourceTable: 'incident_vehicles' });
-        }
+        try {
+          const incVehicles = db.prepare('SELECT incident_id, role FROM incident_vehicles WHERE vehicle_id = ?').all(id) as any[];
+          for (const iv of incVehicles) {
+            results.push({ type: 'incident', id: iv.incident_id, relationship: iv.role, sourceTable: 'incident_vehicles' });
+          }
+        } catch (err: any) { console.error('[Connections] incident_vehicles query error:', err?.message); }
 
         // call_vehicles → incidents (via call_id)
-        const callVehicles = db.prepare(`
-          SELECT cv.call_id, cv.role, i.id as incident_id
-          FROM call_vehicles cv
-          LEFT JOIN incidents i ON i.call_id = cv.call_id
-          WHERE cv.vehicle_id = ?
-        
-          LIMIT 1000
-        `).all(id) as any[];
-        for (const cv of callVehicles) {
-          if (cv.incident_id) {
-            results.push({ type: 'incident', id: cv.incident_id, relationship: cv.role, sourceTable: 'call_vehicles' });
+        try {
+          const callVehicles = db.prepare(`
+            SELECT cv.call_id, cv.role, i.id as incident_id
+            FROM call_vehicles cv
+            LEFT JOIN incidents i ON i.call_id = cv.call_id
+            WHERE cv.vehicle_id = ?
+
+            LIMIT 1000
+          `).all(id) as any[];
+          for (const cv of callVehicles) {
+            if (cv.incident_id) {
+              results.push({ type: 'incident', id: cv.incident_id, relationship: cv.role, sourceTable: 'call_vehicles' });
+            }
           }
-        }
+        } catch (err: any) { console.error('[Connections] call_vehicles query error:', err?.message); }
 
         // owner → person
-        const vehicle = db.prepare('SELECT owner_person_id FROM vehicles_records WHERE id = ?').get(id) as any;
-        if (vehicle?.owner_person_id) {
-          results.push({ type: 'person', id: vehicle.owner_person_id, relationship: 'owner', sourceTable: 'vehicles_records' });
-        }
+        try {
+          const vehicle = db.prepare('SELECT owner_person_id FROM vehicles_records WHERE id = ?').get(id) as any;
+          if (vehicle?.owner_person_id) {
+            results.push({ type: 'person', id: vehicle.owner_person_id, relationship: 'owner', sourceTable: 'vehicles_records' });
+          }
+        } catch (err: any) { console.error('[Connections] vehicles_records owner query error:', err?.message); }
+
+        try {
+          const citations = db.prepare(
+            "SELECT id, status FROM citations WHERE vehicle_id = ?"
+          ).all(id) as any[];
+          for (const c of citations) {
+            results.push({
+              type: 'citation', id: c.id,
+              relationship: `citation_${(c.status || '').toLowerCase()}`,
+              sourceTable: 'citations',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] citations(vehicle) query error:', err?.message); }
         break;
       }
 
@@ -367,6 +407,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         } catch (err: any) { console.error('[Connections] warrants(warrant) query error:', err?.message); }
         break;
       }
+
+      case 'citation': {
+        try {
+          const c = db.prepare('SELECT person_id, vehicle_id FROM citations WHERE id = ?').get(id) as any;
+          if (c?.person_id) {
+            results.push({ type: 'person', id: c.person_id, relationship: 'subject', sourceTable: 'citations' });
+          }
+          if (c?.vehicle_id) {
+            results.push({ type: 'vehicle', id: c.vehicle_id, relationship: 'cited_vehicle', sourceTable: 'citations' });
+          }
+        } catch (err: any) { console.error('[Connections] citations(citation) query error:', err?.message); }
+        break;
+      }
     }
   } catch (err: any) { console.error('[Connections] junction table query error:', err?.message); }
 
@@ -438,7 +491,7 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
 
 // ── Routes ───────────────────────────────────────────────────
 
-const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant'];
+const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation'];
 
 // GET /connections/graph?type=person&id=123&depth=2
 router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
