@@ -141,14 +141,42 @@ export function useOlLiveMarkers(map: Map | null): void {
         apiFetch<Unit[]>('/dispatch/units'),
       ]);
       const callsRaw: any[] = Array.isArray(callsRes?.data) ? callsRes.data : Array.isArray(callsRes) ? callsRes : [];
-      source.clear();
+
+      // Build target feature map keyed by feature ID. We diff against the
+      // current source instead of clear+rebuild so live WS-driven refetches
+      // (~4Hz under busy patrol) don't strobe the markers off-and-on.
+      const target = new Map<string, Feature<Point>>();
       for (const u of (unitsRes || [])) {
         const f = buildUnitFeature(u);
-        if (f) source.addFeature(f);
+        if (f) target.set(f.getId() as string, f);
       }
       for (const c of callsRaw) {
         const f = buildCallFeature(c as CallForService);
-        if (f) source.addFeature(f);
+        if (f) target.set(f.getId() as string, f);
+      }
+
+      const current = new Map<string, Feature<Point>>();
+      for (const f of source.getFeatures()) {
+        const id = f.getId();
+        if (typeof id === 'string') current.set(id, f as Feature<Point>);
+      }
+
+      // Remove features no longer present
+      for (const [id, f] of current) {
+        if (!target.has(id)) source.removeFeature(f);
+      }
+
+      // Add new features; update existing in place (no removeFeature flicker)
+      for (const [id, newF] of target) {
+        const existing = current.get(id);
+        if (!existing) {
+          source.addFeature(newF);
+          continue;
+        }
+        const newGeom = newF.getGeometry();
+        if (newGeom) existing.setGeometry(newGeom);
+        existing.setStyle(newF.getStyle() as any);
+        existing.set('payload', newF.get('payload'));
       }
     } catch (err) {
       devWarn('[map-v2] live refetch failed:', err);
@@ -209,7 +237,7 @@ export function useOlLiveMarkers(map: Map | null): void {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const debounced = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { refetch(); }, 250);
+      timer = setTimeout(() => { refetch(); }, 1000);
     };
     const unsubUnit = subscribe('unit_update', debounced);
     const unsubDispatch = subscribe('dispatch_update', debounced);
