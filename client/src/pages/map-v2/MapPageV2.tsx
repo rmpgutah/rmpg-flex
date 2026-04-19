@@ -20,6 +20,10 @@ import {
   useOlIncidentReports,
   useOlPatrolCheckpoints,
   useOlFleetVehicles,
+  useOlRepeatAddresses,
+  useOlDwellTime,
+  useOlCallHistory,
+  useOlPredictions,
 } from './hooks/useOlOperationalLayers';
 import { useDaylightPhase } from './hooks/useDaylightPhase';
 import { useOlScreenshot } from './hooks/useOlScreenshot';
@@ -57,6 +61,10 @@ export default function MapPageV2() {
   const [showIncidents, setShowIncidents] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showFleet, setShowFleet] = useState(false);
+  const [showRepeat, setShowRepeat] = useState(false);
+  const [showDwell, setShowDwell] = useState(false);
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [showPredictions, setShowPredictions] = useState(false);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -106,6 +114,10 @@ export default function MapPageV2() {
   useOlIncidentReports(map, { visible: showIncidents, days: 30 });
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
   useOlFleetVehicles(map, { visible: showFleet });
+  useOlRepeatAddresses(map, { visible: showRepeat, days: 30, minCount: 3 });
+  useOlDwellTime(map, { visible: showDwell });
+  useOlCallHistory(map, { visible: showCallHistory, days: 7 });
+  useOlPredictions(map, { visible: showPredictions });
   const addressSearch = useOlAddressSearch(map);
   const daylight = useDaylightPhase();
   const screenshot = useOlScreenshot(map);
@@ -153,6 +165,10 @@ export default function MapPageV2() {
     { key: 'incidents', label: 'Incident Reports (30d)', color: '#ef4444', visible: showIncidents, onToggle: () => setShowIncidents(v => !v) },
     { key: 'checkpoints', label: 'Patrol Checkpoints', color: '#22c55e', visible: showCheckpoints, onToggle: () => setShowCheckpoints(v => !v) },
     { key: 'fleet', label: 'Fleet Vehicles', color: '#fbbf24', visible: showFleet, onToggle: () => setShowFleet(v => !v) },
+    { key: 'repeat', label: 'Repeat Addresses (30d)', color: '#f97316', visible: showRepeat, onToggle: () => setShowRepeat(v => !v) },
+    { key: 'dwell', label: 'Dwell Time', color: '#fbbf24', visible: showDwell, onToggle: () => setShowDwell(v => !v) },
+    { key: 'history', label: 'Call History (7d)', color: '#9ca3af', visible: showCallHistory, onToggle: () => setShowCallHistory(v => !v) },
+    { key: 'predictions', label: 'Predicted Hotspots', color: '#ec4899', visible: showPredictions, onToggle: () => setShowPredictions(v => !v) },
   ];
 
   return (
