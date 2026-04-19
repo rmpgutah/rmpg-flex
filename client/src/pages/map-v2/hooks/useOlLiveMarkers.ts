@@ -9,11 +9,10 @@ import CircleStyle from 'ol/style/Circle';
 import StrokeStyle from 'ol/style/Stroke';
 import FillStyle from 'ol/style/Fill';
 import TextStyle from 'ol/style/Text';
-import Overlay from 'ol/Overlay';
 import { fromLonLat } from 'ol/proj';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
-import { UNIT_STATUS_HEX, PRIORITY_HEX, UNIT_STATUS_LABELS } from '../../../utils/statusColors';
+import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../../../utils/statusColors';
 import type { Unit, CallForService, UnitStatus, CallPriority } from '../../../types';
 import { devWarn } from '../../../utils/devLog';
 
@@ -79,57 +78,13 @@ function buildCallFeature(c: CallForService): Feature<Point> | null {
   return f;
 }
 
-function makeRow(value: string, color: string, fontSize: number, weight: number, extra?: Partial<CSSStyleDeclaration>): HTMLDivElement {
-  const div = document.createElement('div');
-  div.textContent = value;
-  div.style.color = color;
-  div.style.fontSize = `${fontSize}px`;
-  div.style.fontWeight = String(weight);
-  div.style.marginTop = '2px';
-  if (extra) Object.assign(div.style, extra);
-  return div;
-}
-
-// Build the popup as DOM nodes (textContent-only) so user-influenced
-// fields like incident_type / location can never inject HTML.
-function buildPopupNode(kind: MarkerKind, payload: Unit | CallForService): HTMLDivElement {
-  const root = document.createElement('div');
-  root.style.minWidth = '160px';
-  root.style.fontFamily = 'ui-monospace, monospace';
-  root.style.background = '#0a0a0a';
-  root.style.color = '#e5e7eb';
-  root.style.padding = '8px';
-
-  if (kind === 'unit') {
-    const u = payload as Unit;
-    const color = UNIT_STATUS_HEX[u.status as UnitStatus] || '#888888';
-    root.style.border = `1px solid ${color}80`;
-    root.appendChild(makeRow(u.call_sign, color, 11, 700, { marginTop: '0' }));
-    root.appendChild(makeRow(u.officer_name || '', '#9ca3af', 9, 400));
-    const status = makeRow(UNIT_STATUS_LABELS[u.status as UnitStatus] || u.status, color, 9, 400, { marginTop: '4px' });
-    status.style.textTransform = 'uppercase';
-    status.style.letterSpacing = '0.5px';
-    root.appendChild(status);
-  } else {
-    const c = payload as CallForService;
-    const color = PRIORITY_HEX[c.priority as CallPriority] || '#888888';
-    root.style.border = `1px solid ${color}80`;
-    root.style.minWidth = '180px';
-    root.appendChild(makeRow(`${c.call_number} · ${c.priority}`, color, 11, 700, { marginTop: '0' }));
-    root.appendChild(makeRow(c.incident_type, '#e5e7eb', 9, 400));
-    root.appendChild(makeRow(c.location || '', '#9ca3af', 9, 400));
-    const status = makeRow(c.status, color, 9, 400, { marginTop: '4px' });
-    status.style.textTransform = 'uppercase';
-    status.style.letterSpacing = '0.5px';
-    root.appendChild(status);
-  }
-  return root;
-}
+// Click-to-popup is now handled by the shared useOlFeaturePopup hook,
+// which serves all feature kinds (unit/call + fi/incident/checkpoint/
+// fleet/repeat_address/dwell/prediction/call_history). This hook just
+// owns the live VectorSource that renders unit + call markers.
 
 export function useOlLiveMarkers(map: OlMap | null): void {
   const sourceRef = useRef<VectorSource | null>(null);
-  const overlayRef = useRef<Overlay | null>(null);
-  const overlayElRef = useRef<HTMLDivElement | null>(null);
   const { subscribe } = useWebSocket();
 
   const refetch = useCallback(async () => {
@@ -191,41 +146,11 @@ export function useOlLiveMarkers(map: OlMap | null): void {
     const layer = new VectorLayer({ source, zIndex: 100 });
     map.addLayer(layer);
 
-    const el = document.createElement('div');
-    el.style.position = 'absolute';
-    el.style.transform = 'translate(-50%, calc(-100% - 12px))';
-    el.style.pointerEvents = 'auto';
-    overlayElRef.current = el;
-    const overlay = new Overlay({ element: el, autoPan: { animation: { duration: 200 } } });
-    overlayRef.current = overlay;
-    map.addOverlay(overlay);
-
-    const onClick = (evt: any) => {
-      const feature = map.forEachFeatureAtPixel(evt.pixel, (f) => f as Feature<Point>);
-      if (!feature) {
-        overlay.setPosition(undefined);
-        while (el.firstChild) el.removeChild(el.firstChild);
-        return;
-      }
-      const kind = feature.get('kind') as MarkerKind;
-      const payload = feature.get('payload');
-      if (!payload) return;
-      while (el.firstChild) el.removeChild(el.firstChild);
-      el.appendChild(buildPopupNode(kind, payload));
-      const geom = feature.getGeometry();
-      if (geom) overlay.setPosition(geom.getCoordinates());
-    };
-    map.on('click', onClick);
-
     refetch();
 
     return () => {
-      map.un('click', onClick);
       map.removeLayer(layer);
-      map.removeOverlay(overlay);
       sourceRef.current = null;
-      overlayRef.current = null;
-      overlayElRef.current = null;
     };
   }, [map, refetch]);
 

@@ -8,6 +8,7 @@ import { fromLonLat } from 'ol/proj';
 import { defaults as defaultControls, ScaleLine, Attribution } from 'ol/control';
 import { useOlBeatLayer } from './hooks/useOlBeatLayer';
 import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
+import { useOlFeaturePopup } from './hooks/useOlFeaturePopup';
 import { useOlGeoJsonLayer } from './hooks/useOlGeoJsonLayer';
 import { useOlDrawTool, type DrawMode } from './hooks/useOlDrawTool';
 import { useOlDragDispatch } from './hooks/useOlDragDispatch';
@@ -119,6 +120,7 @@ export default function MapPageV2() {
 
   useOlBeatLayer(map, { visible: showBeats });
   useOlLiveMarkers(map);
+  useOlFeaturePopup(map);
   useOlDrawTool(map, { mode: drawMode, clearVersion });
   useOlDragDispatch(map);
   useOlHeatmap(map, { visible: showHeatmap, days: heatmapDays, mode: heatmapMode });
