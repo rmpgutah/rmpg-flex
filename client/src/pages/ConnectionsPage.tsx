@@ -74,6 +74,9 @@ export default function ConnectionsPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [graphDepth, setGraphDepth] = useState(2);
+  const [pathFrom, setPathFrom] = useState<{ type: string; id: number; label: string } | null>(null);
+  const [pathNodes, setPathNodes] = useState<Set<string>>(new Set());
+  const [pathEdges, setPathEdges] = useState<Set<string>>(new Set());
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -224,6 +227,24 @@ export default function ConnectionsPage() {
     });
   }, [edges, visibleNodeIds]);
 
+  async function handleNodeClick(n: SimNode) {
+    if (pathFrom && !(n.type === pathFrom.type && n.entityId === pathFrom.id)) {
+      try {
+        const data = await apiFetch<{ path: ServerNode[]; edges: ServerEdge[] }>(
+          `/connections/path?fromType=${pathFrom.type}&fromId=${pathFrom.id}&toType=${n.type}&toId=${n.entityId}`
+        );
+        setPathNodes(new Set(data.path.map(p => p.id)));
+        setPathEdges(new Set(data.edges.map(e => `${e.source}|${e.target}`)));
+      } catch (err) {
+        console.error('Path fetch error:', err);
+        alert('No path found between those nodes (within 6 hops).');
+      }
+      setPathFrom(null);
+      return;
+    }
+    setSelectedNodeId(n.id);
+  }
+
   function toggleType(t: string) {
     setHiddenTypes(prev => {
       const next = new Set(prev);
@@ -342,11 +363,18 @@ export default function ConnectionsPage() {
               const src = typeof e.source === 'string' ? nodes.find(n => n.id === e.source) : (e.source as SimNode);
               const tgt = typeof e.target === 'string' ? nodes.find(n => n.id === e.target) : (e.target as SimNode);
               if (!src || !tgt) return null;
+              const srcId = typeof e.source === 'string' ? e.source : (e.source as SimNode).id;
+              const tgtId = typeof e.target === 'string' ? e.target : (e.target as SimNode).id;
+              const inPath = pathEdges.has(`${srcId}|${tgtId}`) || pathEdges.has(`${tgtId}|${srcId}`);
+              const dim = pathNodes.size > 0 && !inPath;
               return (
                 <g key={`edge-${i}`}>
                   <line
                     x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                    stroke="#333" strokeWidth={1.5} strokeDasharray="4,3"
+                    stroke={inPath ? '#22c55e' : '#333'}
+                    strokeWidth={inPath ? 3 : 1.5}
+                    strokeDasharray={inPath ? undefined : '4,3'}
+                    opacity={dim ? 0.2 : 1}
                   />
                 </g>
               );
@@ -355,18 +383,23 @@ export default function ConnectionsPage() {
               const r = NODE_RADIUS[n.type] || 16;
               const color = NODE_COLORS[n.type] || '#888';
               const isSelected = selectedNodeId === n.id;
+              const inPath = pathNodes.has(n.id);
+              const dim = pathNodes.size > 0 && !inPath;
               return (
                 <g
                   key={n.id}
-                  onClick={() => setSelectedNodeId(n.id)}
-                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleNodeClick(n)}
+                  style={{ cursor: 'pointer', opacity: dim ? 0.25 : 1 }}
                 >
-                  {isSelected && (
+                  {inPath && (
+                    <circle cx={n.x} cy={n.y} r={r + 7} fill="none" stroke="#22c55e" strokeWidth={3} opacity={0.8} />
+                  )}
+                  {isSelected && !inPath && (
                     <circle cx={n.x} cy={n.y} r={r + 5} fill="none" stroke={color} strokeWidth={2} opacity={0.5} />
                   )}
                   <circle
                     cx={n.x} cy={n.y} r={r}
-                    fill="#0a0a0a" stroke={color} strokeWidth={2}
+                    fill="#0a0a0a" stroke={inPath ? '#22c55e' : color} strokeWidth={inPath ? 3 : 2}
                   />
                   <text
                     x={n.x} y={n.y - 1} textAnchor="middle" dominantBaseline="middle"
@@ -396,6 +429,50 @@ export default function ConnectionsPage() {
           >
             RESET VIEW
           </button>
+          {pathNodes.size > 0 && !pathFrom && (
+            <button
+              type="button"
+              onClick={() => { setPathNodes(new Set()); setPathEdges(new Set()); }}
+              className="absolute top-2 right-28 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+              style={{ borderRadius: 2 }}
+            >
+              CLEAR PATH
+            </button>
+          )}
+          {selectedNodeId && !pathFrom && (
+            <div
+              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 flex items-center gap-2 text-xs text-gray-300 z-20"
+              style={{ borderRadius: 2 }}
+            >
+              <span>Selected: {nodes.find(n => n.id === selectedNodeId)?.label}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const sel = nodes.find(n => n.id === selectedNodeId);
+                  if (sel) setPathFrom({ type: sel.type, id: sel.entityId, label: sel.label });
+                }}
+                className="text-[#d4a017] hover:underline uppercase font-semibold"
+              >
+                Start Path
+              </button>
+            </div>
+          )}
+          {pathFrom && (
+            <div
+              className="absolute top-2 left-2 right-32 bg-[#1a1a1a] border border-[#d4a017] px-3 py-2 flex items-center justify-between text-xs text-[#d4a017] z-20"
+              style={{ borderRadius: 2 }}
+            >
+              <span>Click a second node to find the path from <strong>{pathFrom.label}</strong></span>
+              <button
+                type="button"
+                onClick={() => { setPathFrom(null); setPathNodes(new Set()); setPathEdges(new Set()); }}
+                className="text-gray-300 hover:text-[#d4a017] uppercase font-semibold"
+                aria-label="Cancel path"
+              >
+                Cancel Path
+              </button>
+            </div>
+          )}
           </>
         )}
       </div>

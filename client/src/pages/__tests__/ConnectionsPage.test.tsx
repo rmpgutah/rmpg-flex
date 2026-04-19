@@ -355,3 +355,117 @@ describe('ConnectionsPage - depth slider', () => {
     });
   });
 });
+
+describe('ConnectionsPage - shortest path', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('selecting a node shows a "Start path" action', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(container.querySelectorAll('svg circle').length).toBeGreaterThanOrEqual(2));
+
+    // Click the incident node's <g> via its label text
+    const incidentLabel = await screen.findByText(/I-0001/i);
+    fireEvent.click(incidentLabel.closest('g') as any);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start path/i })).toBeInTheDocument();
+    });
+  });
+
+  it('path mode: clicking a second node calls /connections/path and highlights', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+          { id: 'person-99', type: 'person', entityId: 99, label: 'Other', metadata: {}, depth: 2 },
+        ],
+        edges: [
+          { source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' },
+          { source: 'incident-1', target: 'person-99', relationship: 'witness', sourceTable: 'incident_persons' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        path: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+          { id: 'person-99', type: 'person', entityId: 99, label: 'Other', metadata: {}, depth: 2 },
+        ],
+        edges: [
+          { source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' },
+          { source: 'incident-1', target: 'person-99', relationship: 'witness', sourceTable: 'incident_persons' },
+        ],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'j' } });
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(container.querySelectorAll('svg circle').length).toBeGreaterThanOrEqual(3));
+
+    // Click Jane's node, then Start path
+    const janeEls = screen.getAllByText('Jane Doe');
+    const janeInSvg = janeEls.find(el => el.closest('svg')) as HTMLElement;
+    fireEvent.click(janeInSvg.closest('g') as any);
+    const startBtn = await screen.findByRole('button', { name: /start path/i });
+    fireEvent.click(startBtn);
+
+    // Banner visible
+    await waitFor(() => {
+      expect(screen.getByText(/click a second node/i)).toBeInTheDocument();
+    });
+
+    // Click Other — path query fires
+    const otherEl = screen.getByText('Other');
+    fireEvent.click(otherEl.closest('g') as any);
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining(
+        '/connections/path?fromType=person&fromId=42&toType=person&toId=99'
+      ));
+    });
+  });
+
+  it('Clear path exits path mode', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(container.querySelectorAll('svg circle').length).toBeGreaterThanOrEqual(2));
+
+    const janeEls = screen.getAllByText('Jane Doe');
+    const janeInSvg = janeEls.find(el => el.closest('svg')) as HTMLElement;
+    fireEvent.click(janeInSvg.closest('g') as any);
+    fireEvent.click(await screen.findByRole('button', { name: /start path/i }));
+    await waitFor(() => expect(screen.getByText(/click a second node/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel path/i }));
+    await waitFor(() => {
+      expect(screen.queryByText(/click a second node/i)).not.toBeInTheDocument();
+    });
+  });
+});
