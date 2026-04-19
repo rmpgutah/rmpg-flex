@@ -181,6 +181,38 @@ describe('GET /api/connections/graph', () => {
     expect(res.status).toBe(200);
     expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
   });
+
+  it('traverses person → field_interview via field_interviews.person_id', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const fid = Number(d.prepare(
+      "INSERT INTO field_interviews (fi_number, person_id, location, contact_reason, officer_id) VALUES ('FI-26-00001', ?, '100 Main St', 'suspicious', ?)"
+    ).run(personId, uid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${personId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'field_interview' && n.entityId === fid)).toBe(true);
+  });
+
+  it('traverses field_interview → person', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const uid = (d.prepare('SELECT id FROM users LIMIT 1').get() as any).id;
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('FI','Subject')"
+    ).run().lastInsertRowid);
+    const fid = Number(d.prepare(
+      "INSERT INTO field_interviews (fi_number, person_id, location, contact_reason, officer_id) VALUES ('FI-26-00002', ?, '200 Oak St', 'loitering', ?)"
+    ).run(pid, uid).lastInsertRowid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=field_interview&id=${fid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+  });
 });
 
 describe('GET /api/connections/export/csv', () => {
