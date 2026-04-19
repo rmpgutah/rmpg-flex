@@ -185,10 +185,15 @@ interface BreadcrumbRow {
   time?: string;
   road_name?: string | null;
   intersection?: string | null;
+  isStart?: boolean;
+  isEnd?: boolean;
 }
 function popupForBreadcrumb(p: BreadcrumbRow): HTMLDivElement {
-  const root = buildContainer('#14b8a680', 200);
-  root.appendChild(makeRow(p.call_sign || 'Unit', '#14b8a6', 11, 700, { marginTop: '0' }));
+  const borderColor = p.isStart ? '#22c55e' : p.isEnd ? '#ef4444' : '#14b8a680';
+  const titleColor = p.isStart ? '#22c55e' : p.isEnd ? '#ef4444' : '#14b8a6';
+  const tag = p.isStart ? ' \u2022 START' : p.isEnd ? ' \u2022 END' : '';
+  const root = buildContainer(borderColor, 200);
+  root.appendChild(makeRow((p.call_sign || 'Unit') + tag, titleColor, 11, 700, { marginTop: '0' }));
   if (p.officer_name) root.appendChild(makeRow(p.officer_name, '#9ca3af', 9, 400));
 
   // Speed (m/s → mph) + heading + status, all on one informational line block
@@ -217,6 +222,70 @@ function popupForBreadcrumb(p: BreadcrumbRow): HTMLDivElement {
     root.appendChild(makeRow(roadLine, '#888888', 8, 400));
   }
   if (p.time) root.appendChild(makeRow(fmtDate(p.time), '#666666', 8, 400, { marginTop: '4px' }));
+  // Trail summary on start/end clicks
+  const summary = (p as any).trailSummary;
+  if (summary && (p.isStart || p.isEnd)) {
+    const miles = (summary.distanceM / 1609.344).toFixed(2);
+    const mins = Math.round(summary.durationMs / 60000);
+    const hh = Math.floor(mins / 60);
+    const mm = mins % 60;
+    const dur = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
+    const avgMph = (summary.avgSpeedMps * 2.237).toFixed(0);
+    const maxMph = (summary.maxSpeedMps * 2.237).toFixed(0);
+    root.appendChild(makeRow(`Trail: ${miles} mi / ${dur}`, '#fbbf24', 9, 700, { marginTop: '6px' }));
+    root.appendChild(makeRow(`avg ${avgMph} mph · max ${maxMph} mph · ${summary.pointCount} pts`, '#9ca3af', 8, 400));
+  }
+  return root;
+}
+
+// ─── Stop / speed-warning / hard-brake / status-change / milestone popups ──
+
+interface BcAnalysisRow extends BreadcrumbRow { dwell_minutes?: number; mile?: number; }
+
+function popupForStop(p: BcAnalysisRow): HTMLDivElement {
+  const root = buildContainer('#fbbf24', 200);
+  root.appendChild(makeRow('STOP / PARKED', '#fbbf24', 11, 800, { marginTop: '0', letterSpacing: '1px' }));
+  if (p.call_sign) root.appendChild(makeRow(p.call_sign, '#e5e7eb', 9, 700, { marginTop: '4px' }));
+  if (typeof p.dwell_minutes === 'number') {
+    root.appendChild(makeRow(`Dwell: ${p.dwell_minutes} min`, '#fbbf24', 9, 400));
+  }
+  if (p.road_name) root.appendChild(makeRow(p.road_name, '#888888', 8, 400));
+  if (p.time) root.appendChild(makeRow(fmtDate(p.time), '#666666', 8, 400, { marginTop: '2px' }));
+  return root;
+}
+function popupForSpeedWarning(p: BcAnalysisRow): HTMLDivElement {
+  const root = buildContainer('#ef4444', 200);
+  root.appendChild(makeRow('\u26A0 SPEED WARNING', '#ef4444', 11, 800, { marginTop: '0', letterSpacing: '1px' }));
+  if (p.call_sign) root.appendChild(makeRow(p.call_sign, '#e5e7eb', 9, 700, { marginTop: '4px' }));
+  const mph = typeof p.speed === 'number' ? (p.speed * 2.237).toFixed(0) + ' mph' : '';
+  if (mph) root.appendChild(makeRow(mph, '#ef4444', 9, 400));
+  if (p.road_name) root.appendChild(makeRow(p.road_name, '#888888', 8, 400));
+  if (p.time) root.appendChild(makeRow(fmtDate(p.time), '#666666', 8, 400, { marginTop: '2px' }));
+  return root;
+}
+function popupForHardBrake(p: BcAnalysisRow): HTMLDivElement {
+  const root = buildContainer('#dc2626', 200);
+  root.appendChild(makeRow('\u26A0 HARD BRAKE', '#dc2626', 11, 800, { marginTop: '0', letterSpacing: '1px' }));
+  if (p.call_sign) root.appendChild(makeRow(p.call_sign, '#e5e7eb', 9, 700, { marginTop: '4px' }));
+  const mph = typeof p.speed === 'number' ? (p.speed * 2.237).toFixed(0) + ' mph' : '';
+  if (mph) root.appendChild(makeRow(`@ ${mph}`, '#9ca3af', 9, 400));
+  if (p.time) root.appendChild(makeRow(fmtDate(p.time), '#666666', 8, 400, { marginTop: '2px' }));
+  return root;
+}
+function popupForStatusChange(p: BcAnalysisRow): HTMLDivElement {
+  const root = buildContainer('#a855f7', 200);
+  root.appendChild(makeRow('STATUS CHANGE', '#a855f7', 11, 800, { marginTop: '0', letterSpacing: '1px' }));
+  if (p.call_sign) root.appendChild(makeRow(p.call_sign, '#e5e7eb', 9, 700, { marginTop: '4px' }));
+  if (p.status) root.appendChild(makeRow(`\u2192 ${p.status}`, '#a855f7', 9, 400, { textTransform: 'uppercase' }));
+  if (p.time) root.appendChild(makeRow(fmtDate(p.time), '#666666', 8, 400, { marginTop: '2px' }));
+  return root;
+}
+function popupForMilestone(p: BcAnalysisRow): HTMLDivElement {
+  const root = buildContainer('#14b8a6', 200);
+  const mi = p.mile != null ? `Mile ${p.mile}` : 'Milestone';
+  root.appendChild(makeRow(mi, '#14b8a6', 11, 800, { marginTop: '0', letterSpacing: '1px' }));
+  if (p.call_sign) root.appendChild(makeRow(p.call_sign, '#e5e7eb', 9, 700, { marginTop: '4px' }));
+  if (p.time) root.appendChild(makeRow(fmtDate(p.time), '#666666', 8, 400, { marginTop: '2px' }));
   return root;
 }
 
@@ -236,6 +305,11 @@ const POPUP_BUILDERS: Record<string, (payload: any) => HTMLDivElement> = {
   breadcrumb: popupForBreadcrumb,
   panic: popupForPanic,
   geofence: popupForGeofence,
+  stop: popupForStop,
+  speed_warning: popupForSpeedWarning,
+  hard_brake: popupForHardBrake,
+  status_change: popupForStatusChange,
+  milestone: popupForMilestone,
 };
 
 /**
