@@ -1,6 +1,6 @@
 import { Map as MapIcon } from 'lucide-react';
 
-export type MapStyleKey = 'dark' | 'light' | 'voyager';
+export type MapStyleKey = 'dark' | 'detail' | 'light' | 'voyager';
 
 interface MapV2StyleSwitcherProps {
   value: MapStyleKey;
@@ -9,6 +9,7 @@ interface MapV2StyleSwitcherProps {
 
 const OPTIONS: { value: MapStyleKey; label: string; cached: boolean }[] = [
   { value: 'dark', label: 'Dark', cached: true },
+  { value: 'detail', label: 'Detail', cached: false },
   { value: 'light', label: 'Light', cached: false },
   { value: 'voyager', label: 'Voyager', cached: false },
 ];

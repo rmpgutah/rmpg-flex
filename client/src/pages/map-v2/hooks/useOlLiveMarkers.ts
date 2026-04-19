@@ -6,6 +6,7 @@ import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import Style from 'ol/style/Style';
 import CircleStyle from 'ol/style/Circle';
+import RegularShape from 'ol/style/RegularShape';
 import StrokeStyle from 'ol/style/Stroke';
 import FillStyle from 'ol/style/Fill';
 import TextStyle from 'ol/style/Text';
@@ -18,40 +19,76 @@ import { devWarn } from '../../../utils/devLog';
 
 type MarkerKind = 'unit' | 'call';
 
-function unitStyle(u: Unit): Style {
+const SHADOW = new Style({
+  image: new CircleStyle({
+    radius: 9,
+    fill: new FillStyle({ color: '#00000055' }),
+    displacement: [1.5, -1.5],
+  }),
+});
+
+/** Unit marker — directional triangle when moving (heading present),
+ *  filled circle when stationary. Always with a soft drop shadow for
+ *  depth + a bold call-sign label above. */
+function unitStyle(u: Unit): Style[] {
   const color = UNIT_STATUS_HEX[u.status as UnitStatus] || '#888888';
-  return new Style({
-    image: new CircleStyle({
-      radius: 7,
-      fill: new FillStyle({ color }),
-      stroke: new StrokeStyle({ color: '#0a0a0a', width: 2 }),
-    }),
+  const heading = (u as any).heading;
+  const moving = typeof heading === 'number' && Number.isFinite(heading);
+  const main = new Style({
+    image: moving
+      ? new RegularShape({
+          points: 3,
+          radius: 10,
+          rotation: (heading as number) * Math.PI / 180,
+          fill: new FillStyle({ color }),
+          stroke: new StrokeStyle({ color: '#0a0a0a', width: 1.5 }),
+        })
+      : new CircleStyle({
+          radius: 7,
+          fill: new FillStyle({ color }),
+          stroke: new StrokeStyle({ color: '#0a0a0a', width: 2 }),
+        }),
     text: new TextStyle({
       text: u.call_sign,
-      offsetY: -16,
-      font: '600 10px ui-monospace, monospace',
+      offsetY: -18,
+      font: '700 10px ui-monospace, monospace',
       fill: new FillStyle({ color: '#e5e7eb' }),
       stroke: new StrokeStyle({ color: '#000000', width: 3 }),
     }),
   });
+  return [SHADOW, main];
 }
 
-function callStyle(c: CallForService): Style {
+const PRIORITY_RADIUS: Record<string, number> = {
+  P1: 11,
+  P2: 9,
+  P3: 7,
+  P4: 6,
+};
+
+/** Call marker — downward-pointing alert triangle, sized by priority.
+ *  P1 is largest + most-saturated to draw eye to highest-priority calls. */
+function callStyle(c: CallForService): Style[] {
   const color = PRIORITY_HEX[c.priority as CallPriority] || '#888888';
-  return new Style({
-    image: new CircleStyle({
-      radius: 6,
-      fill: new FillStyle({ color: `${color}88` }),
-      stroke: new StrokeStyle({ color, width: 2 }),
+  const radius = PRIORITY_RADIUS[c.priority] ?? 7;
+  const main = new Style({
+    image: new RegularShape({
+      points: 3,
+      radius,
+      // π = points down (alert/warning convention)
+      rotation: Math.PI,
+      fill: new FillStyle({ color: `${color}cc` }),
+      stroke: new StrokeStyle({ color: '#0a0a0a', width: 1.5 }),
     }),
     text: new TextStyle({
       text: c.call_number,
-      offsetY: 14,
-      font: '600 9px ui-monospace, monospace',
+      offsetY: 16,
+      font: '700 9px ui-monospace, monospace',
       fill: new FillStyle({ color }),
       stroke: new StrokeStyle({ color: '#000000', width: 3 }),
     }),
   });
+  return [SHADOW, main];
 }
 
 function buildUnitFeature(u: Unit): Feature<Point> | null {
