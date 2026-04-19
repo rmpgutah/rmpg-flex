@@ -582,7 +582,7 @@ router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor'
 router.get('/activity-feed', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '100000', offset = '0', entityType } = req.query;
+    const { limit = '50', offset = '0', entityType } = req.query;
     const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offsetNum = parseInt(offset as string, 10);
 

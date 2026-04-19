@@ -124,7 +124,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       search,
       archived,
       page = '1',
-      limit = '100000',
+      limit = '50',
     } = req.query;
 
     // Validate enum query filters (status supports comma-separated values)
