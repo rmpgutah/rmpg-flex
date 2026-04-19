@@ -6,6 +6,7 @@ import { select } from 'd3-selection';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
+import { exportGraphToPdf } from '../utils/graphToPdf';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -343,6 +344,41 @@ export default function ConnectionsPage() {
     }
   }
 
+  async function handleExportPdf() {
+    if (!svgRef.current || !seed) return;
+    try {
+      const nodeRows = visibleNodes.map(n => ({
+        type: n.type,
+        label: n.label,
+        annotation: annotations[n.id],
+      }));
+
+      const blob = await exportGraphToPdf(svgRef.current, nodeRows, {
+        seedType: seed.type,
+        seedId: seed.id,
+        seedLabel: seed.label,
+        generatedAt: new Date(),
+      });
+
+      const url = URL.createObjectURL(blob);
+      try {
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const name = `connections-${seed.type}-${seed.id}-${ts}.pdf`;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert('PDF export failed — see console for details.');
+    }
+  }
+
   function toggleType(t: string) {
     setHiddenTypes(prev => {
       const next = new Set(prev);
@@ -385,6 +421,15 @@ export default function ConnectionsPage() {
             style={{ borderRadius: 2 }}
           >
             EXPORT PNG
+          </button>
+          <button
+            type="button"
+            disabled={!seed || nodes.length === 0}
+            onClick={handleExportPdf}
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ borderRadius: 2 }}
+          >
+            EXPORT PDF
           </button>
           <div className="relative">
             <button
