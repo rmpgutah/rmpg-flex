@@ -5,6 +5,7 @@ import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
 import { select } from 'd3-selection';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
+import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -329,6 +330,19 @@ export default function ConnectionsPage() {
     }
   }
 
+  async function handleExportPng() {
+    if (!svgRef.current) return;
+    try {
+      const dataUrl = await svgElementToPngDataUrl(svgRef.current, { scale: 2, backgroundColor: '#0a0a0a' });
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const name = seed ? `connections-${seed.type}-${seed.id}-${ts}.png` : `connections-${ts}.png`;
+      downloadDataUrl(dataUrl, name);
+    } catch (err) {
+      console.error('PNG export failed:', err);
+      alert('PNG export failed — see console for details.');
+    }
+  }
+
   function toggleType(t: string) {
     setHiddenTypes(prev => {
       const next = new Set(prev);
@@ -362,6 +376,15 @@ export default function ConnectionsPage() {
             style={{ borderRadius: 2 }}
           >
             SAVE INVESTIGATION
+          </button>
+          <button
+            type="button"
+            disabled={!seed || nodes.length === 0}
+            onClick={handleExportPng}
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ borderRadius: 2 }}
+          >
+            EXPORT PNG
           </button>
           <div className="relative">
             <button

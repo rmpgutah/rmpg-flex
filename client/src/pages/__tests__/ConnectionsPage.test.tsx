@@ -805,3 +805,29 @@ describe('ConnectionsPage - annotations', () => {
     });
   });
 });
+
+describe('ConnectionsPage - PNG export', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('EXPORT PNG button is disabled without a seed', () => {
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: /export png/i })).toBeDisabled();
+  });
+
+  it('EXPORT PNG button is enabled once the graph has nodes', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'ja' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export png/i })).not.toBeDisabled();
+    });
+  });
+});
