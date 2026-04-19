@@ -591,8 +591,31 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
   const edges: GEdge[] = [];
   const queue: Array<{ type: string; id: number; depth: number }> = [];
 
+  // Per-request caches: keyed by `${type}-${id}`.
+  // Scope: one buildGraph call. Keeps BFS revisits cheap.
+  const labelCache = new Map<string, string>();
+  const metadataCache = new Map<string, Record<string, any>>();
+
   function nodeKey(type: string, id: number): string {
     return `${type}-${id}`;
+  }
+
+  function cachedLabel(type: string, id: number): string {
+    const k = nodeKey(type, id);
+    const hit = labelCache.get(k);
+    if (hit !== undefined) return hit;
+    const miss = getRecordLabel(db, type, id);
+    labelCache.set(k, miss);
+    return miss;
+  }
+
+  function cachedMetadata(type: string, id: number): Record<string, any> {
+    const k = nodeKey(type, id);
+    const hit = metadataCache.get(k);
+    if (hit !== undefined) return hit;
+    const miss = getNodeMetadata(db, type, id);
+    metadataCache.set(k, miss);
+    return miss;
   }
 
   function addNode(type: string, id: number, depth: number): boolean {
@@ -603,8 +626,8 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
       id: key,
       type,
       entityId: id,
-      label: getRecordLabel(db, type, id),
-      metadata: getNodeMetadata(db, type, id),
+      label: cachedLabel(type, id),
+      metadata: cachedMetadata(type, id),
       depth,
     });
     return true;

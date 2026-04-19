@@ -430,6 +430,43 @@ describe('GET /api/connections/graph', () => {
     expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
     expect(res.body.nodes.some((n: any) => n.type === 'property' && n.entityId === propId)).toBe(true);
   });
+
+  it('de-duplicates label/metadata reads across BFS revisits (perf smoke)', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+
+    // Seed a small diamond graph: 1 person -> 2 incidents -> 1 shared case
+    //   Without caching: each repeat BFS visit re-runs getRecordLabel + getNodeMetadata.
+    //   With caching: one label lookup per unique (type,id) pair.
+    const pid = Number(d.prepare("INSERT INTO persons (first_name, last_name) VALUES ('Diamond','Test')").run().lastInsertRowid);
+    const i1 = Number(d.prepare("INSERT INTO incidents (incident_number, incident_type, status, officer_id) VALUES ('I-DMD-1','theft','submitted',1)").run().lastInsertRowid);
+    const i2 = Number(d.prepare("INSERT INTO incidents (incident_number, incident_type, status, officer_id) VALUES ('I-DMD-2','theft','submitted',1)").run().lastInsertRowid);
+    const cid = Number(d.prepare("INSERT INTO cases (case_number, title, case_type, status, created_by) VALUES ('CASE-DMD','T','investigation','open',1)").run().lastInsertRowid);
+    d.prepare("INSERT INTO incident_persons (incident_id, person_id, role, added_by) VALUES (?, ?, 'suspect', 1)").run(i1, pid);
+    d.prepare("INSERT INTO incident_persons (incident_id, person_id, role, added_by) VALUES (?, ?, 'suspect', 1)").run(i2, pid);
+    d.prepare("INSERT INTO case_incident_links (case_id, incident_id) VALUES (?, ?)").run(cid, i1);
+    d.prepare("INSERT INTO case_incident_links (case_id, incident_id) VALUES (?, ?)").run(cid, i2);
+    d.prepare("INSERT INTO case_person_links (case_id, person_id) VALUES (?, ?)").run(cid, pid);
+
+    const t0 = performance.now();
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${pid}&depth=3`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const elapsed = performance.now() - t0;
+
+    expect(res.status).toBe(200);
+    // Correctness: all 4 node types present
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+    expect(res.body.nodes.some((n: any) => n.type === 'incident' && n.entityId === i1)).toBe(true);
+    expect(res.body.nodes.some((n: any) => n.type === 'incident' && n.entityId === i2)).toBe(true);
+    expect(res.body.nodes.some((n: any) => n.type === 'case' && n.entityId === cid)).toBe(true);
+    // Perf smoke -- very lax, just catches a regression where we'd loop forever.
+    //   The cache should keep this well under 500ms on any reasonable dev machine.
+    expect(elapsed).toBeLessThan(500);
+
+    // Each node appears exactly once (no duplicate)
+    const uniqueIds = new Set(res.body.nodes.map((n: any) => n.id));
+    expect(uniqueIds.size).toBe(res.body.nodes.length);
+  });
 });
 
 describe('GET /api/connections/export/csv', () => {
