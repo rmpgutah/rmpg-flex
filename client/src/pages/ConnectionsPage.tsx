@@ -77,6 +77,12 @@ export default function ConnectionsPage() {
   const [pathFrom, setPathFrom] = useState<{ type: string; id: number; label: string } | null>(null);
   const [pathNodes, setPathNodes] = useState<Set<string>>(new Set());
   const [pathEdges, setPathEdges] = useState<Set<string>>(new Set());
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveDescription, setSaveDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveFlash, setSaveFlash] = useState(false);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -245,6 +251,36 @@ export default function ConnectionsPage() {
     setSelectedNodeId(n.id);
   }
 
+  async function handleSave() {
+    if (!seed || !saveName.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const pinnedLayout: Record<string, { x: number; y: number }> = {};
+      for (const n of nodes) pinnedLayout[n.id] = { x: n.x, y: n.y };
+      const payload = {
+        name: saveName.trim(),
+        description: saveDescription.trim() || undefined,
+        seed_nodes: [{ type: seed.type, id: seed.id }],
+        pinned_layout: pinnedLayout,
+      };
+      await apiFetch('/connections/investigations', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      setSaveModalOpen(false);
+      setSaveName('');
+      setSaveDescription('');
+      setSaveFlash(true);
+      window.setTimeout(() => setSaveFlash(false), 2500);
+    } catch (err: any) {
+      setSaveError(err?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function toggleType(t: string) {
     setHiddenTypes(prev => {
       const next = new Set(prev);
@@ -270,6 +306,18 @@ export default function ConnectionsPage() {
             aria-label="Seed search"
           />
           {searching && <Loader2 className="w-4 h-4 animate-spin text-[#d4a017]" />}
+          <button
+            type="button"
+            disabled={!seed || nodes.length === 0}
+            onClick={() => setSaveModalOpen(true)}
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ borderRadius: 2 }}
+          >
+            SAVE INVESTIGATION
+          </button>
+          {saveFlash && (
+            <span className="text-xs text-green-400 ml-2">Saved</span>
+          )}
         </div>
 
         {dropdownOpen && results.length > 0 && (
@@ -504,6 +552,67 @@ export default function ConnectionsPage() {
         </div>
       )}
       </div>
+
+      {saveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div
+            role="dialog"
+            aria-label="Save investigation"
+            className="w-96 bg-surface-raised border border-[#222222] p-4 space-y-3"
+            style={{ borderRadius: 2 }}
+          >
+            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">Save Investigation</h2>
+
+            <label className="block text-xs text-gray-300">
+              Name
+              <input
+                type="text"
+                className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none"
+                style={{ borderRadius: 2 }}
+                value={saveName}
+                onChange={e => setSaveName(e.target.value)}
+                autoFocus
+              />
+            </label>
+
+            <label className="block text-xs text-gray-300">
+              Description
+              <textarea
+                className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-20"
+                style={{ borderRadius: 2 }}
+                value={saveDescription}
+                onChange={e => setSaveDescription(e.target.value)}
+              />
+            </label>
+
+            {saveError && <div className="text-xs text-red-400">{saveError}</div>}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSaveModalOpen(false);
+                  setSaveName('');
+                  setSaveDescription('');
+                  setSaveError(null);
+                }}
+                className="px-3 py-1.5 text-xs text-gray-300 hover:text-[#d4a017]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!saveName.trim() || saving}
+                className="px-3 py-1.5 text-xs bg-[#d4a017] text-black font-semibold hover:bg-[#e0b030] disabled:opacity-40"
+                style={{ borderRadius: 2 }}
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import ConnectionsPage from '../ConnectionsPage';
 
 const mockFetch = vi.fn();
 vi.mock('../../hooks/useApi', () => ({
-  apiFetch: (url: string) => mockFetch(url),
+  apiFetch: (url: string, opts?: any) => opts === undefined ? mockFetch(url) : mockFetch(url, opts),
 }));
 
 describe('ConnectionsPage', () => {
@@ -467,5 +467,116 @@ describe('ConnectionsPage - shortest path', () => {
     await waitFor(() => {
       expect(screen.queryByText(/click a second node/i)).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('ConnectionsPage - save investigation', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('shows SAVE INVESTIGATION button that is disabled without a seed', () => {
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const btn = screen.getByRole('button', { name: /save investigation/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it('opens the save modal when clicked', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /save investigation/i })).not.toBeDisabled());
+
+    fireEvent.click(screen.getByRole('button', { name: /save investigation/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /save investigation/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
+    });
+  });
+
+  it('POSTs the investigation with seed_nodes and pinned_layout', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      })
+      .mockResolvedValueOnce({ id: 77, user_id: 1, name: 'Jones case' });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /save investigation/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /save investigation/i }));
+    await waitFor(() => screen.getByRole('dialog', { name: /save investigation/i }));
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Jones case' } });
+    fireEvent.change(screen.getByLabelText(/^description/i), { target: { value: 'Repeat burglary suspect' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/connections/investigations'),
+        expect.anything(),
+      );
+    });
+  });
+
+  it('closes the modal on successful save', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 }],
+        edges: [],
+      })
+      .mockResolvedValueOnce({ id: 77, user_id: 1, name: 'X' });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /save investigation/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /save investigation/i }));
+    await waitFor(() => screen.getByRole('dialog', { name: /save investigation/i }));
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'X' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /save investigation/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('Cancel closes the modal without calling the API', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /save investigation/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /save investigation/i }));
+    await waitFor(() => screen.getByRole('dialog', { name: /save investigation/i }));
+    const callsBeforeCancel = mockFetch.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mockFetch.mock.calls.length).toBe(callsBeforeCancel);
   });
 });
