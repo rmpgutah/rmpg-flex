@@ -36,6 +36,10 @@ import { useOlGeofences } from './hooks/useOlGeofences';
 import MapV2StyleSwitcher, { type MapStyleKey } from './components/MapV2StyleSwitcher';
 import MapV2ContextMenu from './components/MapV2ContextMenu';
 import MapV2GeolocateButton from './components/MapV2GeolocateButton';
+import MapV2RecenterButton from './components/MapV2RecenterButton';
+import MapV2CoverageBar from './components/MapV2CoverageBar';
+import { useDispatchCoverageStats } from './hooks/useDispatchCoverageStats';
+import { useOlAutoPanToP1 } from './hooks/useOlAutoPanToP1';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
@@ -161,6 +165,13 @@ export default function MapPageV2() {
   useOlAlerts(map, { visible: showAlerts });
   useOlGeofences(map, { visible: showGeofences });
   const geo = useOlGeolocation(map);
+  const coverageStats = useDispatchCoverageStats();
+  useOlAutoPanToP1(map, { enabled: true });
+
+  const recenter = () => {
+    if (!map) return;
+    map.getView().animate({ center: fromLonLat(SLC_LON_LAT), zoom: 11, duration: 500 });
+  };
   const contextMenu = useOlContextMenu(map);
 
   // Tile-source swapping for the style switcher
@@ -377,6 +388,8 @@ export default function MapPageV2() {
         onClear={() => setClearVersion(v => v + 1)}
       />
       <MapV2GeolocateButton onLocate={geo.locate} enabled={geo.enabled} />
+      <MapV2RecenterButton onClick={recenter} />
+      <MapV2CoverageBar stats={coverageStats} />
       <MapV2StyleSwitcher value={mapStyle} onChange={setMapStyle} />
       <MapV2ContextMenu
         menu={contextMenu.menu}
