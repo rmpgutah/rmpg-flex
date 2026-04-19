@@ -671,7 +671,7 @@ router.get('/recent', (req: Request, res: Response) => {
     const parsedPage = parseInt(req.query.page as string, 10);
     const page = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
     const parsedLimit = parseInt(req.query.limit as string, 10);
-    const limit = Math.max(1, isNaN(parsedLimit) ? 50 : parsedLimit);
+    const limit = Math.min(100000, Math.max(1, (parsedLimit) || 100000));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];

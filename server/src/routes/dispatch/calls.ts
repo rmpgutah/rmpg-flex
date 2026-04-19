@@ -124,7 +124,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       search,
       archived,
       page = '1',
-      limit = '50',
+      limit = '100000',
     } = req.query;
 
     // Validate enum query filters (status supports comma-separated values)
@@ -184,7 +184,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit as string, 10) || 50);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM calls_for_service c ${whereClause}`).get(...params) as any;
@@ -1920,7 +1920,7 @@ router.get('/calls/search', requireRole('admin', 'manager', 'supervisor', 'offic
       return;
     }
 
-    const searchLimit = Math.max(1, parseInt(limitStr as string, 10) || 25);
+    const searchLimit = Math.min(100000, Math.max(1, (parseInt(limitStr as string, 10)) || 100000));
     const term = `%${escapeLike(String(q).trim())}%`;
 
     // Upgrade 24: Search across call_number, location_address, narrative/notes, caller info, description, disposition

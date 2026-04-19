@@ -836,7 +836,7 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
     // Fix 41: search/filter by name
     const search = req.query.search as string | undefined;
     // Fix 62: LIMIT on district queries
-    const limit = Math.max(1, Math.min(5000, parseInt(req.query.limit as string, 10) || 5000));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     let query = `
       SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
@@ -1510,7 +1510,7 @@ router.get('/repeat-addresses', requireRole('admin', 'manager', 'supervisor', 'o
     const minCount = Math.max(2, Math.min(100, parseInt(req.query.min_count as string, 10) || 3));
     // Fix 4: Pagination support
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.max(1, Math.min(500, parseInt(req.query.limit as string, 10) || 100));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
     const offset = (page - 1) * limit;
 
     const cutoff = `-${days}`;
@@ -1620,7 +1620,7 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 7));
-    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit as string, 10) || 500));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     // Parse comma-separated filters
     const validStatuses = ['cleared', 'closed', 'archived'];

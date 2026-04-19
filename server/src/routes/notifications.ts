@@ -100,13 +100,13 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const {
       page = '1',
-      per_page = '25',
+      per_page = '100000',
       type,
       is_read,
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPageNum = Math.max(1, parseInt(per_page as string, 10) || 25);
+    const perPageNum = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPageNum;
 
     const conditions: string[] = ['n.user_id = ?'];
@@ -542,7 +542,7 @@ router.post('/delete-read', (req: Request, res: Response) => {
 router.get('/admin/all', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(String(req.query.limit || '100'), 10);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '100'), 10)) || 100000));
     const offset = parseInt(String(req.query.offset || '0'), 10);
     const userId = req.query.user_id ? parseInt(String(req.query.user_id), 10) : null;
 

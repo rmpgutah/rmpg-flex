@@ -597,7 +597,7 @@ router.get('/panic/active', requireRole('admin', 'supervisor', 'manager', 'dispa
 router.get('/panic/history', requireRole('admin', 'supervisor', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.max(Number(req.query.limit) || 25, 1);
+    const limit = Math.min(100000, Math.max(1, (Number(req.query.limit)) || 100000));
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     const total = (db.prepare('SELECT COUNT(*) as count FROM panic_alerts').get() as any)?.count || 0;

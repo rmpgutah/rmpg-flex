@@ -1001,8 +1001,8 @@ router.get('/audit/export', (req: Request, res: Response) => {
 router.get('/config-history', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '50' } = req.query;
-    const limitNum = Math.min(500, parseInt(limit as string, 10) || 50);
+    const { limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     const rows = db.prepare(`
       SELECT cch.*, u.full_name as changed_by_name
@@ -1098,8 +1098,8 @@ router.get('/backup-status', (req: Request, res: Response) => {
 router.get('/error-logs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '50' } = req.query;
-    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+    const { limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     // Use activity_log entries that contain 'error' in action/details
     const rows = db.prepare(`
@@ -2670,7 +2670,7 @@ router.get('/export/full', requireRole('admin'), (req: Request, res: Response) =
 router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(String(req.query.limit || '50'), 10);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '50'), 10)) || 100000));
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const rows = db.prepare(`
@@ -3498,7 +3498,7 @@ router.post('/audit/purge-before', requireRole('admin'), (req: Request, res: Res
 router.get('/audit/user/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(String(req.query.limit || '200'), 10);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '200'), 10)) || 100000));
     const rows = db.prepare('SELECT * FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(parseInt(paramStr(req.params.userId), 10), limit);
     res.json({ entries: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }

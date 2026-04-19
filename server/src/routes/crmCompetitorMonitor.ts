@@ -217,7 +217,7 @@ router.get(
       return;
     }
 
-    const limit = Math.max(1, Number(req.query.limit) || 20);
+    const limit = Math.min(100000, Math.max(1, (Number(req.query.limit)) || 100000));
 
     try {
       const db = getDb();

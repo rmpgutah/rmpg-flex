@@ -863,7 +863,7 @@ router.get('/', requireRole('admin', 'manager', 'officer', 'dispatcher'), (req: 
   try {
     const db = getDb();
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const perPage = Math.max(1, parseInt(req.query.per_page as string, 10) || 25);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(req.query.per_page as string, 10)) || 100000));
     const search = (req.query.search as string || '').trim();
 
     let where = '1=1';
