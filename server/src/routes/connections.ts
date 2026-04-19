@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 import { auditLog } from '../utils/auditLogger';
+import { buildSuggestions } from '../utils/connectionSuggestions';
 
 const router = Router();
 router.use(authenticateToken);
@@ -1180,6 +1181,56 @@ router.delete('/investigations/:id', requireRole(...INVESTIGATION_ROLES), (req: 
   } catch (err: any) {
     console.error('[Connections] investigation delete error:', err?.message);
     res.status(500).json({ error: 'Delete failed', code: 'INV_DELETE_FAILED' });
+  }
+});
+
+// ─── SUGGESTIONS (rule-based, admin/manager/supervisor only) ────
+
+const SUGGESTIONS_DISCLAIMER =
+  'Heuristic — not evidence. Surfaces patterns for investigative follow-up only.';
+
+function suggestionsEnabled(db: any): boolean {
+  try {
+    const row = db.prepare("SELECT config_value as value FROM system_config WHERE config_key = 'connections.suggestions_enabled'").get() as any;
+    if (!row) return false;
+    const v = String(row.value).toLowerCase();
+    return v === 'true' || v === '1' || v === 'yes';
+  } catch { return false; }
+}
+
+// GET /connections/suggestions?type=person&id=123
+router.get('/suggestions', requireRole('admin','manager','supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    if (!suggestionsEnabled(db)) {
+      return res.status(403).json({
+        error: 'Suggestions feature is disabled. Enable via system_config key connections.suggestions_enabled.',
+        code: 'FEATURE_DISABLED',
+      });
+    }
+
+    const { type, id } = req.query;
+    if (type !== 'person') {
+      return res.status(400).json({
+        error: 'Only type=person is supported in v1',
+        code: 'UNSUPPORTED_SEED_TYPE',
+      });
+    }
+    if (!id || isNaN(Number(id)) || Number(id) < 1) {
+      return res.status(400).json({ error: 'id must be a positive integer' });
+    }
+
+    const suggestions = buildSuggestions(db, Number(id));
+    auditLog(req, 'SEARCH', 'record_link', Number(id), `Suggestions: person #${id} → ${suggestions.length} hits`);
+
+    res.json({
+      disclaimer: SUGGESTIONS_DISCLAIMER,
+      seed: { type: 'person', id: Number(id) },
+      suggestions,
+    });
+  } catch (err: any) {
+    console.error('[Connections] suggestions error:', err?.message);
+    res.status(500).json({ error: 'Suggestions failed', code: 'SUGGESTIONS_FAILED' });
   }
 });
 
