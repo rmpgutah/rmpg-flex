@@ -455,7 +455,7 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
-    const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
+    const limit = Math.min(100000, Math.max(1, (Number(req.query.limit)) || 100000));
     const rawOffset = Number(req.query.offset) || 0;
     const offset = Math.max(0, Math.min(rawOffset, 100000));
 
