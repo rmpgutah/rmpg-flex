@@ -30,7 +30,9 @@ import { useDaylightPhase } from './hooks/useDaylightPhase';
 import { useOlScreenshot } from './hooks/useOlScreenshot';
 import { useOlTrackingLines } from './hooks/useOlTrackingLines';
 import { useOlAlerts } from './hooks/useOlAlerts';
+import { useOlContextMenu } from './hooks/useOlContextMenu';
 import MapV2StyleSwitcher, { type MapStyleKey } from './components/MapV2StyleSwitcher';
+import MapV2ContextMenu from './components/MapV2ContextMenu';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
@@ -153,6 +155,7 @@ export default function MapPageV2() {
   useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor });
   useOlTrackingLines(map, { visible: showTracking });
   useOlAlerts(map, { visible: showAlerts });
+  const contextMenu = useOlContextMenu(map);
 
   // Tile-source swapping for the style switcher
   useEffect(() => {
@@ -355,6 +358,20 @@ export default function MapPageV2() {
         onClear={() => setClearVersion(v => v + 1)}
       />
       <MapV2StyleSwitcher value={mapStyle} onChange={setMapStyle} />
+      <MapV2ContextMenu
+        menu={contextMenu.menu}
+        onClose={contextMenu.close}
+        onSearchNearby={(lat, lng) => {
+          // Reuse the address search bar's underlying mechanism — pan
+          // and drop a pin at the right-click point so the user has
+          // an immediate visual anchor.
+          addressSearch.selectAddress({
+            display_name: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+            latitude: lat,
+            longitude: lng,
+          });
+        }}
+      />
       <MapV2StatusBar daylight={daylight} onScreenshot={screenshot} />
     </div>
   );
