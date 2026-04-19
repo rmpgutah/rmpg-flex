@@ -5,7 +5,7 @@ import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 import { fromLonLat } from 'ol/proj';
-import { defaults as defaultControls, ScaleLine, Attribution } from 'ol/control';
+import { defaults as defaultControls, ScaleLine, Attribution, FullScreen, ZoomSlider, OverviewMap } from 'ol/control';
 import { useOlBeatLayer } from './hooks/useOlBeatLayer';
 import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
 import { useOlFeaturePopup } from './hooks/useOlFeaturePopup';
@@ -28,6 +28,7 @@ import {
 } from './hooks/useOlOperationalLayers';
 import { useDaylightPhase } from './hooks/useDaylightPhase';
 import { useOlScreenshot } from './hooks/useOlScreenshot';
+import { useOlTrackingLines } from './hooks/useOlTrackingLines';
 import MapV2LayersPanel, { type LayerSection } from './components/MapV2LayersPanel';
 import { useWebSocket } from '../../context/WebSocketContext';
 import MapV2AddressSearch from './components/MapV2AddressSearch';
@@ -59,6 +60,7 @@ export default function MapPageV2() {
   const [showSafety, setShowSafety] = useState(false);
   const [showEnforcement, setShowEnforcement] = useState(false);
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(false);
+  const [showTracking, setShowTracking] = useState(true);
   const [showFi, setShowFi] = useState(false);
   const [showIncidents, setShowIncidents] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
@@ -95,6 +97,12 @@ export default function MapPageV2() {
       }),
     });
 
+    // Mini-map (top-right corner) — uses the same tile cache to stay
+    // offline-capable.
+    const overviewTileLayer = new TileLayer({
+      source: new XYZ({ url: '/tiles/{z}/{x}/{y}.png', maxZoom: 15 }),
+    });
+
     const instance = new Map({
       target: mapDivRef.current,
       layers: [tileLayer],
@@ -107,6 +115,15 @@ export default function MapPageV2() {
       controls: defaultControls({ attribution: false }).extend([
         new ScaleLine({ units: 'us', minWidth: 80 }),
         new Attribution({ collapsible: false }),
+        new FullScreen({ tipLabel: 'Toggle full-screen' }),
+        new ZoomSlider(),
+        new OverviewMap({
+          collapsed: true,
+          collapseLabel: '\u00BB',
+          label: '\u00AB',
+          tipLabel: 'Overview map',
+          layers: [overviewTileLayer],
+        }),
       ]),
     });
     mapInstanceRef.current = instance;
@@ -128,6 +145,7 @@ export default function MapPageV2() {
   useOlSafetyZones(map, { visible: showSafety, days: safetyDays });
   useOlEnforcementClusters(map, { visible: showEnforcement, days: enforcementDays, type: enforcementType });
   useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours, colorMode: breadcrumbColor });
+  useOlTrackingLines(map, { visible: showTracking });
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
   useOlIncidentReports(map, { visible: showIncidents, days: incidentDays });
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
@@ -252,6 +270,7 @@ export default function MapPageV2() {
       id: 'history',
       title: 'History',
       layers: [
+        { key: 'tracking', label: 'Tracking Lines', color: '#fbbf24', visible: showTracking, onToggle: () => setShowTracking(v => !v) },
         {
           key: 'breadcrumbs', label: `Breadcrumbs (${breadcrumbHours}h)`, color: '#14b8a6',
           visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v),
