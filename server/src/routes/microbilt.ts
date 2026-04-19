@@ -743,7 +743,7 @@ router.get('/searches', requireRole('admin', 'manager', 'officer'), (req: Reques
   try {
     const db = getDb();
     const product = req.query.product as string || null;
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string)) || 100000));
     const offset = parseInt(req.query.offset as string) || 0;
 
     let sql = 'SELECT id, product, search_type, search_input, hit, subject_count, searched_by, linked_incident, created_at FROM microbilt_searches';

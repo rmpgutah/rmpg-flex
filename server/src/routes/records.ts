@@ -78,9 +78,9 @@ router.use(authenticateToken);
 router.get('/persons', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', flags, archived } = req.query;
+    const { page = '1', limit = '100000', flags, archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -751,9 +751,9 @@ router.post('/persons/:id/unarchive', (req: Request, res: Response) => {
 router.get('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '100000', archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -1373,9 +1373,9 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
 router.get('/evidence', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '100000', archived } = req.query;
     const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
