@@ -1,6 +1,19 @@
 import { Layers, Eye, EyeOff, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import { useState } from 'react';
 
+/** Segmented control descriptor — renders as a row of small buttons
+ *  beneath a layer toggle when the layer is visible. */
+export interface SegmentedControl<T extends string | number = string | number> {
+  kind: 'segmented';
+  /** Tiny uppercase prefix label (e.g. "DAYS", "MODE") */
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}
+
+export type LayerControl = SegmentedControl;
+
 export interface LayerToggleConfig {
   key: string;
   label: string;
@@ -8,6 +21,8 @@ export interface LayerToggleConfig {
   visible: boolean;
   onToggle: () => void;
   count?: number;
+  /** Optional inline controls — rendered when layer is visible */
+  controls?: LayerControl[];
 }
 
 export interface LayerSection {
@@ -123,30 +138,65 @@ export default function MapV2LayersPanel({ sections, isConnected }: MapV2LayersP
               </div>
               {/* Layers in this section */}
               {sec.layers.map((l) => (
-                <button
-                  key={l.key}
-                  type="button"
-                  onClick={l.onToggle}
-                  aria-label={`Toggle ${l.label} layer`}
-                  className="w-full flex items-center gap-2 px-2 py-1 hover:bg-[#1a1a1a] text-left"
-                >
-                  {l.visible ? (
-                    <Eye className="w-3 h-3 text-[#d4a017]" aria-hidden="true" />
-                  ) : (
-                    <EyeOff className="w-3 h-3 text-[#666666]" aria-hidden="true" />
+                <div key={l.key}>
+                  <button
+                    type="button"
+                    onClick={l.onToggle}
+                    aria-label={`Toggle ${l.label} layer`}
+                    className="w-full flex items-center gap-2 px-2 py-1 hover:bg-[#1a1a1a] text-left"
+                  >
+                    {l.visible ? (
+                      <Eye className="w-3 h-3 text-[#d4a017]" aria-hidden="true" />
+                    ) : (
+                      <EyeOff className="w-3 h-3 text-[#666666]" aria-hidden="true" />
+                    )}
+                    <span
+                      className="w-2 h-2 inline-block flex-shrink-0"
+                      style={{ background: l.color }}
+                      aria-hidden="true"
+                    />
+                    <span className={'flex-1 truncate ' + (l.visible ? 'text-[#e5e7eb]' : 'text-[#666666]')}>
+                      {l.label}
+                    </span>
+                    {typeof l.count === 'number' && (
+                      <span className="text-[#666666] tabular-nums text-[9px]">{l.count}</span>
+                    )}
+                  </button>
+                  {/* Inline controls — only when layer is visible */}
+                  {l.visible && l.controls && l.controls.length > 0 && (
+                    <div className="bg-[#0d0d0d] border-t border-[#1a1a1a] px-2 py-1 space-y-1">
+                      {l.controls.map((c, ci) => (
+                        <div key={ci} className="flex items-center gap-1.5">
+                          <span className="text-[7px] font-bold text-[#666666] w-8 flex-shrink-0">
+                            {c.label}
+                          </span>
+                          <div className="flex flex-wrap gap-0.5 flex-1">
+                            {c.options.map((opt) => {
+                              const active = opt.value === c.value;
+                              return (
+                                <button
+                                  key={String(opt.value)}
+                                  type="button"
+                                  onClick={() => c.onChange(opt.value)}
+                                  aria-pressed={active}
+                                  aria-label={`${c.label} ${opt.label}`}
+                                  className={
+                                    'px-1 py-0 text-[8px] font-bold font-mono ' +
+                                    (active
+                                      ? 'bg-[#1a1a1a] text-[#d4a017] border border-[#d4a01755]'
+                                      : 'text-[#888888] hover:text-[#e5e7eb] border border-transparent')
+                                  }
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  <span
-                    className="w-2 h-2 inline-block flex-shrink-0"
-                    style={{ background: l.color }}
-                    aria-hidden="true"
-                  />
-                  <span className={'flex-1 truncate ' + (l.visible ? 'text-[#e5e7eb]' : 'text-[#666666]')}>
-                    {l.label}
-                  </span>
-                  {typeof l.count === 'number' && (
-                    <span className="text-[#666666] tabular-nums text-[9px]">{l.count}</span>
-                  )}
-                </button>
+                </div>
               ))}
             </div>
           );

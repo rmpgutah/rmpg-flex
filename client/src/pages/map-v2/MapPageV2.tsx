@@ -8,6 +8,7 @@ import { fromLonLat } from 'ol/proj';
 import { defaults as defaultControls, ScaleLine, Attribution } from 'ol/control';
 import { useOlBeatLayer } from './hooks/useOlBeatLayer';
 import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
+import { useOlFeaturePopup } from './hooks/useOlFeaturePopup';
 import { useOlGeoJsonLayer } from './hooks/useOlGeoJsonLayer';
 import { useOlDrawTool, type DrawMode } from './hooks/useOlDrawTool';
 import { useOlDragDispatch } from './hooks/useOlDragDispatch';
@@ -67,6 +68,20 @@ export default function MapPageV2() {
   const [showCallHistory, setShowCallHistory] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
 
+  // Per-layer settings (days, modes, etc.) — exposed via inline controls
+  // beneath each layer toggle in the panel. Defaults match v1.
+  const [heatmapDays, setHeatmapDays] = useState<7 | 14 | 30 | 90>(30);
+  const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
+  const [safetyDays, setSafetyDays] = useState<30 | 90 | 180>(90);
+  const [enforcementDays, setEnforcementDays] = useState<7 | 30 | 90>(30);
+  const [enforcementType, setEnforcementType] = useState<'all' | 'traffic' | 'criminal'>('all');
+  const [breadcrumbHours, setBreadcrumbHours] = useState<1 | 4 | 8 | 24>(8);
+  const [fiDays, setFiDays] = useState<7 | 30 | 90>(30);
+  const [incidentDays, setIncidentDays] = useState<7 | 30 | 90>(30);
+  const [repeatDays, setRepeatDays] = useState<7 | 30 | 90>(30);
+  const [repeatMinCount, setRepeatMinCount] = useState<2 | 3 | 5 | 10>(3);
+  const [historyDays, setHistoryDays] = useState<1 | 7 | 30>(7);
+
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
 
@@ -105,19 +120,20 @@ export default function MapPageV2() {
 
   useOlBeatLayer(map, { visible: showBeats });
   useOlLiveMarkers(map);
+  useOlFeaturePopup(map);
   useOlDrawTool(map, { mode: drawMode, clearVersion });
   useOlDragDispatch(map);
-  useOlHeatmap(map, { visible: showHeatmap, days: 30, mode: 'all' });
-  useOlSafetyZones(map, { visible: showSafety, days: 90 });
-  useOlEnforcementClusters(map, { visible: showEnforcement, days: 30 });
-  useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: 8 });
-  useOlFieldInterviews(map, { visible: showFi, days: 30 });
-  useOlIncidentReports(map, { visible: showIncidents, days: 30 });
+  useOlHeatmap(map, { visible: showHeatmap, days: heatmapDays, mode: heatmapMode });
+  useOlSafetyZones(map, { visible: showSafety, days: safetyDays });
+  useOlEnforcementClusters(map, { visible: showEnforcement, days: enforcementDays, type: enforcementType });
+  useOlBreadcrumbs(map, { visible: showBreadcrumbs, hours: breadcrumbHours });
+  useOlFieldInterviews(map, { visible: showFi, days: fiDays });
+  useOlIncidentReports(map, { visible: showIncidents, days: incidentDays });
   useOlPatrolCheckpoints(map, { visible: showCheckpoints });
   useOlFleetVehicles(map, { visible: showFleet });
-  useOlRepeatAddresses(map, { visible: showRepeat, days: 30, minCount: 3 });
+  useOlRepeatAddresses(map, { visible: showRepeat, days: repeatDays, minCount: repeatMinCount });
   useOlDwellTime(map, { visible: showDwell });
-  useOlCallHistory(map, { visible: showCallHistory, days: 7 });
+  useOlCallHistory(map, { visible: showCallHistory, days: historyDays });
   useOlPredictions(map, { visible: showPredictions });
   const addressSearch = useOlAddressSearch(map);
   const daylight = useDaylightPhase();
@@ -169,9 +185,39 @@ export default function MapPageV2() {
       id: 'intel',
       title: 'Intelligence',
       layers: [
-        { key: 'heatmap', label: 'Heatmap (30d)', color: '#ef4444', visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v) },
-        { key: 'safety', label: 'Safety Zones (90d)', color: '#ef4444', visible: showSafety, onToggle: () => setShowSafety(v => !v) },
-        { key: 'enforcement', label: 'Enforcement (30d)', color: '#a855f7', visible: showEnforcement, onToggle: () => setShowEnforcement(v => !v) },
+        {
+          key: 'heatmap', label: `Heatmap (${heatmapDays}d)`, color: '#ef4444',
+          visible: showHeatmap, onToggle: () => setShowHeatmap(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'DAYS', value: heatmapDays,
+              options: [{ value: 7, label: '7' }, { value: 14, label: '14' }, { value: 30, label: '30' }, { value: 90, label: '90' }],
+              onChange: (v) => setHeatmapDays(v as 7 | 14 | 30 | 90) },
+            { kind: 'segmented', label: 'MODE', value: heatmapMode,
+              options: [{ value: 'all', label: 'All' }, { value: 'risk', label: 'Risk' }, { value: 'type', label: 'Type' }],
+              onChange: (v) => setHeatmapMode(v as 'all' | 'risk' | 'type') },
+          ],
+        },
+        {
+          key: 'safety', label: `Safety Zones (${safetyDays}d)`, color: '#ef4444',
+          visible: showSafety, onToggle: () => setShowSafety(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'DAYS', value: safetyDays,
+              options: [{ value: 30, label: '30' }, { value: 90, label: '90' }, { value: 180, label: '180' }],
+              onChange: (v) => setSafetyDays(v as 30 | 90 | 180) },
+          ],
+        },
+        {
+          key: 'enforcement', label: `Enforcement (${enforcementDays}d)`, color: '#a855f7',
+          visible: showEnforcement, onToggle: () => setShowEnforcement(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'DAYS', value: enforcementDays,
+              options: [{ value: 7, label: '7' }, { value: 30, label: '30' }, { value: 90, label: '90' }],
+              onChange: (v) => setEnforcementDays(v as 7 | 30 | 90) },
+            { kind: 'segmented', label: 'TYPE', value: enforcementType,
+              options: [{ value: 'all', label: 'All' }, { value: 'traffic', label: 'Traffic' }, { value: 'criminal', label: 'Crim' }],
+              onChange: (v) => setEnforcementType(v as 'all' | 'traffic' | 'criminal') },
+          ],
+        },
         { key: 'predictions', label: 'Predicted Hotspots', color: '#ec4899', visible: showPredictions, onToggle: () => setShowPredictions(v => !v) },
       ],
     },
@@ -179,8 +225,24 @@ export default function MapPageV2() {
       id: 'operational',
       title: 'Operational',
       layers: [
-        { key: 'incidents', label: 'Incident Reports (30d)', color: '#ef4444', visible: showIncidents, onToggle: () => setShowIncidents(v => !v) },
-        { key: 'fi', label: 'Field Interviews (30d)', color: '#06b6d4', visible: showFi, onToggle: () => setShowFi(v => !v) },
+        {
+          key: 'incidents', label: `Incident Reports (${incidentDays}d)`, color: '#ef4444',
+          visible: showIncidents, onToggle: () => setShowIncidents(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'DAYS', value: incidentDays,
+              options: [{ value: 7, label: '7' }, { value: 30, label: '30' }, { value: 90, label: '90' }],
+              onChange: (v) => setIncidentDays(v as 7 | 30 | 90) },
+          ],
+        },
+        {
+          key: 'fi', label: `Field Interviews (${fiDays}d)`, color: '#06b6d4',
+          visible: showFi, onToggle: () => setShowFi(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'DAYS', value: fiDays,
+              options: [{ value: 7, label: '7' }, { value: 30, label: '30' }, { value: 90, label: '90' }],
+              onChange: (v) => setFiDays(v as 7 | 30 | 90) },
+          ],
+        },
         { key: 'checkpoints', label: 'Patrol Checkpoints', color: '#22c55e', visible: showCheckpoints, onToggle: () => setShowCheckpoints(v => !v) },
         { key: 'fleet', label: 'Fleet Vehicles', color: '#fbbf24', visible: showFleet, onToggle: () => setShowFleet(v => !v) },
       ],
@@ -189,9 +251,36 @@ export default function MapPageV2() {
       id: 'history',
       title: 'History',
       layers: [
-        { key: 'breadcrumbs', label: 'Breadcrumbs (8h)', color: '#14b8a6', visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v) },
-        { key: 'history', label: 'Call History (7d)', color: '#9ca3af', visible: showCallHistory, onToggle: () => setShowCallHistory(v => !v) },
-        { key: 'repeat', label: 'Repeat Addresses (30d)', color: '#f97316', visible: showRepeat, onToggle: () => setShowRepeat(v => !v) },
+        {
+          key: 'breadcrumbs', label: `Breadcrumbs (${breadcrumbHours}h)`, color: '#14b8a6',
+          visible: showBreadcrumbs, onToggle: () => setShowBreadcrumbs(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'HRS', value: breadcrumbHours,
+              options: [{ value: 1, label: '1' }, { value: 4, label: '4' }, { value: 8, label: '8' }, { value: 24, label: '24' }],
+              onChange: (v) => setBreadcrumbHours(v as 1 | 4 | 8 | 24) },
+          ],
+        },
+        {
+          key: 'history', label: `Call History (${historyDays}d)`, color: '#9ca3af',
+          visible: showCallHistory, onToggle: () => setShowCallHistory(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'DAYS', value: historyDays,
+              options: [{ value: 1, label: '1' }, { value: 7, label: '7' }, { value: 30, label: '30' }],
+              onChange: (v) => setHistoryDays(v as 1 | 7 | 30) },
+          ],
+        },
+        {
+          key: 'repeat', label: `Repeat Addresses (${repeatDays}d, \u2265${repeatMinCount})`, color: '#f97316',
+          visible: showRepeat, onToggle: () => setShowRepeat(v => !v),
+          controls: [
+            { kind: 'segmented', label: 'DAYS', value: repeatDays,
+              options: [{ value: 7, label: '7' }, { value: 30, label: '30' }, { value: 90, label: '90' }],
+              onChange: (v) => setRepeatDays(v as 7 | 30 | 90) },
+            { kind: 'segmented', label: 'MIN', value: repeatMinCount,
+              options: [{ value: 2, label: '2' }, { value: 3, label: '3' }, { value: 5, label: '5' }, { value: 10, label: '10' }],
+              onChange: (v) => setRepeatMinCount(v as 2 | 3 | 5 | 10) },
+          ],
+        },
         { key: 'dwell', label: 'Dwell Time', color: '#fbbf24', visible: showDwell, onToggle: () => setShowDwell(v => !v) },
       ],
     },
