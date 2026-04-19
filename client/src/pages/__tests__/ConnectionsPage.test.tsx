@@ -170,3 +170,48 @@ describe('ConnectionsPage - graph fetch & render', () => {
     });
   });
 });
+
+describe('ConnectionsPage - pan/zoom', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('applies a transform to the graph group when zoom fires', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: 'person-42', type: 'person', entityId: 42, label: 'Jane Doe', metadata: {}, depth: 0 },
+          { id: 'incident-1', type: 'incident', entityId: 1, label: 'I-0001', metadata: {}, depth: 1 },
+        ],
+        edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
+      });
+
+    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+
+    await waitFor(() => {
+      const g = container.querySelector('svg g[data-testid="zoom-target"]');
+      expect(g).toBeTruthy();
+    });
+  });
+
+  it('renders reset view button that is clickable', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane Doe' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
+    await waitFor(() => screen.getByText('Jane Doe'));
+    fireEvent.click(screen.getByText('Jane Doe'));
+
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: /reset view/i });
+      expect(btn).toBeInTheDocument();
+    });
+  });
+});

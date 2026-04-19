@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Network, Loader2 } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
+import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
+import { select } from 'd3-selection';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 
@@ -72,6 +74,10 @@ export default function ConnectionsPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const gRef = useRef<SVGGElement>(null);
+  const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const [transform, setTransform] = useState('translate(0,0) scale(1)');
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -159,6 +165,26 @@ export default function ConnectionsPage() {
     return () => { sim.stop(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes.length, edges.length]);
+
+  // Initialize d3-zoom once the SVG is mounted AND there are nodes (so sizing is determinate)
+  useEffect(() => {
+    if (!svgRef.current || nodes.length === 0) return;
+    const svg = select(svgRef.current);
+    const z = zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.2, 4])
+      .on('zoom', (event) => {
+        const t = event.transform;
+        setTransform(`translate(${t.x},${t.y}) scale(${t.k})`);
+      });
+    svg.call(z as any);
+    zoomRef.current = z;
+    return () => { svg.on('.zoom', null); };
+  }, [nodes.length]);
+
+  function resetView() {
+    if (!svgRef.current || !zoomRef.current) return;
+    (select(svgRef.current) as any).transition().duration(250).call((zoomRef.current as any).transform, zoomIdentity);
+  }
 
   function pickSeed(r: SearchResult) {
     setSeed({ id: r.id, type: r.type, label: r.label });
@@ -252,11 +278,14 @@ export default function ConnectionsPage() {
           </div>
         )}
         {nodes.length > 0 && (
+          <>
           <svg
+            ref={svgRef}
             viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
             className="w-full h-full"
             preserveAspectRatio="xMidYMid meet"
           >
+            <g ref={gRef} data-testid="zoom-target" transform={transform}>
             {edges.map((e, i) => {
               const src = typeof e.source === 'string' ? nodes.find(n => n.id === e.source) : (e.source as SimNode);
               const tgt = typeof e.target === 'string' ? nodes.find(n => n.id === e.target) : (e.target as SimNode);
@@ -304,7 +333,18 @@ export default function ConnectionsPage() {
                 </g>
               );
             })}
+            </g>
           </svg>
+          <button
+            type="button"
+            onClick={resetView}
+            className="absolute top-2 right-2 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+            style={{ borderRadius: 2 }}
+            aria-label="Reset view"
+          >
+            RESET VIEW
+          </button>
+          </>
         )}
       </div>
     </div>
