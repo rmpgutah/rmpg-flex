@@ -518,26 +518,130 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
 // ─── CSV EXPORT ──────────────────────────────────────────
 
-// GET /connections/export/csv — Export record_links
+// GET /connections/export/csv — Export all connections (record_links + junction tables)
+//   Optional: ?seedType=person&seedId=123 exports only the graph rooted at that seed.
 router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const rows = db.prepare(`
-      SELECT id, source_type, source_id, target_type, target_id, relationship, created_at
-      FROM record_links
-      ORDER BY created_at DESC LIMIT 10000
-    `).all();
+    const { seedType, seedId } = req.query;
+    const rows: any[] = [];
+
+    if (seedType && seedId) {
+      // Single-graph export
+      if (!VALID_TYPES.includes(String(seedType))) {
+        return res.status(400).json({ error: 'Invalid seedType', code: 'INVALID_SEED_TYPE' });
+      }
+      const graph = buildGraph(db, String(seedType), Number(seedId), 3);
+      for (const e of graph.edges) {
+        const [sType, sId] = e.source.split('-');
+        const [tType, tId] = e.target.split('-');
+        rows.push({
+          source_type: sType, source_id: sId,
+          target_type: tType, target_id: tId,
+          relationship: e.relationship, source_table: e.sourceTable,
+        });
+      }
+    } else {
+      // Full export: record_links + all junction tables UNIONed.
+      // Each block is wrapped in try/catch so missing tables in minimum test
+      // schemas don't abort the full export.
+      try {
+        rows.push(...(db.prepare(
+          `SELECT source_type, source_id, target_type, target_id, relationship,
+                  'record_links' as source_table FROM record_links`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] record_links export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, person_id as source_id,
+                  'incident' as target_type, incident_id as target_id,
+                  role as relationship, 'incident_persons' as source_table
+           FROM incident_persons`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] incident_persons export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'vehicle' as source_type, vehicle_id as source_id,
+                  'incident' as target_type, incident_id as target_id,
+                  role as relationship, 'incident_vehicles' as source_table
+           FROM incident_vehicles`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] incident_vehicles export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, cp.person_id as source_id,
+                  'incident' as target_type, i.id as target_id,
+                  cp.role as relationship, 'call_persons' as source_table
+           FROM call_persons cp
+           JOIN incidents i ON i.call_id = cp.call_id
+           WHERE i.id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] call_persons export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'vehicle' as source_type, cv.vehicle_id as source_id,
+                  'incident' as target_type, i.id as target_id,
+                  cv.role as relationship, 'call_vehicles' as source_table
+           FROM call_vehicles cv
+           JOIN incidents i ON i.call_id = cv.call_id
+           WHERE i.id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] call_vehicles export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, cp.person_id as source_id,
+                  'property' as target_type, p.id as target_id,
+                  cp.relationship as relationship, 'client_persons' as source_table
+           FROM client_persons cp
+           JOIN properties p ON p.client_id = cp.client_id`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] client_persons export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'evidence' as source_type, id as source_id,
+                  'incident' as target_type, incident_id as target_id,
+                  'collected_from' as relationship, 'evidence' as source_table
+           FROM evidence WHERE incident_id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] evidence export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, owner_person_id as source_id,
+                  'vehicle' as target_type, id as target_id,
+                  'owner' as relationship, 'vehicles_records' as source_table
+           FROM vehicles_records WHERE owner_person_id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] vehicles_records export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'incident' as source_type, id as source_id,
+                  'property' as target_type, property_id as target_id,
+                  'location' as relationship, 'incidents' as source_table
+           FROM incidents WHERE property_id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] incidents export error:', err?.message); }
+    }
+
     sendCsv(res, 'connections_export.csv', [
-      { key: 'id', header: 'ID' },
       { key: 'source_type', header: 'Source Type' },
       { key: 'source_id', header: 'Source ID' },
       { key: 'target_type', header: 'Target Type' },
       { key: 'target_id', header: 'Target ID' },
       { key: 'relationship', header: 'Relationship' },
-      { key: 'created_at', header: 'Created At' },
+      { key: 'source_table', header: 'Source Table' },
     ], rows);
-  } catch (error: any) {
-    console.error('[Connections] CSV export error:', error?.message || 'Unknown error');
+
+    auditLog(req, 'EXPORT', 'record_link', 0, `CSV export: ${rows.length} rows`);
+  } catch (err: any) {
+    console.error('[Connections] CSV export error:', err?.message);
     res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });

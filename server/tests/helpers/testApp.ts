@@ -48,6 +48,7 @@ export async function createTestApp(): Promise<Application> {
   const pdfArtifactsRoutes = (await import('../../src/routes/pdfArtifacts')).default;
   const pdfEmailRoutes = (await import('../../src/routes/pdfEmail')).default;
   const voicePersonaRoutes = (await import('../../src/routes/voicePersona')).default;
+  const connectionsRoutes = (await import('../../src/routes/connections')).default;
 
   app.use('/api/auth', authRoutes);
   app.use('/api/dispatch', dispatchRoutes);
@@ -67,6 +68,7 @@ export async function createTestApp(): Promise<Application> {
   app.use('/api/pdf-artifacts', pdfArtifactsRoutes);
   app.use('/api/pdf-engine', pdfEmailRoutes);
   app.use('/api/voice-persona', voicePersonaRoutes);
+  app.use('/api/connections', connectionsRoutes);
 
   // Error handler (multer-aware, mirrors production)
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
