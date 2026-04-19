@@ -13,10 +13,15 @@ const SLC_LON_LAT: [number, number] = [-111.891, 40.760];
 
 export default function MapPageV2() {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
+  // Map instance lives in a ref so the mount-effect can run with an
+  // empty dep array — putting `map` in the deps caused a render loop
+  // (cleanup destroyed the instance on every state change, which
+  // re-ran the effect, which created a new instance, etc).
+  const mapInstanceRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
 
   useEffect(() => {
-    if (!mapDivRef.current || map) return;
+    if (!mapDivRef.current || mapInstanceRef.current) return;
 
     const tileLayer = new TileLayer({
       source: new XYZ({
@@ -41,13 +46,15 @@ export default function MapPageV2() {
         new Attribution({ collapsible: false }),
       ]),
     });
+    mapInstanceRef.current = instance;
     setMap(instance);
 
     return () => {
       instance.setTarget(undefined);
-      setMap(null);
+      mapInstanceRef.current = null;
     };
-  }, [map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useOlBeatLayer(map);
   useOlLiveMarkers(map);
@@ -60,7 +67,7 @@ export default function MapPageV2() {
         style={{ background: '#0a0a0a' }}
       />
       <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-[#141414] border border-[#222222] text-[#d4a017] font-mono text-[10px] uppercase tracking-wider pointer-events-none">
-        MAP V2 · OpenLayers · Beta · 719 beats · live units + calls
+        MAP V2 · OpenLayers · 719 beats · live units + calls
       </div>
     </div>
   );

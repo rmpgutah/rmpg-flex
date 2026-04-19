@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type Map from 'ol/Map';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
@@ -130,7 +130,6 @@ export function useOlLiveMarkers(map: Map | null): void {
   const sourceRef = useRef<VectorSource | null>(null);
   const overlayRef = useRef<Overlay | null>(null);
   const overlayElRef = useRef<HTMLDivElement | null>(null);
-  const [, force] = useState(0);
   const { subscribe } = useWebSocket();
 
   const refetch = useCallback(async () => {
@@ -190,7 +189,7 @@ export function useOlLiveMarkers(map: Map | null): void {
     };
     map.on('click', onClick);
 
-    refetch().then(() => force((n) => n + 1));
+    refetch();
 
     return () => {
       map.un('click', onClick);
