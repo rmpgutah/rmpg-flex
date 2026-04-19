@@ -35,6 +35,17 @@
         </provider>
     </application>
 
+    <!-- Package visibility for Organic Maps (Android 11+ requires explicit <queries>
+         for startActivity() on an intent targeting another app's package) -->
+    <queries>
+        <package android:name="app.organicmaps" />
+        <!-- Generic geo: intent fallback so we can still resolve to OM via ACTION_VIEW -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />

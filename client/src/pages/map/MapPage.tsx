@@ -71,6 +71,7 @@ import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
+import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
@@ -1135,6 +1136,14 @@ export default function MapPage() {
                      ▶ Route to ${escapeHtml(assignedCall.call_number)}
                    </button>`
                 : '';
+              const omBtnLabel = isAndroidNative() ? 'Navigate (Organic Maps)' : 'Open Directions';
+              const omBtnHtml = (assignedCall && assignedCall.latitude != null && assignedCall.longitude != null)
+                ? `<button type="button" data-om-lat="${assignedCall.latitude}" data-om-lng="${assignedCall.longitude}"
+                     data-om-label="${escapeHtml(assignedCall.call_number)}"
+                     style="margin-top:4px;width:100%;padding:3px 0;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:9px;font-weight:900;font-family:monospace;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;">
+                     \u{1F9ED} ${omBtnLabel}
+                   </button>`
+                : '';
 
               infoWindowRef.current?.setContent(`
                 <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
@@ -1153,6 +1162,7 @@ export default function MapPage() {
                     </div>
                   ` : `<div style="font-size:9px;color:#5a6e80;margin-top:4px;">${escapeHtml(location)}</div>`}
                   ${routeBtnHtml}
+                  ${omBtnHtml}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
@@ -1195,11 +1205,20 @@ export default function MapPage() {
                            ▶ ROUTE
                          </button>`
                       : '';
+                    const omBtn = (call.latitude != null && call.longitude != null)
+                      ? `<button type="button" data-om-lat="${call.latitude}" data-om-lng="${call.longitude}"
+                           data-om-label="${escapeHtml(call.call_number)}"
+                           title="${isAndroidNative() ? 'Open in Organic Maps' : 'Open Google Maps directions'}"
+                           style="padding:1px 5px;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           \u{1F9ED} NAV
+                         </button>`
+                      : '';
                     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
                       <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
                       <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
                       <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name)}</span>
                       ${routeBtn}
+                      ${omBtn}
                     </div>`;
                   }).join('')}
                 </div>`;
@@ -1404,6 +1423,26 @@ export default function MapPage() {
     document.addEventListener('click', handleRouteClick);
     return () => document.removeEventListener('click', handleRouteClick);
   }, [showRoute]);
+
+  // Delegated handler for "Navigate with Organic Maps" buttons rendered inside
+  // info-window HTML. Android-native only; TS wrapper no-ops on other platforms.
+  useEffect(() => {
+    function handleOmClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest('[data-om-lat]') as HTMLElement | null;
+      if (!btn) return;
+      const lat = parseFloat(btn.getAttribute('data-om-lat') || '');
+      const lng = parseFloat(btn.getAttribute('data-om-lng') || '');
+      const label = btn.getAttribute('data-om-label') || '';
+      if (isNaN(lat) || isNaN(lng)) return;
+      navigateTo(lat, lng, label).then((res) => {
+        if (!res.ok) devWarn('[Nav] launch failed:', res.reason);
+        else devLog('[Nav] launched via', res.mode);
+      });
+      infoWindowRef.current?.close();
+    }
+    document.addEventListener('click', handleOmClick);
+    return () => document.removeEventListener('click', handleOmClick);
+  }, []);
 
   // ============================================================
   // Update Route When Routed Unit GPS Changes
