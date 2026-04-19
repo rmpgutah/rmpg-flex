@@ -61,9 +61,9 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/violations', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, violation_type, severity, search, page = '1', limit = '50' } = req.query;
+    const { status, violation_type, severity, search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -191,9 +191,9 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
 router.get('/tows', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, search, page = '1', limit = '50' } = req.query;
+    const { status, search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';

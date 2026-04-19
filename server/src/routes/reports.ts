@@ -2568,8 +2568,8 @@ router.get('/officer-feed/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officerId } = req.params;
-    const { limit = '30' } = req.query;
-    const limitNum = Math.min(100, parseInt(limit as string, 10) || 30);
+    const { limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     const officer = db.prepare('SELECT id, full_name, badge_number FROM users WHERE id = ?').get(officerId) as any;
     if (!officer) { res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' }); return; }

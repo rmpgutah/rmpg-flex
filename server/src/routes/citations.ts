@@ -137,7 +137,7 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const {
       page = '1',
-      limit = '50',
+      limit = '100000',
       status,
       type,
       q,
@@ -147,7 +147,7 @@ router.get('/', (req: Request, res: Response) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 50), 200);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';

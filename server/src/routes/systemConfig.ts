@@ -183,7 +183,7 @@ router.get('/config-history', requireRole('admin', 'manager'), (req: Request, re
   try {
     const db = getDb();
     const { category, config_key, limit: qLimit = '50' } = req.query;
-    const limitNum = Math.min(500, parseInt(qLimit as string, 10) || 50);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(qLimit as string, 10)) || 100000));
 
     let where = '';
     const params: any[] = [];
