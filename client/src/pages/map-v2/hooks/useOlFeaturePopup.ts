@@ -162,6 +162,18 @@ function popupForPanic(p: PanicRow): HTMLDivElement {
   return root;
 }
 
+interface GeofenceRow { id: number; name: string; zone_type?: string; alert_on_enter?: number; alert_on_exit?: number; color?: string; }
+function popupForGeofence(p: GeofenceRow): HTMLDivElement {
+  const root = buildContainer('#a855f780');
+  root.appendChild(makeRow(p.name, '#a855f7', 11, 700, { marginTop: '0' }));
+  if (p.zone_type) root.appendChild(makeRow(p.zone_type, '#9ca3af', 9, 400, { textTransform: 'uppercase', letterSpacing: '0.5px' }));
+  const alerts: string[] = [];
+  if (p.alert_on_enter) alerts.push('on enter');
+  if (p.alert_on_exit) alerts.push('on exit');
+  if (alerts.length) root.appendChild(makeRow(`Alert: ${alerts.join(' + ')}`, '#fbbf24', 8, 400, { marginTop: '4px' }));
+  return root;
+}
+
 interface BreadcrumbRow {
   call_sign?: string;
   officer_name?: string;
@@ -223,6 +235,7 @@ const POPUP_BUILDERS: Record<string, (payload: any) => HTMLDivElement> = {
   call_history: popupForHistory,
   breadcrumb: popupForBreadcrumb,
   panic: popupForPanic,
+  geofence: popupForGeofence,
 };
 
 /**

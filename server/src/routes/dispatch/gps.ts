@@ -1033,7 +1033,8 @@ const owntracksHandler = (req: Request, res: Response) => {
   try {
     const db = getDb();
 
-    // ── Auth: accept Bearer token OR HTTP Basic Auth (OwnTracks sends Basic) ──
+    // ── Auth: accept Bearer token, HTTP Basic Auth (OwnTracks default),
+    //         or ?token= query string (simpler OwnTracks setup) ──
     const authHeader = req.headers.authorization || '';
     let token = '';
     if (authHeader.startsWith('Bearer ')) {
@@ -1046,9 +1047,21 @@ const owntracksHandler = (req: Request, res: Response) => {
         const colonIdx = decoded.indexOf(':');
         token = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : decoded;
       } catch { /* invalid base64 */ }
+    } else if (typeof req.query.token === 'string' && req.query.token.length > 0) {
+      // Query-string auth — easier to configure in OwnTracks (just append
+      // ?token=xxx to the URL instead of setting username/password).
+      token = req.query.token;
+    } else if (typeof req.headers['x-limit-u'] === 'string' && typeof req.headers['x-limit-d'] === 'string') {
+      // OwnTracks-mode quirk: in HTTP mode without Basic auth, OT may send
+      // X-Limit-U (user) and X-Limit-D (device) headers. We don't trust
+      // these as auth alone — but if a token query is also present, accept.
+      // (Falls through; left as no-op if no token is also present.)
     }
     if (!token) {
-      res.status(401).json({ error: 'Authentication required — use Basic auth (password = webhook token) or Bearer token' });
+      res.status(401).json({
+        error: 'Authentication required',
+        hint: 'Set Basic auth in OwnTracks (password = webhook token), use a Bearer header, or append ?token=YOUR_TOKEN to the URL. Get the token from Admin \u2192 Integrations \u2192 OwnTracks.',
+      });
       return;
     }
 
