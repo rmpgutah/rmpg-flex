@@ -187,9 +187,9 @@ router.get('/vehicles/:id/trips', (req: Request, res: Response) => {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
     if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
-    const { page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
     const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 50;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
     const total = (db.prepare('SELECT COUNT(*) as c FROM cpgps_trips WHERE cpgps_vehicle_id = ?').get(cpgpsVehicle.cpgps_id) as any)?.c || 0;
     const trips = db.prepare(
@@ -208,7 +208,7 @@ router.get('/vehicles/:id/locations', (req: Request, res: Response) => {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
     if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
-    const { limit = '200' } = req.query;
+    const { limit = '100000' } = req.query;
     const locations = db.prepare(
       'SELECT * FROM cpgps_locations WHERE cpgps_vehicle_id = ? ORDER BY reported_at DESC LIMIT ?'
     ).all(cpgpsVehicle.cpgps_id, parseInt(limit as string, 10) || 200);
@@ -225,7 +225,7 @@ router.get('/vehicles/:id/alerts', (req: Request, res: Response) => {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
     if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
-    const { limit = '100' } = req.query;
+    const { limit = '100000' } = req.query;
     const alerts = db.prepare(
       'SELECT * FROM cpgps_alerts WHERE cpgps_vehicle_id = ? ORDER BY triggered_at DESC LIMIT ?'
     ).all(cpgpsVehicle.cpgps_id, parseInt(limit as string, 10) || 100);
@@ -783,7 +783,7 @@ router.post('/settings', requireRole('admin'), (req: Request, res: Response) => 
 router.get('/dashcam-events', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
     const offset = parseInt(req.query.offset as string, 10) || 0;
 
     const events = db.prepare(`
