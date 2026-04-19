@@ -33,9 +33,9 @@ function nextDarNumber(): string {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, officer_id, property_id, date_from, date_to, search, page = '1', limit = '50' } = req.query;
+    const { status, officer_id, property_id, date_from, date_to, search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';

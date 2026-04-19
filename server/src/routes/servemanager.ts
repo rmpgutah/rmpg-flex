@@ -323,10 +323,10 @@ router.get('/jobs', async (req: Request, res: Response) => {
     ensureTables();
     const db = getDb();
 
-    const { source = 'cache', page = '1', per_page = '50', q, status, service_status: svcStatus } = req.query;
+    const { source = 'cache', page = '1', per_page = '100000', q, status, service_status: svcStatus } = req.query;
 
     if (source === 'live') {
-      const cappedPerPage = Math.min(100, Math.max(1, parseInt(String(per_page), 10) || 50));
+      const cappedPerPage = Math.min(100000, Math.max(1, (parseInt(String(per_page), 10)) || 100000));
       const params: Record<string, string> = {
         page: String(Math.max(1, parseInt(String(page), 10) || 1)),
         per_page: String(cappedPerPage),
@@ -347,7 +347,7 @@ router.get('/jobs', async (req: Request, res: Response) => {
 
     // Cache mode
     const pageNum = Math.max(1, parseInt(String(page)));
-    const limit = Math.min(100, Math.max(1, parseInt(String(per_page))));
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(per_page))) || 100000));
     const offset = (pageNum - 1) * limit;
 
     const conditions: string[] = [];
