@@ -145,6 +145,42 @@ describe('GET /api/connections/graph', () => {
     expect(res.status).toBe(200);
     expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
   });
+
+  it('traverses person → arrest via arrest_cross_links', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const aid = Number(d.prepare(
+      "INSERT INTO arrest_records (first_name, last_name, booking_date, charges, status) VALUES ('Test', 'Suspect', '2026-04-19', 'DUI', 'active')"
+    ).run().lastInsertRowid);
+    d.prepare(
+      "INSERT INTO arrest_cross_links (arrest_record_id, linked_type, linked_id) VALUES (?, 'person', ?)"
+    ).run(aid, personId);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=person&id=${personId}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'arrest' && n.entityId === aid)).toBe(true);
+  });
+
+  it('traverses arrest → person via arrest_cross_links', async () => {
+    const d = (await import('../../src/models/database')).getDb();
+    const pid = Number(d.prepare(
+      "INSERT INTO persons (first_name, last_name) VALUES ('Arr','Subject')"
+    ).run().lastInsertRowid);
+    const aid = Number(d.prepare(
+      "INSERT INTO arrest_records (first_name, last_name, booking_date, charges, status) VALUES ('Arr', 'Subject', '2026-04-19', 'Theft', 'active')"
+    ).run().lastInsertRowid);
+    d.prepare(
+      "INSERT INTO arrest_cross_links (arrest_record_id, linked_type, linked_id) VALUES (?, 'person', ?)"
+    ).run(aid, pid);
+
+    const res = await request(app)
+      .get(`/api/connections/graph?type=arrest&id=${aid}&depth=2`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.nodes.some((n: any) => n.type === 'person' && n.entityId === pid)).toBe(true);
+  });
 });
 
 describe('GET /api/connections/export/csv', () => {

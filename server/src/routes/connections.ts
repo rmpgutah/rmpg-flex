@@ -78,6 +78,10 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const c = db.prepare('SELECT citation_number, status FROM citations WHERE id = ?').get(id) as any;
         return c ? `${c.citation_number || `CIT-${id}`} (${c.status || '?'})` : `Citation #${id}`;
       }
+      case 'arrest': {
+        const a = db.prepare('SELECT first_name, last_name, booking_date FROM arrest_records WHERE id = ?').get(id) as any;
+        return a ? `${a.first_name || ''} ${a.last_name || ''} arr. ${a.booking_date || ''}`.trim() : `Arrest #${id}`;
+      }
       default:
         return `${type} #${id}`;
     }
@@ -121,6 +125,10 @@ function getNodeMetadata(db: any, type: string, id: number): Record<string, any>
       case 'citation': {
         const c = db.prepare('SELECT citation_number, type, status, person_id, vehicle_id, violation_date, violation_description, offense_level, fine_amount FROM citations WHERE id = ?').get(id) as any;
         return c || {};
+      }
+      case 'arrest': {
+        const a = db.prepare('SELECT first_name, last_name, booking_date, charges, status, county, source_name FROM arrest_records WHERE id = ?').get(id) as any;
+        return a || {};
       }
       default:
         return {};
@@ -240,6 +248,19 @@ function findConnections(db: any, type: string, id: number): Connection[] {
             });
           }
         } catch (err: any) { console.error('[Connections] citations(person) query error:', err?.message); }
+
+        try {
+          const arrests = db.prepare(
+            "SELECT arrest_record_id FROM arrest_cross_links WHERE linked_type = 'person' AND linked_id = ?"
+          ).all(id) as any[];
+          for (const a of arrests) {
+            results.push({
+              type: 'arrest', id: a.arrest_record_id,
+              relationship: 'arrested',
+              sourceTable: 'arrest_cross_links',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] arrest_cross_links(person) query error:', err?.message); }
         break;
       }
 
@@ -420,6 +441,18 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         } catch (err: any) { console.error('[Connections] citations(citation) query error:', err?.message); }
         break;
       }
+
+      case 'arrest': {
+        try {
+          const rows = db.prepare(
+            "SELECT linked_type, linked_id FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = 'person'"
+          ).all(id) as any[];
+          for (const r of rows) {
+            results.push({ type: 'person', id: r.linked_id, relationship: 'arrestee', sourceTable: 'arrest_cross_links' });
+          }
+        } catch (err: any) { console.error('[Connections] arrest_cross_links(arrest) query error:', err?.message); }
+        break;
+      }
     }
   } catch (err: any) { console.error('[Connections] junction table query error:', err?.message); }
 
@@ -491,7 +524,7 @@ function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number 
 
 // ── Routes ───────────────────────────────────────────────────
 
-const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation'];
+const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation', 'arrest'];
 
 // GET /connections/graph?type=person&id=123&depth=2
 router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
