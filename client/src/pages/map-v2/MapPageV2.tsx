@@ -9,7 +9,9 @@ import { defaults as defaultControls, ScaleLine, Attribution } from 'ol/control'
 import { useOlBeatLayer } from './hooks/useOlBeatLayer';
 import { useOlLiveMarkers } from './hooks/useOlLiveMarkers';
 import { useOlGeoJsonLayer } from './hooks/useOlGeoJsonLayer';
+import { useOlDrawTool, type DrawMode } from './hooks/useOlDrawTool';
 import MapV2LayersPanel, { type LayerToggleConfig } from './components/MapV2LayersPanel';
+import MapV2DrawToolbar from './components/MapV2DrawToolbar';
 
 const SLC_LON_LAT: [number, number] = [-111.891, 40.760];
 
@@ -21,6 +23,10 @@ export default function MapPageV2() {
   // re-ran the effect, which created a new instance, etc).
   const mapInstanceRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
+
+  // Drawing-tool state
+  const [drawMode, setDrawMode] = useState<DrawMode>(null);
+  const [clearVersion, setClearVersion] = useState(0);
 
   // Layer visibility toggles (default: county off, others on for situational orientation)
   const [showCounty, setShowCounty] = useState(false);
@@ -67,6 +73,7 @@ export default function MapPageV2() {
 
   useOlBeatLayer(map, { visible: showBeats });
   useOlLiveMarkers(map);
+  useOlDrawTool(map, { mode: drawMode, clearVersion });
   useOlGeoJsonLayer(map, {
     url: '/geojson/county.geojson',
     visible: showCounty,
@@ -116,6 +123,11 @@ export default function MapPageV2() {
         MAP V2 · OpenLayers · live units + calls
       </div>
       <MapV2LayersPanel layers={layers} />
+      <MapV2DrawToolbar
+        mode={drawMode}
+        setMode={setDrawMode}
+        onClear={() => setClearVersion(v => v + 1)}
+      />
     </div>
   );
 }
