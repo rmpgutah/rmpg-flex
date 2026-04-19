@@ -177,6 +177,20 @@ router.get('/foo', (req, res) => {
 - **ASCII startup banner stays `console.log`** — one-shot decorative output, not machine-read.
 - **Existing 2,300+ console.* calls are NOT yet migrated** — they'll migrate opportunistically as other work touches those files. Only index.ts + auth middleware + global error handler went live with the introduction (2026-04-18). New code must use `logger`.
 
+### Icon-only buttons — use `<IconButton>` (introduced 2026-04-19)
+```tsx
+import IconButton from '../components/IconButton';
+
+<IconButton onClick={handleDelete} aria-label={`Delete ${row.name}`} className="...">
+  <Trash2 className="w-4 h-4" />
+</IconButton>
+```
+- **Rule**: any `<button>` whose visible content is a lucide icon with no accompanying text must use `IconButton`. Buttons that already contain visible text (`<button><X /> Close</button>`) stay as plain `<button>` — the text labels them.
+- `aria-label` is a **required TypeScript prop** — omitting it fails `tsc --noEmit` (the deploy gate). That is the enforcement; no ESLint a11y plugin is installed in `client/`.
+- `type="button"` is applied automatically, and the child icon is wrapped with `aria-hidden="true"` — don't repeat those.
+- Derive the label from (in order): existing `title` attribute, the `onClick` handler name, surrounding row context (include row identifiers: ``Delete ${warrant.number}``), or icon semantics (X→"Close"/"Remove", RefreshCw→"Refresh", Pencil→"Edit", Trash2→"Delete", Eye→"View", Plus→"Add").
+- **Migrated 2026-04-19**: 146 buttons across 23 page files. `client/src/pages/dispatch/DispatchPage.tsx` (6,386 lines) is intentionally deferred — migrate as you touch surrounding code. A handful of other pages may still contain holdouts; fix opportunistically.
+
 ### Design System (Spillman Flex / Motorola Solutions — Pure Black Theme)
 ```
 Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken), #000000 (deep)

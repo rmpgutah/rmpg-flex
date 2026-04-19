@@ -27,6 +27,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import IconButton from '../components/IconButton';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { localToday, formatDate } from '../utils/dateUtils';
@@ -642,18 +643,18 @@ export default function InvoicesPage() {
           <div>
             <div className="flex items-center gap-2">
               {isMobile && (
-                <button type="button" onClick={backToList} className="text-rmpg-400 hover:text-white mr-1">
+                <IconButton onClick={backToList} className="text-rmpg-400 hover:text-white mr-1" aria-label="Back to list">
                   <ChevronLeft size={16} />
-                </button>
+                </IconButton>
               )}
               <h2 className="text-sm font-bold text-white font-mono">{inv.invoice_number}</h2>
               <StatusBadge status={inv.status} />
             </div>
             <p className="text-xs text-rmpg-400 mt-0.5">{inv.client_name}</p>
           </div>
-          <button type="button" onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block">
+          <IconButton onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block" aria-label="Close">
             <X size={14} />
-          </button>
+          </IconButton>
         </div>
 
         {/* Action buttons */}
@@ -812,13 +813,14 @@ export default function InvoicesPage() {
                       </td>
                       {canEdit && inv.status === 'draft' && (
                         <td className="py-1 pl-1">
-                          <button type="button"
+                          <IconButton
                             onClick={() => handleDeleteLineItem(item.id)}
                             disabled={actionLoading === `delitem-${item.id}`}
                             className="text-rmpg-600 hover:text-red-400 transition-colors"
+                            aria-label="Delete line item"
                           >
                             {actionLoading === `delitem-${item.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                          </button>
+                          </IconButton>
                         </td>
                       )}
                     </tr>
@@ -933,13 +935,14 @@ export default function InvoicesPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-rmpg-600 text-[10px]">{pay.recorded_by_name}</span>
                     {canEdit && (
-                      <button type="button"
+                      <IconButton
                         onClick={() => handleDeletePayment(pay.id)}
                         disabled={actionLoading === `delpay-${pay.id}`}
                         className="text-rmpg-600 hover:text-red-400 transition-colors"
+                        aria-label="Delete payment"
                       >
                         {actionLoading === `delpay-${pay.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                      </button>
+                      </IconButton>
                     )}
                   </div>
                 </div>
@@ -1103,9 +1106,9 @@ export default function InvoicesPage() {
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1 transition-colors" title="Refresh" aria-label="Refresh">
+          <IconButton onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1 transition-colors" title="Refresh" aria-label="Refresh">
             <RefreshCw size={12} />
-          </button>
+          </IconButton>
           {canEdit && (
             <button type="button"
               onClick={() => { setMode('create'); setSelectedInvoice(null); }}
@@ -1173,7 +1176,7 @@ export default function InvoicesPage() {
       {error && (
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle size={12} /> {error}
-          <button type="button" onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white"><X size={12} /></button>
+          <IconButton onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white" aria-label="Dismiss error"><X size={12} /></IconButton>
         </div>
       )}
 
@@ -1217,20 +1220,22 @@ export default function InvoicesPage() {
             <div className="flex items-center justify-between px-3 py-1 border-t border-[#2b2b2b] text-[10px] text-rmpg-500 flex-shrink-0">
               <span>Page {page} of {totalPages}</span>
               <div className="flex items-center gap-1">
-                <button type="button"
+                <IconButton
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
                   className="p-0.5 hover:text-white disabled:opacity-30"
+                  aria-label="Previous page"
                 >
                   <ChevronLeft size={12} />
-                </button>
-                <button type="button"
+                </IconButton>
+                <IconButton
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
                   className="p-0.5 hover:text-white disabled:opacity-30"
+                  aria-label="Next page"
                 >
                   <ChevronRight size={12} />
-                </button>
+                </IconButton>
               </div>
             </div>
           )}

@@ -28,6 +28,7 @@ import {
   Eye,
   Flame,
 } from 'lucide-react';
+import IconButton from '../components/IconButton';
 import LeadsTab from '../components/crm/LeadsTab';
 import ProposalsTab from '../components/crm/ProposalsTab';
 import ReportsTab from '../components/crm/ReportsTab';
@@ -506,7 +507,7 @@ export default function CrmPage() {
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
-              <button type="button" onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <IconButton onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close task modal"><X className="w-3.5 h-3.5" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -576,7 +577,7 @@ export default function CrmPage() {
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">Log Activity</span>
-              <button type="button" onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <IconButton onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close activity modal"><X className="w-3.5 h-3.5" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -1223,8 +1224,8 @@ export default function CrmPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <button type="button" onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                    <IconButton onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200" aria-label={`Edit task ${task.title}`}><Edit3 className="w-3 h-3" /></IconButton>
+                    <IconButton onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400" aria-label={`Delete task ${task.title}`}><Trash2 className="w-3 h-3" /></IconButton>
                   </div>
                 </div>
               ))}

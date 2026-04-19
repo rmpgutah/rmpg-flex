@@ -16,6 +16,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
+import IconButton from '../components/IconButton';
 import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
@@ -91,7 +92,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
     <div className="border-t border-border-subtle pt-2 mt-2 space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y min-h-[36px]" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
@@ -275,7 +276,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
     <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded-sm shadow-xl">
       <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Templates</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       {/* Category filter */}
       <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 flex-wrap">
@@ -342,7 +343,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
       <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
         <div className="p-4 space-y-3">
           {/* Quick presets */}
@@ -826,7 +827,7 @@ function SearchFilterPanel({
     <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-xl p-3 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Search Filters</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
 
       <div>
@@ -1137,7 +1138,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </h3>
           <div className="flex items-center gap-1">
             {draftStatus && <span className="text-[9px] text-green-500 italic mr-2">{draftStatus}</span>}
-            <button type="button" onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+            <IconButton onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
           </div>
         </div>
 
@@ -1203,8 +1204,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           <div className="w-px h-4 bg-rmpg-700 mx-1" />
           <button type="button" onClick={() => fileInputRef.current?.click()}
             className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
-          <button type="button" onClick={handleInlineImage}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image"><Image className="w-3.5 h-3.5" /></button>
+          <IconButton onClick={handleInlineImage}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image" aria-label="Insert inline image"><Image className="w-3.5 h-3.5" /></IconButton>
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <div className="flex-1" />
           <div className="relative">
@@ -2145,9 +2146,9 @@ export default function EmailPage() {
       <div className={`flex-shrink-0 border-r border-border-subtle bg-surface-sunken hidden md:flex flex-col transition-all ${folderCollapsed ? 'w-12' : 'w-48'}`}>
         {/* Collapse toggle + compose */}
         <div className="px-2 py-2 border-b border-border-subtle flex items-center gap-1">
-          <button type="button" onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
+          <IconButton onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'} aria-label={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
-          </button>
+          </IconButton>
           {!folderCollapsed && (
             <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
               <Plus className="w-3.5 h-3.5" /> Compose
@@ -2277,16 +2278,16 @@ export default function EmailPage() {
           }`}>
             {snackbar.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
             <span className="flex-1">{snackbar.text}</span>
-            <button type="button" onClick={dismissSnackbar} className="opacity-60 hover:opacity-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+            <IconButton onClick={dismissSnackbar} className="opacity-60 hover:opacity-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
           </div>
         )}
 
         {/* Batch action bar OR Search bar */}
         {selectedIds.size > 0 ? (
           <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 bg-brand-500/5">
-            <button type="button" onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all">
+            <IconButton onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all" aria-label="Toggle select all">
               {selectedIds.size === messages.length ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-            </button>
+            </IconButton>
             <span className="text-[10px] text-brand-400 font-medium">{selectedIds.size} selected</span>
             <div className="flex-1" />
             <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-white" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
@@ -2303,7 +2304,7 @@ export default function EmailPage() {
                 <input value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
                   className="input-dark w-full text-[11px] pl-7 pr-7 py-1 min-h-[36px]" />
                 {searchInput && (
-                  <button type="button" onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></button>
+                  <IconButton onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></IconButton>
                 )}
                 {showSearchFilters && (
                   <SearchFilterPanel filters={searchFilters} onChange={setSearchFilters} onClose={() => setShowSearchFilters(false)} />
@@ -2315,11 +2316,11 @@ export default function EmailPage() {
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
               {unreadCount > 0 && (
-                <button type="button" onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
+                <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
               )}
-              <button type="button" onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh">
+              <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh" aria-label="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
+              </IconButton>
               {/* Feature 25: Thread View Toggle */}
               <button type="button"
                 onClick={() => { const next = viewMode === 'messages' ? 'threads' : 'messages'; setViewMode(next); if (next === 'threads') fetchThreads(); }}

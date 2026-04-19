@@ -10,6 +10,7 @@ import {
   Banknote, TrendingUp, FileText, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import IconButton from '../../../components/IconButton';
 import { localToday } from '../../../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -567,12 +568,12 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                         {period.status === 'open' && (
                           <>
-                            <button type="button" onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
-                              className="p-1 text-rmpg-500 hover:text-gray-400 transition-colors"><Users size={13} /></button>
-                            <button type="button" onClick={() => handleClosePeriod(period.id)} title="Close period"
-                              className="p-1 text-rmpg-500 hover:text-green-400 transition-colors"><Check size={13} /></button>
-                            <button type="button" onClick={() => handleDeletePeriod(period.id)} title="Delete"
-                              className="p-1 text-rmpg-500 hover:text-red-400 transition-colors"><Trash2 size={13} /></button>
+                            <IconButton onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
+                              className="p-1 text-rmpg-500 hover:text-gray-400 transition-colors" aria-label="Auto-populate employees"><Users size={13} /></IconButton>
+                            <IconButton onClick={() => handleClosePeriod(period.id)} title="Close period"
+                              className="p-1 text-rmpg-500 hover:text-green-400 transition-colors" aria-label="Close period"><Check size={13} /></IconButton>
+                            <IconButton onClick={() => handleDeletePeriod(period.id)} title="Delete"
+                              className="p-1 text-rmpg-500 hover:text-red-400 transition-colors" aria-label="Delete period"><Trash2 size={13} /></IconButton>
                           </>
                         )}
                         <ChevronRight size={14} className="text-rmpg-600" />
@@ -796,13 +797,13 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                             <div className="flex items-center justify-center gap-1">
                               {isEditing ? (
                                 <>
-                                  <button type="button" onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300"><Check size={13} /></button>
-                                  <button type="button" onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white"><X size={13} /></button>
+                                  <IconButton onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300" aria-label="Save entry"><Check size={13} /></IconButton>
+                                  <IconButton onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white" aria-label="Cancel editing"><X size={13} /></IconButton>
                                 </>
                               ) : (
                                 <>
-                                  <button type="button" onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours"><Edit3 size={13} /></button>
-                                  <button type="button" onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve"><Check size={13} /></button>
+                                  <IconButton onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours" aria-label="Edit hours"><Edit3 size={13} /></IconButton>
+                                  <IconButton onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve" aria-label="Approve entry"><Check size={13} /></IconButton>
                                 </>
                               )}
                             </div>
