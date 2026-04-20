@@ -34,6 +34,26 @@
   --titlebar-gradient: linear-gradient(180deg, #1e3048 0%, #162236 50%, #1a2636 100%);
 }
 
+/* --- Light Mode: saturated-blue theme variant ─────────────── */
+:root[data-theme="light"] {
+  --surface-base: #0d2a4d;
+  --surface-raised: #153a6a;
+  --surface-sunken: #081e3d;
+  --surface-overlay: #061630;
+  --surface-deep: #041022;
+  --border-default: #2a5a9e;
+  --border-subtle: #234d87;
+  --border-strong: #3a75c2;
+  --brand-blue: #2a75c2;
+  --toolbar-gradient-start: #2a75c2;
+  --toolbar-gradient-end: #3a8fd9;
+  --grid-header-bg: #102f55;
+  --grid-row-alt: #123560;
+  --border-panel: #2a5a9e;
+  --bevel-highlight: #4a7bbf;
+  --titlebar-gradient: linear-gradient(180deg, #2a5a9e 0%, #1e4a8a 50%, #153a6a 100%);
+}
+
 /* --- Global Base Overrides --- */
 @layer base {
   html, body, #root {
