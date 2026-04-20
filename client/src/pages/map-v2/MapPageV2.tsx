@@ -148,10 +148,10 @@ export default function MapPageV2() {
     const highZoomLayerRef_local = new TileLayer({
       source: new XYZ({
         url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        maxZoom: 20,
+        maxZoom: 22,
       }),
       minZoom: 15,
-      maxZoom: 20,
+      maxZoom: 22,
     });
     highZoomLayerRef.current = highZoomLayerRef_local;
 
@@ -185,7 +185,14 @@ export default function MapPageV2() {
         center: fromLonLat(SLC_LON_LAT),
         zoom: 11,
         minZoom: 7,
-        maxZoom: 20,
+        // Z22 with smooth fractional zoom — beyond the native tile cap
+        // (CartoDB Z20, Esri Z19/23) OL stretches the deepest available
+        // tile so dispatchers can keep zooming in for tactical close-ups.
+        // constrainResolution: false keeps wheel/pinch fluid instead of
+        // snapping to integer levels.
+        maxZoom: 22,
+        constrainResolution: false,
+        smoothResolutionConstraint: true,
       }),
       controls: defaultControls({ attribution: false }).extend([
         new ScaleLine({ units: 'us', minWidth: 80 }),
@@ -313,6 +320,14 @@ export default function MapPageV2() {
       url = 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
       attributions = '© <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a>, HERE, Garmin, Foursquare, FAO, METI/NASA, USGS';
       highZoomUrl = url;
+    } else if (mapStyle === 'satellite') {
+      // Esri World Imagery — true satellite/aerial photography. Native
+      // resolution reaches Z21–23 in dense urban areas (sub-meter), the
+      // deepest free zoom available. Useful for tactical close-ups of
+      // building entrances, parking lots, fence lines.
+      url = 'https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      attributions = '© <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a>, Maxar, Earthstar Geographics, USDA FSA, USGS';
+      highZoomUrl = url;
     } else {
       url = '/tiles/{z}/{x}/{y}.png';
       attributions = cartoAttrib;
@@ -320,9 +335,12 @@ export default function MapPageV2() {
       // the deeper-zoom (Z16-20) detail above the cache ceiling.
       highZoomUrl = 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
     }
-    tileLayerRef.current.setSource(new XYZ({ url, maxZoom: 20, attributions }));
+    // maxZoom 22 on the source lets Esri imagery serve its native Z21–23
+    // tiles where available; CartoDB/OSM stop responding at their native
+    // ceiling and OL gracefully overzooms by stretching the deepest tile.
+    tileLayerRef.current.setSource(new XYZ({ url, maxZoom: 22, attributions }));
     if (highZoomLayerRef.current) {
-      highZoomLayerRef.current.setSource(new XYZ({ url: highZoomUrl, maxZoom: 20 }));
+      highZoomLayerRef.current.setSource(new XYZ({ url: highZoomUrl, maxZoom: 22 }));
     }
     // Esri reference overlay (parcel labels, road shields, transit lines,
     // address points) is enabled only for the Detail style — that's the
