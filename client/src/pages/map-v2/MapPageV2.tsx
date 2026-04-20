@@ -125,6 +125,7 @@ export default function MapPageV2() {
   const [mapStyle, setMapStyle] = useState<MapStyleKey>('dark');
   const tileLayerRef = useRef<TileLayer<XYZ> | null>(null);
   const highZoomLayerRef = useRef<TileLayer<XYZ> | null>(null);
+  const referenceOverlayRef = useRef<TileLayer<XYZ> | null>(null);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -154,6 +155,23 @@ export default function MapPageV2() {
     });
     highZoomLayerRef.current = highZoomLayerRef_local;
 
+    // Reference overlay — Esri's transparent label/road-shield/transit/
+    // address-point/parcel-label tile layer. Renders on top of the base
+    // for the "Detail" style only (toggled via the swap effect below).
+    // zIndex 50 puts it above the base tiles but below feature data
+    // (markers/beats are zIndex 100+) so it never occludes operational
+    // glyphs.
+    const referenceOverlay = new TileLayer({
+      source: new XYZ({
+        url: 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19,
+        crossOrigin: 'anonymous',
+      }),
+      zIndex: 50,
+      visible: false,
+    });
+    referenceOverlayRef.current = referenceOverlay;
+
     // Mini-map (top-right corner) — uses the same tile cache to stay
     // offline-capable.
     const overviewTileLayer = new TileLayer({
@@ -162,7 +180,7 @@ export default function MapPageV2() {
 
     const instance = new Map({
       target: mapDivRef.current,
-      layers: [tileLayer, highZoomLayerRef_local],
+      layers: [tileLayer, highZoomLayerRef_local, referenceOverlay],
       view: new View({
         center: fromLonLat(SLC_LON_LAT),
         zoom: 11,
@@ -305,6 +323,13 @@ export default function MapPageV2() {
     tileLayerRef.current.setSource(new XYZ({ url, maxZoom: 20, attributions }));
     if (highZoomLayerRef.current) {
       highZoomLayerRef.current.setSource(new XYZ({ url: highZoomUrl, maxZoom: 20 }));
+    }
+    // Esri reference overlay (parcel labels, road shields, transit lines,
+    // address points) is enabled only for the Detail style — that's the
+    // basemap it was designed to pair with, and the high-density labels
+    // would clash with CartoDB's own label baking on the other styles.
+    if (referenceOverlayRef.current) {
+      referenceOverlayRef.current.setVisible(mapStyle === 'detail');
     }
   }, [mapStyle]);
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
