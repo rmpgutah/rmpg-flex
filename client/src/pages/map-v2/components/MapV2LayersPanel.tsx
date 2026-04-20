@@ -1,5 +1,37 @@
-import { Layers, Eye, EyeOff, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
-import { useState } from 'react';
+import {
+  Layers, Eye, EyeOff, PanelLeftOpen, PanelLeftClose,
+  Shield, AlertTriangle, Building2, Map as MapIcon, MapPin, Flame,
+  Crosshair, Footprints, FileText, Phone, Truck, ParkingCircle,
+  Ban, Activity, Route, Clock, Bookmark, ShieldAlert, Square,
+  Octagon, History, Repeat, Timer, Sparkles, ArrowRight,
+  Hexagon, AlertCircle,
+} from 'lucide-react';
+import { useState, type ComponentType } from 'react';
+
+/** Per-layer-key icon registry. Replaces the generic Eye/EyeOff with
+ *  semantically meaningful symbols so dispatchers can scan the panel
+ *  by glyph instead of label. Falls back to Layers for unknown keys. */
+const LAYER_ICONS: Record<string, ComponentType<any>> = {
+  // Core
+  beats: Hexagon, county: Square, municipality: Building2,
+  highway: Route, places: MapPin,
+  // Intelligence
+  alerts: ShieldAlert, heatmap: Flame, safety: AlertTriangle,
+  enforcement: Crosshair, predictions: Sparkles,
+  // Operational
+  incidents: AlertCircle, fi: FileText, checkpoints: Shield,
+  fleet: Truck,
+  // History
+  tracking: ArrowRight, breadcrumbs: Footprints, history: History,
+  repeat: Repeat, dwell: Timer,
+  // Persisted
+  geofences: Octagon,
+  // BC derived
+  'bc-stops': ParkingCircle, 'bc-warn': AlertTriangle,
+  'bc-brake': AlertCircle, 'bc-status': Activity,
+  'bc-arrows': ArrowRight, 'bc-miles': MapIcon,
+  'bc-hull': Hexagon, 'bc-onduty': Ban,
+};
 
 /** Segmented control descriptor — renders as a row of small buttons
  *  beneath a layer toggle when the layer is visible. */
@@ -79,7 +111,7 @@ export default function MapV2LayersPanel({ sections, isConnected }: MapV2LayersP
 
   return (
     <div
-      className="absolute top-2 left-2 z-20 bg-[#0a0a0a] border border-[#222222] font-mono text-[10px] uppercase tracking-wider select-none shadow-lg"
+      className="absolute top-2 left-2 z-20 bg-[#0a0a0acc] backdrop-blur-md border border-[#2a2a2a] font-mono text-[10px] uppercase tracking-wider select-none shadow-2xl shadow-black/60"
       style={{ width: 'clamp(180px, 16vw, 220px)' }}
     >
       {/* Header */}
@@ -161,29 +193,36 @@ export default function MapV2LayersPanel({ sections, isConnected }: MapV2LayersP
                 </div>
               </div>
               {/* Layers in this section */}
-              {sec.layers.map((l) => (
+              {sec.layers.map((l) => {
+                const LayerIcon = LAYER_ICONS[l.key] || Layers;
+                const VisIcon = l.visible ? Eye : EyeOff;
+                return (
                 <div key={l.key}>
                   <button
                     type="button"
                     onClick={l.onToggle}
                     aria-label={`Toggle ${l.label} layer`}
-                    className="w-full flex items-center gap-2 px-2 py-1 hover:bg-[#1a1a1a] text-left"
+                    className={
+                      'w-full flex items-center gap-2 px-2 py-1 hover:bg-[#1a1a1a] text-left transition-colors ' +
+                      (l.visible ? '' : 'opacity-70')
+                    }
                   >
-                    {l.visible ? (
-                      <Eye className="w-3 h-3 text-[#d4a017]" aria-hidden="true" />
-                    ) : (
-                      <EyeOff className="w-3 h-3 text-[#666666]" aria-hidden="true" />
-                    )}
-                    <span
-                      className="w-2 h-2 inline-block flex-shrink-0"
-                      style={{ background: l.color }}
+                    <VisIcon
+                      className={'w-3 h-3 ' + (l.visible ? 'text-[#d4a017]' : 'text-[#555555]')}
+                      aria-hidden="true"
+                    />
+                    <LayerIcon
+                      className="w-3 h-3 flex-shrink-0"
+                      style={{ color: l.visible ? l.color : '#555555' }}
                       aria-hidden="true"
                     />
                     <span className={'flex-1 truncate ' + (l.visible ? 'text-[#e5e7eb]' : 'text-[#666666]')}>
                       {l.label}
                     </span>
                     {typeof l.count === 'number' && (
-                      <span className="text-[#666666] tabular-nums text-[9px]">{l.count}</span>
+                      <span className="text-[#666666] tabular-nums text-[9px] bg-[#0d0d0d] border border-[#1a1a1a] px-1">
+                        {l.count.toLocaleString()}
+                      </span>
                     )}
                   </button>
                   {/* Inline controls — only when layer is visible */}
@@ -221,7 +260,8 @@ export default function MapV2LayersPanel({ sections, isConnected }: MapV2LayersP
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })}

@@ -85,18 +85,20 @@ const PRIORITY_RADIUS: Record<string, number> = {
 };
 
 /** Call marker — downward-pointing alert triangle, sized by priority.
- *  P1 is largest + most-saturated to draw eye to highest-priority calls. */
+ *  P1 is largest + most-saturated to draw eye to highest-priority calls.
+ *  P1 calls also get a translucent halo behind the triangle to add
+ *  visual weight (the halo's pulse animation is driven by useOlP1Pulse). */
 function callStyle(c: CallForService): Style[] {
   const color = PRIORITY_HEX[c.priority as CallPriority] || '#888888';
   const radius = PRIORITY_RADIUS[c.priority] ?? 7;
+  const isP1 = c.priority === 'P1';
   const main = new Style({
     image: new RegularShape({
       points: 3,
       radius,
-      // π = points down (alert/warning convention)
       rotation: Math.PI,
       fill: new FillStyle({ color: `${color}cc` }),
-      stroke: new StrokeStyle({ color: '#0a0a0a', width: 1.5 }),
+      stroke: new StrokeStyle({ color: isP1 ? '#fef2f2' : '#0a0a0a', width: isP1 ? 2 : 1.5 }),
     }),
     text: new TextStyle({
       text: c.call_number,
