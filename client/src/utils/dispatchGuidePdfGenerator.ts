@@ -438,7 +438,7 @@ function section1(ctx: GuideContext): void {
   );
   bullet(ctx, 'Brand bar (52px tall) — agency logo, workstation identifier, and the current dispatcher\'s name and role. The role badge is color-coded: gold for admin, gray for dispatcher, blue for supervisor.');
   bullet(ctx, 'Menu bar (22px) — File, View, Tools, Help dropdowns plus the global search box. Press Alt-F / Alt-V / Alt-T / Alt-H to open each menu with the keyboard.');
-  bullet(ctx, 'Icon toolbar (46px) — quick-jump buttons to Dispatch, Map, Records, BOLO, Warrants, Incidents, Citations, Cases. Each icon has an F-key mapping listed in Help → Keyboard Shortcuts.');
+  bullet(ctx, 'Icon toolbar (46px) — quick-jump buttons to Dispatch, Map, Records, BOLO, Warrants, Incidents, Citations, Cases. Each icon has an F-key mapping listed in Help -> Keyboard Shortcuts.');
   bullet(ctx, 'Call list (left column, default 320px wide) — every active call sorted by priority descending, then by age. Pending calls float to the top within their priority class. Priority tint: red background for P1, orange for P2, yellow for P3, gray for P4.');
   bullet(ctx, 'Unit roster (center column, default 280px) — grouped by status: Available, Dispatched, Enroute, On Scene, Busy, Out of Service, Off Duty. The group header shows the count; click it to collapse. An LED dot next to each call sign indicates GPS freshness: green = updated within 2 minutes, amber = 2-10 minutes, red = stale beyond 10 minutes.');
   bullet(ctx, 'Detail pane (right column, default 480px) — everything about the selected call: address with map pin, caller info, narrative notes (newest at top), linked persons and vehicles, safety flags, disposition, and the full audit log.');
@@ -2355,6 +2355,280 @@ function section22(ctx: GuideContext): void {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// Section 23 — "How To Use" activation guides. Each subsystem
+// gets a step-by-step enable / operate / troubleshoot recipe
+// a dispatcher can follow the first time they touch it.
+// Reads like a cookbook, not a reference — every recipe is
+// self-contained and written in the imperative.
+// ═══════════════════════════════════════════════════════════
+
+function section23(ctx: GuideContext): void {
+  title(ctx, '23. How To Use — Activating AI & Subsystems');
+
+  paragraph(ctx,
+    'Sections 1-22 explain what the console does. This section explains HOW to turn on the individual features and sub-systems, step by step. Every recipe below is self-contained: the prerequisites are listed, the click path is spelled out, and there is a quick test you can run to confirm it works. Read the recipe that matches the feature you need right now; the others can wait until you do.',
+  );
+
+  calloutBox(ctx, 'Orientation',
+    'None of these features require a supervisor or admin to enable per-dispatcher. If a recipe below asks for a setting you cannot see, check your user role in the status bar. Some features (audit-log viewing, BOLO broadcast to adjacent agencies, premise-alert creation) require supervisor or admin role — those are called out in the recipe.',
+    'info',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.1 AI Dispatcher Brain — Activation');
+  paragraph(ctx,
+    'The Dispatcher Brain is the rule-based AI system that watches every call and unit in real time and speaks coaching cues, safety reminders, and stuck-state warnings to you. It is NOT a replacement for judgment — treat it as a very attentive second dispatcher who only speaks when it sees a pattern you asked it to watch for.',
+  );
+
+  h3(ctx, 'Prerequisites');
+  bullet(ctx, 'Your account has the dispatcher, supervisor, or admin role.');
+  bullet(ctx, 'Your workstation has working speakers or headphones and browser audio is not muted.');
+  bullet(ctx, 'The WebSocket LIVE indicator in the status bar is green. Brain needs live events to fire rules.');
+
+  h3(ctx, 'Enable Steps');
+  bullet(ctx, 'Click your name in the top-right corner of the console. The user menu drops down.');
+  bullet(ctx, 'Select User Profile. The profile panel opens.');
+  bullet(ctx, 'Click the Voice tab along the top of the profile panel.');
+  bullet(ctx, 'Find the "Dispatcher Brain" toggle. Flip it ON. A green "Brain Active" badge appears in the status bar.');
+  bullet(ctx, 'Choose a Terseness preset: Narrative (full sentences, best for training), Standard (clipped professional phrasing, default), or Terse (5-word prompts, best for veterans who know the console cold).');
+  bullet(ctx, 'Optional: set Voice Gender (Jenny / Guy / Aria), Speaking Rate (0.8x to 1.3x of normal), and which rule categories fire — Safety, Timer, Coaching, Context, Events.');
+  bullet(ctx, 'Click Save. The brain immediately speaks a test line: "Dispatcher Brain active. I will notify you when something needs attention."');
+
+  h3(ctx, 'Verify');
+  bullet(ctx, 'Create a test call (F2) with priority P1. Brain should speak "Priority 1 dispatched. Two-unit rule engaged." within 2 seconds of save.');
+  bullet(ctx, 'Close the test call with disposition UNFOUNDED.');
+
+  h3(ctx, 'Turn Off');
+  bullet(ctx, 'Same path — User Profile -> Voice tab -> Dispatcher Brain toggle OFF. Or press Ctrl+Shift+B for an instant mute without losing your preset settings.');
+
+  calloutBox(ctx, 'Common Mistake',
+    'If you hear nothing when the brain should be speaking, first check the master sound toggle in the status bar — it can mute ALL audio including brain, voice alerts, and radio tones. The Brain Active badge will still show green even when the master mute is on.',
+    'warn',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.2 Voice Dictation — Call Intake By Speaking');
+  paragraph(ctx,
+    'You can populate a call intake form by speaking rather than typing. Useful when you are on the phone with a caller and want to keep both hands free, or when you are a slower typist than you are a listener. Voice dictation uses the browser\'s Web Speech API plus a CAD-specific vocabulary model that recognizes Utah street names, 10-codes, and standard incident types.',
+  );
+
+  h3(ctx, 'Prerequisites');
+  bullet(ctx, 'Chrome, Edge, or any Chromium-based browser. Firefox and Safari fall back to the default Web Speech recognizer which is notably less accurate on CAD vocabulary.');
+  bullet(ctx, 'Microphone permission granted to the console domain (rmpgutah.us). If you have never used the mic before, the browser will prompt the first time you press V.');
+
+  h3(ctx, 'Use');
+  bullet(ctx, 'Press F2 to open the intake form.');
+  bullet(ctx, 'Press V (for Voice). A red recording indicator appears in the top-right of the intake form.');
+  bullet(ctx, 'Speak naturally: "Shots fired at 2100 South State Street, two subjects, one armed, one round fired into the air." The form populates Incident Type (Shots Fired), Location (auto-geocoded), and Description (verbatim transcript) as you speak.');
+  bullet(ctx, 'Press V again to stop recording. Review the populated fields and edit any misheard words.');
+  bullet(ctx, 'Press Enter to save. Dispatch proceeds normally.');
+
+  h3(ctx, 'Transcript Review');
+  paragraph(ctx,
+    'Press T on any open call to see the full voice transcript for that call — every speak-to-call interaction, timestamped and attributable. This is the official record of what you said into the mic; the dispatcher brain uses it for coaching and the supervisor uses it for QA review.',
+  );
+
+  calloutBox(ctx, 'Privacy',
+    'Voice dictation records audio locally and transmits only the text transcript to the server. Raw audio is NOT stored. However, the transcript IS audited and discoverable — treat your microphone like an open radio channel.',
+    'warn',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.3 BOLO System — Create, Broadcast, Clear');
+  paragraph(ctx,
+    'A BOLO (Be On the Look-Out) is a persistent broadcast about a person, vehicle, or pattern that stays active across shifts until explicitly cleared or auto-expired. Every officer on duty sees active BOLOs on their MDT the moment they log on.',
+  );
+
+  h3(ctx, 'Create');
+  bullet(ctx, 'Press F11 (or Dispatch menu -> New BOLO). The BOLO form opens.');
+  bullet(ctx, 'Choose BOLO Type: Vehicle, Person, Pattern (e.g. "series of garage burglaries"), or Property (stolen item).');
+  bullet(ctx, 'Fill in known details. Leave unknowns blank — partial BOLOs are better than no BOLOs.');
+  bullet(ctx, 'Set safety flags if applicable: WEAPON, FELONY, KNOWN_GANG, OFFICER_SAFETY, JUVENILE. Flags drive the priority tone officers hear when the BOLO broadcasts.');
+  bullet(ctx, 'Set expiration: default 8 hours (end of shift), override for up to 72 hours with supervisor approval.');
+  bullet(ctx, 'Set Agency Scope: RMPG only (default), RMPG + SLCPD (metro relay), or RMPG + UHP + Unified PD + SLCPD (valley-wide).');
+  bullet(ctx, 'Click Broadcast. Voice channel speaks the BOLO immediately, MDTs pop a BOLO card, and the BOLO appears in the F11 BOLO panel on every workstation.');
+
+  h3(ctx, 'Amend');
+  bullet(ctx, 'From the BOLO panel, click the BOLO row. Click Amend (not Edit — amendments are versioned).');
+  bullet(ctx, 'Add or update fields. Every amendment re-broadcasts with an "UPDATED BOLO" prefix so officers know to re-read.');
+
+  h3(ctx, 'Clear');
+  bullet(ctx, 'When the subject is located, arrested, or the pattern stops, clear the BOLO: click the BOLO row, click Clear, choose a disposition (SUBJECT IN CUSTODY, VEHICLE RECOVERED, PATTERN RESOLVED, EXPIRED UNRESOLVED).');
+  bullet(ctx, 'Cleared BOLOs stay in the searchable history forever; they just stop broadcasting and drop off the active panel.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.4 Premise Alerts — Creating and Using');
+  paragraph(ctx,
+    'A premise alert is a persistent warning tied to a specific address. Examples: "known aggressive dog," "wheelchair-bound resident," "prior DV at this location," "known meth lab — HAZMAT protocols." When any call is dispatched to that address, the alert surfaces automatically on the call form and is voice-announced to responding officers.',
+  );
+
+  h3(ctx, 'Create (Requires Supervisor Role)');
+  bullet(ctx, 'From the map or the Records -> Addresses page, find the address.');
+  bullet(ctx, 'Click the address pin. Click Add Premise Alert.');
+  bullet(ctx, 'Choose alert severity: INFO (gray, informational only — "cameras on property"), CAUTION (amber, officer-safety advisory — "aggressive dog"), or WARNING (red, serious — "known violent subject, weapons at location").');
+  bullet(ctx, 'Write the alert text. Keep it under 80 characters — it will be spoken on the voice channel, so brevity is clarity.');
+  bullet(ctx, 'Optional: set an expiration date. Default is no expiration (persistent).');
+  bullet(ctx, 'Click Save. The alert is immediately live on any future dispatch to that address.');
+
+  h3(ctx, 'How It Surfaces');
+  bullet(ctx, 'When you type an address into a new call, if that address has one or more premise alerts, a red/amber/gray banner appears at the top of the intake form with the alert text.');
+  bullet(ctx, 'The voice channel speaks the alert as part of the dispatch announcement: "Priority 2 disturbance, 1234 Example Ave. Premise warning: aggressive dog at this location."');
+  bullet(ctx, 'MDTs display a full-screen premise card that the officer must dismiss before they can acknowledge the call. This is intentional friction — life-safety information should be impossible to skip past.');
+
+  h3(ctx, 'Review and Retire');
+  paragraph(ctx,
+    'Premise alerts need periodic review. A "wheelchair-bound resident" alert from 2018 may be stale if the resident moved. Supervisors should review and retire obsolete alerts quarterly under Records -> Premise Alerts -> Review Queue.',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.5 NCIC Queries — Wants, Warrants, Stolen Property');
+  paragraph(ctx,
+    'NCIC is the FBI\'s national crime information center. RMPG is configured as a secondary operator with read-only query access (we can ask NCIC questions; we cannot enter records into NCIC). Use NCIC for any person, vehicle, plate, firearm, or article check that may have a federal or cross-jurisdictional dimension.',
+  );
+
+  h3(ctx, 'Run a Query');
+  bullet(ctx, 'Press F12 to open the NCIC query panel. The panel defaults to Person query.');
+  bullet(ctx, 'Choose query type: Person (by name + DOB), Vehicle (by VIN or by plate+state), Article (by serial number), Firearm (by serial + make), Plate (partial or full).');
+  bullet(ctx, 'Fill in the fields. Person queries require at a minimum a last name AND either DOB or a first name and approximate age.');
+  bullet(ctx, 'Click Run Query. Responses typically return in 2-4 seconds; during peak federal load it can take up to 15 seconds.');
+
+  h3(ctx, 'Reading Responses');
+  bullet(ctx, 'NO HIT — no matching record. This is NOT the same as "clear" — you only asked one question, and NCIC only answers what it has.');
+  bullet(ctx, 'HIT — one or more matching records. Read the hit: ORI (originating agency), record type (wanted, missing, sex offender, protection order), caveats, and any special instructions.');
+  bullet(ctx, 'VERIFY — NCIC hits MUST be verified with the originating agency before acting. The console auto-sends a hit-confirmation request; do not make officer-safety decisions on the hit alone until verified.');
+
+  calloutBox(ctx, 'Misuse',
+    'NCIC access is federally audited. Every query is logged with your user ID, timestamp, justification (which you are required to enter for each query: incident number or case number). Running NCIC on a person for non-law-enforcement reasons is a federal crime under 18 U.S.C. 1030. Do not help friends, family, or curious acquaintances run "just one quick check" — the audit trail is forever.',
+    'warn',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.6 Live GPS Breadcrumbs — Unit Tracking');
+  paragraph(ctx,
+    'Every unit with an MDT or a mobile-app session broadcasts GPS approximately every 5 seconds while in service. The breadcrumb trail — the unit\'s path over the last N minutes — is available for review and replay.',
+  );
+
+  h3(ctx, 'View Breadcrumbs');
+  bullet(ctx, 'Click a unit on the map. The quick-info popup opens.');
+  bullet(ctx, 'Click "Breadcrumbs" in the popup. The unit\'s last 30 minutes of movement draws on the map as a fading blue trail.');
+  bullet(ctx, 'Adjust the time window: 15 minutes, 30 minutes, 1 hour, entire shift.');
+  bullet(ctx, 'Click Play to animate the movement in sped-up playback — useful for post-incident reconstruction.');
+
+  h3(ctx, 'When to Use');
+  bullet(ctx, 'Welfare check on a non-responsive officer: where have they been in the last 5 minutes?');
+  bullet(ctx, 'Pursuit debrief: reconstruct the chase path for the supervisor report.');
+  bullet(ctx, 'Posted-unit verification: did the unit actually go to the post, or just report "on post" from the parking lot across the street?');
+  bullet(ctx, 'Training review: new-officer patrol-coverage evaluation over a shift.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.7 Skip Tracer V2 — Running a Lookup');
+  paragraph(ctx,
+    'Skip Tracer V2 consolidates 22 public and agency data sources into a single query interface. Use for deep background, stale-address investigation, or pre-dispatch context on a high-risk subject.',
+  );
+
+  h3(ctx, 'Open the Tool');
+  bullet(ctx, 'Intelligence menu -> Skip Tracer, or the keyboard shortcut Ctrl+Shift+S.');
+  bullet(ctx, 'The search form opens. Required: at least a last name OR a phone number OR an address.');
+
+  h3(ctx, 'Required Justification');
+  bullet(ctx, 'Every skip trace requires a case number or incident number in the Justification field. The form will not submit without one.');
+  bullet(ctx, 'If the lookup is for proactive intelligence with no open case, use "INTEL-" prefix followed by your initials and date (e.g. INTEL-JS-2026-04-20). Supervisors review INTEL prefixes for pattern abuse.');
+
+  h3(ctx, 'Running');
+  bullet(ctx, 'Fill the form, click Run. The query fans out to all 22 sources in parallel.');
+  bullet(ctx, 'Results stream in as sources respond — NSOPW is usually fastest (<2s), federal sanctions take 5-10s, SLC Assessor can take 30s on cold queries.');
+  bullet(ctx, 'Results are deduplicated across sources and grouped by confidence: HIGH (multiple sources corroborate), MEDIUM (single authoritative source), LOW (single weak source, e.g. social directory).');
+
+  h3(ctx, 'Interpreting Hits');
+  bullet(ctx, 'FBI WANTED hit: treat as armed and dangerous until verified. Notify supervisor immediately.');
+  bullet(ctx, 'OFAC Sanctions hit: likely a false positive on a common name. Verify by DOB and photo before acting.');
+  bullet(ctx, 'NSOPW hit: registered sex offender. Note any address-of-record mismatch — that itself may be a registration violation.');
+  bullet(ctx, 'Utah Court hit: active or recent case. Open the court record for charge specifics and next-hearing date.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.8 Compound Search — Building a Query');
+  paragraph(ctx,
+    'Compound Search (Records -> Search -> Compound, or Ctrl+Shift+F) is the NCIC-style structured query form. Use it when you need records that match multiple criteria simultaneously.',
+  );
+
+  h3(ctx, 'Example — Build This Query');
+  paragraph(ctx,
+    'Scenario: an officer just cleared a call and wants to know if a subject named "Smith" in their late 30s has been contacted in Beat 14 in the last 60 days.',
+  );
+  bullet(ctx, 'Open compound search (Ctrl+Shift+F).');
+  bullet(ctx, 'Name: Smith* (wildcard suffix catches Smithson, Smithers, etc.).');
+  bullet(ctx, 'DOB: range, 1985-01-01 to 1990-12-31 (gives "late 30s in 2026").');
+  bullet(ctx, 'Location: Beat 14 (click Beat from the drop-down, select 14).');
+  bullet(ctx, 'Date range: 2026-02-20 to 2026-04-20 (last 60 days).');
+  bullet(ctx, 'Record types: check Calls, Incidents, Field Interviews (the three that geotag to a beat).');
+  bullet(ctx, 'Click Run. Results group by record type; click through to each.');
+
+  h3(ctx, 'Save for Reuse');
+  bullet(ctx, 'Click Save Search at the top of the query form. Name it (e.g. "Late-30s Smiths in Beat 14").');
+  bullet(ctx, 'Saved searches live under Records -> Saved Searches and are per-user (not shared).');
+  bullet(ctx, 'Running a saved search re-executes against CURRENT data, so "Calls in Beat 14 this week" works every week without re-editing.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.9 Offline Tile Pre-cache — Before a Long Deployment');
+  paragraph(ctx,
+    'Before a planned event with limited connectivity (parade detail, festival, remote tactical operation), pre-cache map tiles for the operational area so the map continues to work without network. The service worker auto-caches tiles you pan over, but you can force a deeper cache for a specific bounding box.',
+  );
+
+  h3(ctx, 'Steps');
+  bullet(ctx, 'Open the map. Pan to the event area.');
+  bullet(ctx, 'Tools menu -> Pre-cache Map Area. A rectangle overlay appears.');
+  bullet(ctx, 'Drag the rectangle to cover the area. Choose zoom levels to cache: typically Z10 (overview) to Z17 (street detail). Z18-19 adds significant time and cache size.');
+  bullet(ctx, 'Click Pre-cache. A progress bar shows tile download. Typical 1-square-mile area at Z10-Z17 = ~500 tiles = ~20MB, takes 30-90 seconds.');
+  bullet(ctx, 'Verify: turn off your network (airplane mode on a laptop) and pan around the cached area. Tiles load from cache.');
+
+  h3(ctx, 'Cache Eviction');
+  bullet(ctx, 'The service worker enforces a max-tile-cache size (default 1GB). Tiles you have not used in 30 days get evicted first.');
+  bullet(ctx, 'To force-evict everything and rebuild: Tools -> Clear Map Cache. Note this also clears your personal tile history and the next shift will start with a cold cache.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.10 Dispatcher Brain — Rule Customization');
+  paragraph(ctx,
+    'The dispatcher brain comes with ~40 pre-configured rules (see Section 7 for categories). You can enable, disable, or threshold-adjust individual rules per your workstation without affecting other dispatchers.',
+  );
+
+  h3(ctx, 'Access');
+  bullet(ctx, 'User Profile -> Voice tab -> "Edit Rules" at the bottom.');
+  bullet(ctx, 'The rule editor opens, grouped by category: Safety, Timer, Coaching, Context, Events.');
+  bullet(ctx, 'Each rule has: On/Off toggle, severity (how urgently it speaks), cool-down (minimum seconds between re-fires), and any rule-specific thresholds (e.g. "on-scene stuck time" defaults to 8 minutes; you can raise to 10 for slow-moving welfare-check shifts).');
+
+  h3(ctx, 'Common Tweaks');
+  bullet(ctx, 'Night-shift dispatchers on slow beats often raise the on-scene stuck-time threshold from 8 minutes to 15 minutes to reduce spurious alerts on long welfare checks.');
+  bullet(ctx, 'Metro-shift dispatchers on a busy Friday night often disable the "coaching" category entirely so the brain only speaks safety and timer rules — coaching adds chatter when the channel is already saturated.');
+  bullet(ctx, 'Trainees leave everything on default for the first 90 days.');
+
+  h3(ctx, 'Reset');
+  bullet(ctx, 'At the bottom of the rule editor: "Reset to Defaults." Brings every rule back to factory settings. Useful when you have drifted your config over time and want a known baseline.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.11 Dark Mode / High-Contrast — Accessibility Presets');
+  paragraph(ctx,
+    'The console defaults to the Spillman Flex pure-black theme (dark background, gold accents). For dispatchers with visual accessibility needs, two additional presets exist.',
+  );
+  bullet(ctx, 'High Contrast — increases text weight, thickens borders, and bumps accent saturation. User Profile -> Appearance -> High Contrast.');
+  bullet(ctx, 'Light Theme — inverted color scheme with white background. NOT recommended for night-shift workstations (reduces dark adaptation) but useful for day-shift in bright rooms. User Profile -> Appearance -> Light Theme.');
+  bullet(ctx, 'Text Size — three steps: Small (compact, default on 1440p+ displays), Medium, Large. Applies to every panel in the console uniformly.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.12 Workstation Handoff — Leaving Your Post');
+  paragraph(ctx,
+    'When you step away from the console (bathroom break, end of shift, emergency), the workstation should know you are not there. This is separate from logging out — you can "hand off" temporary control to the next dispatcher without losing your session.',
+  );
+  bullet(ctx, 'Ctrl+Shift+H opens the Handoff dialog. Alternatively, click your name -> Handoff.');
+  bullet(ctx, 'Choose handoff type: Short Break (<15 min, session stays open, you return to the same state), Shift Change (end of shift, session closes cleanly with a summary export), Emergency (abandon the workstation, the next dispatcher gets a fresh login but inherits your active call list).');
+  bullet(ctx, 'On Short Break: the screen dims with a "DISPATCHER AWAY" banner, but the WebSocket stays connected and incoming events are queued. On your return, press any key and the dim lifts.');
+
+  calloutBox(ctx, 'Handoff Discipline',
+    'Never walk away from an active call without either handing it to another dispatcher explicitly or setting Short Break. An unhandled call with a unit on scene and no dispatcher awareness is how officer-safety incidents turn into officer-safety emergencies.',
+    'warn',
+  );
+}
+
 function appendixA(ctx: GuideContext): void {
   title(ctx, 'Appendix A — Incident Type Reference');
 
@@ -2907,9 +3181,23 @@ function quickReferenceCard(ctx: GuideContext): void {
   d.setFont('helvetica', 'normal');
   d.setFontSize(9);
   d.setTextColor(COLOR.INK);
-  d.text('User Profile → Voice tab. Toggle Dispatcher Brain (Beta). Terseness: narrative / standard / terse.', PAGE.MARGIN, bottomY);
-  d.text('Brain speaks: events (citations, incidents, warrants, evidence, arrests, HR) + coaching (DV, felony, MH,', PAGE.MARGIN, bottomY + 12);
-  d.text('overdue status, geofence breach). Press V for mic. "Tell me about that call." Press T for transcript.', PAGE.MARGIN, bottomY + 24);
+  // Use splitTextToSize so lines wrap inside the page margins. Hardcoded
+  // d.text() calls overflow the right edge and clip to "standa..." at
+  // fontSize 9 because 100+ char lines exceed the 504pt content width.
+  const voiceLines = [
+    'User Profile -> Voice tab. Toggle Dispatcher Brain (Beta). Terseness: narrative / standard / terse.',
+    'Brain speaks: events (citations, incidents, warrants, evidence, arrests, HR) + coaching (DV, felony, MH, overdue status, geofence breach).',
+    'Press V for mic. "Tell me about that call." Press T for transcript.',
+  ];
+  const voiceContentW = PAGE.W - PAGE.MARGIN * 2;
+  let voiceOffsetY = 0;
+  for (const rawLine of voiceLines) {
+    const wrapped = d.splitTextToSize(rawLine, voiceContentW) as string[];
+    for (const w of wrapped) {
+      d.text(w, PAGE.MARGIN, bottomY + voiceOffsetY);
+      voiceOffsetY += 11;
+    }
+  }
 
   // Emergency box at very bottom
   bottomY = PAGE.H - 120;
@@ -2982,6 +3270,7 @@ function buildSectionSpecs(): SectionSpec[] {
     { label: '20. Anatomy of the Console',                 emit: section20 },
     { label: '21. Worked Example — Shots-Fired Call',      emit: section21 },
     { label: '22. Your First Shift — Onboarding',          emit: section22 },
+    { label: '23. How To Use — AI & Subsystems',           emit: section23 },
     { label: 'Appendix A — Incident Type Reference',       emit: appendixA },
     { label: 'Appendix B — Disposition Codes',             emit: appendixB },
     { label: 'Appendix C — Architecture for Dispatchers',  emit: appendixC },
