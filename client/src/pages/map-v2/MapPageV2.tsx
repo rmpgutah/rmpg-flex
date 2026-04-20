@@ -126,6 +126,7 @@ export default function MapPageV2() {
   const tileLayerRef = useRef<TileLayer<XYZ> | null>(null);
   const highZoomLayerRef = useRef<TileLayer<XYZ> | null>(null);
   const referenceOverlayRef = useRef<TileLayer<XYZ> | null>(null);
+  const overviewTileLayerRef = useRef<TileLayer<XYZ> | null>(null);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -172,11 +173,14 @@ export default function MapPageV2() {
     });
     referenceOverlayRef.current = referenceOverlay;
 
-    // Mini-map (top-right corner) — uses the same tile cache to stay
-    // offline-capable.
+    // Mini-map (top-right corner) — defaults to the offline tile cache
+    // so it stays available in vehicle dead zones, but its source is
+    // swapped alongside the main map's style picker (see effect below)
+    // so the overview always mirrors what the dispatcher is looking at.
     const overviewTileLayer = new TileLayer({
       source: new XYZ({ url: '/tiles/{z}/{x}/{y}.png', maxZoom: 15 }),
     });
+    overviewTileLayerRef.current = overviewTileLayer;
 
     const instance = new Map({
       target: mapDivRef.current,
@@ -348,6 +352,18 @@ export default function MapPageV2() {
     // would clash with CartoDB's own label baking on the other styles.
     if (referenceOverlayRef.current) {
       referenceOverlayRef.current.setVisible(mapStyle === 'detail');
+    }
+    // Mirror the active style on the mini-map. For the offline Dark
+    // style we keep the local cache URL so the overview survives loss
+    // of network; for everything else the mini-map follows the main
+    // basemap source 1:1 so the dispatcher sees the same context at
+    // both scales.
+    if (overviewTileLayerRef.current) {
+      const overviewUrl = mapStyle === 'dark' ? '/tiles/{z}/{x}/{y}.png' : url;
+      const overviewMaxZoom = mapStyle === 'dark' ? 15 : 22;
+      overviewTileLayerRef.current.setSource(
+        new XYZ({ url: overviewUrl, maxZoom: overviewMaxZoom, attributions })
+      );
     }
   }, [mapStyle]);
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
