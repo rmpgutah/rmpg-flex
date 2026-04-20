@@ -31,10 +31,44 @@ const COLOR = {
 };
 
 // ─── Types ──────────────────────────────────────────────────
+
+/**
+ * A 10-code or signal code row. The live endpoint
+ * `/api/dispatch/geography/codes` returns richer metadata but we only need
+ * these three fields to render the reference table; any extra fields are
+ * ignored. If the fetch fails, we fall back to the hardcoded tables below.
+ */
+export interface LiveDispatchCode {
+  code: string;
+  description: string;
+  category?: string;
+  /** Status chip rendered next to the code in the roster, if any. */
+  status_label?: string;
+}
+
+interface SectionAnchor {
+  /** Label shown in the cover-page TOC. */
+  label: string;
+  /** 1-indexed page the section starts on, captured at emit time. */
+  page: number;
+}
+
 interface GuideContext {
   doc: jsPDF;
   y: number;
   page: number;
+  /** Optional live-fetched codes; when null, sections use hardcoded tables. */
+  liveCodes: LiveDispatchCode[] | null;
+  /** Populated as sections emit; consumed by the cover-page TOC renderer. */
+  anchors: SectionAnchor[];
+}
+
+/**
+ * Record the current page as the start of a section so the cover-page TOC
+ * can link to it. Call immediately after `newPage(ctx)` + before `title(...)`.
+ */
+function anchor(ctx: GuideContext, label: string): void {
+  ctx.anchors.push({ label, page: ctx.page });
 }
 
 // ─── Primitive helpers ──────────────────────────────────────
@@ -227,68 +261,164 @@ function table(
 
 // ─── Content blocks ─────────────────────────────────────────
 
+/**
+ * Draw a small stylized console-mockup badge on the cover.
+ * Pure jsPDF vectors so it stays crisp at any zoom and adds no image payload.
+ */
+function coverConsoleBadge(d: jsPDF, cx: number, topY: number): void {
+  const bw = 220;
+  const bh = 120;
+  const x = cx - bw / 2;
+  const y = topY;
+
+  // Outer bezel (dark console)
+  d.setFillColor('#0a0a0a');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1.5);
+  d.rect(x, y, bw, bh, 'FD');
+
+  // Inner screen area
+  d.setFillColor('#141414');
+  d.setDrawColor('#222222');
+  d.setLineWidth(0.75);
+  d.rect(x + 8, y + 22, bw - 16, bh - 40, 'FD');
+
+  // Header strip
+  d.setFillColor(COLOR.ACCENT);
+  d.rect(x, y, bw, 14, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(7);
+  d.setTextColor(COLOR.BLACK);
+  d.text('RMPG DISPATCH', x + 6, y + 10);
+  d.text('P1:0  P2:0  AVAIL:0', x + bw - 6, y + 10, { align: 'right' });
+
+  // LED dots (red / amber / green)
+  const ledY = y + 7;
+  [['#c0392b', 6], ['#d4a017', 14], ['#166534', 22]].forEach(([color, dx]) => {
+    d.setFillColor(color as string);
+    d.circle(x + bw - 80 + (dx as number), ledY, 2, 'F');
+  });
+
+  // Fake call rows (thin bars)
+  d.setFillColor('#d4a017');
+  d.rect(x + 14, y + 32, 4, 10, 'F');
+  d.setFillColor('#666666');
+  d.rect(x + 22, y + 34, 100, 2, 'F');
+  d.rect(x + 22, y + 39, 70, 2, 'F');
+
+  d.setFillColor('#b91c1c');
+  d.rect(x + 14, y + 48, 4, 10, 'F');
+  d.setFillColor('#666666');
+  d.rect(x + 22, y + 50, 120, 2, 'F');
+  d.rect(x + 22, y + 55, 60, 2, 'F');
+
+  d.setFillColor('#888888');
+  d.rect(x + 14, y + 64, 4, 10, 'F');
+  d.setFillColor('#666666');
+  d.rect(x + 22, y + 66, 90, 2, 'F');
+  d.rect(x + 22, y + 71, 110, 2, 'F');
+
+  // Command line strip
+  d.setFillColor('#000000');
+  d.rect(x + 8, y + bh - 14, bw - 16, 8, 'F');
+  d.setFont('courier', 'bold');
+  d.setFontSize(6);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('> CMD:', x + 12, y + bh - 8);
+}
+
 function coverPage(ctx: GuideContext): void {
   const d = ctx.doc;
   const cx = PAGE.W / 2;
 
-  // Gold bar at top
+  // Subtle gold top stripe
   d.setFillColor(COLOR.ACCENT);
-  d.rect(0, 120, PAGE.W, 6, 'F');
+  d.rect(0, 0, PAGE.W, 4, 'F');
+
+  // Console-mockup badge up top
+  coverConsoleBadge(d, cx, 60);
+
+  // Gold bar
+  d.setFillColor(COLOR.ACCENT);
+  d.rect(0, 210, PAGE.W, 6, 'F');
 
   d.setFont('helvetica', 'bold');
   d.setFontSize(32);
   d.setTextColor(COLOR.BLACK);
-  d.text('DISPATCH CONSOLE', cx, 220, { align: 'center' });
+  d.text('DISPATCH CONSOLE', cx, 260, { align: 'center' });
 
-  d.setFontSize(22);
-  d.text('Training & Quick Reference Guide', cx, 258, { align: 'center' });
+  d.setFontSize(18);
+  d.text('Training & Quick Reference Guide', cx, 290, { align: 'center' });
 
   d.setFont('helvetica', 'normal');
-  d.setFontSize(12);
+  d.setFontSize(11);
   d.setTextColor(COLOR.MUTED);
-  d.text('Rocky Mountain Protective Group', cx, 300, { align: 'center' });
-  d.text('Salt Lake City, Utah', cx, 318, { align: 'center' });
+  d.text('Rocky Mountain Protective Group  •  Salt Lake City, Utah', cx, 312, { align: 'center' });
 
-  // Gold bar
+  // Second gold bar — separates hero from TOC
   d.setFillColor(COLOR.ACCENT);
-  d.rect(0, 390, PAGE.W, 6, 'F');
+  d.rect(0, 338, PAGE.W, 3, 'F');
 
-  d.setFont('helvetica', 'normal');
-  d.setFontSize(10);
-  d.setTextColor(COLOR.INK);
-  const tocY = 410;
+  // Contents heading
   d.setFont('helvetica', 'bold');
   d.setFontSize(11);
-  d.text('CONTENTS', cx, tocY, { align: 'center' });
+  d.setTextColor(COLOR.BLACK);
+  d.text('CONTENTS', cx, 360, { align: 'center' });
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.line(cx - 30, 363, cx + 30, 363);
+
+  // Clickable TOC entries in a 2-column layout. Each row is
+  //   <label>  ........................  <page>
+  // and the whole row is a click-target that jumps to that page.
+  const entries = ctx.anchors;
+  const colW = (PAGE.W - PAGE.MARGIN * 2 - 30) / 2;
+  const rowH = 14;
+  const halfCount = Math.ceil(entries.length / 2);
+  const tocTopY = 380;
+
   d.setFont('helvetica', 'normal');
-  d.setFontSize(10);
-  const toc = [
-    '1. Console Overview',
-    '2. Taking a Call End-to-End',
-    '3. Unit Status & 10-Codes',
-    '4. Safety Flags & Priority Levels',
-    '5. F-Key Hotkeys',
-    '6. CAD Command Line',
-    '7. Voice Features (Dispatcher Brain)',
-    '8. Common Workflows',
-    '9. Troubleshooting',
-    '10. Radio Etiquette & Voice Protocols',
-    '11. Documentation Standards',
-    '12. Using the Map',
-    '13. Shift Change Procedure',
-    'Appendix A — Incident Type Reference',
-    'Appendix B — Disposition Codes',
-    'Appendix C — Architecture for Dispatchers',
-    '— Quick-Reference Card (last page) —',
-  ];
-  for (let i = 0; i < toc.length; i++) {
-    d.text(toc[i], cx, tocY + 20 + i * 15, { align: 'center' });
+  d.setFontSize(9.5);
+  d.setTextColor(COLOR.INK);
+
+  for (let i = 0; i < entries.length; i++) {
+    const col = i < halfCount ? 0 : 1;
+    const rowInCol = i < halfCount ? i : i - halfCount;
+    const x = PAGE.MARGIN + col * (colW + 30);
+    const y = tocTopY + rowInCol * rowH;
+    const entry = entries[i];
+
+    const labelW = d.getTextWidth(entry.label);
+    const pageStr = String(entry.page);
+    const pageW = d.getTextWidth(pageStr);
+    const dotsStart = x + labelW + 4;
+    const dotsEnd = x + colW - pageW - 4;
+
+    d.setTextColor(COLOR.INK);
+    d.text(entry.label, x, y);
+
+    // Dotted leader
+    d.setTextColor(COLOR.MUTED);
+    if (dotsEnd > dotsStart) {
+      const dotWidth = d.getTextWidth('.');
+      const dotCount = Math.max(0, Math.floor((dotsEnd - dotsStart) / dotWidth));
+      d.text('.'.repeat(dotCount), dotsStart, y);
+    }
+
+    d.setTextColor(COLOR.INK);
+    d.text(pageStr, x + colW - pageW, y);
+
+    // Make the whole row clickable — jsPDF expects the top-left of the
+    // link rect, and text was drawn with y as the baseline, so shift up.
+    d.link(x, y - 10, colW, rowH, { pageNumber: entry.page });
   }
 
   // Bottom stamp
   d.setFontSize(9);
   d.setTextColor(COLOR.MUTED);
   d.text(`${generatedStamp()}  •  CONFIDENTIAL — AUTHORIZED USE ONLY`, cx, PAGE.H - 48, { align: 'center' });
+  d.setFontSize(8);
+  d.text('Tap any entry above to jump to that section', cx, PAGE.H - 32, { align: 'center' });
 }
 
 function section1(ctx: GuideContext): void {
@@ -501,40 +631,59 @@ function section3(ctx: GuideContext): void {
   paragraph(ctx,
     'This is the full set recognized by the CAD command line and voice channel. Cells in the Status column match the unit-status values that appear in the roster.',
   );
+  // Prefer live codes from /api/dispatch/geography/codes so a code added via
+  // the admin UI shows up in the next generated guide without a code change.
+  // If the fetch failed (offline dispatcher, auth cookie expired, etc.), fall
+  // back to the canonical hardcoded set below — the guide must never refuse
+  // to download because the network hiccuped.
+  const hardcoded10Codes: string[][] = [
+    ['10-1',  '-',           'Receiving poorly / signal weak'],
+    ['10-2',  '-',           'Receiving well'],
+    ['10-3',  '-',           'Stop transmitting'],
+    ['10-4',  'ACK',         'Acknowledged / understood'],
+    ['10-5',  '-',           'Relay (pass message to third party)'],
+    ['10-6',  'BUSY',        'Busy — not immediately available'],
+    ['10-7',  'OUT SERVICE', 'Out of service (meals, fuel, admin)'],
+    ['10-7B', 'OUT SERVICE', 'Out of service for restroom'],
+    ['10-7C', 'OUT SERVICE', 'Out of service for court'],
+    ['10-8',  'AVAILABLE',   'In service, available for calls'],
+    ['10-9',  '-',           'Repeat last transmission'],
+    ['10-10', 'BREAK',       'On break / off duty temporarily'],
+    ['10-15', '-',           'Prisoner in custody / transport'],
+    ['10-19', '-',           'Return to station'],
+    ['10-20', 'LOCATION',    'What is your location?'],
+    ['10-22', '-',           'Disregard'],
+    ['10-23', 'STANDBY',     'Stand by'],
+    ['10-25', '-',           'Can you meet?'],
+    ['10-27', '-',           'Driver\'s license check'],
+    ['10-28', '-',           'Vehicle registration check'],
+    ['10-29', '-',           'Want / warrant check'],
+    ['10-32', '-',           'Subject with gun / weapons'],
+    ['10-33', '-',           'EMERGENCY — all units hold traffic'],
+    ['10-50', 'TC',          'Traffic collision'],
+    ['10-55', '-',           'Intoxicated driver'],
+    ['10-70', '-',           'Fire alarm / fire'],
+    ['10-76', 'EN ROUTE',    'En route / responding'],
+    ['10-97', 'ON SCENE',    'Arrived / on scene'],
+    ['10-98', '-',           'Assignment completed'],
+    ['10-99', 'EMERGENCY',   'Officer emergency (triggers panic)'],
+  ];
+
+  const liveTen = (ctx.liveCodes ?? [])
+    .filter((c) => /^10-/i.test(c.code ?? ''))
+    .map((c) => [c.code, c.status_label ?? '-', c.description ?? '']);
+
+  const tenRows = liveTen.length > 0 ? liveTen : hardcoded10Codes;
+
+  if (liveTen.length > 0) {
+    paragraph(ctx,
+      `Live snapshot — ${liveTen.length} 10-codes pulled from this server's dispatch_codes table at generation time. Edit admin -> Dispatch Codes to change what appears here on the next guide download.`,
+    );
+  }
+
   table(ctx,
     ['Code', 'Status', 'Meaning'],
-    [
-      ['10-1',  '-',           'Receiving poorly / signal weak'],
-      ['10-2',  '-',           'Receiving well'],
-      ['10-3',  '-',           'Stop transmitting'],
-      ['10-4',  'ACK',         'Acknowledged / understood'],
-      ['10-5',  '-',           'Relay (pass message to third party)'],
-      ['10-6',  'BUSY',        'Busy — not immediately available'],
-      ['10-7',  'OUT SERVICE', 'Out of service (meals, fuel, admin)'],
-      ['10-7B', 'OUT SERVICE', 'Out of service for restroom'],
-      ['10-7C', 'OUT SERVICE', 'Out of service for court'],
-      ['10-8',  'AVAILABLE',   'In service, available for calls'],
-      ['10-9',  '-',           'Repeat last transmission'],
-      ['10-10', 'BREAK',       'On break / off duty temporarily'],
-      ['10-15', '-',           'Prisoner in custody / transport'],
-      ['10-19', '-',           'Return to station'],
-      ['10-20', 'LOCATION',    'What is your location?'],
-      ['10-22', '-',           'Disregard'],
-      ['10-23', 'STANDBY',     'Stand by'],
-      ['10-25', '-',           'Can you meet?'],
-      ['10-27', '-',           'Driver\'s license check'],
-      ['10-28', '-',           'Vehicle registration check'],
-      ['10-29', '-',           'Want / warrant check'],
-      ['10-32', '-',           'Subject with gun / weapons'],
-      ['10-33', '-',           'EMERGENCY — all units hold traffic'],
-      ['10-50', 'TC',          'Traffic collision'],
-      ['10-55', '-',           'Intoxicated driver'],
-      ['10-70', '-',           'Fire alarm / fire'],
-      ['10-76', 'EN ROUTE',    'En route / responding'],
-      ['10-97', 'ON SCENE',    'Arrived / on scene'],
-      ['10-98', '-',           'Assignment completed'],
-      ['10-99', 'EMERGENCY',   'Officer emergency (triggers panic)'],
-    ],
+    tenRows,
     [2, 3, 6],
   );
 
@@ -560,20 +709,26 @@ function section3(ctx: GuideContext): void {
   paragraph(ctx,
     'In addition to 10-codes, RMPG uses signal codes for operational categories that do not have standard 10-code equivalents. Signal codes are typed as "S" followed by a number and always spoken in full ("signal fifty").',
   );
+  const hardcodedSignals: string[][] = [
+    ['S-3',   'Shots fired'],
+    ['S-10',  'Bomb threat'],
+    ['S-20',  'Robbery in progress'],
+    ['S-30',  'Burglary in progress'],
+    ['S-40',  'Prowler'],
+    ['S-50',  'Suicide attempt / threat'],
+    ['S-60',  'Missing person'],
+    ['S-70',  'Mental health subject'],
+    ['S-99',  'Officer needs assistance — not life threatening'],
+    ['S-100', 'Disturbance'],
+  ];
+  const liveSignals = (ctx.liveCodes ?? [])
+    .filter((c) => /^s-/i.test(c.code ?? ''))
+    .map((c) => [c.code, c.description ?? '']);
+  const signalRows = liveSignals.length > 0 ? liveSignals : hardcodedSignals;
+
   table(ctx,
     ['Signal', 'Meaning'],
-    [
-      ['S-3',   'Shots fired'],
-      ['S-10',  'Bomb threat'],
-      ['S-20',  'Robbery in progress'],
-      ['S-30',  'Burglary in progress'],
-      ['S-40',  'Prowler'],
-      ['S-50',  'Suicide attempt / threat'],
-      ['S-60',  'Missing person'],
-      ['S-70',  'Mental health subject'],
-      ['S-99',  'Officer needs assistance — not life threatening'],
-      ['S-100', 'Disturbance'],
-    ],
+    signalRows,
     [2, 8],
   );
 
@@ -1596,6 +1751,610 @@ function section13(ctx: GuideContext): void {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// Sections 14-19 — coverage for subsystems that shipped after
+// the original guide was authored. These stay fairly short on
+// purpose; the guide is a quickref, not a manual. Deep content
+// belongs in the in-app Help pages.
+// ═══════════════════════════════════════════════════════════
+
+function section14(ctx: GuideContext): void {
+  title(ctx, '14. Real-Time Sync & Offline Behavior');
+
+  paragraph(ctx,
+    'Every workstation holds a WebSocket to the server. When a dispatcher changes a call, unit status, or premise alert, the server broadcasts the change to every other workstation within roughly one second. There is no manual refresh and no polling; if your screen does not show a recent change, the socket dropped — see below.',
+  );
+
+  h2(ctx, 'Connection Indicator');
+  bullet(ctx, 'Status bar (bottom right): LIVE (green LED) means socket is connected and receiving events.');
+  bullet(ctx, 'OFFLINE (red LED) means the socket has been closed for more than 3 seconds. Writes still work but updates from other workstations will not appear.');
+  bullet(ctx, 'The console auto-reconnects with exponential backoff (1s, 2s, 4s, 8s, capped at 30s). You do not need to refresh.');
+  bullet(ctx, 'After reconnect, the client re-fetches the active call list and unit roster so you catch up to any events missed while offline.');
+
+  h2(ctx, 'Offline Survival');
+  paragraph(ctx,
+    'The service worker caches the full app shell, Google Maps tiles for Utah, and your most recent call/unit snapshot. If the server is unreachable, you can still:',
+  );
+  bullet(ctx, 'View the last known call stack and unit roster (read-only, marked STALE).');
+  bullet(ctx, 'Pan and zoom the map — CartoDB dark_matter fallback tiles are pre-cached Z7-Z15 for the operational area.');
+  bullet(ctx, 'Read already-opened incident and citation records from the local cache.');
+
+  paragraph(ctx,
+    'You CANNOT create or update anything while offline. Radio still works — use the backup paper log (pre-printed stack in the console drawer) and key the events into the system once connectivity returns.',
+  );
+
+  calloutBox(ctx, 'Important',
+    'If you are unsure whether a dispatch went through, say so on the radio rather than silently retrying. Double-dispatches are far more dangerous than an extra transmission asking "10-9 on that last dispatch?"',
+    'warn',
+  );
+}
+
+function section15(ctx: GuideContext): void {
+  title(ctx, '15. Map V2 (OpenLayers, Beta)');
+
+  paragraph(ctx,
+    'Map V2 is a parallel map surface at /map-v2 built on OpenLayers and the offline CartoDB raster tile cache. It runs read-only alongside the production Google Maps page at /map and exists so the team can iterate on a non-Google tile stack without risking the live dispatch map. Production dispatch continues to use /map — do NOT direct officers to V2 for live operations yet.',
+  );
+
+  h2(ctx, 'What V2 Shows Today');
+  bullet(ctx, 'Base map: CartoDB dark_matter raster tiles (same ones the offline cache already holds).');
+  bullet(ctx, 'Beat polygons: all 719 features from beat.geojson, colored by parent sector.');
+  bullet(ctx, 'Live units and calls: pulled from /dispatch/units and /dispatch/calls?limit=200, refreshed on WebSocket unit_update and dispatch_update events (debounced).');
+  bullet(ctx, 'Click a unit or call marker for a popup with ID, status, and location — same data as the /map hover cards.');
+
+  h2(ctx, 'What V2 Cannot Do Yet');
+  bullet(ctx, 'No drag-to-dispatch. Clicking a unit onto a call has no effect.');
+  bullet(ctx, 'No drawing tools (route planning, perimeter, search grid).');
+  bullet(ctx, 'No status changes from the map — use the roster.');
+  bullet(ctx, 'No GPS breadcrumb playback.');
+
+  paragraph(ctx,
+    'Feature parity is tracked in the OpenLayers migration plan (docs/plans/2026-04-19-openlayers-migration-phase1.md). Until Phase 4 lands, all write paths stay on /map.',
+  );
+
+  calloutBox(ctx, 'Coordinate Gotcha',
+    'Google Maps accepts {lat, lng} objects. OpenLayers wants [lng, lat] arrays in EPSG:3857. If you are debugging V2 and coordinates are in the wrong hemisphere, check that you are calling fromLonLat([lng, lat]) with LNG FIRST.',
+    'info',
+  );
+}
+
+function section16(ctx: GuideContext): void {
+  title(ctx, '16. Field Interviews');
+
+  paragraph(ctx,
+    'A Field Interview (FI) is a documented contact with a person who is not being arrested, cited, or detained in an ongoing call. FI cards build the intelligence baseline — associates, known addresses, vehicles, tattoos — that drives the MNI dossier and compound search. Every FI auto-generates an FI-YY-NNNNN number and pins to a GPS point.',
+  );
+
+  h2(ctx, 'When to File an FI');
+  bullet(ctx, 'Suspicious subject interviewed during a premise check or patrol.');
+  bullet(ctx, 'Voluntary contact that produced useful intelligence (associates, vehicle, admission of parole status).');
+  bullet(ctx, 'Passenger on a traffic stop who was not cited but is worth documenting.');
+  bullet(ctx, 'Person at the scene of a call who was not a party to it but is worth remembering.');
+
+  paragraph(ctx,
+    'Do NOT file an FI for a subject who was arrested or cited — that information belongs on the arrest report or citation. FIs are for encounters that would otherwise leave no trail.',
+  );
+
+  h2(ctx, 'Dispatcher Role');
+  bullet(ctx, 'Officer radios "show me out with one, need an FI" — dispatcher creates or locates the call (type PSO-CONTACT) and notes "FI pending".');
+  bullet(ctx, 'Officer files the FI on their MDT. Dispatcher does not need to do anything in the FI form itself.');
+  bullet(ctx, 'On clear, officer provides the FI number for the log. Confirm by repeating back before clearing.');
+
+  h2(ctx, 'Finding FIs on a Person');
+  paragraph(ctx,
+    'From any person record, Intelligence -> Field Interviews lists every FI that person appears on. The map view (/field-interviews) supports radius search — useful for "show me every FI within 500 feet of this address in the last 90 days" when a dispatcher is building context for a responding officer.',
+  );
+}
+
+function section17(ctx: GuideContext): void {
+  title(ctx, '17. Process Service / Serve Queue');
+
+  paragraph(ctx,
+    'RMPG holds a process-service contract alongside patrol. The Serve Queue is the list of legal documents (subpoenas, summons, eviction notices, restraining orders, small-claims papers) that have been accepted for service and are awaiting officer assignment and attempt.',
+  );
+
+  h2(ctx, 'Lifecycle');
+  bullet(ctx, 'Intake: document scanned, recipient and deadline entered, job created. Auto-geocoded to the service address.');
+  bullet(ctx, 'Assignment: dispatcher or supervisor assigns the job to a specific officer (or to a zone pool).');
+  bullet(ctx, 'Attempt: officer marks attempted — photo, signature, GPS, attempt outcome (served / no contact / refused / bad address).');
+  bullet(ctx, 'Close: after successful service OR after the contractual attempt limit, the job closes with a final disposition.');
+
+  h2(ctx, 'PSO Calls That Auto-Create Serve Jobs');
+  paragraph(ctx,
+    'When a PSO-type call is dispatched with a document-service intent, the serveQueueLinker utility on the server side auto-creates the serve job from the call fields. The call and the serve job stay linked — clearing the call does NOT close the serve job; that has to happen on the serve side.',
+  );
+
+  h2(ctx, 'Route Planning');
+  paragraph(ctx,
+    'The Serve Routes feature clusters pending jobs by geography into an optimized day-route with waypoints. This is most useful for contract managers and process servers planning a shift, not for live dispatch.',
+  );
+
+  calloutBox(ctx, 'Privacy',
+    'Serve records contain sensitive information — restraining-order addresses, family names in eviction notices. Serve job details are visible only to roles with process_server, contract_manager, supervisor, or admin. Do NOT read serve contents over an open radio channel.',
+    'warn',
+  );
+}
+
+function section18(ctx: GuideContext): void {
+  title(ctx, '18. Skip Tracer V2');
+
+  paragraph(ctx,
+    'Skip Tracer V2 is the consolidated person-search tool under Intelligence -> Skip Tracer. It queries 22 public and agency data sources in parallel and returns a deduplicated result set. Adapters handle rate limiting, response caching, and per-source retry so you do not burn a lookup quota on a flaky source.',
+  );
+
+  h2(ctx, 'Covered Sources (Partial)');
+  bullet(ctx, 'FBI Wanted and OFAC sanctions lists (federal flags, highest-priority hit).');
+  bullet(ctx, 'National Sex Offender Public Registry (NSOPW).');
+  bullet(ctx, 'Utah State Court docket search.');
+  bullet(ctx, 'SLC Assessor property records (address history and ownership).');
+  bullet(ctx, 'Salt Lake County jail roster (current and recent bookings).');
+  bullet(ctx, 'Social and professional directory adapters.');
+
+  h2(ctx, 'Dispatcher Use Cases');
+  bullet(ctx, 'A 10-29 (wants/warrant check) that needs more than NCIC — skip tracer adds civil, sex offender, and federal context.');
+  bullet(ctx, 'Welfare check on a subject whose last known address is stale. Skip tracer may surface recent property or arrest activity pointing at a newer address.');
+  bullet(ctx, 'Pre-dispatch context for a PSO serve job where the recipient "should be" at the service address but has not been seen there.');
+
+  calloutBox(ctx, 'Legal',
+    'Skip Tracer V2 searches are audited. Each lookup requires a case number or an incident number as justification. Running a skip trace without a legitimate law-enforcement purpose is a policy violation and potentially a criminal one.',
+    'warn',
+  );
+}
+
+function section19(ctx: GuideContext): void {
+  title(ctx, '19. Compound & Universal Search');
+
+  paragraph(ctx,
+    'Two complementary search tools live under Records -> Search. Compound Search is a structured NCIC-style query form; Universal Search is a single box that fans out across nine record types.',
+  );
+
+  h2(ctx, 'Compound Search');
+  paragraph(ctx,
+    'The compound form accepts multiple simultaneous criteria and returns records that match ALL of them. Most-used fields:',
+  );
+  bullet(ctx, 'Name: supports wildcards (SMITH*, *JOHN*, ?ARKUS). Partial-match is default.');
+  bullet(ctx, 'DOB: accepts a single date or a date range (useful when DOB is approximate).');
+  bullet(ctx, 'Physical description: height / weight ranges, hair, eyes, build, distinguishing marks.');
+  bullet(ctx, 'Address: radius search — "everyone in our records within 500 feet of this point."');
+  bullet(ctx, 'Vehicle plate: partial or full, plus state and year range.');
+  bullet(ctx, 'Flags: officer safety, mental health, gang affiliate, known associate — boolean filter.');
+
+  h2(ctx, 'Universal Search');
+  paragraph(ctx,
+    'Universal Search takes one query string and returns grouped hits across persons, vehicles, calls, incidents, citations, arrests, warrants, field interviews, and properties. Use it when you do not yet know what kind of record you are looking for — a name that might be a person or might be a business, a number that might be a plate or might be a case number.',
+  );
+
+  h2(ctx, 'MNI Dossier');
+  paragraph(ctx,
+    'From any person hit, the Dossier button (or /api/records/persons/:id/dossier) compiles the full intelligence package — every call, incident, citation, arrest, warrant, FI, associate, and vehicle linkage for that person, in one scrollable document. This is the right artifact to hand to a responding officer before they get on scene with a high-risk subject.',
+  );
+
+  calloutBox(ctx, 'Tip',
+    'Save frequent compound-search configurations as Saved Searches. Common examples: "All active P1 callers in Beat 14 this shift", "All field interviews of a specific gang affiliation in the last 30 days". Saved searches are per-user and do not leak across accounts.',
+    'info',
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sections 20-22 — deep educational content. These sections
+// are intentionally longer than 1-19 because they are the
+// "learning" material a new dispatcher reads once cover-to-
+// cover, whereas 1-19 are reference content a working
+// dispatcher flips to as needed.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Render a stylized, annotated anatomy diagram of the dispatch console.
+ * Every labeled region corresponds to a bullet in the accompanying prose.
+ * We draw it in vector primitives (no image payload) so it stays crisp on
+ * a commander's 13" laptop and on a 32" console workstation alike.
+ *
+ * The diagram is roughly 500pt wide by 320pt tall and should be rendered
+ * just after the section title so the prose can reference regions by
+ * number.
+ */
+function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 340);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 310;
+
+  // Outer frame
+  d.setFillColor('#0a0a0a');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1.5);
+  d.rect(x, y, w, h, 'FD');
+
+  // --- 1. Brand bar (top, ~18pt tall) ---
+  d.setFillColor(COLOR.ACCENT);
+  d.rect(x, y, w, 18, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.BLACK);
+  d.text('RMPG FLEX  •  DISPATCH', x + 6, y + 12);
+  d.text('10:47:22 MT', x + w - 6, y + 12, { align: 'right' });
+  // Anchor label
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, y + 9, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('1', x + w + 12, y + 11, { align: 'center' });
+
+  // --- 2. Menu bar ---
+  d.setFillColor('#141414');
+  d.rect(x, y + 18, w, 14, 'F');
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(6);
+  d.setTextColor('#999999');
+  d.text('File  Edit  View  Dispatch  Records  Map  Intel  Admin  Help', x + 6, y + 28);
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, y + 25, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('2', x + w + 12, y + 27, { align: 'center' });
+
+  // --- 3. Icon toolbar ---
+  d.setFillColor('#1a1a1a');
+  d.rect(x, y + 32, w, 22, 'F');
+  // Draw fake icons as small squares
+  for (let i = 0; i < 10; i++) {
+    d.setFillColor('#2e2e2e');
+    d.rect(x + 8 + i * 24, y + 38, 16, 10, 'F');
+  }
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, y + 43, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('3', x + w + 12, y + 45, { align: 'center' });
+
+  // --- 4. Active call stack (left panel, big) ---
+  const cpY = y + 58;
+  const cpH = h - 58 - 28;
+  const leftW = w * 0.38;
+  d.setFillColor('#050505');
+  d.setDrawColor('#2e2e2e');
+  d.rect(x, cpY, leftW, cpH, 'FD');
+  // Stack header
+  d.setFillColor('#141414');
+  d.rect(x, cpY, leftW, 14, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(6);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('ACTIVE CALLS (7)', x + 6, cpY + 10);
+  // Fake call rows
+  const colors = ['#b91c1c', '#d4a017', '#666666', '#166534', '#666666'];
+  for (let i = 0; i < 5; i++) {
+    d.setFillColor(colors[i]);
+    d.rect(x + 4, cpY + 18 + i * 24, 3, 18, 'F');
+    d.setFillColor('#666666');
+    d.rect(x + 12, cpY + 22 + i * 24, leftW * 0.6, 2, 'F');
+    d.rect(x + 12, cpY + 28 + i * 24, leftW * 0.4, 2, 'F');
+  }
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x - 12, cpY + 30, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('4', x - 12, cpY + 32, { align: 'center' });
+
+  // --- 5. Map + unit overlay (center/right top) ---
+  const mapX = x + leftW + 2;
+  const mapW = w - leftW - 2;
+  const mapH = cpH * 0.6;
+  d.setFillColor('#111827');
+  d.setDrawColor('#2e2e2e');
+  d.rect(mapX, cpY, mapW, mapH, 'FD');
+  // Fake beat lines
+  d.setDrawColor('#374151');
+  d.setLineWidth(0.4);
+  for (let i = 1; i < 6; i++) d.line(mapX + (mapW / 6) * i, cpY, mapX + (mapW / 6) * i, cpY + mapH);
+  for (let j = 1; j < 4; j++) d.line(mapX, cpY + (mapH / 4) * j, mapX + mapW, cpY + (mapH / 4) * j);
+  // Unit dots
+  d.setFillColor('#166534'); d.circle(mapX + 30, cpY + 40, 3, 'F');
+  d.setFillColor('#d4a017'); d.circle(mapX + 80, cpY + 60, 3, 'F');
+  d.setFillColor('#b91c1c'); d.circle(mapX + 140, cpY + 30, 3, 'F');
+  d.setFillColor('#166534'); d.circle(mapX + 50, cpY + 80, 3, 'F');
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(mapX + mapW + 12, cpY + mapH / 2, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('5', mapX + mapW + 12, cpY + mapH / 2 + 2, { align: 'center' });
+
+  // --- 6. Unit roster (right, below map) ---
+  const rosterY = cpY + mapH + 2;
+  const rosterH = cpH - mapH - 2;
+  d.setFillColor('#050505');
+  d.setDrawColor('#2e2e2e');
+  d.rect(mapX, rosterY, mapW, rosterH, 'FD');
+  d.setFillColor('#141414');
+  d.rect(mapX, rosterY, mapW, 12, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(6);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('UNITS (12 AVAIL / 4 BUSY)', mapX + 6, rosterY + 9);
+  // Fake unit chips
+  for (let i = 0; i < 8; i++) {
+    d.setFillColor(i % 3 === 0 ? '#166534' : (i % 3 === 1 ? '#d4a017' : '#2e2e2e'));
+    d.rect(mapX + 6 + (i % 4) * (mapW / 4 - 2), rosterY + 16 + Math.floor(i / 4) * 14, mapW / 4 - 10, 10, 'F');
+  }
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(mapX + mapW + 12, rosterY + rosterH / 2, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('6', mapX + mapW + 12, rosterY + rosterH / 2 + 2, { align: 'center' });
+
+  // --- 7. Command line (bottom strip above status bar) ---
+  const cmdY = y + h - 28;
+  d.setFillColor('#000000');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(0.75);
+  d.rect(x, cmdY, w, 14, 'FD');
+  d.setFont('courier', 'bold');
+  d.setFontSize(7);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('CMD>  U07 10-97', x + 6, cmdY + 10);
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x - 12, cmdY + 7, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('7', x - 12, cmdY + 9, { align: 'center' });
+
+  // --- 8. Status bar (very bottom) ---
+  const sbY = y + h - 14;
+  d.setFillColor('#141414');
+  d.rect(x, sbY, w, 14, 'F');
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(6);
+  d.setTextColor('#888888');
+  d.text('P1:1  P2:2  AVAIL:12  BUSY:4  |  F2 New  F3 Disp  F5 Enr  F6 Scn  F7 Clr', x + 6, sbY + 10);
+  d.setTextColor('#166534');
+  d.text('● LIVE', x + w - 30, sbY + 10);
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, sbY + 7, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('8', x + w + 12, sbY + 9, { align: 'center' });
+
+  ctx.y += h + 20;
+
+  // Caption
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.MUTED);
+  d.text('Fig. 20-1 — Dispatch console anatomy, with numbered regions referenced below.', x, ctx.y);
+  ctx.y += 12;
+}
+
+function section20(ctx: GuideContext): void {
+  title(ctx, '20. Anatomy of the Console');
+
+  paragraph(ctx,
+    'This section walks the console from top to bottom, region by region, so you know the name and purpose of every element a supervisor or trainer might point at. The numbered regions in the figure below correspond to the eight subsections that follow. Nothing here is operational — this is orientation.',
+  );
+
+  drawConsoleAnatomyDiagram(ctx);
+
+  h2(ctx, 'Region 1 — Brand Bar');
+  paragraph(ctx,
+    'The top 52-pixel strip is the brand bar: gold background, agency name on the left, current time (America/Denver, Mountain Time, never UTC) on the right. The time display is the server\'s time, not your workstation\'s clock — if the two ever disagree, the server wins, because that is the clock that stamps every call, transition, and audit entry. If the brand bar flashes red briefly, the workstation has detected more than 2 seconds of clock drift and is forcing an NTP resync.',
+  );
+
+  h2(ctx, 'Region 2 — Menu Bar');
+  paragraph(ctx,
+    'A traditional desktop menu (File, Edit, View, Dispatch, Records, Map, Intelligence, Admin, Help). Everything in the console is reachable from here, even things that also have a hotkey or toolbar icon. Menus are organized by noun (what you want to act on), not verb (what you want to do). Examples:',
+  );
+  bullet(ctx, 'Dispatch -> New Call opens the intake form. Same as F2.');
+  bullet(ctx, 'Records -> Search opens compound search. Same as Ctrl+Shift+F.');
+  bullet(ctx, 'Help -> Dispatch Guide (PDF) downloads this document — now you know where it came from.');
+  bullet(ctx, 'Admin is only visible to admin / manager / supervisor roles; officer and dispatcher roles will not see it in the bar at all.');
+
+  h2(ctx, 'Region 3 — Icon Toolbar');
+  paragraph(ctx,
+    'The icon toolbar mirrors the most-used actions as single-click buttons: New Call, Dispatch Selected, Mark Enroute, Mark On Scene, Clear, CMD Line, Map, Roster, Records. Hovering any icon shows both its name and its hotkey, so the toolbar doubles as a hotkey-learning tool for new dispatchers. Once you know the F-keys you will not use this toolbar often, but during the first week it is how you discover what is available.',
+  );
+
+  h2(ctx, 'Region 4 — Active Call Stack');
+  paragraph(ctx,
+    'The left panel lists every unclosed call, sorted by priority then by age. Each row has a colored priority bar on the left (red=P1, amber=P2, gray=P3, green=P4), call number, incident type, status chip, assigned units, and elapsed time. Clicking a row selects it; selected call becomes the target of subsequent F-key presses. The selected call also highlights on the map and pulses its markers.',
+  );
+  paragraph(ctx,
+    'The call stack is real-time. A new call created by another dispatcher appears here within roughly one second, with a subtle gold flash animation so you notice new additions without them being disruptive. Calls that change priority mid-incident (e.g. an upgrade from P3 disturbance to P1 shots-fired) animate their priority bar transition so the change is visually unmistakable.',
+  );
+
+  h2(ctx, 'Region 5 — Map + Unit Overlay');
+  paragraph(ctx,
+    'The center/right top area is the live map. By default it shows the dark_matter basemap with beat polygons colored by sector, active calls as pinned incident-type icons, and units as dots colored by status. The map is pannable, zoomable, and rotatable. Clicking a unit dot opens a quick-info popup with call sign, current status, last-known location timestamp, and a button to dispatch that unit to the selected call.',
+  );
+  paragraph(ctx,
+    'Under the hood this is Google Maps with a styled dark palette; when the Google API fails (billing, quota, or network), the map transparently falls back to offline CartoDB tiles pre-cached for the Utah operational area. You will usually not know the difference, but a small "OFFLINE TILES" badge appears in the corner when the fallback is active.',
+  );
+
+  h2(ctx, 'Region 6 — Unit Roster');
+  paragraph(ctx,
+    'Below the map, the roster shows every unit on the current shift as a status chip: call sign, badge number, current status, last-transition time. Chips are color-coded: green=available, amber=dispatched/enroute, red=on scene or busy, gray=off duty. Clicking a chip selects that unit; right-clicking opens a context menu with every legal status transition. The roster respects the server-side transition rules (see Section 3) — illegal transitions are grayed out, not rejected with an error.',
+  );
+
+  h2(ctx, 'Region 7 — Command Line');
+  paragraph(ctx,
+    'Above the status bar sits the CAD command line — a single-line text input with a terminal-style gold caret on black. This is the fastest way to act on calls and units once you know the shorthand (Section 6). Everything you can do in the menus or with F-keys, you can also do here with fewer keystrokes. The command line has tab-completion for unit call signs and call numbers, command history (up-arrow), and a response area that shows the result of the last command.',
+  );
+
+  h2(ctx, 'Region 8 — Status Bar');
+  paragraph(ctx,
+    'The bottom 22-pixel strip is permanent situational awareness. Left side: live P1 / P2 counts, available / busy unit totals. Center: F-key hints for current context. Right side: WebSocket connection indicator (green LIVE LED when connected, red OFFLINE LED when not — see Section 14). Never hide this strip; it is the fastest way to spot that the console is losing sync before the rest of the UI shows it.',
+  );
+
+  calloutBox(ctx, 'Orientation Exercise',
+    'On your first shift, spend ten minutes clicking through every region while nothing is happening. Open a menu, hover every toolbar icon, click a call row and watch the map center, click a unit chip and watch the roster highlight. Muscle memory for the console geography is more valuable than any 10-code memorization.',
+    'info',
+  );
+}
+
+function section21(ctx: GuideContext): void {
+  title(ctx, '21. Worked Example — A Shots-Fired Call, End to End');
+
+  paragraph(ctx,
+    'This section walks a complete, realistic call from the moment the phone rings to the moment everyone clears. Every keystroke, every radio exchange, every console state change is shown. Read it once to build a mental model of "what a whole call looks like," then use it as a benchmark when you run your own calls.',
+  );
+
+  h2(ctx, 'The Scenario');
+  paragraph(ctx,
+    '21:47 Mountain Time on a Friday. You are the sole dispatcher on the night watch. A 911 call rings in on console line 1 from a caller at a gas station near 2100 South State Street. Caller reports two subjects in a verbal altercation in the parking lot, one has just produced a handgun, and there has been one round fired into the air. No injuries reported. Caller is hiding inside the store.',
+  );
+
+  h2(ctx, 'T+00:00 — Ring-Down');
+  paragraph(ctx,
+    'Phone rings. You answer with the standard agency greeting: "RMPG Dispatch, recorded line, what is your emergency?" Simultaneously you press F2 — the intake form opens on your second monitor and begins recording the call automatically.',
+  );
+  bullet(ctx, 'F2 opens intake form. Cursor is in the Location field.');
+  bullet(ctx, 'Timer on the intake form starts the moment F2 is pressed. This becomes the call creation time.');
+  bullet(ctx, 'The caller ANI/ALI (if available from the SIP trunk) auto-populates the reporting party phone number.');
+
+  h2(ctx, 'T+00:03 to T+00:20 — Pulling Information');
+  paragraph(ctx,
+    'Caller gives the location. You type "2100 S State" into the Location field; autocomplete offers "2100 S State St, Salt Lake City, UT" — you arrow-down and Tab to accept. Map pans to the address and drops a pending-call pin. You ask: "What is happening right now?" Caller: "There are two guys fighting, one has a gun, he shot it once into the sky." You do not paraphrase. You type verbatim into the Description: "RP reports two male subjects in verbal altercation, one has produced handgun and fired one round into air. No reported injuries."',
+  );
+  paragraph(ctx,
+    'You ask three more questions in order of safety value: (1) "Is anyone hurt?" — No. (2) "Where is the subject with the gun right now?" — Still in the parking lot, pacing. (3) "Can you safely stay on the line?" — Yes, I\'m behind the counter. You do NOT ask for the caller\'s full name or DOB at this stage; that can wait until units are dispatched.',
+  );
+
+  h2(ctx, 'T+00:22 — Classifying & Dispatching');
+  paragraph(ctx,
+    'You click the Incident Type field, type "shot" — autocomplete surfaces "Shots Fired" (Signal-3). You press Tab to accept. The form auto-applies the default for Signal-3: Priority 1, flags WEAPON and OFFICER_SAFETY. The form asks "Confirm P1 and 2-unit backup rule?" — you click Confirm. The moment you confirm, the call is saved and broadcast to every workstation and MDT. On your own screen, the new call row slides in at the top of the call stack with a red priority bar and a pulsing border.',
+  );
+  calloutBox(ctx, 'The Two-Question Rule',
+    'For any weapon call, the two questions you MUST answer before continuing information-gathering are: "Is anyone hurt?" and "Where is the weapon right now?" Everything else can wait 30 seconds while you dispatch units.',
+    'warn',
+  );
+
+  h2(ctx, 'T+00:25 — Voice Channel Alert');
+  paragraph(ctx,
+    'The Dispatcher Brain voice engine speaks the call on the dispatch channel automatically, in a calm radio voice: "Attention all units, priority 1 shots fired, 2100 South State. Two subjects, one armed, one round fired into the air. No injuries reported. Requesting two-unit response." This broadcasts at the same time as the visual alert, so officers hear and see simultaneously. Units closest to the call receive a distinctive priority tone first — a three-note ascending pattern — not the normal two-tone.',
+  );
+
+  h2(ctx, 'T+00:28 — First Acknowledgment');
+  paragraph(ctx,
+    'Radio: "U07, show me enroute, I\'m southbound on State at 21st South." You click U07 in the roster and press F5 (Enroute). The chip turns amber, the unit dot on the map begins moving toward the call, and the ETA estimate appears. Time-to-enroute was 3 seconds — excellent.',
+  );
+  paragraph(ctx,
+    'Radio: "U12, I\'m copying, I\'m two blocks east, enroute." You click U12, press F5. U12 is now also amber. Two units enroute to a P1 weapon call — backup rule satisfied.',
+  );
+
+  h2(ctx, 'T+00:58 — Second Update From Caller');
+  paragraph(ctx,
+    'While units are moving, you stay on the line with the caller. Caller: "The guy with the gun just got into a black pickup truck, it looks like a Chevy, older model, and he\'s leaving. He went north on State." You immediately type into Description: "UPDATE T+58 — subject with handgun departed NB State in older-model black Chevy pickup, direction of travel north." You press Enter; the update broadcasts to every MDT and re-speaks to the voice channel.',
+  );
+  paragraph(ctx,
+    'You click the Vehicle tab on the call form, type a partial vehicle record: Make Chevrolet, Color Black, Style Pickup, Direction North from 2100 S State. This populates the call\'s vehicle record and is visible to every responding officer on their MDT within a second.',
+  );
+
+  h2(ctx, 'T+01:04 — Units Diverted');
+  paragraph(ctx,
+    'Radio: "U07, I heard that, I\'m going to post at State and 13th South to intercept." You do not have to do anything — this is an officer tactical decision. You document by typing in your own dispatcher notes: "U07 posting at State/13th to intercept NB pickup." U12 continues to the scene to check on the caller and the other party.',
+  );
+
+  h2(ctx, 'T+01:48 — On Scene');
+  paragraph(ctx,
+    'Radio: "U12, 10-97 at the Chevron." You click U12, press F6 (On Scene). Chip turns red, map dot freezes at the location with a small "ON SCENE" label. Dispatcher Brain note: the rule engine starts an 8-minute stuck-check timer on U12.',
+  );
+
+  h2(ctx, 'T+02:30 — BOLO Broadcast');
+  paragraph(ctx,
+    'You now have enough to push a BOLO. You press F8 to open the command line and type: "BOLO NB STATE BLK CHEV PU POSS HANDGUN, NO PLATE, LRM IN AREA OF 2100 S STATE T-3 MIN". Press Enter. The BOLO broadcasts to every MDT, to the dispatch channel voice, and to adjacent agencies via the inter-agency BOLO relay (SLCPD, UHP, Unified PD).',
+  );
+
+  h2(ctx, 'T+03:15 — Supplemental Caller Info');
+  paragraph(ctx,
+    'Caller, still on the line, tells you the subject with the gun was "about six foot, wearing a red hoodie, black pants, maybe 25 years old." You add a person record to the call: Unknown Male, DESC red hoodie black pants H/6-0 appx age 25. This auto-updates the BOLO with a subject description; the updated BOLO re-speaks on the voice channel and re-pushes to MDTs.',
+  );
+
+  h2(ctx, 'T+04:42 — Second Unit On Scene');
+  paragraph(ctx,
+    'Radio: "U07, 10-97 at State and 13th, no contact on the vehicle, I\'ll standby at this location for 15." You click U07, press F6. Both units are on scene. The dispatcher note field gets: "U07 posting at State/13th x 15 min for BOLO interception."',
+  );
+
+  h2(ctx, 'T+12:30 — U12 Clears');
+  paragraph(ctx,
+    'Radio: "U12, 10-98, spoke with the other subject and the RP, no injuries, will file an FI on the second subject and a supplemental on this call, show me available." You click U12, press F7 (Clear). Chip turns green, map dot resumes normal movement. The call stays open because U07 is still posted and the BOLO is active.',
+  );
+
+  h2(ctx, 'T+20:15 — U07 Clears');
+  paragraph(ctx,
+    'Radio: "U07, negative contact on the vehicle after 15 minutes, going 10-8." You click U07, F7. The call now has zero assigned units. The call row in the stack turns gray with an "UNSTAFFED — BOLO ACTIVE" flag.',
+  );
+
+  h2(ctx, 'T+20:30 — Close Out');
+  paragraph(ctx,
+    'You review the call one last time: description complete, vehicle record attached, person record attached, both units documented with their arrival and clearance times, BOLO is active and persistent. You click Close Call — the dialog asks for Disposition. You choose "GOA — Gone on Arrival, BOLO Active." The call moves from Active to Closed. The BOLO remains active for the shift and will auto-expire at 08:00 unless renewed.',
+  );
+
+  h2(ctx, 'Post-Call Review');
+  paragraph(ctx,
+    'After the call closes, take 30 seconds for self-review: Did I dispatch within 45 seconds of the first ring? (3 seconds to enroute — yes.) Did I get the weapon location before dispatching? (Yes, with the pacing detail.) Did I update the call with every new piece of info? (Yes, three updates.) Did I push the BOLO as soon as I had enough? (~2 minutes after first ring — yes.) These five questions, run after every significant call, are what separate a working dispatcher from a great one.',
+  );
+}
+
+function section22(ctx: GuideContext): void {
+  title(ctx, '22. Your First Shift — New Dispatcher Onboarding');
+
+  paragraph(ctx,
+    'This section is for dispatchers on their first solo shift or first shift after certification. Senior dispatchers may skip it. Everything here is about the first 60 minutes: what to do, what order, and what to do BEFORE the first call comes in so you are ready.',
+  );
+
+  h2(ctx, 'The First 15 Minutes');
+  bullet(ctx, 'Log in to the console. Verify your display name and role in the status bar bottom-right. If it says anything other than your name, DO NOT PROCEED — get a supervisor.');
+  bullet(ctx, 'Check the call stack for overnight / carryover calls. Read each one. If you do not understand a call, ask the outgoing dispatcher before they leave.');
+  bullet(ctx, 'Check the unit roster: who is on duty, who is off, who is posted (assigned to a specific location), who is available.');
+  bullet(ctx, 'Scan the BOLO panel (F11). Know what vehicles and persons are active — one of them may drive past a unit during your shift.');
+  bullet(ctx, 'Verify the voice channel is armed: press F10, speak a test phrase, listen for the synthesized playback.');
+  bullet(ctx, 'Check the WebSocket LIVE indicator in the status bar is green.');
+
+  h2(ctx, 'The Next 15 Minutes — Practice the Console');
+  paragraph(ctx,
+    'If no calls are active, spend this time on deliberate practice, not social chat with your partner:',
+  );
+  bullet(ctx, 'Press F2 to open the intake form, look at every field, press Escape to cancel.');
+  bullet(ctx, 'Press F8, type "LE 29" — verify the 10-code popup shows "Want/warrant check".');
+  bullet(ctx, 'Click a unit chip, right-click, look at every status transition.');
+  bullet(ctx, 'Open the map, zoom to your operational area, pan around. Find the beat labels.');
+  bullet(ctx, 'Open Records -> Search, do a test compound search for your own name. Should return your user record.');
+
+  h2(ctx, 'The First 30 Minutes — Mental Model');
+  paragraph(ctx,
+    'Before the first real call comes in, rehearse the flow in your head. For each of the following scenarios, talk through what you would do out loud (or silently to yourself):',
+  );
+  bullet(ctx, 'A disturbance call at a residence, no weapons mentioned.');
+  bullet(ctx, 'A traffic stop where the officer radios the plate before you have a call open.');
+  bullet(ctx, 'A BOLO hit — an officer spots a vehicle matching an active BOLO.');
+  bullet(ctx, 'An officer does not respond to two consecutive radio checks.');
+  bullet(ctx, 'A 911 hang-up with an ANI/ALI but no voice.');
+  paragraph(ctx,
+    'The goal is not to have a perfect answer to each; the goal is that the muscle memory is warm when the real thing happens. The first call of the shift is always the slowest one.',
+  );
+
+  h2(ctx, 'Things New Dispatchers Commonly Get Wrong');
+  bullet(ctx, 'Paraphrasing the caller. Do not. Type what they said. "He has a gun" is different from "suspect is armed."');
+  bullet(ctx, 'Waiting for all the information before dispatching. Dispatch with what you have. Updates come later.');
+  bullet(ctx, 'Treating a 10-29 as a formality. It is not. A wanted-persons check on a traffic stop can change the call from ticket to felony stop in two seconds.');
+  bullet(ctx, 'Stepping on radio traffic. When an officer is transmitting, wait. The console will buffer your announcement and speak it when the channel clears.');
+  bullet(ctx, 'Clearing a call too early. A call is not cleared when the officer leaves the scene — it is cleared when the incident is resolved and everything is documented.');
+  bullet(ctx, 'Not asking for help. The senior dispatcher next to you has run the call you are on a hundred times. Asking is faster than guessing.');
+
+  h2(ctx, 'The Three Questions');
+  paragraph(ctx,
+    'When you are overwhelmed on a call, come back to these three questions in order:',
+  );
+  bullet(ctx, '1. Is anyone in immediate danger? If yes, prioritize their safety — dispatch more units, push an emergency tone, whatever it takes.');
+  bullet(ctx, '2. Do responding officers have what they need to be safe? If no, get it: weapon description, subject location, vehicle direction.');
+  bullet(ctx, '3. Is this call documented? If no, type it in. If you did not type it, it did not happen.');
+
+  calloutBox(ctx, 'Mindset',
+    'Dispatching is a skill that takes two years to become competent at and ten to master. On your first shift, you are allowed to be slow. You are not allowed to be silent. Talk on the radio, narrate in the notes, ask questions out loud. Silence is where errors hide.',
+    'info',
+  );
+}
+
 function appendixA(ctx: GuideContext): void {
   title(ctx, 'Appendix A — Incident Type Reference');
 
@@ -1760,6 +2519,235 @@ function appendixC(ctx: GuideContext): void {
       ['Legal request for records',                       'Chief / legal counsel, not dispatch'],
     ],
     [5, 5],
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Appendices D-F — educational reference material.
+// D is the glossary (every term of art a new dispatcher will
+// encounter), E is the phonetic alphabet + radio signals, F
+// is the decision-flowchart appendix (radio phrase -> action).
+// ═══════════════════════════════════════════════════════════
+
+function appendixD(ctx: GuideContext): void {
+  title(ctx, 'Appendix D — Glossary of Terms');
+
+  paragraph(ctx,
+    'A curated glossary of every term of art a new dispatcher will encounter in their first year. Terms are grouped by domain; within each group they are alphabetical. Items in ALL CAPS are acronyms; mixed-case items are commonly-spelled terms.',
+  );
+
+  h2(ctx, 'Dispatch & CAD');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['ANI / ALI',      'Automatic Number Identification / Automatic Location Identification. Caller\'s phone number and registered service address, delivered by the 911 trunk before you pick up.'],
+      ['BOLO',           'Be On the Look-Out. A broadcast describing a person, vehicle, or pattern to watch for. Active BOLOs persist across shifts until manually cleared or auto-expired.'],
+      ['CAD',            'Computer-Aided Dispatch. The software system (this one) that manages calls, units, and radio traffic.'],
+      ['Call Stack',     'The list of open calls-for-service. Called a "stack" because it is sorted top-down by priority.'],
+      ['Dispatcher Brain','The rule engine that watches call and unit state for anomalies (stuck states, missing backup, overdue check-ins) and speaks reminders on the voice channel.'],
+      ['GOA',            'Gone on Arrival. Disposition for a call where the reported activity or subject was no longer present when units arrived.'],
+      ['MDT',            'Mobile Data Terminal. The in-vehicle computer an officer uses to see calls, run plates, and file reports.'],
+      ['NCIC',           'National Crime Information Center. The FBI\'s national warrant / wanted-persons / stolen-property database.'],
+      ['Premise Alert',  'A persistent warning tied to a specific address (e.g. "known aggressive dog", "wheelchair-bound resident"). Auto-displayed on any call to that address.'],
+      ['Priority',       'P1 (life/safety) to P4 (administrative). See Section 4 for full definitions.'],
+      ['PSO',            'Private Security Officer. RMPG contract-patrol designation for calls routed to contract patrol rather than sworn response.'],
+      ['Ten-Code',       '10-series numeric radio brevity code (e.g. 10-4, 10-97). See Section 3.'],
+      ['Signal Code',    'S-series agency-specific brevity code for incident types without a standard 10-code (e.g. S-3 shots fired).'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Records (RMS) & Reporting');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Case',           'An investigative unit that may span many calls, incidents, citations, arrests, warrants, and pieces of evidence.'],
+      ['Citation',       'A ticket issued for a traffic or municipal-code violation. Each citation has one or more violation line items.'],
+      ['Disposition',    'Final classification of a closed call or closed incident (e.g. CLEARED, REFERRED, UNFOUNDED, GOA).'],
+      ['FI',             'Field Interview. Documented contact with a person not arrested, cited, or detained. See Section 16.'],
+      ['Incident',       'A Spillman-style record documenting an event. An incident is created from a call once the call is closed with a reportable disposition.'],
+      ['MNI',            'Master Name Index. The unified person table across calls, incidents, citations, arrests, warrants, and FIs.'],
+      ['NIBRS',          'National Incident-Based Reporting System. FBI\'s successor to the summary UCR; each incident may have multiple NIBRS offense codes.'],
+      ['Offense',        'A specific statute violation attached to an incident. One incident can have many offenses.'],
+      ['RMS',             'Records Management System. The side of this application that keeps persisted records (as opposed to CAD, which is live state).'],
+      ['Supplemental',   'An additional narrative filed against an already-closed incident (e.g. witness interviewed later, evidence located after the fact).'],
+      ['UCR',            'Uniform Crime Reporting. Summary-level crime statistics (being phased out in favor of NIBRS).'],
+      ['UoF',            'Use of Force. Any officer application of force that triggers a mandatory report regardless of outcome.'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Geography');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Area',    'Tier 1 of the dispatch geography hierarchy. Largest unit (e.g. "Wasatch Front").'],
+      ['Sector',  'Tier 2. Subdivision of an area (e.g. "SLC Central").'],
+      ['Zone',    'Tier 3. Subdivision of a sector, often aligned to patrol shifts.'],
+      ['Beat',    'Tier 4. Smallest unit — typically a few square blocks. 719 beats cover the full Utah operational area.'],
+      ['Geofence','A polygon triggering an automatic alert when a unit enters or leaves (used for perimeter operations, hot zones, and evidence areas).'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Radio & Voice');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Clear Channel', 'No radio traffic for at least 2 seconds. Good moment to transmit.'],
+      ['Double-Key',    'Two units attempt to transmit at the same time; the result is a garbled squeal. Both back off and retry.'],
+      ['Hot Mic',       'A stuck transmit button; a unit\'s microphone is broadcasting everything around it. The channel is unusable until fixed.'],
+      ['Hold Traffic',  'Stop all non-emergency radio traffic (triggered by 10-33). The channel is reserved for the active emergency only.'],
+      ['Simplex',       'Unit-to-unit radio without repeater. Short range, used for tactical. Dispatch does NOT hear simplex traffic.'],
+      ['Squelch',       'The noise gate that opens when a signal is strong enough. Bad squelch = choppy audio. Heard as "you are broken / garbled" on the air.'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Legal & Safety');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Exigent Circumstances', 'A legal standard allowing warrantless entry when immediate action is required to prevent harm, escape, or evidence destruction.'],
+      ['Probable Cause',        'Standard required for arrest or search warrant — facts sufficient to lead a reasonable person to believe a crime occurred.'],
+      ['Reasonable Suspicion',  'Lower standard than probable cause, sufficient for a Terry stop or investigative detention.'],
+      ['Terry Stop',            'Brief investigative detention based on reasonable suspicion (named for Terry v. Ohio, 392 U.S. 1, 1968).'],
+      ['Two-Unit Rule',         'RMPG policy: any P1 call, any weapon involvement, any domestic violence, any known mental-health crisis, or any call at a business after hours requires a minimum of two units.'],
+    ],
+    [2, 8],
+  );
+}
+
+function appendixE(ctx: GuideContext): void {
+  title(ctx, 'Appendix E — Phonetic Alphabet & Radio Signals');
+
+  paragraph(ctx,
+    'The NATO / ICAO phonetic alphabet is the standard for spelling over the radio. It is used whenever any letter could be misheard — plate numbers, license plate configurations, names, spelled locations. RMPG dispatchers must use the NATO set; regional variants (Adam / Boy / Charles) are NOT accepted because they conflict with the FBI NCIC response format.',
+  );
+
+  h2(ctx, 'NATO Phonetic Alphabet');
+  table(ctx,
+    ['Letter', 'Phonetic', 'Pronunciation'],
+    [
+      ['A', 'Alfa',     'AL-fah'],
+      ['B', 'Bravo',    'BRAH-voh'],
+      ['C', 'Charlie',  'CHAR-lee'],
+      ['D', 'Delta',    'DELL-tah'],
+      ['E', 'Echo',     'EK-oh'],
+      ['F', 'Foxtrot',  'FOKS-trot'],
+      ['G', 'Golf',     'golf'],
+      ['H', 'Hotel',    'hoh-TEL'],
+      ['I', 'India',    'IN-dee-ah'],
+      ['J', 'Juliett',  'JEW-lee-ett'],
+      ['K', 'Kilo',     'KEY-loh'],
+      ['L', 'Lima',     'LEE-mah'],
+      ['M', 'Mike',     'mike'],
+      ['N', 'November', 'no-VEM-ber'],
+      ['O', 'Oscar',    'OSS-kah'],
+      ['P', 'Papa',     'pah-PAH'],
+      ['Q', 'Quebec',   'keh-BECK'],
+      ['R', 'Romeo',    'ROW-me-oh'],
+      ['S', 'Sierra',   'see-AIR-rah'],
+      ['T', 'Tango',    'TANG-go'],
+      ['U', 'Uniform',  'YOU-nee-form'],
+      ['V', 'Victor',   'VIK-tah'],
+      ['W', 'Whiskey',  'WISS-key'],
+      ['X', 'X-ray',    'EKS-ray'],
+      ['Y', 'Yankee',   'YANG-key'],
+      ['Z', 'Zulu',     'ZOO-loo'],
+    ],
+    [2, 3, 5],
+  );
+
+  h2(ctx, 'Numbers — Spoken Form');
+  paragraph(ctx,
+    'Numbers are spoken digit-by-digit, NOT as grouped words. Plate "ABC 1234" is transmitted as "Alfa Bravo Charlie, one two three four" — NEVER "twelve thirty-four". The digit 9 is sometimes pronounced "NINE-er" to distinguish from "five" on a poor signal. Zero is "ZEE-row", never "oh".',
+  );
+  bullet(ctx, '0 — ZEE-row (never "oh")');
+  bullet(ctx, '9 — NINE-er on poor signals');
+  bullet(ctx, 'Decimals — "point" (e.g. "four point five")');
+  bullet(ctx, 'Thousands — individual digits, NOT "one thousand two hundred"');
+
+  h2(ctx, 'Transmission Standards');
+  bullet(ctx, 'Call the unit FIRST, then identify yourself. "U07 Dispatch" — U07 hears their call sign and listens for the message that follows.');
+  bullet(ctx, 'Pause briefly after keying before speaking; repeaters take about 200ms to come up.');
+  bullet(ctx, 'Release the key at end of transmission; do not trail off with "... uh ... over".');
+  bullet(ctx, '"Over" means "your turn to transmit". "Out" means "transmission complete, no reply expected". Do NOT say "over and out" — it is contradictory and immediately identifies a non-professional.');
+  bullet(ctx, 'Transmissions under 5 seconds. Longer than that, break into two transmissions with an acknowledgment between.');
+
+  h2(ctx, 'Common Q-Signals (Supplementary)');
+  paragraph(ctx,
+    'Q-signals are amateur-radio style brevity codes. RMPG uses very few, but these three are occasionally heard from adjacent agencies or on simplex:',
+  );
+  table(ctx,
+    ['Code', 'Meaning'],
+    [
+      ['QRM', 'Interference on the channel'],
+      ['QSL', 'Acknowledged / received'],
+      ['QTH', 'What is your location? (interchangeable with 10-20)'],
+    ],
+    [2, 8],
+  );
+
+  calloutBox(ctx, 'Clarity Over Brevity',
+    'If a transmission is unclear, say "say again all after [last clear word]" — NOT just "repeat" (which in artillery convention means "fire again"). "Say again" is unambiguous and works on any channel.',
+    'info',
+  );
+}
+
+function appendixF(ctx: GuideContext): void {
+  title(ctx, 'Appendix F — Decision Flowcharts');
+
+  paragraph(ctx,
+    'These flowcharts are meant to be scanned, not read linearly. Each one starts with a trigger — something you hear on the radio or see on the screen — and walks through the first one or two decisions. The goal is to compress the "what do I do first?" moment to under 5 seconds.',
+  );
+
+  h2(ctx, 'Flow 1 — Officer Says "10-99" (Officer Emergency)');
+  bullet(ctx, 'STEP 1: Immediately press F12 (panic broadcast). Every workstation and MDT hears the emergency tone.');
+  bullet(ctx, 'STEP 2: Hold all non-emergency radio traffic. Say "All units, stand by for emergency traffic" on the voice channel.');
+  bullet(ctx, 'STEP 3: Confirm unit location. If GPS is current, use it. If not, ask "U__ Dispatch, give me your 20."');
+  bullet(ctx, 'STEP 4: Dispatch nearest units (F3). Minimum three-unit response for 10-99.');
+  bullet(ctx, 'STEP 5: Page on-call supervisor. If supervisor already on-duty, that supervisor takes command.');
+  bullet(ctx, 'STEP 6: Notify SLCPD dispatch if within SLC city limits; notify Unified PD Central Dispatch if not.');
+  bullet(ctx, 'STEP 7: Do NOT clear the 10-99 status until the officer personally confirms 10-4 on the air.');
+
+  h2(ctx, 'Flow 2 — Officer Does Not Respond to Two Radio Checks');
+  bullet(ctx, 'STEP 1: Wait 10 seconds between your first and second radio check. Do not stack them.');
+  bullet(ctx, 'STEP 2: After second no-response, call by partner if any. ("U08, do you have eyes on U07?")');
+  bullet(ctx, 'STEP 3: Check the unit\'s last GPS point. If within last 60 seconds AND reasonable for their assignment, escalate cautiously.');
+  bullet(ctx, 'STEP 4: If GPS is stale (>90s) OR the unit was on a risky call (traffic stop, premise check, domestic), treat as 10-99 and run Flow 1.');
+  bullet(ctx, 'STEP 5: Assume the officer is fine until you have reason to believe otherwise, but act on the reasonable worst-case.');
+
+  h2(ctx, 'Flow 3 — BOLO Hit by an Officer');
+  bullet(ctx, 'STEP 1: Officer radios "I\'m on the BOLO vehicle at [location]." You immediately acknowledge: "10-4, U__, on the BOLO at [repeat location]."');
+  bullet(ctx, 'STEP 2: Check the BOLO record for officer-safety flags. Voice-channel those flags immediately: "BOLO flags: WEAPON, GANG, FELONY WARRANT."');
+  bullet(ctx, 'STEP 3: Dispatch minimum two-unit backup if not already en route. Three units for weapon flag.');
+  bullet(ctx, 'STEP 4: Stay on top of radio traffic — officers on a BOLO stop will be quiet for 15-30 seconds while they approach. Silence does not mean problem.');
+  bullet(ctx, 'STEP 5: If the stop generates arrests, felony charges, or a pursuit, escalate to supervisor. Clear the BOLO only when the officer confirms the subject(s) are in custody or cleared.');
+
+  h2(ctx, 'Flow 4 — 911 Hang-Up With ANI/ALI But No Voice');
+  bullet(ctx, 'STEP 1: Call back the ANI number from a recorded line. Up to two attempts.');
+  bullet(ctx, 'STEP 2: If no answer or immediate hang-up on callback, create a call: type "911 HANGUP - CHECK WELFARE" at the ALI address.');
+  bullet(ctx, 'STEP 3: Priority 2. Minimum one-unit response, two-unit if the address has a premise alert or prior DV history.');
+  bullet(ctx, 'STEP 4: DO NOT assume pocket-dial. Treat every 911 hang-up as a potential DV or medical emergency until units can verify otherwise.');
+
+  h2(ctx, 'Flow 5 — Traffic Stop Escalates');
+  bullet(ctx, 'STEP 1: Officer radios something unusual ("stand by," "I need backup," change in tone). Acknowledge calmly: "10-4 U__, you need assistance?"');
+  bullet(ctx, 'STEP 2: If confirmed, dispatch nearest available unit — do not wait for the officer to specify.');
+  bullet(ctx, 'STEP 3: Hold the channel for that officer. Stop any non-emergency traffic: "All units, hold traffic for U__."');
+  bullet(ctx, 'STEP 4: Run the plate and occupants again in the background while the stop is developing. New warrant hits or felony flags change the whole call.');
+  bullet(ctx, 'STEP 5: If the stop becomes a felony / weapon stop, escalate to Flow 3 (BOLO Hit) logic for additional units and supervisor notification.');
+
+  h2(ctx, 'Flow 6 — Mental-Health Crisis Call');
+  bullet(ctx, 'STEP 1: Get the subject\'s immediate state. Armed? Actively self-harming? Compliant? Stable and talking?');
+  bullet(ctx, 'STEP 2: If armed or actively self-harming, dispatch as P1 with WEAPON (if applicable) + MENTAL_HEALTH flags, two-unit minimum, and request CIT-certified officer via /cit-request.');
+  bullet(ctx, 'STEP 3: If stable and talking, dispatch as P2 with MENTAL_HEALTH flag. CIT-preferred, one-unit OK if low risk and known to the system.');
+  bullet(ctx, 'STEP 4: Check the person record for prior MH history — if this is a repeat contact, voice-channel that fact to responding units so they have context.');
+  bullet(ctx, 'STEP 5: Do NOT dispatch mental-health calls as "welfare check" unless you truly have no information. "Welfare check" hides the clinical flag and responding units do not know what they are walking into.');
+
+  calloutBox(ctx, 'Meta-Rule',
+    'Every flow above has a final unwritten step: document. Every decision, every escalation, every consultation with a supervisor goes in the call notes with a timestamp. If it is not in the notes, it did not happen — regardless of how correct the decision was.',
+    'warn',
   );
 }
 
@@ -1940,49 +2928,134 @@ function quickReferenceCard(ctx: GuideContext): void {
   d.text('and SLCPD if within city limits. Do NOT clear until officer confirms 10-4.', PAGE.MARGIN + 12, bottomY + 44);
 }
 
+// ─── Live-data fetch ────────────────────────────────────────
+
+/**
+ * Attempt to fetch the current 10-code and signal-code list from the
+ * server. Returns null on any failure so callers fall back to the
+ * hardcoded tables — dispatchers on a flaky connection still need the guide.
+ */
+async function fetchLiveCodes(): Promise<LiveDispatchCode[] | null> {
+  try {
+    const res = await fetch('/api/dispatch/geography/codes', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    return data as LiveDispatchCode[];
+  } catch {
+    return null;
+  }
+}
+
 // ─── Public API ─────────────────────────────────────────────
+
+/** Registry of emitters in the order they appear in the final PDF. */
+interface SectionSpec {
+  label: string;
+  emit: (ctx: GuideContext) => void;
+}
+
+function buildSectionSpecs(): SectionSpec[] {
+  return [
+    { label: '1. Console Overview',                        emit: section1 },
+    { label: '2. Taking a Call End-to-End',                emit: section2 },
+    { label: '3. Unit Status & 10-Codes',                  emit: section3 },
+    { label: '4. Safety Flags & Priority Levels',          emit: section4 },
+    { label: '5. F-Key Hotkeys',                           emit: section5 },
+    { label: '6. CAD Command Line',                        emit: section6 },
+    { label: '7. Voice Features (Dispatcher Brain)',       emit: section7 },
+    { label: '8. Common Workflows',                        emit: section8 },
+    { label: '9. Troubleshooting',                         emit: section9 },
+    { label: '10. Radio Etiquette & Voice Protocols',      emit: section10 },
+    { label: '11. Documentation Standards',                emit: section11 },
+    { label: '12. Using the Map',                          emit: section12 },
+    { label: '13. Shift Change Procedure',                 emit: section13 },
+    { label: '14. Real-Time Sync & Offline Behavior',      emit: section14 },
+    { label: '15. Map V2 (OpenLayers, Beta)',              emit: section15 },
+    { label: '16. Field Interviews',                       emit: section16 },
+    { label: '17. Process Service / Serve Queue',          emit: section17 },
+    { label: '18. Skip Tracer V2',                         emit: section18 },
+    { label: '19. Compound & Universal Search',            emit: section19 },
+    { label: '20. Anatomy of the Console',                 emit: section20 },
+    { label: '21. Worked Example — Shots-Fired Call',      emit: section21 },
+    { label: '22. Your First Shift — Onboarding',          emit: section22 },
+    { label: 'Appendix A — Incident Type Reference',       emit: appendixA },
+    { label: 'Appendix B — Disposition Codes',             emit: appendixB },
+    { label: 'Appendix C — Architecture for Dispatchers',  emit: appendixC },
+    { label: 'Appendix D — Glossary of Terms',             emit: appendixD },
+    { label: 'Appendix E — Phonetic Alphabet & Radio',     emit: appendixE },
+    { label: 'Appendix F — Decision Flowcharts',           emit: appendixF },
+    { label: 'Quick-Reference Card',                       emit: quickReferenceCard },
+  ];
+}
 
 /**
  * Build the Dispatch Guide PDF and trigger a browser download.
- * Filename includes today's date so dispatchers can see at a glance
- * which version they have on the console.
+ *
+ * Flow: (1) fetch live 10-codes (best-effort), (2) emit every section on a
+ * temporary scratch document to collect page-start anchors, (3) prepend the
+ * cover page with a clickable TOC pointing at those anchors, (4) re-render
+ * footers now that the page total is known, (5) save.
+ *
+ * We emit sections first and the cover page last so the TOC can hold real
+ * page numbers. jsPDF doesn't support "named destinations" that survive
+ * page reordering, so we build the cover at the end and use `movePage` to
+ * slide it to position 1.
+ *
+ * Filename includes today's date so dispatchers can see at a glance which
+ * version they have on the console.
  */
-export function generateDispatchGuidePdf(): void {
+export async function generateDispatchGuidePdf(): Promise<void> {
+  const liveCodes = await fetchLiveCodes();
+
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
-  const ctx: GuideContext = { doc, y: PAGE.MARGIN, page: 1 };
+  const ctx: GuideContext = {
+    doc,
+    y: PAGE.MARGIN,
+    page: 1,
+    liveCodes,
+    anchors: [],
+  };
 
-  // Cover page (no header/footer)
+  const specs = buildSectionSpecs();
+
+  // The first page is auto-created by jsPDF and doesn't pass through newPage(),
+  // so the running header is never drawn on it. Draw it manually for parity
+  // with every subsequent page.
+  pageHeader(ctx);
+
+  // Pass 1 — emit every section, recording each one's start page in ctx.anchors.
+  // Section 1 lands on the auto-created page 1 so we don't waste a blank page
+  // before reordering.
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    if (i > 0) newPage(ctx);
+    anchor(ctx, spec.label);
+    spec.emit(ctx);
+  }
+
+  // Pass 2 — add the cover page at the END, then relocate to position 1.
+  // Anchors were captured in pass 1 and still reference pages 1..N; after
+  // we insert the cover at the front each anchor's page increments by 1.
+  doc.addPage();
+  const coverPageNum = doc.getNumberOfPages();
+  doc.setPage(coverPageNum);
+
+  // Shift every recorded page by +1 to account for the cover going in front.
+  for (const a of ctx.anchors) a.page += 1;
+
   coverPage(ctx);
+  doc.movePage(coverPageNum, 1);
 
-  // Sections 1-13 — each starts on a fresh page for readability
-  newPage(ctx);    section1(ctx);
-  newPage(ctx);    section2(ctx);
-  newPage(ctx);    section3(ctx);
-  newPage(ctx);    section4(ctx);
-  newPage(ctx);    section5(ctx);
-  newPage(ctx);    section6(ctx);
-  newPage(ctx);    section7(ctx);
-  newPage(ctx);    section8(ctx);
-  newPage(ctx);    section9(ctx);
-  newPage(ctx);    section10(ctx);
-  newPage(ctx);    section11(ctx);
-  newPage(ctx);    section12(ctx);
-  newPage(ctx);    section13(ctx);
-
-  // Appendices
-  newPage(ctx);    appendixA(ctx);
-  newPage(ctx);    appendixB(ctx);
-  newPage(ctx);    appendixC(ctx);
-
-  // Quick-reference card on its own fresh page
-  quickReferenceCard(ctx);
-
-  // Footer pass — re-render page numbers now that total is known.
+  // Pass 3 — render footers (page N of M) on every page except the cover.
   const total = doc.getNumberOfPages();
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
     if (p === 1) continue; // cover page has no footer
-    pageFooter({ doc, y: 0, page: p }, total);
+    pageFooter({ ...ctx, y: 0, page: p }, total);
   }
 
   const stamp = new Date().toISOString().slice(0, 10);
