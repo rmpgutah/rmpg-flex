@@ -1092,6 +1092,8 @@ function section6(ctx: GuideContext): void {
     'Commands are case-insensitive — "nc domestic 123 main" works identically to "NC DOMESTIC 123 MAIN". Arguments are space-separated; quote values that contain spaces ("NC \\"open container\\" 123 main"). Press Tab to cycle autocomplete suggestions, Up/Down arrows to recall recent commands.',
   );
 
+  drawCommandLineAnatomyDiagram(ctx);
+
   h2(ctx, 'Call Management Commands');
   table(ctx,
     ['Verb', 'Syntax', 'Purpose'],
@@ -1363,6 +1365,8 @@ function section8(ctx: GuideContext): void {
   paragraph(ctx,
     'Every dispatcher develops patterns for routine calls. This section documents agency-preferred workflows for fifteen of the most common dispatch scenarios. Treat them as starting points — the facts of each call may require deviation, but these patterns cover the typical case.',
   );
+
+  drawPursuitSwimlaneDiagram(ctx);
 
   h2(ctx, 'Call Intake Workflows');
 
@@ -1782,6 +1786,8 @@ function section12(ctx: GuideContext): void {
     'The map is the spatial complement to the call list and unit roster. During a pursuit, tactical operation, or area search, the map becomes your primary situational-awareness surface.',
   );
 
+  drawMapLayerStackDiagram(ctx);
+
   h2(ctx, 'Map Layers');
   bullet(ctx, 'Base map — dark CartoDB (Spillman-style) by default. Switch to Google Satellite for aerial imagery when searching outdoors.');
   bullet(ctx, 'Beat polygons — semi-transparent colored overlays showing sector and beat boundaries. Toggle visibility with the layer selector.');
@@ -1906,6 +1912,8 @@ function section15(ctx: GuideContext): void {
     'Map V2 is a parallel map surface at /map-v2 built on OpenLayers and the offline CartoDB raster tile cache. It runs read-only alongside the production Google Maps page at /map and exists so the team can iterate on a non-Google tile stack without risking the live dispatch map. Production dispatch continues to use /map — do NOT direct officers to V2 for live operations yet.',
   );
 
+  drawMapV2ArchDiagram(ctx);
+
   h2(ctx, 'What V2 Shows Today');
   bullet(ctx, 'Base map: CartoDB dark_matter raster tiles (same ones the offline cache already holds).');
   bullet(ctx, 'Beat polygons: all 719 features from beat.geojson, colored by parent sector.');
@@ -1963,6 +1971,8 @@ function section17(ctx: GuideContext): void {
     'RMPG holds a process-service contract alongside patrol. The Serve Queue is the list of legal documents (subpoenas, summons, eviction notices, restraining orders, small-claims papers) that have been accepted for service and are awaiting officer assignment and attempt.',
   );
 
+  drawServeLifecycleDiagram(ctx);
+
   h2(ctx, 'Lifecycle');
   bullet(ctx, 'Intake: document scanned, recipient and deadline entered, job created. Auto-geocoded to the service address.');
   bullet(ctx, 'Assignment: dispatcher or supervisor assigns the job to a specific officer (or to a zone pool).');
@@ -2019,6 +2029,8 @@ function section19(ctx: GuideContext): void {
   paragraph(ctx,
     'Two complementary search tools live under Records -> Search. Compound Search is a structured NCIC-style query form; Universal Search is a single box that fans out across nine record types.',
   );
+
+  drawCompoundSearchMatrixDiagram(ctx);
 
   h2(ctx, 'Compound Search');
   paragraph(ctx,
@@ -2651,6 +2663,560 @@ function drawCallTimelineDiagram(ctx: GuideContext): void {
 
   ctx.y = y + h + 8;
   dCaption(ctx, 'Fig. 21-1 — Worked-example call timeline. Green = resolution events, red = on-scene, gold = dispatcher action.');
+}
+
+/**
+ * Fig. 6-1 — CAD command line anatomy. Annotated single command with
+ * callout labels pointing at the verb, subject, and argument portions.
+ * Teaches the grammar by showing it.
+ */
+function drawCommandLineAnatomyDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 160);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 140;
+
+  dFrame(d, x, y, w, h);
+
+  // Command line strip
+  const cmdY = y + 60;
+  const cmdX = x + 30;
+  const cmdW = w - 60;
+  const cmdH = 28;
+  d.setFillColor('#000000');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.rect(cmdX, cmdY, cmdW, cmdH, 'FD');
+
+  // Caret
+  d.setFont('courier', 'bold');
+  d.setFontSize(14);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('>', cmdX + 8, cmdY + 19);
+
+  // Example command — each token colored differently for callouts
+  const verbX = cmdX + 22;
+  d.setTextColor('#d4a017');
+  d.text('DS',   verbX, cmdY + 19);
+  d.setTextColor('#22c55e');
+  d.text('U07',  verbX + 26, cmdY + 19);
+  d.setTextColor('#e5e5e5');
+  d.text('C24-0415',  verbX + 64, cmdY + 19);
+  d.setTextColor('#888888');
+  d.text('; NOTE "rolling code 3"',  verbX + 146, cmdY + 19);
+
+  // Callout labels
+  const drawCallout = (fromX: number, label: string, color: string, labelX: number, labelY: number) => {
+    d.setDrawColor(color);
+    d.setLineWidth(0.5);
+    d.line(fromX, cmdY, fromX, labelY);
+    d.line(fromX, labelY, labelX, labelY);
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor(color);
+    d.text(label, labelX + 3, labelY + 2);
+  };
+  drawCallout(verbX + 8, 'VERB: dispatch', '#d4a017', x + 20, y + 30);
+  drawCallout(verbX + 40, 'UNIT: callsign', '#22c55e', x + 170, y + 30);
+  drawCallout(verbX + 100, 'CALL: number', '#e5e5e5', x + w - 220, y + 30);
+  drawCallout(verbX + 200, 'MODIFIER: note', '#888888', x + w - 120, y + 108);
+
+  // Title
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('GRAMMAR: <verb> <subject> <argument> [; modifier ...]', x + w / 2, y + h - 10, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 6-1 — CAD command-line syntax. Tokens are space-separated; semicolons chain modifiers.');
+}
+
+/**
+ * Fig. 8-1 — Multi-unit pursuit workflow. Three swim-lanes (Primary
+ * officer, Dispatcher, Supervisor) showing the parallel steps each
+ * role takes from pursuit initiation to termination. Emphasizes
+ * that pursuit handling is collaborative, not sequential.
+ */
+function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 230);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 210;
+
+  dFrame(d, x, y, w, h);
+
+  const lanes: Array<{ label: string; color: string }> = [
+    { label: 'PRIMARY OFFICER', color: '#22c55e' },
+    { label: 'DISPATCHER',      color: '#d4a017' },
+    { label: 'SUPERVISOR',      color: '#b91c1c' },
+  ];
+  const laneH = (h - 30) / lanes.length;
+  const topY = y + 20;
+
+  // Lane backgrounds + labels
+  for (let i = 0; i < lanes.length; i++) {
+    const ly = topY + i * laneH;
+    d.setFillColor(i % 2 === 0 ? '#0d0d0d' : '#111111');
+    d.rect(x, ly, w, laneH, 'F');
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor(lanes[i].color);
+    d.text(lanes[i].label, x + 6, ly + 10);
+  }
+
+  // Events per lane at discrete time slots
+  type Evt = { lane: number; slot: number; label: string };
+  const evts: Evt[] = [
+    { lane: 0, slot: 0, label: 'Initiates\npursuit' },
+    { lane: 1, slot: 0, label: 'Acknowledges\non channel' },
+    { lane: 0, slot: 1, label: 'Calls speed\n+ direction' },
+    { lane: 1, slot: 1, label: 'Holds all\ntraffic (F9)' },
+    { lane: 2, slot: 1, label: 'Notified\nautomatically' },
+    { lane: 1, slot: 2, label: 'Dispatches\n2nd unit' },
+    { lane: 0, slot: 2, label: 'Continues\nnarration' },
+    { lane: 2, slot: 2, label: 'Reviews\nrisk factors' },
+    { lane: 2, slot: 3, label: 'Termination\ndecision' },
+    { lane: 1, slot: 3, label: 'Broadcasts\ntermination' },
+    { lane: 0, slot: 3, label: 'Disengages\n10-4s out' },
+  ];
+  const slots = 4;
+  const slotW = (w - 80) / slots;
+  for (const ev of evts) {
+    const ex = x + 70 + ev.slot * slotW + slotW / 2 - 30;
+    const ey = topY + ev.lane * laneH + 18;
+    dBox(d, ex, ey, 60, 28, ev.label, {
+      fill: '#141414', stroke: lanes[ev.lane].color, textColor: lanes[ev.lane].color, fontSize: 6, bold: true,
+    });
+  }
+  // Time-slot labels across the top
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(6.5);
+  d.setTextColor('#888888');
+  const slotLabels = ['T+0  Initiate', 'T+30s  Escalate', 'T+2m  Stabilize', 'T+Nm  Resolve'];
+  for (let s = 0; s < slots; s++) {
+    d.text(slotLabels[s], x + 70 + s * slotW + slotW / 2, topY + 4, { align: 'center' });
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 8-1 — Pursuit swim-lane. Three roles work in parallel, not sequence.');
+}
+
+/**
+ * Fig. 12-1 — Map layer stack. Vertical stack showing the render order
+ * of layers on the /map surface: base tiles at bottom, beats above,
+ * premise alerts, calls, units, interactive overlays at top.
+ */
+function drawMapLayerStackDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 210);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 190;
+
+  dFrame(d, x, y, w, h);
+
+  const layers: Array<{ label: string; detail: string; color: string }> = [
+    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#374151' },
+    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#60a5fa' },
+    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#a78bfa' },
+    { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#f59e0b' },
+    { label: 'Active calls',       detail: 'Incident-type pins, priority color',  color: '#d4a017' },
+    { label: 'Units (GPS)',        detail: 'Dots colored by status, 5s updates',  color: '#22c55e' },
+    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: '#93c5fd' },
+    { label: 'Interaction layer',  detail: 'Hover, click, drag-to-dispatch',      color: '#ffffff' },
+  ];
+
+  const barH = 16;
+  const gap = 3;
+  const startY = y + 20;
+  for (let i = 0; i < layers.length; i++) {
+    const lyr = layers[i];
+    const by = startY + i * (barH + gap);
+    const xIndent = 40 + i * 6; // cascade indent
+    d.setFillColor(lyr.color);
+    d.rect(x + xIndent, by, w - xIndent - 14, barH, 'F');
+    d.setFillColor('#000000');
+    d.rect(x + xIndent, by, 22, barH, 'F');
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor('#ffffff');
+    d.text(String(layers.length - i), x + xIndent + 11, by + 11, { align: 'center' });
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(8);
+    d.setTextColor('#0a0a0a');
+    d.text(lyr.label, x + xIndent + 28, by + 11);
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(7);
+    d.setTextColor('#111111');
+    d.text(lyr.detail, x + xIndent + 110, by + 11);
+  }
+
+  // Z-axis indicator
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('z-index: bottom (drawn first) -> top (drawn last, receives clicks)', x + 12, y + h - 10);
+  d.setFont('helvetica', 'bold');
+  d.text('v', x + 30, y + 28);
+  d.text('v', x + 30, y + 64);
+  d.text('v', x + 30, y + 100);
+  d.text('v', x + 30, y + 136);
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 12-1 — Map layer stack on /map. Interaction layer is always on top.');
+}
+
+/**
+ * Fig. 15-1 — Map V2 architecture. Three-column diagram: data sources
+ * on the left, OpenLayers pipeline in the middle, rendered output
+ * on the right. Shows how V2 reuses the same /api endpoints as /map
+ * but swaps the rendering engine.
+ */
+function drawMapV2ArchDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 220);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 200;
+
+  dFrame(d, x, y, w, h);
+
+  const colW = (w - 40) / 3;
+  const colX = [x + 10, x + 10 + colW + 10, x + 10 + 2 * (colW + 10)];
+
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('DATA SOURCES', colX[0] + colW / 2, y + 16, { align: 'center' });
+  d.text('OPENLAYERS PIPELINE', colX[1] + colW / 2, y + 16, { align: 'center' });
+  d.text('RENDERED OUTPUT', colX[2] + colW / 2, y + 16, { align: 'center' });
+
+  // Left column: data sources
+  const sources = [
+    '/tiles/{z}/{x}/{y}.png\n(CartoDB cache)',
+    '/geojson/beat.geojson\n(719 features)',
+    '/dispatch/units\n(poll + WS)',
+    '/dispatch/calls\n(poll + WS)',
+  ];
+  for (let i = 0; i < sources.length; i++) {
+    dBox(d, colX[0], y + 30 + i * 36, colW, 30, sources[i], {
+      fill: '#0d1a2b', stroke: '#2563eb', textColor: '#93c5fd', fontSize: 7,
+    });
+  }
+
+  // Middle column: pipeline stages
+  const stages = [
+    'VectorSource\n(reproject 4326->3857)',
+    'Style fn\n(sector-color)',
+    'VectorLayer<Feature>\n(mount to map)',
+    'Debounced refetch\n(WS events)',
+  ];
+  for (let i = 0; i < stages.length; i++) {
+    dBox(d, colX[1], y + 30 + i * 36, colW, 30, stages[i], {
+      fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 7,
+    });
+  }
+
+  // Right column: output
+  const outputs = [
+    'Dark basemap\n(raster layer)',
+    'Beat polygons\n(colored fills)',
+    'Unit dots\n(clickable popups)',
+    'Call markers\n(priority icons)',
+  ];
+  for (let i = 0; i < outputs.length; i++) {
+    dBox(d, colX[2], y + 30 + i * 36, colW, 30, outputs[i], {
+      fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 7,
+    });
+  }
+
+  // Arrows between columns
+  for (let i = 0; i < 4; i++) {
+    const ry = y + 30 + i * 36 + 15;
+    dArrow(d, colX[0] + colW + 2, ry, colX[1] - 2, ry);
+    dArrow(d, colX[1] + colW + 2, ry, colX[2] - 2, ry);
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 15-1 — Map V2 architecture. Same data sources as /map, different rendering engine.');
+}
+
+/**
+ * Fig. 17-1 — Serve queue lifecycle timeline. Horizontal timeline
+ * from intake to close with branch for "no contact" vs "served"
+ * outcomes. Emphasizes the attempt-limit contract.
+ */
+function drawServeLifecycleDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 200);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 180;
+
+  dFrame(d, x, y, w, h);
+
+  // Main lifecycle stages
+  const stages = [
+    { label: 'INTAKE',      detail: 'Doc scanned\nRecipient captured' },
+    { label: 'ASSIGN',      detail: 'To officer or\nzone pool' },
+    { label: 'ATTEMPT 1',   detail: 'Officer visits\nGPS + photo' },
+    { label: 'OUTCOME',     detail: 'SERVED or\nNO CONTACT' },
+  ];
+  const boxW = 84;
+  const boxH = 44;
+  const gap = (w - boxW * stages.length - 24) / (stages.length - 1);
+  const cy = y + 50;
+
+  const boxes: ReturnType<typeof dBox>[] = [];
+  for (let i = 0; i < stages.length; i++) {
+    const bx = x + 12 + i * (boxW + gap);
+    const s = stages[i];
+    const isOutcome = s.label === 'OUTCOME';
+    boxes.push(dBox(d, bx, cy, boxW, boxH, `${s.label}\n${s.detail}`, {
+      fill: isOutcome ? '#1f1a00' : '#141414',
+      stroke: isOutcome ? COLOR.ACCENT : '#2e2e2e',
+      textColor: '#e5e5e5',
+      fontSize: 7,
+      bold: true,
+    }));
+  }
+  for (let i = 0; i < boxes.length - 1; i++) {
+    dArrow(d, boxes[i].x + boxW, boxes[i].y + boxH / 2, boxes[i + 1].x, boxes[i + 1].y + boxH / 2);
+  }
+
+  // Branches from OUTCOME
+  const outcomeBox = boxes[boxes.length - 1];
+  const branchY = cy + 80;
+  const servedX = outcomeBox.x - 40;
+  const noContactX = outcomeBox.x + boxW + 40;
+
+  const served = dBox(d, servedX - 40, branchY, 120, 32, 'CLOSED — SERVED\nFinal disposition', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 7, bold: true,
+  });
+  const retry = dBox(d, noContactX - 40, branchY, 120, 32, 'RE-ATTEMPT\nup to contract limit', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 7, bold: true,
+  });
+  dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, served.x + served.w / 2, served.y, 'served');
+  dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, retry.x + retry.w / 2, retry.y, 'no contact');
+
+  // Retry loop back to ATTEMPT 1
+  const attemptBox = boxes[2];
+  d.setDrawColor('#b91c1c');
+  d.setLineWidth(0.5);
+  d.line(retry.x + retry.w, retry.y + retry.h / 2, retry.x + retry.w + 20, retry.y + retry.h / 2);
+  d.line(retry.x + retry.w + 20, retry.y + retry.h / 2, retry.x + retry.w + 20, attemptBox.y + boxH + 6);
+  d.line(retry.x + retry.w + 20, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6);
+  dArrow(d, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH, undefined, '#b91c1c');
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 17-1 — Serve-queue lifecycle. Re-attempts loop until served or the contract attempt limit.');
+}
+
+/**
+ * Fig. 19-1 — Compound search field matrix. 3x3 grid of query
+ * criteria with icon-style cells, showing how fields combine
+ * with implicit AND to narrow the result set.
+ */
+function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 200);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 180;
+
+  dFrame(d, x, y, w, h);
+
+  const fields: Array<{ label: string; example: string; color: string }> = [
+    { label: 'NAME',       example: 'SMITH*\n(wildcard)',           color: '#d4a017' },
+    { label: 'DOB',        example: '1985-01-01\n..1990-12-31',     color: '#d4a017' },
+    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: '#60a5fa' },
+    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#60a5fa' },
+    { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: '#22c55e' },
+    { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: '#22c55e' },
+    { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: '#b91c1c' },
+    { label: 'DATE RANGE', example: 'last 60d\nlast shift',          color: '#888888' },
+    { label: 'RECORD TYPE',example: 'Calls | Inc\nFI | Citations',  color: '#888888' },
+  ];
+  const cols = 3;
+  const rows = 3;
+  const cellW = (w - 40) / cols;
+  const cellH = (h - 60) / rows;
+  const gridY = y + 30;
+
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('ALL FIELDS COMBINE WITH IMPLICIT AND', x + w / 2, y + 16, { align: 'center' });
+
+  for (let i = 0; i < fields.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = x + 20 + col * cellW;
+    const cy = gridY + row * cellH;
+    const f = fields[i];
+    dBox(d, cx, cy, cellW - 8, cellH - 6, `${f.label}\n\n${f.example}`, {
+      fill: '#141414', stroke: f.color, textColor: f.color, fontSize: 7, bold: true,
+    });
+  }
+
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('Partial matches are allowed; only filled fields filter the result.', x + w / 2, y + h - 10, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 19-1 — Compound search field matrix. Fill any subset; empty fields are ignored.');
+}
+
+/**
+ * Fig. C-1 — System data-flow architecture. Left-to-right: browser
+ * clients -> nginx -> Express server -> SQLite DB. Sideband: WebSocket
+ * channel, systemd service, SSL certs.
+ */
+function drawArchDataFlowDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 240);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 220;
+
+  dFrame(d, x, y, w, h);
+
+  // Three tiers: client, edge, server, data
+  const tierY = y + 40;
+  const tierH = 60;
+  const browser = dBox(d, x + 12, tierY, 96, tierH, 'BROWSER\nReact SPA\nVite bundle', {
+    fill: '#0d1a2b', stroke: '#2563eb', textColor: '#93c5fd', fontSize: 8, bold: true,
+  });
+  const nginx = dBox(d, x + 130, tierY, 90, tierH, 'NGINX\nSSL terminator\nStatic + proxy', {
+    fill: '#1a1a1a', stroke: '#666666', textColor: '#cccccc', fontSize: 8, bold: true,
+  });
+  const express = dBox(d, x + 240, tierY, 100, tierH, 'EXPRESS 5\ntsx runtime\nREST + WS', {
+    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+  });
+  const sqlite = dBox(d, x + 360, tierY, 90, tierH, 'SQLITE\nbetter-sqlite3\naudit log', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 8, bold: true,
+  });
+
+  // Flow arrows (HTTPS 443, proxy 3001, file I/O)
+  dArrow(d, browser.x + browser.w, browser.y + tierH / 2, nginx.x, nginx.y + tierH / 2, 'HTTPS 443');
+  dArrow(d, nginx.x, nginx.y + tierH / 2, browser.x + browser.w, browser.y + tierH / 2);
+  dArrow(d, nginx.x + nginx.w, nginx.y + tierH / 2, express.x, express.y + tierH / 2, 'proxy 3001');
+  dArrow(d, express.x, express.y + tierH / 2, nginx.x + nginx.w, nginx.y + tierH / 2);
+  dArrow(d, express.x + express.w, express.y + tierH / 2, sqlite.x, sqlite.y + tierH / 2, 'prepared stmts');
+  dArrow(d, sqlite.x, sqlite.y + tierH / 2, express.x + express.w, express.y + tierH / 2);
+
+  // Sideband systems below
+  const sideY = tierY + tierH + 26;
+  const sidebands = [
+    { from: nginx,   label: "Let's Encrypt\ncerts (symlinks)", color: '#888888' },
+    { from: express, label: 'systemd unit\nrmpg-flex.service', color: '#888888' },
+    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#60a5fa' },
+    { from: sqlite,  label: 'server/data/\nexcluded from deploy', color: '#888888' },
+  ];
+  for (const sb of sidebands) {
+    const sbX = sb.from.x + sb.from.w / 2 - 60;
+    const sbBox = dBox(d, sbX, sideY, 120, 30, sb.label, {
+      fill: '#0a0a0a', stroke: sb.color, textColor: sb.color, fontSize: 7,
+    });
+    dArrow(d, sb.from.x + sb.from.w / 2, sb.from.y + sb.from.h, sbBox.x + sbBox.w / 2, sbBox.y, undefined, sb.color);
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. C-1 — RMPG Flex system architecture. Browser -> nginx -> Express -> SQLite.');
+}
+
+/**
+ * Fig. F-1 — Officer-down (10-99) decision flowchart. Converts the
+ * numbered bullet list in Flow 1 into an actual flowchart with
+ * decision diamonds and parallel paths, so a dispatcher can scan
+ * the page and follow a line rather than read through seven bullets.
+ */
+function drawOfficerDownFlowchart(ctx: GuideContext): void {
+  ensureSpace(ctx, 320);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 300;
+
+  dFrame(d, x, y, w, h);
+
+  const centerX = x + w / 2;
+
+  // Step 1 — Trigger
+  const trigger = dBox(d, centerX - 90, y + 16, 180, 28, '"10-99" heard on channel', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 9, bold: true,
+  });
+
+  // Step 2 — Broadcast
+  const broadcast = dBox(d, centerX - 100, y + 60, 200, 28, 'STEP 1 — Press F12 (panic)', {
+    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+  });
+  dArrow(d, centerX, trigger.y + trigger.h, centerX, broadcast.y);
+
+  // Step 3 — Hold traffic
+  const holdTraffic = dBox(d, centerX - 100, y + 104, 200, 28, 'STEP 2 — Hold all traffic', {
+    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+  });
+  dArrow(d, centerX, broadcast.y + broadcast.h, centerX, holdTraffic.y);
+
+  // Decision diamond — is GPS current?
+  const decisionY = y + 150;
+  const diamond = (cx: number, cy: number, label: string) => {
+    d.setFillColor('#1a1a00');
+    d.setDrawColor(COLOR.ACCENT);
+    d.setLineWidth(1);
+    const size = 40;
+    d.triangle(cx, cy - size, cx + size * 1.5, cy, cx, cy + size, 'FD');
+    d.triangle(cx, cy - size, cx - size * 1.5, cy, cx, cy + size, 'FD');
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor(COLOR.ACCENT);
+    const lines = label.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      d.text(lines[i], cx, cy - 4 + i * 9, { align: 'center' });
+    }
+  };
+  diamond(centerX, decisionY + 40, 'GPS current?\n(< 60s)');
+  dArrow(d, centerX, holdTraffic.y + holdTraffic.h, centerX, decisionY);
+
+  // Yes branch (left)
+  const yesBox = dBox(d, x + 40, decisionY + 80, 150, 30, 'Use GPS location\nDispatch 3 nearest', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 8, bold: true,
+  });
+  dArrow(d, centerX - 50, decisionY + 40, yesBox.x + yesBox.w, yesBox.y + 10, 'YES');
+
+  // No branch (right)
+  const noBox = dBox(d, x + w - 190, decisionY + 80, 150, 30, 'Ask for 20\nEscalate if no response', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 8, bold: true,
+  });
+  dArrow(d, centerX + 50, decisionY + 40, noBox.x, noBox.y + 10, 'NO');
+
+  // Final steps (merge)
+  const supY = decisionY + 140;
+  const supervisor = dBox(d, centerX - 100, supY, 200, 26, 'STEP 5 — Page supervisor', {
+    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+  });
+  dArrow(d, yesBox.x + yesBox.w / 2, yesBox.y + yesBox.h, supervisor.x + supervisor.w / 2 - 30, supervisor.y);
+  dArrow(d, noBox.x + noBox.w / 2, noBox.y + noBox.h, supervisor.x + supervisor.w / 2 + 30, supervisor.y);
+
+  const clear = dBox(d, centerX - 120, supY + 38, 240, 26, 'STEP 7 — Do NOT clear until 10-4 from officer', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 8, bold: true,
+  });
+  dArrow(d, centerX, supervisor.y + supervisor.h, centerX, clear.y);
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. F-1 — Officer-down flowchart. Diamonds are decisions; follow one path end-to-end.');
 }
 
 /**
@@ -3465,6 +4031,8 @@ function appendixC(ctx: GuideContext): void {
     'A light-touch overview of how the system is put together, aimed at dispatchers who want to understand the plumbing enough to troubleshoot intelligently without becoming system administrators.',
   );
 
+  drawArchDataFlowDiagram(ctx);
+
   h2(ctx, 'Where Things Live');
   bullet(ctx, 'Server — hosted at the VPS, accessible at https://rmpgutah.us. Node.js Express application running under systemd.');
   bullet(ctx, 'Database — SQLite file on the server. Every call, unit, incident, citation, person, and vehicle record lives here.');
@@ -3689,6 +4257,7 @@ function appendixF(ctx: GuideContext): void {
   );
 
   h2(ctx, 'Flow 1 — Officer Says "10-99" (Officer Emergency)');
+  drawOfficerDownFlowchart(ctx);
   bullet(ctx, 'STEP 1: Immediately press F12 (panic broadcast). Every workstation and MDT hears the emergency tone.');
   bullet(ctx, 'STEP 2: Hold all non-emergency radio traffic. Say "All units, stand by for emergency traffic" on the voice channel.');
   bullet(ctx, 'STEP 3: Confirm unit location. If GPS is current, use it. If not, ask "U__ Dispatch, give me your 20."');
