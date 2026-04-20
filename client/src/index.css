@@ -29,6 +29,9 @@
   --grid-row-alt: #121c2a;
   --field-label-color: #d4a017;
   --border-panel: #1e3048;
+  /* Panel bevel highlight + title bar gradient — theme-aware */
+  --bevel-highlight: #3a5070;
+  --titlebar-gradient: linear-gradient(180deg, #1e3048 0%, #162236 50%, #1a2636 100%);
 }
 
 /* --- Global Base Overrides --- */
@@ -613,11 +616,11 @@
 
   /* --- Beveled Panel Borders (3D Raised / Inset) --- */
   .panel-beveled {
-    border: 1px solid #2a3e58;
-    border-top-color: #3a5070;
-    border-left-color: #3a5070;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    border: 1px solid var(--border-strong);
+    border-top-color: var(--bevel-highlight);
+    border-left-color: var(--bevel-highlight);
+    border-bottom-color: var(--surface-sunken);
+    border-right-color: var(--surface-sunken);
   }
 
   .panel-inset {
@@ -634,9 +637,9 @@
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 50%, #1a2636 100%);
-    border-bottom: 1px solid #0d1520;
-    border-top: 1px solid #2a3e58;
+    background: var(--titlebar-gradient);
+    border-bottom: 1px solid var(--surface-sunken);
+    border-top: 1px solid var(--border-strong);
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
