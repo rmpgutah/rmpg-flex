@@ -12,6 +12,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
+import { useStandalone } from './hooks/useStandalone';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
@@ -175,6 +176,13 @@ function NotFoundPage() {
   );
 }
 
+/** Redirects installed-PWA phone users landing on `/` to `/mobile`. */
+function HomeRedirect({ children }: { children: React.ReactNode }) {
+  const { isStandalone, isMobileViewport } = useStandalone();
+  if (isStandalone && isMobileViewport) return <Navigate to="/mobile" replace />;
+  return <>{children}</>;
+}
+
 /** Per-route error boundary wrapper for lazy-loaded routes */
 function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
@@ -213,7 +221,7 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
+            <Route path="/" element={<HomeRedirect>{window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />}</HomeRedirect>} />
             <Route path="/dispatch" element={<DispatchPage />} />
             <Route path="/map" element={<Navigate to="/map-v2" replace />} />
             <Route path="/map-v2" element={<RouteErrorBoundary><MapPageV2 /></RouteErrorBoundary>} />
