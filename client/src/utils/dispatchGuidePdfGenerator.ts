@@ -2228,60 +2228,82 @@ function drawUnitStatusDiagram(ctx: GuideContext): void {
  * that most calls are P3/P4 and only a small fraction are true P1s.
  */
 function drawPriorityPyramidDiagram(ctx: GuideContext): void {
-  ensureSpace(ctx, 200);
+  // Restructured into clean columns so nothing overlaps:
+  //   [ response-time ] [ P-badge ] [ bar+desc ] [ frequency ]
+  // The previous layout put the P-badge INSIDE the bar at the left edge,
+  // which collided with the centered description label on the narrow P1
+  // bar. Separating into columns gives each element its own real estate.
+  ensureSpace(ctx, 210);
   const d = ctx.doc;
   const x = PAGE.MARGIN;
   const y = ctx.y;
   const w = PAGE.W - PAGE.MARGIN * 2;
-  const h = 180;
+  const h = 190;
 
   dFrame(d, x, y, w, h);
 
-  const levels: Array<{ p: string; label: string; color: string; widthPct: number; freq: string }> = [
-    { p: 'P1', label: 'Life / safety emergency',      color: '#b91c1c', widthPct: 0.20, freq: '~2% of calls'  },
-    { p: 'P2', label: 'Crime in progress / urgent',   color: '#d97706', widthPct: 0.40, freq: '~15% of calls' },
-    { p: 'P3', label: 'Routine',                      color: '#ca8a04', widthPct: 0.65, freq: '~55% of calls' },
-    { p: 'P4', label: 'Cold / report only',           color: '#6b7280', widthPct: 0.85, freq: '~28% of calls' },
+  const levels: Array<{ p: string; label: string; color: string; widthPct: number; freq: string; response: string }> = [
+    { p: 'P1', label: 'Life / safety emergency',    color: '#b91c1c', widthPct: 0.20, freq: '~2% of calls',  response: 'lights + siren'   },
+    { p: 'P2', label: 'Crime in progress / urgent', color: '#d97706', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
+    { p: 'P3', label: 'Routine',                    color: '#ca8a04', widthPct: 0.65, freq: '~55% of calls', response: 'closest unit'     },
+    { p: 'P4', label: 'Cold / report only',         color: '#6b7280', widthPct: 0.85, freq: '~28% of calls', response: 'phone / deferred' },
   ];
 
-  const barH = 28;
-  const gap = 6;
-  const cx = x + w / 2;
+  // Column anchors
+  const colResponse = x + 10;        // left: response time
+  const colBadge    = x + 78;        // small P-badge
+  const colBar      = x + 108;       // bar starts (left-aligned)
+  const colFreqR    = x + w - 10;    // right edge: frequency
+
+  const barAreaW = (colFreqR - 76) - colBar;  // reserve space for frequency column
+  const barH = 30;
+  const gap = 8;
+  const pyramidTopY = y + 32;
+
+  // Column headings
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('RESPONSE', colResponse, y + 16);
+  d.text('LEVEL',    colBadge,    y + 16);
+  d.text('DESCRIPTION (bar width = call-volume share)', colBar, y + 16);
+  d.text('SHARE',    colFreqR,    y + 16, { align: 'right' });
 
   for (let i = 0; i < levels.length; i++) {
     const lvl = levels[i];
-    const bw = (w - 40) * lvl.widthPct;
-    const bx = cx - bw / 2;
-    const by = y + 20 + i * (barH + gap);
+    const by = pyramidTopY + i * (barH + gap);
+    const bw = Math.max(60, barAreaW * lvl.widthPct);
+
+    // Response-time column
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(7);
+    d.setTextColor('#888888');
+    d.text(lvl.response, colResponse, by + barH / 2 + 2);
+
+    // P-badge: small solid colored chip
     d.setFillColor(lvl.color);
-    d.setDrawColor(lvl.color);
-    d.roundedRect(bx, by, bw, barH, 2, 2, 'F');
-
-    // Priority badge (left)
+    d.roundedRect(colBadge, by + 4, 22, barH - 8, 2, 2, 'F');
     d.setFont('helvetica', 'bold');
-    d.setFontSize(14);
+    d.setFontSize(10);
     d.setTextColor('#ffffff');
-    d.text(lvl.p, bx + 10, by + barH / 2 + 5);
+    d.text(lvl.p, colBadge + 11, by + barH / 2 + 3, { align: 'center' });
 
-    // Label (center)
+    // Bar (left-aligned, width-proportional to share)
+    d.setFillColor(lvl.color);
+    d.roundedRect(colBar, by, bw, barH, 2, 2, 'F');
+
+    // Description text, centered inside the bar
+    d.setFont('helvetica', 'bold');
     d.setFontSize(9);
-    d.text(lvl.label, bx + bw / 2, by + barH / 2 + 3, { align: 'center' });
+    d.setTextColor('#ffffff');
+    d.text(lvl.label, colBar + bw / 2, by + barH / 2 + 3, { align: 'center' });
 
-    // Frequency (right, outside the bar)
+    // Frequency (right column, outside bar)
     d.setFont('helvetica', 'italic');
     d.setFontSize(8);
     d.setTextColor('#888888');
-    d.text(lvl.freq, x + w - 10, by + barH / 2 + 3, { align: 'right' });
+    d.text(lvl.freq, colFreqR, by + barH / 2 + 2, { align: 'right' });
   }
-
-  // Response time column on left
-  d.setFont('helvetica', 'normal');
-  d.setFontSize(7);
-  d.setTextColor('#888888');
-  d.text('lights + siren',  x + 8, y + 20 + barH / 2 + 3);
-  d.text('prompt, no L&S',  x + 8, y + 20 + (barH + gap) + barH / 2 + 3);
-  d.text('closest unit',    x + 8, y + 20 + 2 * (barH + gap) + barH / 2 + 3);
-  d.text('phone / deferred',x + 8, y + 20 + 3 * (barH + gap) + barH / 2 + 3);
 
   ctx.y = y + h + 8;
   dCaption(ctx, 'Fig. 4-1 — Priority pyramid. Bar width is proportional to typical call-volume share.');
@@ -2493,34 +2515,43 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
  * category (federal, state, local, open-source).
  */
 function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
-  ensureSpace(ctx, 260);
+  // Two concentric rings — 22 sources on a single ring at r=88 with 52pt
+  // boxes mathematically overlap (~25pt adjacent separation). Split into
+  // an inner ring (federal + state = 10) and outer ring (local + open-
+  // source = 12). Each ring's per-node spacing roughly doubles.
+  ensureSpace(ctx, 340);
   const d = ctx.doc;
   const x = PAGE.MARGIN;
   const y = ctx.y;
   const w = PAGE.W - PAGE.MARGIN * 2;
-  const h = 240;
+  const h = 320;
 
   dFrame(d, x, y, w, h);
 
   // Central query node
   const cx = x + w / 2;
-  const cy = y + h / 2;
-  const hub = dBox(d, cx - 50, cy - 16, 100, 32, 'SKIP TRACER', {
+  const cy = y + h / 2 - 4;
+  dBox(d, cx - 50, cy - 16, 100, 32, 'SKIP TRACER', {
     fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
   });
 
-  // 22 source adapters in a ring — grouped by color category
-  const sources: Array<{ label: string; cat: 'fed' | 'state' | 'local' | 'oss' }> = [
-    { label: 'FBI WANTED',     cat: 'fed'   },
-    { label: 'OFAC',           cat: 'fed'   },
-    { label: 'NSOPW',          cat: 'fed'   },
-    { label: 'TSA No-Fly',     cat: 'fed'   },
-    { label: 'DEA Diversion',  cat: 'fed'   },
-    { label: 'UT Courts',      cat: 'state' },
-    { label: 'UT DMV',         cat: 'state' },
-    { label: 'UT DOC',         cat: 'state' },
-    { label: 'UT MVR',         cat: 'state' },
-    { label: 'UT BCI',         cat: 'state' },
+  type Src = { label: string; cat: 'fed' | 'state' | 'local' | 'oss' };
+
+  // Inner ring: authoritative law-enforcement sources (federal + state) — 10
+  const innerSources: Src[] = [
+    { label: 'FBI WANTED',    cat: 'fed'   },
+    { label: 'OFAC',          cat: 'fed'   },
+    { label: 'NSOPW',         cat: 'fed'   },
+    { label: 'TSA No-Fly',    cat: 'fed'   },
+    { label: 'DEA Diversion', cat: 'fed'   },
+    { label: 'UT Courts',     cat: 'state' },
+    { label: 'UT DMV',        cat: 'state' },
+    { label: 'UT DOC',        cat: 'state' },
+    { label: 'UT MVR',        cat: 'state' },
+    { label: 'UT BCI',        cat: 'state' },
+  ];
+  // Outer ring: local + open-source — 12
+  const outerSources: Src[] = [
     { label: 'SLC Assessor',   cat: 'local' },
     { label: 'SL Co Jail',     cat: 'local' },
     { label: 'SLCPD RMS',      cat: 'local' },
@@ -2534,6 +2565,7 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
     { label: 'Obituaries',     cat: 'oss'   },
     { label: 'Utility Lookup', cat: 'oss'   },
   ];
+
   const catColors: Record<string, { fill: string; stroke: string; text: string }> = {
     fed:   { fill: '#1a0505', stroke: '#b91c1c', text: '#fca5a5' },
     state: { fill: '#0a1a2b', stroke: '#2563eb', text: '#93c5fd' },
@@ -2541,21 +2573,24 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
     oss:   { fill: '#141414', stroke: '#666666', text: '#cccccc' },
   };
 
-  const radius = 88;
-  for (let i = 0; i < sources.length; i++) {
-    const angle = (-Math.PI / 2) + (i / sources.length) * Math.PI * 2;
-    const nx = cx + Math.cos(angle) * radius;
-    const ny = cy + Math.sin(angle) * radius;
-    const src = sources[i];
-    const c = catColors[src.cat];
-    const box = dBox(d, nx - 26, ny - 7, 52, 14, src.label, {
-      fill: c.fill, stroke: c.stroke, textColor: c.text, fontSize: 6, bold: true,
-    });
-    // Thin line from hub to source
-    d.setDrawColor(c.stroke);
-    d.setLineWidth(0.3);
-    d.line(cx, cy, box.x + box.w / 2, box.y + box.h / 2);
-  }
+  const drawRing = (sources: Src[], radius: number, startAngle: number): void => {
+    for (let i = 0; i < sources.length; i++) {
+      const angle = startAngle + (i / sources.length) * Math.PI * 2;
+      const nx = cx + Math.cos(angle) * radius;
+      const ny = cy + Math.sin(angle) * radius;
+      const src = sources[i];
+      const c = catColors[src.cat];
+      const box = dBox(d, nx - 24, ny - 7, 48, 14, src.label, {
+        fill: c.fill, stroke: c.stroke, textColor: c.text, fontSize: 6, bold: true,
+      });
+      d.setDrawColor(c.stroke);
+      d.setLineWidth(0.3);
+      d.line(cx, cy, box.x + box.w / 2, box.y + box.h / 2);
+    }
+  };
+
+  drawRing(innerSources, 80,  -Math.PI / 2);
+  drawRing(outerSources, 140, -Math.PI / 2 + Math.PI / outerSources.length);
 
   // Legend
   const legendY = y + h - 14;
@@ -2588,17 +2623,19 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
  * critical moment in the worked example.
  */
 function drawCallTimelineDiagram(ctx: GuideContext): void {
-  ensureSpace(ctx, 220);
+  // Taller frame to accommodate multi-tier stacked labels for the
+  // early-clustered events (T+0 through T+1 has 6 events in 60s).
+  ensureSpace(ctx, 300);
   const d = ctx.doc;
   const x = PAGE.MARGIN;
   const y = ctx.y;
   const w = PAGE.W - PAGE.MARGIN * 2;
-  const h = 200;
+  const h = 280;
 
   dFrame(d, x, y, w, h);
 
   // Horizontal axis: T+00:00 to T+21:00 (21 minutes)
-  const axisY = y + 100;
+  const axisY = y + h / 2;
   const axisX0 = x + 30;
   const axisX1 = x + w - 20;
   const axisW = axisX1 - axisX0;
@@ -2620,38 +2657,91 @@ function drawCallTimelineDiagram(ctx: GuideContext): void {
     d.text(`T+${String(m).padStart(2, '0')}:00`, tx, axisY + 12, { align: 'center' });
   }
 
-  const events: Array<{ min: number; label: string; side: 'top' | 'bot'; color: string }> = [
-    { min: 0,     label: 'Phone rings\nF2 pressed',   side: 'top', color: '#d4a017' },
-    { min: 0.3,   label: 'Caller speaks\nlocation',   side: 'bot', color: '#888888' },
-    { min: 0.4,   label: 'Incident type\nclassified', side: 'top', color: '#888888' },
-    { min: 0.42,  label: 'Voice channel\nalert',       side: 'bot', color: '#d4a017' },
-    { min: 0.47,  label: 'U07 enroute (F5)',          side: 'top', color: '#22c55e' },
-    { min: 0.97,  label: 'Caller update:\nveh flees',  side: 'bot', color: '#b91c1c' },
-    { min: 1.07,  label: 'U07 diverts\nto intercept',  side: 'top', color: '#888888' },
-    { min: 1.8,   label: 'U12 on scene\n(F6)',         side: 'bot', color: '#b91c1c' },
-    { min: 2.5,   label: 'BOLO broadcast\n(F8 + bolo)',side: 'top', color: '#d4a017' },
-    { min: 4.7,   label: 'U07 posted\n(F6)',           side: 'bot', color: '#b91c1c' },
-    { min: 12.5,  label: 'U12 clears\n(F7)',           side: 'top', color: '#22c55e' },
-    { min: 20.25, label: 'U07 clears\n(F7)',           side: 'bot', color: '#22c55e' },
-    { min: 20.5,  label: 'Close call\ndisp: GOA',      side: 'top', color: '#666666' },
+  // Pare the event list down and spread the clustered early events to
+  // discrete times (+0, +20s, +25s, +40s, +55s, +1m) so the label
+  // anchor points on the axis don't land on top of each other.
+  // Then alternate sides AND stagger each side into 3 vertical tiers
+  // so neighbors never collide.
+  type Evt = { min: number; label: string; color: string };
+  const events: Evt[] = [
+    { min: 0,     label: 'Phone rings\nF2 pressed',     color: '#d4a017' },
+    { min: 0.33,  label: 'Caller gives\nlocation',       color: '#888888' },
+    { min: 0.42,  label: 'Incident type\nclassified',    color: '#888888' },
+    { min: 0.48,  label: 'Voice-channel\nalert',          color: '#d4a017' },
+    { min: 0.9,   label: 'U07 enroute\n(F5)',            color: '#22c55e' },
+    { min: 1.5,   label: 'Caller update:\nveh flees NB',  color: '#b91c1c' },
+    { min: 2.0,   label: 'U07 diverts\nto intercept',     color: '#888888' },
+    { min: 2.8,   label: 'U12 on scene\n(F6)',            color: '#b91c1c' },
+    { min: 3.5,   label: 'BOLO broadcast\n(F8 + bolo)',   color: '#d4a017' },
+    { min: 5.7,   label: 'U07 posted\n(F6)',              color: '#b91c1c' },
+    { min: 12.5,  label: 'U12 clears\n(F7)',              color: '#22c55e' },
+    { min: 19.25, label: 'U07 clears\n(F7)',              color: '#22c55e' },
+    { min: 20.5,  label: 'Close call\ndisp: GOA',         color: '#666666' },
   ];
 
-  for (const ev of events) {
+  // Each event gets a side (top/bot) and a tier (0,1,2). We walk through
+  // events in order and assign them to the next free tier on alternating
+  // sides. "Free" means the event's x-position doesn't overlap the
+  // previously-placed event on that (side, tier) — with a minimum
+  // horizontal separation of 48pt.
+  const TIERS = 3;
+  const MIN_SEP = 48;
+  const lastXBySideTier: Record<string, number> = {};
+  const placements: Array<{ ev: Evt; side: 'top' | 'bot'; tier: number; ex: number }> = [];
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
     const ex = axisX0 + (ev.min / durationMin) * axisW;
+    // Prefer alternating by index; fall through tiers if occupied.
+    const preferredSide: 'top' | 'bot' = i % 2 === 0 ? 'top' : 'bot';
+    const sidesInOrder: Array<'top' | 'bot'> = [preferredSide, preferredSide === 'top' ? 'bot' : 'top'];
+    let placed = false;
+    outer: for (const side of sidesInOrder) {
+      for (let tier = 0; tier < TIERS; tier++) {
+        const key = `${side}-${tier}`;
+        const lastX = lastXBySideTier[key] ?? -Infinity;
+        if (ex - lastX >= MIN_SEP) {
+          lastXBySideTier[key] = ex;
+          placements.push({ ev, side, tier, ex });
+          placed = true;
+          break outer;
+        }
+      }
+    }
+    if (!placed) {
+      // Fallback: use side top tier 0 and accept overlap; should be unreachable
+      // with the current 13-event budget but defensive.
+      placements.push({ ev, side: 'top', tier: 0, ex });
+    }
+  }
+
+  // Tier offsets (how far from the axis): tier 0 nearest, tier 2 furthest.
+  const tierOffsets = [30, 58, 86];
+
+  for (const p of placements) {
+    const { ev, side, tier, ex } = p;
+
+    // Marker dot on the axis
     d.setFillColor(ev.color);
     d.circle(ex, axisY, 2.5, 'F');
-    const labelY = ev.side === 'top' ? axisY - 30 : axisY + 30;
-    const anchorY = ev.side === 'top' ? axisY - 6 : axisY + 6;
+
+    const offset = tierOffsets[tier];
+    const labelY = side === 'top' ? axisY - offset : axisY + offset;
+    const anchorY = side === 'top' ? axisY - 4 : axisY + 4;
+
+    // Connector line
     d.setDrawColor(ev.color);
     d.setLineWidth(0.4);
-    d.line(ex, anchorY, ex, labelY + (ev.side === 'top' ? 14 : -4));
+    d.line(ex, anchorY, ex, labelY + (side === 'top' ? 10 : -4));
+
+    // Label (2 lines)
     d.setFont('helvetica', 'bold');
     d.setFontSize(6);
     d.setTextColor(ev.color);
     const lines = ev.label.split('\n');
+    // Anchor label block above-the-anchor for top, below-the-anchor for bot
+    const blockBaseY = side === 'top' ? labelY : labelY;
     for (let i = 0; i < lines.length; i++) {
-      const ly = ev.side === 'top' ? labelY + i * 7 : labelY + i * 7;
-      d.text(lines[i], ex, ly, { align: 'center' });
+      d.text(lines[i], ex, blockBaseY + i * 7, { align: 'center' });
     }
   }
 
@@ -2662,7 +2752,7 @@ function drawCallTimelineDiagram(ctx: GuideContext): void {
   d.text('SHOTS FIRED — 2100 S STATE — P1 — DISP T+0 -> CLOSE T+20:30', x + w / 2, y + 16, { align: 'center' });
 
   ctx.y = y + h + 8;
-  dCaption(ctx, 'Fig. 21-1 — Worked-example call timeline. Green = resolution events, red = on-scene, gold = dispatcher action.');
+  dCaption(ctx, 'Fig. 21-1 — Worked-example call timeline. Labels stagger into 3 tiers per side to avoid cluster overlap.');
 }
 
 /**
@@ -2991,28 +3081,44 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
     dArrow(d, boxes[i].x + boxW, boxes[i].y + boxH / 2, boxes[i + 1].x, boxes[i + 1].y + boxH / 2);
   }
 
-  // Branches from OUTCOME
+  // Branches from OUTCOME — centered under the OUTCOME box horizontally
+  // to keep both children inside the frame. The previous layout placed
+  // RE-ATTEMPT at (OUTCOME.x + boxW + 40) which pushed its right edge
+  // well past the frame's right border.
   const outcomeBox = boxes[boxes.length - 1];
   const branchY = cy + 80;
-  const servedX = outcomeBox.x - 40;
-  const noContactX = outcomeBox.x + boxW + 40;
+  const childW = 120;
+  const childGap = 40;
+  // Center the two children as a pair beneath the OUTCOME box, but
+  // clamp so the right edge stays inside the frame.
+  const childrenTotalW = childW * 2 + childGap;
+  const frameRightEdge = x + w - 10;
+  const loopExtension = 18;
+  let childrenCenter = outcomeBox.x + boxW / 2;
+  const rightmost = childrenCenter + childrenTotalW / 2 + loopExtension;
+  if (rightmost > frameRightEdge) childrenCenter -= rightmost - frameRightEdge;
 
-  const served = dBox(d, servedX - 40, branchY, 120, 32, 'CLOSED — SERVED\nFinal disposition', {
+  const servedX = childrenCenter - childrenTotalW / 2;
+  const retryX  = servedX + childW + childGap;
+
+  const served = dBox(d, servedX, branchY, childW, 32, 'CLOSED — SERVED\nFinal disposition', {
     fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 7, bold: true,
   });
-  const retry = dBox(d, noContactX - 40, branchY, 120, 32, 'RE-ATTEMPT\nup to contract limit', {
+  const retry = dBox(d, retryX, branchY, childW, 32, 'RE-ATTEMPT\nup to contract limit', {
     fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 7, bold: true,
   });
   dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, served.x + served.w / 2, served.y, 'served');
   dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, retry.x + retry.w / 2, retry.y, 'no contact');
 
-  // Retry loop back to ATTEMPT 1
+  // Retry loop back to ATTEMPT 1 — stays inside the frame because we
+  // clamped the retry box position above.
   const attemptBox = boxes[2];
+  const loopX = Math.min(retry.x + retry.w + loopExtension, frameRightEdge - 4);
   d.setDrawColor('#b91c1c');
   d.setLineWidth(0.5);
-  d.line(retry.x + retry.w, retry.y + retry.h / 2, retry.x + retry.w + 20, retry.y + retry.h / 2);
-  d.line(retry.x + retry.w + 20, retry.y + retry.h / 2, retry.x + retry.w + 20, attemptBox.y + boxH + 6);
-  d.line(retry.x + retry.w + 20, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6);
+  d.line(retry.x + retry.w, retry.y + retry.h / 2, loopX, retry.y + retry.h / 2);
+  d.line(loopX, retry.y + retry.h / 2, loopX, attemptBox.y + boxH + 6);
+  d.line(loopX, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6);
   dArrow(d, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH, undefined, '#b91c1c');
 
   ctx.y = y + h + 8;
@@ -3142,12 +3248,15 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
  * the page and follow a line rather than read through seven bullets.
  */
 function drawOfficerDownFlowchart(ctx: GuideContext): void {
-  ensureSpace(ctx, 320);
+  // Frame must be tall enough for all 7 rows of content plus the final
+  // "do not clear" box. The previous 300-tall frame clipped the bottom
+  // two boxes into the caption region.
+  ensureSpace(ctx, 400);
   const d = ctx.doc;
   const x = PAGE.MARGIN;
   const y = ctx.y;
   const w = PAGE.W - PAGE.MARGIN * 2;
-  const h = 300;
+  const h = 380;
 
   dFrame(d, x, y, w, h);
 
