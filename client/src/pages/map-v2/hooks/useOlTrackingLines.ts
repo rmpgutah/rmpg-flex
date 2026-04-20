@@ -3,10 +3,13 @@ import type OlMap from 'ol/Map';
 import Feature from 'ol/Feature';
 import type Geometry from 'ol/geom/Geometry';
 import LineString from 'ol/geom/LineString';
+import Point from 'ol/geom/Point';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import Style from 'ol/style/Style';
 import Stroke from 'ol/style/Stroke';
+import Fill from 'ol/style/Fill';
+import RegularShape from 'ol/style/RegularShape';
 import { fromLonLat } from 'ol/proj';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
@@ -85,10 +88,30 @@ export function useOlTrackingLines(map: OlMap | null, opts: { visible: boolean }
               fromLonLat([c.longitude, c.latitude]),
             ]),
           });
-          f.setStyle(new Style({
+          // Compute heading from unit→call so the arrowhead points the
+          // direction of dispatch (where the unit is heading).
+          const dx = c.longitude - u.longitude;
+          const dy = c.latitude - u.latitude;
+          const headingRad = Math.atan2(dx, dy); // 0 = north
+          const lineFeature = f;
+          lineFeature.setStyle(new Style({
             stroke: new Stroke({ color, width: 1.5, lineDash: [4, 4] }),
           }));
-          feats.push(f);
+          feats.push(lineFeature);
+          // Arrowhead at the call (destination) end
+          const arrow = new Feature({
+            geometry: new Point(fromLonLat([c.longitude, c.latitude])),
+          });
+          arrow.setStyle(new Style({
+            image: new RegularShape({
+              points: 3,
+              radius: 6,
+              rotation: headingRad,
+              fill: new Fill({ color }),
+              stroke: new Stroke({ color: '#0a0a0a', width: 1 }),
+            }),
+          }));
+          feats.push(arrow);
         }
         sourceRef.current.clear();
         sourceRef.current.addFeatures(feats);
