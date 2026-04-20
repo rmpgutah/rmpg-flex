@@ -6,6 +6,7 @@ import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { ToastProvider } from './components/ToastProvider';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
+import { InstallCoachingModal } from './components/InstallCoachingModal';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import WebUpdateBanner from './components/WebUpdateBanner';
@@ -189,6 +190,7 @@ function AppRoutes() {
     <>
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
+      {isAuthenticated && <InstallCoachingModal />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>
         <Routes>
           {/* Public */}
