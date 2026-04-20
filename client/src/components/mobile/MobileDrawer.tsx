@@ -281,7 +281,7 @@ export default function MobileDrawer({
       {/* Drawer Panel */}
       <div
         ref={drawerRef}
-        className="absolute top-0 left-0 bottom-0 mobile-drawer open"
+        className="absolute top-0 left-0 bottom-0 mobile-drawer open safe-px safe-pt safe-pb"
         style={{ width: 'min(85vw, 340px)', willChange: 'transform' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
