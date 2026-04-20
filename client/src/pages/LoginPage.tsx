@@ -311,7 +311,7 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141e2b 100%)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, var(--surface-deep) 0%, var(--surface-base) 100%)' }}>
       {/* Animated grid background */}
       <div className="login-grid-bg" />
 
@@ -358,11 +358,11 @@ export default function LoginPage() {
             />
           </div>
           <div className="flex items-center justify-center gap-2 mt-0.5">
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #124070)' }} />
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, var(--brand-blue))' }} />
             <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(26, 90, 158, 0.65)' }}>
               Secure Authentication
             </p>
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, #124070, transparent)' }} />
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, var(--brand-blue), transparent)' }} />
           </div>
         </div>
 
@@ -370,7 +370,7 @@ export default function LoginPage() {
         <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
+            <ShieldCheck className="w-3 h-3" style={{ color: 'var(--brand-blue)' }} />
             <span>
               {loginStep === 'setup_2fa' || loginStep === 'confirm_setup_2fa'
                 ? '2FA SETUP'
@@ -389,8 +389,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>□</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--border-strong)', border: '1px solid var(--bevel-highlight)', borderBottom: '1px solid var(--border-subtle)' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--border-strong)', border: '1px solid var(--bevel-highlight)', borderBottom: '1px solid var(--border-subtle)' }}>□</div>
             </div>
           </div>
 
@@ -765,7 +765,7 @@ export default function LoginPage() {
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: '#0d1520', border: '1px solid #1e3048', color: '#e0e0e0' }}
+                      style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
                     >
                       {manualKey}
                     </div>
@@ -962,15 +962,15 @@ export default function LoginPage() {
           <div
             className="text-center py-1.5 px-3"
             style={{
-              background: '#060c14',
-              border: '1px solid #1e3048',
-              borderTop: '2px solid #124070',
+              background: 'var(--surface-deep)',
+              border: '1px solid var(--border-default)',
+              borderTop: '2px solid var(--brand-blue)',
             }}
           >
-            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: '#124070' }}>
+            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: 'var(--brand-blue)' }}>
               Internal Use Only
             </p>
-            <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: '#5a6e80' }}>
+            <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
               Company Confidential — Do Not Distribute
             </p>
           </div>
@@ -978,12 +978,12 @@ export default function LoginPage() {
 
         {/* Footer with clock */}
         <div className="text-center mt-2 flex items-center justify-center gap-3">
-          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2a3e58' }}>
+          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: 'var(--text-muted)' }}>
             RMPG Flex v{APP_VERSION} | Rocky Mountain Protective Group, LLC
           </p>
           <div className="flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5" style={{ color: '#2a3e58' }} />
-            <span className="text-[8px] font-mono" style={{ color: '#3a5070' }}>{clock} MT</span>
+            <Clock className="w-2.5 h-2.5" style={{ color: 'var(--text-muted)' }} />
+            <span className="text-[8px] font-mono" style={{ color: 'var(--text-muted)' }}>{clock} MT</span>
           </div>
         </div>
       </div>
