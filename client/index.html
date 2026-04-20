@@ -60,9 +60,21 @@
           <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:system-ui,sans-serif;margin:0">
             Initializing
           </p>
+          <button id="pre-splash-reload" type="button"
+            style="display:none;margin-top:18px;padding:10px 16px;background:#1a1a1a;border:1px solid #222;color:#ccc;font-size:11px;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer"
+            onclick="window.location.reload()">
+            Reload
+          </button>
         </div>
       </div>
       <style>#pre-splash{transition:opacity .3s}@keyframes sl{0%{transform:translateX(-48px)}100%{transform:translateX(140px)}}</style>
+      <script>
+        setTimeout(function () {
+          var splash = document.getElementById('pre-splash');
+          var btn = document.getElementById('pre-splash-reload');
+          if (splash && splash.offsetParent !== null && btn) btn.style.display = 'inline-block';
+        }, 8000);
+      </script>
     </div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Service worker registration handled by useServiceWorker hook in React -->
