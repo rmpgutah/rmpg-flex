@@ -124,6 +124,7 @@ export default function MapPageV2() {
   const [showGeofences, setShowGeofences] = useState(false);
   const [mapStyle, setMapStyle] = useState<MapStyleKey>('dark');
   const tileLayerRef = useRef<TileLayer<XYZ> | null>(null);
+  const highZoomLayerRef = useRef<TileLayer<XYZ> | null>(null);
 
   useEffect(() => {
     if (!mapDivRef.current || mapInstanceRef.current) return;
@@ -138,6 +139,21 @@ export default function MapPageV2() {
     });
     tileLayerRef.current = tileLayer;
 
+    // High-zoom overlay — kicks in above Z15 where the offline cache
+    // ends. Live CartoDB dark_all carries street/water/park/building
+    // detail through Z20 so dispatchers can drill into block-level views
+    // without hitting a wall. Falls back gracefully when offline (just
+    // shows the cached Z15 tile stretched).
+    const highZoomLayerRef_local = new TileLayer({
+      source: new XYZ({
+        url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        maxZoom: 20,
+      }),
+      minZoom: 15,
+      maxZoom: 20,
+    });
+    highZoomLayerRef.current = highZoomLayerRef_local;
+
     // Mini-map (top-right corner) — uses the same tile cache to stay
     // offline-capable.
     const overviewTileLayer = new TileLayer({
@@ -146,12 +162,12 @@ export default function MapPageV2() {
 
     const instance = new Map({
       target: mapDivRef.current,
-      layers: [tileLayer],
+      layers: [tileLayer, highZoomLayerRef_local],
       view: new View({
         center: fromLonLat(SLC_LON_LAT),
         zoom: 11,
         minZoom: 7,
-        maxZoom: 15,
+        maxZoom: 20,
       }),
       controls: defaultControls({ attribution: false }).extend([
         new ScaleLine({ units: 'us', minWidth: 80 }),
@@ -257,22 +273,39 @@ export default function MapPageV2() {
     if (!tileLayerRef.current) return;
     let url: string;
     let attributions: string;
+    let highZoomUrl: string | null = null;
+    const cartoAttrib = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
     if (mapStyle === 'light') {
       url = 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
-      attributions = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+      attributions = cartoAttrib;
+      highZoomUrl = url;
     } else if (mapStyle === 'voyager') {
       url = 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-      attributions = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+      attributions = cartoAttrib;
+      highZoomUrl = url;
+    } else if (mapStyle === 'streets') {
+      // OSM standard — full streets, water, parks, building footprints,
+      // place labels. Highest detail of any free tile source. Live only.
+      url = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+      attributions = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+      highZoomUrl = url;
     } else if (mapStyle === 'detail') {
       // Esri Dark Gray Canvas — denser building/road detail than CartoDB
       // dark_matter while preserving the all-black aesthetic. Live only.
       url = 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
       attributions = '© <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a>, HERE, Garmin, Foursquare, FAO, METI/NASA, USGS';
+      highZoomUrl = url;
     } else {
       url = '/tiles/{z}/{x}/{y}.png';
-      attributions = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+      attributions = cartoAttrib;
+      // Dark style: keep offline cache as primary, live dark_all carries
+      // the deeper-zoom (Z16-20) detail above the cache ceiling.
+      highZoomUrl = 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
     }
-    tileLayerRef.current.setSource(new XYZ({ url, maxZoom: 19, attributions }));
+    tileLayerRef.current.setSource(new XYZ({ url, maxZoom: 20, attributions }));
+    if (highZoomLayerRef.current) {
+      highZoomLayerRef.current.setSource(new XYZ({ url: highZoomUrl, maxZoom: 20 }));
+    }
   }, [mapStyle]);
   useOlFieldInterviews(map, { visible: showFi, days: fiDays });
   useOlIncidentReports(map, { visible: showIncidents, days: incidentDays });
