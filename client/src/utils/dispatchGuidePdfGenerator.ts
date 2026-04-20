@@ -259,6 +259,104 @@ function table(
   ctx.y += 4;
 }
 
+// ─── Diagram primitives ─────────────────────────────────────
+// Shared low-level helpers for building vector diagrams throughout the
+// guide. Everything below assumes the Spillman dark-console aesthetic:
+// black fills, gold accents, thin gray rules, gold arrowheads. All sizes
+// are in PDF points (1/72"). All coordinates are absolute on the page.
+
+/**
+ * Draw a labeled rectangle node. Used as the standard "state box" or
+ * "component box" building block for state machines, data flows, and
+ * architecture diagrams. Returns the rect for chaining.
+ */
+function dBox(
+  d: jsPDF,
+  x: number, y: number, w: number, h: number,
+  label: string,
+  opts: { fill?: string; stroke?: string; textColor?: string; fontSize?: number; bold?: boolean } = {},
+): { x: number; y: number; w: number; h: number } {
+  const fill = opts.fill ?? '#141414';
+  const stroke = opts.stroke ?? '#2e2e2e';
+  const textColor = opts.textColor ?? '#e5e5e5';
+  const fontSize = opts.fontSize ?? 9;
+
+  d.setFillColor(fill);
+  d.setDrawColor(stroke);
+  d.setLineWidth(0.75);
+  d.roundedRect(x, y, w, h, 2, 2, 'FD');
+  d.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+  d.setFontSize(fontSize);
+  d.setTextColor(textColor);
+  const lines = d.splitTextToSize(label, w - 8) as string[];
+  const totalH = lines.length * (fontSize + 2);
+  const startY = y + (h - totalH) / 2 + fontSize;
+  for (let i = 0; i < lines.length; i++) {
+    d.text(lines[i], x + w / 2, startY + i * (fontSize + 2), { align: 'center' });
+  }
+  return { x, y, w, h };
+}
+
+/**
+ * Arrow from (x1,y1) to (x2,y2) with a gold arrowhead at the destination.
+ * Optional label sits at the midpoint above the line.
+ */
+function dArrow(
+  d: jsPDF,
+  x1: number, y1: number, x2: number, y2: number,
+  label?: string,
+  color = '#d4a017',
+): void {
+  d.setDrawColor(color);
+  d.setLineWidth(0.9);
+  d.line(x1, y1, x2, y2);
+
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const ah = 6;
+  const aw = 3;
+  const baseX = x2 - ah * Math.cos(angle);
+  const baseY = y2 - ah * Math.sin(angle);
+  const perpX = aw * Math.sin(angle);
+  const perpY = -aw * Math.cos(angle);
+  d.setFillColor(color);
+  d.triangle(
+    x2, y2,
+    baseX + perpX, baseY + perpY,
+    baseX - perpX, baseY - perpY,
+    'F',
+  );
+
+  if (label) {
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(7);
+    d.setTextColor('#888888');
+    d.text(label, mx, my - 3, { align: 'center' });
+  }
+}
+
+/** Caption below a diagram; advances the y-cursor. */
+function dCaption(ctx: GuideContext, text: string): void {
+  const d = ctx.doc;
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.MUTED);
+  d.text(text, PAGE.MARGIN, ctx.y);
+  ctx.y += 14;
+}
+
+/** Black-with-gold-border container frame for diagrams. */
+function dFrame(
+  d: jsPDF,
+  x: number, y: number, w: number, h: number,
+): void {
+  d.setFillColor('#0a0a0a');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.rect(x, y, w, h, 'FD');
+}
+
 // ─── Content blocks ─────────────────────────────────────────
 
 /**
@@ -504,6 +602,8 @@ function section2(ctx: GuideContext): void {
     'This section walks through a typical call from ring-in to archive, with the keystrokes, the required fields, and the judgment calls that only a human can make. Section 8 covers specific workflows (pursuits, multi-unit, mental-health response) in detail.',
   );
 
+  drawCallLifecycleDiagram(ctx);
+
   h2(ctx, 'Step 1 — Create the call');
   paragraph(ctx,
     'The clock starts when the phone rings. Your first obligation is life safety — get enough information to send help quickly, then refine as the caller talks. Do not wait for a complete picture before opening the call record.',
@@ -626,6 +726,8 @@ function section3(ctx: GuideContext): void {
   paragraph(ctx,
     'A common question during training is "why 10-codes instead of plain English?" The answer is threefold: brevity on a crowded radio channel, privacy from bystanders and scanners, and unambiguous meaning. "Ten-ninety-seven" is impossible to confuse with any other transmission; "on scene" can get cut off in radio traffic and become "scene" which means nothing specific.',
   );
+
+  drawUnitStatusDiagram(ctx);
 
   h2(ctx, '10-Code Reference');
   paragraph(ctx,
@@ -752,6 +854,8 @@ function section4(ctx: GuideContext): void {
   paragraph(ctx,
     'Priority and safety flags do two things: they tell responding officers what they are walking into, and they tell the CAD system how urgently to dispatch. Priority is a single P1-P4 level; safety flags are one or more tags that describe specific hazards. A call can have any combination of flags regardless of priority.',
   );
+
+  drawPriorityPyramidDiagram(ctx);
 
   h2(ctx, 'Priority Levels');
   paragraph(ctx,
@@ -896,6 +1000,8 @@ function section5(ctx: GuideContext): void {
   paragraph(ctx,
     'Memorizing the F-key row is the single highest-value training investment you can make. A dispatcher who knows F2-F7 by muscle memory will triage calls noticeably faster than one who hunts through menus. Print the quick-reference card at the end of this guide and tape it to the side of your monitor until the keys become automatic.',
   );
+
+  drawFKeyboardDiagram(ctx);
 
   h2(ctx, 'Primary F-Keys');
   table(ctx,
@@ -1117,6 +1223,8 @@ function section7(ctx: GuideContext): void {
   paragraph(ctx,
     'The design philosophy: the brain should be an attentive second dispatcher who never gets tired. It speaks up when safety flags are relevant, reminds you of overdue checks, and announces events you might have missed — but it never barks, never repeats itself, and always defers to human judgment.',
   );
+
+  drawBrainPipelineDiagram(ctx);
 
   h2(ctx, 'Voice Persona');
   paragraph(ctx,
@@ -1765,6 +1873,8 @@ function section14(ctx: GuideContext): void {
     'Every workstation holds a WebSocket to the server. When a dispatcher changes a call, unit status, or premise alert, the server broadcasts the change to every other workstation within roughly one second. There is no manual refresh and no polling; if your screen does not show a recent change, the socket dropped — see below.',
   );
 
+  drawWebSocketArchDiagram(ctx);
+
   h2(ctx, 'Connection Indicator');
   bullet(ctx, 'Status bar (bottom right): LIVE (green LED) means socket is connected and receiving events.');
   bullet(ctx, 'OFFLINE (red LED) means the socket has been closed for more than 3 seconds. Writes still work but updates from other workstations will not appear.');
@@ -1882,6 +1992,8 @@ function section18(ctx: GuideContext): void {
     'Skip Tracer V2 is the consolidated person-search tool under Intelligence -> Skip Tracer. It queries 22 public and agency data sources in parallel and returns a deduplicated result set. Adapters handle rate limiting, response caching, and per-source retry so you do not burn a lookup quota on a flaky source.',
   );
 
+  drawSkipTracerFanoutDiagram(ctx);
+
   h2(ctx, 'Covered Sources (Partial)');
   bullet(ctx, 'FBI Wanted and OFAC sanctions lists (federal flags, highest-priority hit).');
   bullet(ctx, 'National Sex Offender Public Registry (NSOPW).');
@@ -1942,6 +2054,604 @@ function section19(ctx: GuideContext): void {
 // cover, whereas 1-19 are reference content a working
 // dispatcher flips to as needed.
 // ═══════════════════════════════════════════════════════════
+
+/**
+// ═══════════════════════════════════════════════════════════
+// Section diagrams. Each drawXxxDiagram() is a self-contained
+// vector rendering that advances ctx.y past its own height.
+// Call these from within the relevant section function, after
+// the opening paragraph and before the prose that references
+// the figure number.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Fig. 2-1 — Call state lifecycle. Five state boxes left-to-right
+ * with transition arrows and typical timings. Dispatched-unstuck
+ * and on-scene-stuck thresholds annotated below the states they
+ * apply to.
+ */
+function drawCallLifecycleDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 170);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 150;
+
+  dFrame(d, x, y, w, h);
+
+  const states: Array<[string, string]> = [
+    ['PENDING',     'F2 opens intake\nunassigned'],
+    ['DISPATCHED',  'Unit(s) assigned\nnot moving'],
+    ['ENROUTE',     'F5 set\nunit moving'],
+    ['ON SCENE',    'F6 set\nunit at location'],
+    ['CLEARED',     'F7 + disposition\nauditable close'],
+  ];
+  const boxW = 76;
+  const boxH = 44;
+  const gap = (w - boxW * states.length - 24) / (states.length - 1);
+  const cy = y + 40;
+
+  const boxes: ReturnType<typeof dBox>[] = [];
+  for (let i = 0; i < states.length; i++) {
+    const bx = x + 12 + i * (boxW + gap);
+    const [title, sub] = states[i];
+    const box = dBox(d, bx, cy, boxW, boxH, `${title}\n${sub}`, {
+      fill: i === 0 ? '#141414' : (i === states.length - 1 ? '#0d2818' : '#1a1a1a'),
+      stroke: COLOR.ACCENT,
+      textColor: '#e5e5e5',
+      fontSize: 7,
+      bold: true,
+    });
+    boxes.push(box);
+  }
+  for (let i = 0; i < boxes.length - 1; i++) {
+    const from = boxes[i];
+    const to = boxes[i + 1];
+    dArrow(d, from.x + from.w, from.y + boxH / 2, to.x, to.y + boxH / 2);
+  }
+
+  // Timing callouts under the relevant transition
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('P1: dispatch <45s', boxes[0].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+  d.text('brain alerts >90s', boxes[1].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+  d.text('P1: 3-5 min', boxes[2].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+  d.text('brain alerts >8 min', boxes[3].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+
+  // Rewind arrow: CLEARED -> (archive); PENDING <- (new call)
+  d.setDrawColor('#888888');
+  d.setLineWidth(0.5);
+  d.text('Every transition is audited (who, when, from -> to, unit)', x + w / 2, y + h - 8, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 2-1 — Call state lifecycle with typical transition timings.');
+}
+
+/**
+ * Fig. 3-1 — Unit status state machine. Nodes for each status with
+ * directional edges showing legal transitions. Uses a hub-and-spoke
+ * layout because AVAILABLE is the central hub most transitions pass
+ * through.
+ */
+function drawUnitStatusDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 280);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 260;
+
+  dFrame(d, x, y, w, h);
+
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  // Central hub: AVAILABLE
+  const hub = dBox(d, cx - 50, cy - 18, 100, 36, 'AVAILABLE', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#22c55e', fontSize: 10, bold: true,
+  });
+
+  // Satellite nodes: DISPATCHED, ENROUTE, ON SCENE, BUSY, OUT OF SERVICE, OFF DUTY
+  const satellites: Array<{ label: string; dx: number; dy: number; color: string }> = [
+    { label: 'OFF DUTY',     dx:    0, dy: -100, color: '#666666' },
+    { label: 'DISPATCHED',   dx:  170, dy:  -70, color: '#d4a017' },
+    { label: 'ENROUTE',      dx:  170, dy:    0, color: '#d4a017' },
+    { label: 'ON SCENE',     dx:  170, dy:   70, color: '#b91c1c' },
+    { label: 'BUSY',         dx: -170, dy:  -70, color: '#d97706' },
+    { label: 'OUT OF SVC',   dx: -170, dy:   70, color: '#888888' },
+  ];
+  const nodes: Record<string, ReturnType<typeof dBox>> = { AVAILABLE: hub };
+  for (const s of satellites) {
+    const nx = cx + s.dx - 42;
+    const ny = cy + s.dy - 14;
+    nodes[s.label] = dBox(d, nx, ny, 84, 28, s.label, {
+      fill: '#141414', stroke: s.color, textColor: s.color, fontSize: 8, bold: true,
+    });
+  }
+
+  // Transitions (edges). Each edge is rendered with dArrow.
+  const edge = (fromLabel: string, toLabel: string, label?: string) => {
+    const f = nodes[fromLabel];
+    const t = nodes[toLabel];
+    if (!f || !t) return;
+    // Attach at nearest edge midpoints
+    const fxCenter = f.x + f.w / 2;
+    const fyCenter = f.y + f.h / 2;
+    const txCenter = t.x + t.w / 2;
+    const tyCenter = t.y + t.h / 2;
+    const dx = txCenter - fxCenter;
+    const dy = tyCenter - fyCenter;
+    const angle = Math.atan2(dy, dx);
+    const fRx = (Math.abs(Math.cos(angle)) > 0.5) ? f.w / 2 : Math.abs(dx / dy) * (f.h / 2);
+    const fRy = (Math.abs(Math.sin(angle)) > 0.5) ? f.h / 2 : Math.abs(dy / dx) * (f.w / 2);
+    const tRx = (Math.abs(Math.cos(angle)) > 0.5) ? t.w / 2 : Math.abs(dx / dy) * (t.h / 2);
+    const tRy = (Math.abs(Math.sin(angle)) > 0.5) ? t.h / 2 : Math.abs(dy / dx) * (t.w / 2);
+    const startX = fxCenter + Math.cos(angle) * Math.min(fRx, f.w / 2);
+    const startY = fyCenter + Math.sin(angle) * Math.min(fRy, f.h / 2);
+    const endX = txCenter - Math.cos(angle) * Math.min(tRx, t.w / 2);
+    const endY = tyCenter - Math.sin(angle) * Math.min(tRy, t.h / 2);
+    dArrow(d, startX, startY, endX, endY, label);
+  };
+
+  edge('OFF DUTY', 'AVAILABLE', 'log on');
+  edge('AVAILABLE', 'DISPATCHED', 'F3');
+  edge('DISPATCHED', 'ENROUTE', 'F5');
+  edge('ENROUTE', 'ON SCENE', 'F6');
+  edge('ON SCENE', 'AVAILABLE', 'F7');
+  edge('AVAILABLE', 'BUSY');
+  edge('BUSY', 'AVAILABLE');
+  edge('AVAILABLE', 'OUT OF SVC');
+  edge('OUT OF SVC', 'AVAILABLE');
+  edge('AVAILABLE', 'OFF DUTY', 'log off');
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 3-1 — Legal unit status transitions. AVAILABLE is the hub; illegal transitions are blocked by the server.');
+}
+
+/**
+ * Fig. 4-1 — Priority triage pyramid. Four horizontal bars stacked
+ * narrowest-at-top (P1) to widest-at-bottom (P4) to visually reinforce
+ * that most calls are P3/P4 and only a small fraction are true P1s.
+ */
+function drawPriorityPyramidDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 200);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 180;
+
+  dFrame(d, x, y, w, h);
+
+  const levels: Array<{ p: string; label: string; color: string; widthPct: number; freq: string }> = [
+    { p: 'P1', label: 'Life / safety emergency',      color: '#b91c1c', widthPct: 0.20, freq: '~2% of calls'  },
+    { p: 'P2', label: 'Crime in progress / urgent',   color: '#d97706', widthPct: 0.40, freq: '~15% of calls' },
+    { p: 'P3', label: 'Routine',                      color: '#ca8a04', widthPct: 0.65, freq: '~55% of calls' },
+    { p: 'P4', label: 'Cold / report only',           color: '#6b7280', widthPct: 0.85, freq: '~28% of calls' },
+  ];
+
+  const barH = 28;
+  const gap = 6;
+  const cx = x + w / 2;
+
+  for (let i = 0; i < levels.length; i++) {
+    const lvl = levels[i];
+    const bw = (w - 40) * lvl.widthPct;
+    const bx = cx - bw / 2;
+    const by = y + 20 + i * (barH + gap);
+    d.setFillColor(lvl.color);
+    d.setDrawColor(lvl.color);
+    d.roundedRect(bx, by, bw, barH, 2, 2, 'F');
+
+    // Priority badge (left)
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(14);
+    d.setTextColor('#ffffff');
+    d.text(lvl.p, bx + 10, by + barH / 2 + 5);
+
+    // Label (center)
+    d.setFontSize(9);
+    d.text(lvl.label, bx + bw / 2, by + barH / 2 + 3, { align: 'center' });
+
+    // Frequency (right, outside the bar)
+    d.setFont('helvetica', 'italic');
+    d.setFontSize(8);
+    d.setTextColor('#888888');
+    d.text(lvl.freq, x + w - 10, by + barH / 2 + 3, { align: 'right' });
+  }
+
+  // Response time column on left
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('lights + siren',  x + 8, y + 20 + barH / 2 + 3);
+  d.text('prompt, no L&S',  x + 8, y + 20 + (barH + gap) + barH / 2 + 3);
+  d.text('closest unit',    x + 8, y + 20 + 2 * (barH + gap) + barH / 2 + 3);
+  d.text('phone / deferred',x + 8, y + 20 + 3 * (barH + gap) + barH / 2 + 3);
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 4-1 — Priority pyramid. Bar width is proportional to typical call-volume share.');
+}
+
+/**
+ * Fig. 5-1 — F-key keyboard layout. Renders a stylized keyboard row
+ * with F1-F12 keys and their dispatch-console mapping printed
+ * underneath each. Includes ESC + a "cmd" marker to orient readers.
+ */
+function drawFKeyboardDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 130);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 110;
+
+  dFrame(d, x, y, w, h);
+
+  const keys: Array<[string, string]> = [
+    ['F1', 'Help'],
+    ['F2', 'New Call'],
+    ['F3', 'Dispatch'],
+    ['F4', 'Select Unit'],
+    ['F5', 'Enroute'],
+    ['F6', 'On Scene'],
+    ['F7', 'Clear'],
+    ['F8', 'CMD Line'],
+    ['F9', 'Voice Toggle'],
+    ['F10', 'Mic Arm'],
+    ['F11', 'BOLO Panel'],
+    ['F12', 'NCIC / Panic'],
+  ];
+  const keyW = (w - 24) / 12;
+  const keyH = 44;
+  const keyY = y + 28;
+
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('KEYBOARD  F-ROW', x + 12, y + 18);
+
+  for (let i = 0; i < keys.length; i++) {
+    const [label, action] = keys[i];
+    const kx = x + 12 + i * keyW;
+    // Key cap
+    d.setFillColor('#1a1a1a');
+    d.setDrawColor('#444444');
+    d.setLineWidth(0.75);
+    d.roundedRect(kx, keyY, keyW - 4, keyH, 3, 3, 'FD');
+    // Inner highlight
+    d.setDrawColor('#2a2a2a');
+    d.setLineWidth(0.3);
+    d.roundedRect(kx + 2, keyY + 2, keyW - 8, keyH - 4, 2, 2, 'S');
+    // Key label
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(9);
+    d.setTextColor(COLOR.ACCENT);
+    d.text(label, kx + (keyW - 4) / 2, keyY + 16, { align: 'center' });
+    // Action
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(6.5);
+    d.setTextColor('#e5e5e5');
+    const actLines = d.splitTextToSize(action, keyW - 8) as string[];
+    for (let li = 0; li < actLines.length; li++) {
+      d.text(actLines[li], kx + (keyW - 4) / 2, keyY + 28 + li * 8, { align: 'center' });
+    }
+  }
+
+  // Modifier strip
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('Modifiers: Shift+F-key = reverse action  |  Ctrl+F-key = same action for previously selected unit/call', x + 12, y + h - 8);
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 5-1 — F-key mapping for the dispatch console. Hints echo in the bottom status bar.');
+}
+
+/**
+ * Fig. 7-1 — Dispatcher Brain signal flow. Horizontal pipeline:
+ * Mic -> STT -> NLU -> Rule Engine -> Event Bus -> TTS -> Speakers.
+ * Rule Engine has a sideband input from the Call/Unit Event Stream
+ * coming from WebSocket, since brain reacts to system events too.
+ */
+function drawBrainPipelineDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 180);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 160;
+
+  dFrame(d, x, y, w, h);
+
+  const stages: string[] = ['Microphone', 'Web Speech\nRecognition', 'Intent\nParser', 'Rule Engine', 'Event Bus', 'Edge TTS\nSynthesis', 'Speakers'];
+  const boxW = 62;
+  const boxH = 38;
+  const gap = (w - boxW * stages.length - 24) / (stages.length - 1);
+  const cy = y + 40;
+
+  const boxes: ReturnType<typeof dBox>[] = [];
+  for (let i = 0; i < stages.length; i++) {
+    const bx = x + 12 + i * (boxW + gap);
+    const isRule = stages[i] === 'Rule Engine';
+    boxes.push(dBox(d, bx, cy, boxW, boxH, stages[i], {
+      fill: isRule ? '#1f1a00' : '#141414',
+      stroke: isRule ? COLOR.ACCENT : '#2e2e2e',
+      textColor: '#e5e5e5',
+      fontSize: 7,
+      bold: isRule,
+    }));
+  }
+  for (let i = 0; i < boxes.length - 1; i++) {
+    dArrow(d, boxes[i].x + boxW, boxes[i].y + boxH / 2, boxes[i + 1].x, boxes[i + 1].y + boxH / 2);
+  }
+
+  // Sideband: WebSocket event stream feeding Rule Engine
+  const sideY = cy + 80;
+  const sideBox = dBox(d, x + w / 2 - 90, sideY, 180, 28, 'WebSocket: call/unit/premise events', {
+    fill: '#0d1a2b', stroke: '#2b4b6b', textColor: '#93c5fd', fontSize: 8, bold: true,
+  });
+  // Arrow from sideband up to Rule Engine
+  const ruleBox = boxes[3];
+  dArrow(d,
+    sideBox.x + sideBox.w / 2, sideBox.y,
+    ruleBox.x + ruleBox.w / 2, ruleBox.y + ruleBox.h,
+    undefined, '#93c5fd',
+  );
+
+  // Labels
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(6.5);
+  d.setTextColor('#888888');
+  d.text('YOUR VOICE  ->', x + 20, cy - 8);
+  d.text('<- BRAIN SPEAKS', x + w - 20, cy - 8, { align: 'right' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 7-1 — Dispatcher Brain signal flow. Rule Engine fires on both your speech AND live system events.');
+}
+
+/**
+ * Fig. 14-1 — WebSocket sync architecture. Central server with four
+ * client workstations + one MDT connected via WS. Shows the
+ * broadcast pattern ("any dispatcher's change propagates to all
+ * peers within ~1s") and the offline queue.
+ */
+function drawWebSocketArchDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 240);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 220;
+
+  dFrame(d, x, y, w, h);
+
+  // Central server node
+  const cx = x + w / 2;
+  const cy = y + h / 2 - 10;
+  const server = dBox(d, cx - 70, cy - 22, 140, 44, 'RMPG FLEX SERVER\nws://rmpgutah.us', {
+    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+  });
+
+  // Database below server
+  const db = dBox(d, cx - 50, cy + 40, 100, 24, 'SQLite (audit log)', {
+    fill: '#0a0a0a', stroke: '#2e2e2e', textColor: '#888888', fontSize: 8,
+  });
+  dArrow(d, server.x + server.w / 2, server.y + server.h, db.x + db.w / 2, db.y, undefined, '#888888');
+
+  // Four client workstations in a semicircle above
+  const clients = [
+    { label: 'Dispatcher A\n(console)',  angle: -Math.PI * 0.85 },
+    { label: 'Dispatcher B\n(console)',  angle: -Math.PI * 0.65 },
+    { label: 'Supervisor\n(console)',    angle: -Math.PI * 0.35 },
+    { label: 'Unit U07\n(MDT)',           angle: -Math.PI * 0.15 },
+  ];
+  const radius = 90;
+  for (const c of clients) {
+    const ncx = cx + Math.cos(c.angle) * radius;
+    const ncy = cy + Math.sin(c.angle) * radius * 0.8;
+    const nb = dBox(d, ncx - 48, ncy - 16, 96, 32, c.label, {
+      fill: '#141414', stroke: '#166534', textColor: '#22c55e', fontSize: 7, bold: true,
+    });
+    // Bidirectional arrow indicator (two lines)
+    const fx = nb.x + nb.w / 2;
+    const fy = nb.y + nb.h;
+    const tx = server.x + server.w / 2;
+    const ty = server.y;
+    dArrow(d, fx, fy, tx + 10, ty - 1, undefined, '#22c55e');
+    dArrow(d, tx - 10, ty, fx, fy, undefined, '#22c55e');
+  }
+
+  // Offline queue indicator
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('Every change -> server -> broadcast to every peer within ~1s.', x + w / 2, y + h - 22, { align: 'center' });
+  d.text('Offline: writes queue in IndexedDB and replay on reconnect.', x + w / 2, y + h - 10, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 14-1 — Real-time sync topology. Single server, N clients, WebSocket broadcast.');
+}
+
+/**
+ * Fig. 18-1 — Skip Tracer V2 fan-out. Central query node with 22
+ * source adapters fanning out in a radial pattern, grouped by
+ * category (federal, state, local, open-source).
+ */
+function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 260);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 240;
+
+  dFrame(d, x, y, w, h);
+
+  // Central query node
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const hub = dBox(d, cx - 50, cy - 16, 100, 32, 'SKIP TRACER', {
+    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
+  });
+
+  // 22 source adapters in a ring — grouped by color category
+  const sources: Array<{ label: string; cat: 'fed' | 'state' | 'local' | 'oss' }> = [
+    { label: 'FBI WANTED',     cat: 'fed'   },
+    { label: 'OFAC',           cat: 'fed'   },
+    { label: 'NSOPW',          cat: 'fed'   },
+    { label: 'TSA No-Fly',     cat: 'fed'   },
+    { label: 'DEA Diversion',  cat: 'fed'   },
+    { label: 'UT Courts',      cat: 'state' },
+    { label: 'UT DMV',         cat: 'state' },
+    { label: 'UT DOC',         cat: 'state' },
+    { label: 'UT MVR',         cat: 'state' },
+    { label: 'UT BCI',         cat: 'state' },
+    { label: 'SLC Assessor',   cat: 'local' },
+    { label: 'SL Co Jail',     cat: 'local' },
+    { label: 'SLCPD RMS',      cat: 'local' },
+    { label: 'UPD RMS',        cat: 'local' },
+    { label: 'SL Co Rec',      cat: 'local' },
+    { label: 'Voter Reg',      cat: 'oss'   },
+    { label: 'Social Dir',     cat: 'oss'   },
+    { label: 'Prof Licenses',  cat: 'oss'   },
+    { label: 'Business Reg',   cat: 'oss'   },
+    { label: 'News Archive',   cat: 'oss'   },
+    { label: 'Obituaries',     cat: 'oss'   },
+    { label: 'Utility Lookup', cat: 'oss'   },
+  ];
+  const catColors: Record<string, { fill: string; stroke: string; text: string }> = {
+    fed:   { fill: '#1a0505', stroke: '#b91c1c', text: '#fca5a5' },
+    state: { fill: '#0a1a2b', stroke: '#2563eb', text: '#93c5fd' },
+    local: { fill: '#0d2818', stroke: '#166534', text: '#86efac' },
+    oss:   { fill: '#141414', stroke: '#666666', text: '#cccccc' },
+  };
+
+  const radius = 88;
+  for (let i = 0; i < sources.length; i++) {
+    const angle = (-Math.PI / 2) + (i / sources.length) * Math.PI * 2;
+    const nx = cx + Math.cos(angle) * radius;
+    const ny = cy + Math.sin(angle) * radius;
+    const src = sources[i];
+    const c = catColors[src.cat];
+    const box = dBox(d, nx - 26, ny - 7, 52, 14, src.label, {
+      fill: c.fill, stroke: c.stroke, textColor: c.text, fontSize: 6, bold: true,
+    });
+    // Thin line from hub to source
+    d.setDrawColor(c.stroke);
+    d.setLineWidth(0.3);
+    d.line(cx, cy, box.x + box.w / 2, box.y + box.h / 2);
+  }
+
+  // Legend
+  const legendY = y + h - 14;
+  const legX = x + 12;
+  let lx = legX;
+  const legends: Array<[string, string]> = [
+    ['fed', 'Federal'],
+    ['state', 'State (UT)'],
+    ['local', 'Local'],
+    ['oss', 'Open-source'],
+  ];
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(7);
+  for (const [cat, name] of legends) {
+    const c = catColors[cat];
+    d.setFillColor(c.stroke);
+    d.rect(lx, legendY - 6, 6, 6, 'F');
+    d.setTextColor('#888888');
+    d.text(name, lx + 10, legendY - 1);
+    lx += d.getTextWidth(name) + 26;
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 18-1 — Skip Tracer V2 source fan-out. 22 parallel adapters grouped by jurisdiction.');
+}
+
+/**
+ * Fig. 21-1 — Shots-fired call timeline. Horizontal timeline from
+ * T+00:00 to T+20:30 with annotated event markers for every
+ * critical moment in the worked example.
+ */
+function drawCallTimelineDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 220);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 200;
+
+  dFrame(d, x, y, w, h);
+
+  // Horizontal axis: T+00:00 to T+21:00 (21 minutes)
+  const axisY = y + 100;
+  const axisX0 = x + 30;
+  const axisX1 = x + w - 20;
+  const axisW = axisX1 - axisX0;
+  const durationMin = 21;
+
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.line(axisX0, axisY, axisX1, axisY);
+
+  // Minute ticks (every 3 minutes)
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(6.5);
+  d.setTextColor('#888888');
+  for (let m = 0; m <= durationMin; m += 3) {
+    const tx = axisX0 + (m / durationMin) * axisW;
+    d.setDrawColor('#666666');
+    d.setLineWidth(0.5);
+    d.line(tx, axisY - 2, tx, axisY + 2);
+    d.text(`T+${String(m).padStart(2, '0')}:00`, tx, axisY + 12, { align: 'center' });
+  }
+
+  const events: Array<{ min: number; label: string; side: 'top' | 'bot'; color: string }> = [
+    { min: 0,     label: 'Phone rings\nF2 pressed',   side: 'top', color: '#d4a017' },
+    { min: 0.3,   label: 'Caller speaks\nlocation',   side: 'bot', color: '#888888' },
+    { min: 0.4,   label: 'Incident type\nclassified', side: 'top', color: '#888888' },
+    { min: 0.42,  label: 'Voice channel\nalert',       side: 'bot', color: '#d4a017' },
+    { min: 0.47,  label: 'U07 enroute (F5)',          side: 'top', color: '#22c55e' },
+    { min: 0.97,  label: 'Caller update:\nveh flees',  side: 'bot', color: '#b91c1c' },
+    { min: 1.07,  label: 'U07 diverts\nto intercept',  side: 'top', color: '#888888' },
+    { min: 1.8,   label: 'U12 on scene\n(F6)',         side: 'bot', color: '#b91c1c' },
+    { min: 2.5,   label: 'BOLO broadcast\n(F8 + bolo)',side: 'top', color: '#d4a017' },
+    { min: 4.7,   label: 'U07 posted\n(F6)',           side: 'bot', color: '#b91c1c' },
+    { min: 12.5,  label: 'U12 clears\n(F7)',           side: 'top', color: '#22c55e' },
+    { min: 20.25, label: 'U07 clears\n(F7)',           side: 'bot', color: '#22c55e' },
+    { min: 20.5,  label: 'Close call\ndisp: GOA',      side: 'top', color: '#666666' },
+  ];
+
+  for (const ev of events) {
+    const ex = axisX0 + (ev.min / durationMin) * axisW;
+    d.setFillColor(ev.color);
+    d.circle(ex, axisY, 2.5, 'F');
+    const labelY = ev.side === 'top' ? axisY - 30 : axisY + 30;
+    const anchorY = ev.side === 'top' ? axisY - 6 : axisY + 6;
+    d.setDrawColor(ev.color);
+    d.setLineWidth(0.4);
+    d.line(ex, anchorY, ex, labelY + (ev.side === 'top' ? 14 : -4));
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(6);
+    d.setTextColor(ev.color);
+    const lines = ev.label.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const ly = ev.side === 'top' ? labelY + i * 7 : labelY + i * 7;
+      d.text(lines[i], ex, ly, { align: 'center' });
+    }
+  }
+
+  // Title strip
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(9);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('SHOTS FIRED — 2100 S STATE — P1 — DISP T+0 -> CLOSE T+20:30', x + w / 2, y + 16, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 21-1 — Worked-example call timeline. Green = resolution events, red = on-scene, gold = dispatcher action.');
+}
 
 /**
  * Render a stylized, annotated anatomy diagram of the dispatch console.
@@ -2197,6 +2907,8 @@ function section21(ctx: GuideContext): void {
   paragraph(ctx,
     'This section walks a complete, realistic call from the moment the phone rings to the moment everyone clears. Every keystroke, every radio exchange, every console state change is shown. Read it once to build a mental model of "what a whole call looks like," then use it as a benchmark when you run your own calls.',
   );
+
+  drawCallTimelineDiagram(ctx);
 
   h2(ctx, 'The Scenario');
   paragraph(ctx,
