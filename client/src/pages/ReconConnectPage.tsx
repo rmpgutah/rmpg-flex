@@ -7,6 +7,7 @@ import { Terminal, Copy, CheckCircle2, ExternalLink, ShieldAlert, Search, Globe,
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useAuth } from '../context/AuthContext';
 import GlobalCatalogSearch from './recon-connect/GlobalCatalogSearch';
+import InstallDashboard from './recon-connect/InstallDashboard';
 
 type Platform = 'linux' | 'macos' | 'windows' | 'unknown';
 type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager' | 'client_viewer' | 'human_resources' | 'investigator';
@@ -326,6 +327,8 @@ export default function ReconConnectPage() {
       </div>
 
       <GlobalCatalogSearch onNavigate={navigate} />
+
+      {isElectron && <InstallDashboard />}
 
       <div>
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold mb-2">

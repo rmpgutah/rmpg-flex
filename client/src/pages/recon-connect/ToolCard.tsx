@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Download, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Play, Square, Download, CheckCircle2, AlertCircle, Save, History, X } from 'lucide-react';
 
 export type ToolArg = { name: string; label: string; placeholder?: string; required?: boolean };
 export type ToolDef = {
@@ -52,6 +52,24 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [installed, setInstalled] = useState<boolean | null>(null); // null=unknown, true/false=probed
   const [lastExit, setLastExit] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<Array<{ ts: number; args: Record<string, string>; exit: number | null; preview: string }>>(
+    () => {
+      try { return JSON.parse(localStorage.getItem(`rmpg:recon:history:${tool.id}`) || '[]'); }
+      catch { return []; }
+    }
+  );
+  const targetHistory = useMemo(() => {
+    const byArg: Record<string, string[]> = {};
+    for (const h of history) {
+      for (const [name, val] of Object.entries(h.args || {})) {
+        if (!val) continue;
+        byArg[name] = byArg[name] || [];
+        if (!byArg[name].includes(val)) byArg[name].push(val);
+      }
+    }
+    return byArg;
+  }, [history]);
   const sessionIdRef = useRef<string | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
   const api = (typeof window !== 'undefined' ? (window as any).electron : null) as any;
@@ -85,11 +103,22 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
     const unsubExit = api.onReconToolExit?.((id: string, code: number) => {
       if (id !== sessionIdRef.current) return;
       setLastExit(code);
-      setOutput((prev) => [...prev, { kind: 'meta', text: `\n[exited with code ${code}]\n` }]);
+      setOutput((prev) => {
+        const final = [...prev, { kind: 'meta' as const, text: `\n[exited with code ${code}]\n` }];
+        // Persist this run to history (keep last 20)
+        try {
+          const preview = final.map((l) => l.text).join('').slice(0, 500);
+          const entry = { ts: Date.now(), args: { ...formValues }, exit: code, preview };
+          const existing = JSON.parse(localStorage.getItem(`rmpg:recon:history:${tool.id}`) || '[]');
+          const next = [entry, ...existing].slice(0, 20);
+          localStorage.setItem(`rmpg:recon:history:${tool.id}`, JSON.stringify(next));
+          setHistory(next);
+        } catch { /* quota */ }
+        return final;
+      });
       setRunning(false);
       sessionIdRef.current = null;
       setSessionId(null);
-      // Re-check install state after an install run — binary may now exist
       if (binaryName && api?.reconCheckBinary) {
         api.reconCheckBinary(binaryName).then((r: any) => {
           const is = Boolean(r?.installed);
@@ -191,19 +220,29 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             ⚠ {tool.requiresAuthorization}
           </div>
         )}
-        {tool.args?.map((arg) => (
-          <div key={arg.name} className="flex flex-col gap-1">
-            <label className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
-            <input
-              type="text"
-              placeholder={arg.placeholder}
-              value={formValues[arg.name] || ''}
-              onChange={(e) => setFormValues((f) => ({ ...f, [arg.name]: e.target.value }))}
-              disabled={running}
-              className="bg-[#050505] border border-[#2e2e2e] text-[#d4d4d4] text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50"
-            />
-          </div>
-        ))}
+        {tool.args?.map((arg) => {
+          const listId = `rc-${tool.id}-${arg.name}-history`;
+          const suggestions = targetHistory[arg.name] || [];
+          return (
+            <div key={arg.name} className="flex flex-col gap-1">
+              <label className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
+              <input
+                type="text"
+                placeholder={arg.placeholder}
+                list={suggestions.length > 0 ? listId : undefined}
+                value={formValues[arg.name] || ''}
+                onChange={(e) => setFormValues((f) => ({ ...f, [arg.name]: e.target.value }))}
+                disabled={running}
+                className="bg-[#050505] border border-[#2e2e2e] text-[#d4d4d4] text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50"
+              />
+              {suggestions.length > 0 && (
+                <datalist id={listId}>
+                  {suggestions.map((s) => <option key={s} value={s} />)}
+                </datalist>
+              )}
+            </div>
+          );
+        })}
         <div className="flex gap-2">
           <button
             onClick={run}
@@ -228,16 +267,75 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
               <Download className="w-3.5 h-3.5" /> Install {tool.installPkg}
             </button>
           )}
+          {history.length > 0 && (
+            <button
+              onClick={() => setHistoryOpen((o) => !o)}
+              className={`ml-auto px-2 py-1.5 text-[10px] flex items-center gap-1 ${historyOpen ? 'text-[#d4a017]' : 'text-[#888] hover:text-[#d4a017]'}`}
+              title={`${history.length} past runs`}
+            >
+              <History className="w-3 h-3" /> History ({history.length})
+            </button>
+          )}
+          {output.length > 0 && !running && (
+            <button
+              onClick={() => {
+                const text = output.map((l) => l.text).join('');
+                const argsSuffix = Object.values(formValues).filter(Boolean).join('_').replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 40);
+                const fname = `${tool.id}${argsSuffix ? '-' + argsSuffix : ''}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = fname; a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 2000);
+              }}
+              className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+              title="Save output as .txt"
+            >
+              <Save className="w-3 h-3" /> Save
+            </button>
+          )}
           {output.length > 0 && (
             <button
-              onClick={() => setOutput([])}
+              onClick={() => { setOutput([]); setLastExit(null); }}
               disabled={running}
-              className="ml-auto px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] disabled:opacity-40"
+              className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] disabled:opacity-40"
             >
               Clear
             </button>
           )}
         </div>
+        {historyOpen && (
+          <div className="border border-[#2e2e2e] bg-[#0a0a0a] divide-y divide-[#1a1a1a] max-h-48 overflow-auto">
+            {history.map((h, i) => (
+              <div key={i} className="px-2 py-1.5 flex items-start gap-2 text-[10px]">
+                <button
+                  onClick={() => { setFormValues(h.args); setOutput([{ kind: 'stdout', text: h.preview }]); setHistoryOpen(false); }}
+                  className="flex-1 text-left hover:text-[#d4a017] font-mono"
+                >
+                  <span className={h.exit === 0 ? 'text-[#7fd38a]' : 'text-[#ff8888]'}>
+                    {h.exit === 0 ? '✓' : '✗'}
+                  </span>
+                  {' '}
+                  <span className="text-[#888]">{new Date(h.ts).toLocaleString()}</span>
+                  {Object.entries(h.args).filter(([, v]) => v).map(([k, v]) => (
+                    <span key={k} className="text-[#d4d4d4] ml-2">{k}={v}</span>
+                  ))}
+                </button>
+                <button
+                  onClick={() => {
+                    const next = history.filter((_, idx) => idx !== i);
+                    localStorage.setItem(`rmpg:recon:history:${tool.id}`, JSON.stringify(next));
+                    setHistory(next);
+                  }}
+                  className="text-[#555] hover:text-[#ff8888]"
+                  title="Remove entry"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {diagnostic && (
           <div className="border border-[#d4a017]/60 bg-[#d4a017]/10 text-[#d4a017] text-[11px] px-2 py-1.5 flex items-start gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
