@@ -278,11 +278,11 @@ export default function SexOffenderRegistryPage() {
   // LEFT PANEL — Registry List
   // ============================================================
   const leftPanel = (
-    <div className="flex flex-col h-full" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full  bg-surface-sunken">
       {/* Stats Strip */}
       <div
         className="flex items-center gap-4 px-3 py-1.5 text-[11px] font-mono flex-shrink-0 overflow-x-auto"
-        style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)', borderBottom: '1px solid #1e3048' }}
+        style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)', borderBottom: '1px solid var(--border-default)' }}
       >
         <span className="flex items-center gap-1.5">
           <span className="led-dot led-amber" style={{ width: 6, height: 6 }} />
@@ -315,7 +315,7 @@ export default function SexOffenderRegistryPage() {
       {/* Search + Filters */}
       <div
         className="flex items-center gap-2 px-3 py-2 flex-shrink-0 flex-wrap"
-        style={{ background: '#141e2b', borderBottom: '1px solid #1e3048' }}
+        style={{ background: 'var(--surface-base)', borderBottom: '1px solid var(--border-default)' }}
       >
         <div className="relative flex-1 min-w-[140px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
@@ -324,13 +324,13 @@ export default function SexOffenderRegistryPage() {
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             placeholder="Search name or registry ID..."
-            className="w-full pl-7 pr-2 py-1 text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white placeholder-rmpg-600 focus:border-brand-500 focus:outline-none"
+            className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white placeholder-rmpg-600 focus:border-brand-500 focus:outline-none"
           />
         </div>
         <select
           value={tierFilter}
           onChange={e => { setTierFilter(e.target.value); setPage(1); }}
-          className="text-[11px] bg-[#0d1520] border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
+          className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Tiers</option>
           <option value="1">Tier 1</option>
@@ -340,7 +340,7 @@ export default function SexOffenderRegistryPage() {
         <select
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          className="text-[11px] bg-[#0d1520] border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
+          className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Status</option>
           <option value="compliant">Compliant</option>
@@ -374,13 +374,13 @@ export default function SexOffenderRegistryPage() {
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-rmpg-800/30"
                   style={{
                     background: isSelected ? 'rgba(26,90,158,0.15)' : undefined,
-                    borderLeft: isSelected ? '3px solid #1a5a9e' : '3px solid transparent',
+                    borderLeft: isSelected ? '3px solid var(--brand-blue)' : '3px solid transparent',
                   }}
                 >
                   {/* Mugshot Thumbnail */}
                   <div
                     className="w-12 h-14 rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-                    style={{ background: '#1a2636', border: '1px solid #2a3e58' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)' }}
                   >
                     {r.photo_url ? (
                       <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
@@ -435,7 +435,7 @@ export default function SexOffenderRegistryPage() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5 text-[10px] text-rmpg-500 flex-shrink-0"
-          style={{ background: '#141e2b', borderTop: '1px solid #1e3048' }}
+          style={{ background: 'var(--surface-base)', borderTop: '1px solid var(--border-default)' }}
         >
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
@@ -462,7 +462,7 @@ export default function SexOffenderRegistryPage() {
   // RIGHT PANEL — Detail Profile
   // ============================================================
   const rightPanel = selected ? (
-    <div className="h-full overflow-y-auto" style={{ background: '#0d1520' }}>
+    <div className="h-full overflow-y-auto  bg-surface-sunken">
       {/* Close button */}
       <button
         onClick={() => setSelected(null)}
@@ -473,12 +473,12 @@ export default function SexOffenderRegistryPage() {
       </button>
 
       {/* Header Section */}
-      <div className="p-4 relative" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)', borderBottom: '1px solid #1e3048' }}>
+      <div className="p-4 relative" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)', borderBottom: '1px solid var(--border-default)' }}>
         <div className="flex gap-4">
           {/* Large Mugshot */}
           <div
             className="w-[100px] h-[130px] rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-            style={{ background: '#0d1520', border: '2px solid #2a3e58' }}
+            className="bg-surface-sunken border-2 border-rmpg-600"
           >
             {selected.photo_url ? (
               <img src={selected.photo_url} alt="" className="w-full h-full object-cover" />
@@ -598,7 +598,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Offenses" icon={<FileText size={12} />}>
             <div className="space-y-2">
               {offs.map((o, i) => (
-                <div key={i} className="p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div key={i} className="p-2 rounded-sm bg-surface-sunken border border-rmpg-700">
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-[11px] font-mono font-bold">{o.statute}</span>
                     {o.date && <span className="text-[10px] text-rmpg-500">{formatDate(o.date)}</span>}
@@ -733,7 +733,7 @@ export default function SexOffenderRegistryPage() {
       )}
 
       {/* Quick Actions */}
-      <div className="p-3 flex gap-2 flex-wrap" style={{ borderTop: '1px solid #1e3048' }}>
+      <div className="p-3 flex gap-2 flex-wrap" style={{ borderTop: '1px solid var(--border-default)' }}>
         <button
           onClick={() => { setEditingRecord(selected); setShowAddModal(true); }}
           className="toolbar-btn px-3 py-1.5 text-[11px] flex items-center gap-1.5"
@@ -753,7 +753,7 @@ export default function SexOffenderRegistryPage() {
       </div>
     </div>
   ) : (
-    <div className="flex flex-col items-center justify-center h-full text-rmpg-500" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col items-center justify-center h-full text-rmpg-500  bg-surface-sunken">
       <ShieldAlert size={48} className="mb-3 opacity-20" />
       <span className="text-sm">Select a record to view details</span>
     </div>
@@ -763,7 +763,7 @@ export default function SexOffenderRegistryPage() {
   // RENDER
   // ============================================================
   return (
-    <div className="flex flex-col h-full" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full  bg-surface-sunken">
       {/* Title Bar */}
       <PanelTitleBar
         title="Sex Offender Registry"
@@ -893,7 +893,7 @@ export default function SexOffenderRegistryPage() {
 
 function DetailSection({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="px-4 py-3" style={{ borderBottom: '1px solid #1e3048' }}>
+    <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border-default)' }}>
       <h3 className="flex items-center gap-1.5 text-[11px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">
         {icon} {title}
       </h3>
@@ -968,10 +968,10 @@ function RecordFormModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl"
-        style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
+        className="bg-surface-base border border-rmpg-600"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#1a2636', borderBottom: '1px solid #2a3e58' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-strong)' }}>
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <ShieldAlert size={14} className="text-red-400" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
@@ -992,7 +992,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
               <select value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
-                className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Tier 1 — Low</option>
                 <option value={2}>Tier 2 — Moderate</option>
                 <option value={3}>Tier 3 — High</option>
@@ -1001,7 +1001,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Risk Level</label>
               <select value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
-                className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="">— None —</option>
                 <option value="low">Low</option>
                 <option value="moderate">Moderate</option>
@@ -1031,7 +1031,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Status</label>
               <select value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
-                className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="compliant">Compliant</option>
                 <option value="non_compliant">Non-Compliant</option>
                 <option value="absconded">Absconded</option>
@@ -1059,13 +1059,13 @@ function RecordFormModal({
           <FormField label="Notes" value={form.notes} onChange={v => set('notes', v)} multiline />
 
           {/* Submit */}
-          <div className="flex justify-end gap-2 pt-2" style={{ borderTop: '1px solid #1e3048' }}>
+          <div className="flex justify-end gap-2 pt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
             <button type="button" onClick={onClose} className="toolbar-btn px-4 py-1.5 text-xs">Cancel</button>
             <button
               type="submit"
               disabled={saving || !form.first_name || !form.last_name}
               className="px-4 py-1.5 text-xs font-bold rounded-sm flex items-center gap-1.5 disabled:opacity-50"
-              style={{ background: '#1a5a9e', color: '#fff', border: '1px solid #2a7acf' }}
+              style={{ background: 'var(--brand-blue)', color: '#fff', border: '1px solid #2a7acf' }}
             >
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
               {record ? 'Update' : 'Create'} Entry
@@ -1083,7 +1083,7 @@ function FormField({
   label: string; value: string; onChange: (v: string) => void;
   type?: string; placeholder?: string; multiline?: boolean;
 }) {
-  const cls = "w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder-rmpg-600";
+  const cls = "w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder-rmpg-600";
   return (
     <div>
       <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">{label}</label>
@@ -1132,10 +1132,10 @@ function ImportModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl"
-        style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
+        className="bg-surface-base border border-rmpg-600"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#1a2636', borderBottom: '1px solid #2a3e58' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-strong)' }}>
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <Upload size={14} /> Import Records
           </h2>
@@ -1149,7 +1149,7 @@ function ImportModal({
             value={jsonText}
             onChange={e => { setJsonText(e.target.value); setParsed(null); }}
             rows={8}
-            className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-3 py-2 font-mono focus:border-brand-500 focus:outline-none placeholder-rmpg-600"
+            className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-3 py-2 font-mono focus:border-brand-500 focus:outline-none placeholder-rmpg-600"
             placeholder='[{"first_name": "John", "last_name": "Doe", "tier": 2, ...}]'
           />
           {error && <div className="text-red-400 text-[11px]">{error}</div>}
@@ -1166,7 +1166,7 @@ function ImportModal({
               onClick={() => parsed && onImport(parsed)}
               disabled={!parsed}
               className="px-3 py-1.5 text-[11px] font-bold rounded-sm disabled:opacity-40"
-              style={{ background: '#1a5a9e', color: '#fff', border: '1px solid #2a7acf' }}
+              style={{ background: 'var(--brand-blue)', color: '#fff', border: '1px solid #2a7acf' }}
             >
               Import {parsed ? parsed.length : 0} Records
             </button>

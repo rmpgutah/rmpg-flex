@@ -651,7 +651,7 @@ export default function ForensicLabPage() {
     return (
       <div className="flex flex-col h-full bg-surface-base">
         {/* Detail Header */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520]">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
           <button onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors">
             <ChevronLeft size={16} />
           </button>
@@ -675,7 +675,7 @@ export default function ForensicLabPage() {
         </div>
 
         {/* Progress Pipeline */}
-        <div className="px-3 py-2 border-b border-[#1e3048] bg-[#0d1520]/50 overflow-x-auto">
+        <div className="px-3 py-2 border-b border-rmpg-700 bg-surface-sunken/50 overflow-x-auto">
           <div className="flex items-center gap-1 min-w-max">
             {STATUS_PIPELINE.map((s, i) => {
               const cfg = getStatusConfig(s);
@@ -704,7 +704,7 @@ export default function ForensicLabPage() {
         </div>
 
         {/* Detail Tabs */}
-        <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520]">
+        <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken">
           {(['overview', 'exhibits', 'analyses', 'timeline', 'links', 'hashes'] as const).map(tab => {
             const icons = { overview: Eye, exhibits: Package, analyses: Beaker, timeline: Activity, links: Link2, hashes: Hash };
             const labels = { overview: 'Overview', exhibits: `Exhibits (${selectedCase.exhibits?.length || 0})`, analyses: `Analyses (${selectedCase.analyses?.length || 0})`, timeline: 'Timeline', links: `Links (${caseLinks.length})`, hashes: 'Hashes' };
@@ -736,7 +736,7 @@ export default function ForensicLabPage() {
                 <select
                   value={selectedCase.status}
                   onChange={e => handleStatusChange(e.target.value)}
-                  className="px-2 py-1 text-[10px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-bold"
+                  className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none font-bold"
                   style={{ color: sc.color }}
                 >
                   {Object.entries(STATUS_CONFIG).map(([k, v]) => (
@@ -826,7 +826,7 @@ export default function ForensicLabPage() {
                         <select
                           value={device.device_type}
                           onChange={e => handleSaveDeviceInfo({ ...device, device_type: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                         >
                           <option value="">Select...</option>
                           {DEVICE_TYPES.map(dt => <option key={dt.value} value={dt.value}>{dt.label}</option>)}
@@ -836,41 +836,41 @@ export default function ForensicLabPage() {
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">Make</label>
                         <input type="text" value={device.make} onBlur={e => handleSaveDeviceInfo({ ...device, make: e.target.value })} onChange={e => { /* controlled via onBlur */ }}
                           defaultValue={device.make}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                           placeholder="e.g. Apple, Samsung"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">Model</label>
                         <input type="text" defaultValue={device.model} onBlur={e => handleSaveDeviceInfo({ ...device, model: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                           placeholder="e.g. iPhone 15 Pro"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">Serial Number</label>
                         <input type="text" defaultValue={device.serial_number} onBlur={e => handleSaveDeviceInfo({ ...device, serial_number: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-mono"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none font-mono"
                           placeholder="S/N"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">OS Version</label>
                         <input type="text" defaultValue={device.os_version} onBlur={e => handleSaveDeviceInfo({ ...device, os_version: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                           placeholder="e.g. iOS 18.2, Windows 11"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">Storage Capacity</label>
                         <input type="text" defaultValue={device.storage_capacity} onBlur={e => handleSaveDeviceInfo({ ...device, storage_capacity: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                           placeholder="e.g. 256 GB, 1 TB"
                         />
                       </div>
                     </div>
 
-                    <div className="border-t border-[#1e3048] pt-2">
+                    <div className="border-t border-rmpg-700 pt-2">
                       <div className="text-[10px] text-rmpg-400 font-semibold mb-1.5">Digital Forensic Steps</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                         {DIGITAL_FORENSIC_STEPS.map(step => (
@@ -879,7 +879,7 @@ export default function ForensicLabPage() {
                               type="checkbox"
                               checked={!!steps[step]}
                               onChange={e => handleToggleForensicStep(step, e.target.checked)}
-                              className="w-3.5 h-3.5 rounded border-rmpg-600 bg-[#0d1520] text-brand-500 focus:ring-brand-500 focus:ring-1"
+                              className="w-3.5 h-3.5 rounded border-rmpg-600 bg-surface-sunken text-brand-500 focus:ring-brand-500 focus:ring-1"
                             />
                             <span className={`text-[11px] ${steps[step] ? 'text-green-400 line-through' : 'text-rmpg-300'}`}>{step}</span>
                           </label>
@@ -931,7 +931,7 @@ export default function ForensicLabPage() {
                             <div key={ev.id} className="flex gap-3 relative">
                               <div className="w-3 h-3 rounded-full border-2 flex-shrink-0 mt-0.5 z-10" style={{
                                 borderColor: actionColors[ev.action] || '#5a6e80',
-                                backgroundColor: i === 0 ? (actionColors[ev.action] || '#5a6e80') : '#0d1520',
+                                backgroundColor: i === 0 ? (actionColors[ev.action] || '#5a6e80') : 'var(--surface-sunken)',
                               }} />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -980,7 +980,7 @@ export default function ForensicLabPage() {
                         <select
                           value={imaging.imaging_tool}
                           onChange={e => handleSaveImaging({ ...imaging, imaging_tool: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                         >
                           <option value="">Select tool...</option>
                           {IMAGING_TOOLS.map(t => <option key={t} value={t}>{t}</option>)}
@@ -991,7 +991,7 @@ export default function ForensicLabPage() {
                         <select
                           value={imaging.hash_algorithm}
                           onChange={e => handleSaveImaging({ ...imaging, hash_algorithm: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                         >
                           <option value="">Select algorithm...</option>
                           {HASH_ALGORITHMS.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1001,7 +1001,7 @@ export default function ForensicLabPage() {
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">Original Hash Value</label>
                         <input type="text" defaultValue={imaging.original_hash}
                           onBlur={e => handleSaveImaging({ ...imaging, original_hash: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-mono"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none font-mono"
                           placeholder="Hash of original source..."
                         />
                       </div>
@@ -1010,7 +1010,7 @@ export default function ForensicLabPage() {
                         <div className="flex items-center gap-2">
                           <input type="text" defaultValue={imaging.verification_hash}
                             onBlur={e => handleSaveImaging({ ...imaging, verification_hash: e.target.value })}
-                            className="flex-1 px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-mono"
+                            className="flex-1 px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none font-mono"
                             placeholder="Hash of forensic image..."
                           />
                           {hashMatch === true && <CheckCircle size={16} className="text-green-400 flex-shrink-0" />}
@@ -1027,14 +1027,14 @@ export default function ForensicLabPage() {
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">Imaging Date/Time</label>
                         <input type="datetime-local" defaultValue={imaging.imaging_date}
                           onBlur={e => handleSaveImaging({ ...imaging, imaging_date: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-rmpg-500 mb-0.5">Imager Name</label>
                         <input type="text" defaultValue={imaging.imager_name}
                           onBlur={e => handleSaveImaging({ ...imaging, imager_name: e.target.value })}
-                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                           placeholder="Name of person who created the image"
                         />
                       </div>
@@ -1085,7 +1085,7 @@ export default function ForensicLabPage() {
                               </div>
                             )}
                             {ex.results && (
-                              <div className="mt-2 p-2 bg-surface-base rounded text-[10px] text-rmpg-200 border border-[#1e3048]">
+                              <div className="mt-2 p-2 bg-surface-base rounded text-[10px] text-rmpg-200 border border-rmpg-700">
                                 <span className="text-green-400 font-bold uppercase text-[9px]">Results: </span>{ex.results}
                               </div>
                             )}
@@ -1145,7 +1145,7 @@ export default function ForensicLabPage() {
                         {an.examiner_name && <div className="text-[10px] text-rmpg-400">Examiner: {an.examiner_name}</div>}
                         {an.methodology && <div className="text-[10px] text-rmpg-400 mt-1">Method: {an.methodology}</div>}
                         {an.results && (
-                          <div className="mt-2 p-2 bg-surface-base rounded text-[10px] text-rmpg-200 border border-[#1e3048]">
+                          <div className="mt-2 p-2 bg-surface-base rounded text-[10px] text-rmpg-200 border border-rmpg-700">
                             <span className="text-green-400 font-bold uppercase text-[9px]">Results: </span>{an.results}
                           </div>
                         )}
@@ -1193,7 +1193,7 @@ export default function ForensicLabPage() {
                     value={timelineNote}
                     onChange={e => setTimelineNote(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleAddTimelineNote()}
-                    className="flex-1 px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="flex-1 px-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="Add a note, observation, or update..."
                   />
                   <button
@@ -1311,7 +1311,7 @@ export default function ForensicLabPage() {
                     value={linkSearchTerm}
                     onChange={e => setLinkSearchTerm(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleLinkSearch()}
-                    className="flex-1 px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="flex-1 px-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="Search by name, case number, evidence ID..."
                   />
                   <button onClick={handleLinkSearch} disabled={linkSearching || !linkSearchTerm.trim()} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 disabled:opacity-40">
@@ -1321,7 +1321,7 @@ export default function ForensicLabPage() {
                 {linkSearchResults.length > 0 && (
                   <div className="mt-2 space-y-1 max-h-[200px] overflow-y-auto">
                     {linkSearchResults.map((r: any, i: number) => (
-                      <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded border border-[#1e3048] hover:border-brand-500/50 transition-colors">
+                      <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded border border-rmpg-700 hover:border-brand-500/50 transition-colors">
                         <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-brand-900/20 text-brand-400">{r.type}</span>
                         <span className="text-xs text-rmpg-200 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
                         <button onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded hover:bg-green-900/40 transition-colors">
@@ -1376,7 +1376,7 @@ export default function ForensicLabPage() {
                 <select
                   value={analysisForm.analysis_type}
                   onChange={e => setAnalysisForm(f => ({ ...f, analysis_type: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                 >
                   {ANALYSIS_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.label} — {t.desc}</option>
@@ -1388,7 +1388,7 @@ export default function ForensicLabPage() {
                 <textarea
                   value={analysisForm.methodology}
                   onChange={e => setAnalysisForm(f => ({ ...f, methodology: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-20"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Describe the examination method..."
                 />
               </div>
@@ -1397,7 +1397,7 @@ export default function ForensicLabPage() {
                 <textarea
                   value={analysisForm.notes}
                   onChange={e => setAnalysisForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-16"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-16"
                   placeholder="Additional notes..."
                 />
               </div>
@@ -1428,7 +1428,7 @@ export default function ForensicLabPage() {
                   type="text"
                   value={exhibitForm.description}
                   onChange={e => setExhibitForm(f => ({ ...f, description: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                   placeholder="e.g. Samsung Galaxy S24 — black, screen cracked"
                 />
               </div>
@@ -1439,7 +1439,7 @@ export default function ForensicLabPage() {
                     type="text"
                     value={exhibitForm.item_type}
                     onChange={e => setExhibitForm(f => ({ ...f, item_type: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="e.g. Cell phone"
                   />
                 </div>
@@ -1449,7 +1449,7 @@ export default function ForensicLabPage() {
                     type="text"
                     value={exhibitForm.condition_received}
                     onChange={e => setExhibitForm(f => ({ ...f, condition_received: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="e.g. Good, sealed bag"
                   />
                 </div>
@@ -1459,7 +1459,7 @@ export default function ForensicLabPage() {
                 <select
                   value={exhibitForm.examination_requested}
                   onChange={e => setExhibitForm(f => ({ ...f, examination_requested: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                 >
                   <option value="">Select examination type...</option>
                   {ANALYSIS_TYPES.map(t => (
@@ -1489,7 +1489,7 @@ export default function ForensicLabPage() {
                 <textarea
                   value={editForm.synopsis}
                   onChange={e => setEditForm(f => ({ ...f, synopsis: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-20"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Case synopsis..."
                 />
               </div>
@@ -1498,7 +1498,7 @@ export default function ForensicLabPage() {
                 <textarea
                   value={editForm.findings}
                   onChange={e => setEditForm(f => ({ ...f, findings: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-20"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Examination findings..."
                 />
               </div>
@@ -1507,7 +1507,7 @@ export default function ForensicLabPage() {
                 <textarea
                   value={editForm.conclusion}
                   onChange={e => setEditForm(f => ({ ...f, conclusion: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-20"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Final conclusion..."
                 />
               </div>
@@ -1517,7 +1517,7 @@ export default function ForensicLabPage() {
                   type="date"
                   value={editForm.due_date}
                   onChange={e => setEditForm(f => ({ ...f, due_date: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -1525,7 +1525,7 @@ export default function ForensicLabPage() {
                 <textarea
                   value={editForm.notes}
                   onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-16"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-16"
                   placeholder="Internal notes..."
                 />
               </div>
@@ -1555,7 +1555,7 @@ export default function ForensicLabPage() {
                 <select
                   value={custodyForm.action}
                   onChange={e => setCustodyForm(f => ({ ...f, action: e.target.value as CustodyEvent['action'] }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                 >
                   <option value="received">Received</option>
                   <option value="transferred">Transferred</option>
@@ -1571,7 +1571,7 @@ export default function ForensicLabPage() {
                     type="text"
                     value={custodyForm.from_person}
                     onChange={e => setCustodyForm(f => ({ ...f, from_person: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="Person releasing"
                   />
                 </div>
@@ -1581,7 +1581,7 @@ export default function ForensicLabPage() {
                     type="text"
                     value={custodyForm.to_person}
                     onChange={e => setCustodyForm(f => ({ ...f, to_person: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="Person receiving"
                   />
                 </div>
@@ -1591,7 +1591,7 @@ export default function ForensicLabPage() {
                 <textarea
                   value={custodyForm.notes}
                   onChange={e => setCustodyForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-16"
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-16"
                   placeholder="Additional details about this transfer..."
                 />
               </div>
@@ -1609,7 +1609,7 @@ export default function ForensicLabPage() {
   return (
     <div className="flex flex-col h-full bg-surface-base">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken flex-wrap">
         <div className="flex items-center gap-1.5">
           <Microscope size={16} className="text-brand-400" />
           {!isMobile && <span className="text-sm font-semibold text-white">Forensic Lab</span>}
@@ -1629,7 +1629,7 @@ export default function ForensicLabPage() {
 
       {/* Stats Bar */}
       {stats && (
-        <div className={`grid ${isMobile ? 'grid-cols-3 gap-1 px-2 py-1.5' : 'grid-cols-6 gap-2 px-3 py-2'} border-b border-[#1e3048] bg-[#0d1520]/50`}>
+        <div className={`grid ${isMobile ? 'grid-cols-3 gap-1 px-2 py-1.5' : 'grid-cols-6 gap-2 px-3 py-2'} border-b border-rmpg-700 bg-surface-sunken/50`}>
           <div className="text-center">
             <div className="text-sm font-bold font-mono text-brand-400">{stats.total}</div>
             <div className="text-[8px] text-rmpg-500 uppercase">Total</div>
@@ -1662,7 +1662,7 @@ export default function ForensicLabPage() {
       )}
 
       {/* Tab Bar */}
-      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520]">
+      <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken">
         {TABS.map(tab => {
           const Icon = tab === 'New Case' ? Plus : tab === 'My Cases' ? FileText : Search;
           return (
@@ -1696,7 +1696,7 @@ export default function ForensicLabPage() {
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   placeholder="Search cases by number, title, officer..."
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <button
@@ -1710,14 +1710,14 @@ export default function ForensicLabPage() {
             {showFilters && (
               <div className="flex items-center gap-2 flex-wrap">
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                  className="px-2 py-1 text-[10px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none">
+                  className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none">
                   <option value="">All Statuses</option>
                   {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                     <option key={k} value={k}>{v.label}</option>
                   ))}
                 </select>
                 <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                  className="px-2 py-1 text-[10px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none">
+                  className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none">
                   <option value="">All Types</option>
                   {CASE_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -1827,7 +1827,7 @@ export default function ForensicLabPage() {
                     type="text"
                     value={wizardData.title}
                     onChange={e => setWizardData(d => ({ ...d, title: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="e.g. Phone extraction — Smith assault case"
                   />
                 </div>
@@ -1844,7 +1844,7 @@ export default function ForensicLabPage() {
                           className={`flex items-start gap-2 p-2.5 rounded border text-left transition-colors ${
                             wizardData.case_type === ct.value
                               ? 'border-brand-500 bg-brand-500/10'
-                              : 'border-[#1e3048] bg-[#0d1520] hover:border-rmpg-500'
+                              : 'border-rmpg-700 bg-surface-sunken hover:border-rmpg-500'
                           }`}
                         >
                           <Icon size={14} className={wizardData.case_type === ct.value ? 'text-brand-400' : 'text-rmpg-500'} />
@@ -1868,7 +1868,7 @@ export default function ForensicLabPage() {
                         className={`flex-1 p-2 rounded border text-center transition-colors ${
                           wizardData.priority === p.value
                             ? 'border-current bg-current/10'
-                            : 'border-[#1e3048] bg-[#0d1520] hover:border-rmpg-500'
+                            : 'border-rmpg-700 bg-surface-sunken hover:border-rmpg-500'
                         }`}
                         style={wizardData.priority === p.value ? { borderColor: p.color, color: p.color } : undefined}
                       >
@@ -1884,7 +1884,7 @@ export default function ForensicLabPage() {
                   <textarea
                     value={wizardData.synopsis}
                     onChange={e => setWizardData(d => ({ ...d, synopsis: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-24"
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none h-24"
                     placeholder="Describe the circumstances and what you need examined..."
                   />
                 </div>
@@ -1895,7 +1895,7 @@ export default function ForensicLabPage() {
                     type="text"
                     value={wizardData.incident_id}
                     onChange={e => setWizardData(d => ({ ...d, incident_id: e.target.value.replace(/\D/g, '') }))}
-                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                     placeholder="Incident ID number"
                   />
                 </div>
@@ -1944,7 +1944,7 @@ export default function ForensicLabPage() {
                         exhibits[i] = { ...exhibits[i], description: e.target.value };
                         setWizardData(d => ({ ...d, exhibits }));
                       }}
-                      className="w-full px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                      className="w-full px-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                       placeholder="Description (e.g. iPhone 15 Pro, black case)"
                     />
                     <div className="grid grid-cols-3 gap-2">
@@ -1956,7 +1956,7 @@ export default function ForensicLabPage() {
                           exhibits[i] = { ...exhibits[i], item_type: e.target.value };
                           setWizardData(d => ({ ...d, exhibits }));
                         }}
-                        className="px-2 py-1 text-[10px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                        className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                         placeholder="Item type"
                       />
                       <input
@@ -1967,7 +1967,7 @@ export default function ForensicLabPage() {
                           exhibits[i] = { ...exhibits[i], condition_received: e.target.value };
                           setWizardData(d => ({ ...d, exhibits }));
                         }}
-                        className="px-2 py-1 text-[10px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                        className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                         placeholder="Condition"
                       />
                       <select
@@ -1977,7 +1977,7 @@ export default function ForensicLabPage() {
                           exhibits[i] = { ...exhibits[i], examination_requested: e.target.value };
                           setWizardData(d => ({ ...d, exhibits }));
                         }}
-                        className="px-2 py-1 text-[10px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                        className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded text-white focus:border-brand-500 focus:outline-none"
                       >
                         <option value="">Exam type...</option>
                         {ANALYSIS_TYPES.map(t => (
