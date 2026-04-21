@@ -1,5 +1,8 @@
-import { useMemo, useState } from 'react';
-import { Terminal, Download, Copy, CheckCircle2, ExternalLink, ShieldAlert, Search, Globe, Radio, Server, Cloud, Smartphone, Lock, Eye, Database, Wifi, Bug, FileSearch, Users, Zap, GitBranch, KeyRound } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Terminal as XTerm } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
+import { Terminal, Copy, CheckCircle2, ExternalLink, ShieldAlert, Search, Globe, Radio, Server, Cloud, Smartphone, Lock, Eye, Database, Wifi, Bug, FileSearch, Users, Zap, GitBranch, KeyRound, Play, Square, Download } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useAuth } from '../context/AuthContext';
 
@@ -63,6 +66,13 @@ export default function ReconConnectPage() {
   const isElectron = typeof window !== 'undefined' && Boolean((window as any).electron?.isElectron);
   const [copied, setCopied] = useState<string | null>(null);
   const [launchMsg, setLaunchMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
+  const [termState, setTermState] = useState<'idle' | 'running'>('idle');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const termHostRef = useRef<HTMLDivElement | null>(null);
+  const termRef = useRef<XTerm | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  const api = (typeof window !== 'undefined' ? (window as any).electron : null) as any;
+  const hasTerminalApi = Boolean(api?.reconSpawn);
 
   if (!canAccessReconConnect(user?.role)) {
     return (
@@ -86,28 +96,73 @@ export default function ReconConnectPage() {
     } catch { /* clipboard denied */ }
   };
 
-  const handleLaunchLocal = async () => {
-    const api = (window as any).electron;
-    if (!isElectron) {
-      copy('launch', LAUNCH_COMMANDS[platform]);
-      return;
-    }
-    if (!api?.launchReconConnect) {
-      setLaunchMsg({ kind: 'info', text: 'This desktop app predates the Recon Connect launcher. Download the latest installer from /download and reinstall.' });
+  const ensureTerminal = () => {
+    if (termRef.current || !termHostRef.current) return termRef.current;
+    const term = new XTerm({
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontSize: 12,
+      theme: { background: '#050505', foreground: '#d4d4d4', cursor: '#d4a017' },
+      cursorBlink: true,
+      convertEol: true,
+      scrollback: 5000,
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.open(termHostRef.current);
+    try { fit.fit(); } catch { /* host not measured yet */ }
+    term.onData((data) => {
+      if (sessionId && api?.reconInput) api.reconInput(sessionId, data);
+    });
+    termRef.current = term;
+    fitRef.current = fit;
+    return term;
+  };
+
+  useEffect(() => {
+    const onResize = () => { try { fitRef.current?.fit(); } catch { /* ignore */ } };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!api?.onReconData) return;
+    const unsubData = api.onReconData((id: string, chunk: string) => {
+      if (id === sessionId) termRef.current?.write(chunk);
+    });
+    const unsubExit = api.onReconExit?.((id: string, code: number) => {
+      if (id !== sessionId) return;
+      termRef.current?.writeln(`\r\n\x1b[33m[process exited with code ${code}]\x1b[0m`);
+      setTermState('idle');
+      setSessionId(null);
+    });
+    return () => { try { unsubData?.(); unsubExit?.(); } catch { /* ignore */ } };
+  }, [sessionId]);
+
+  const runRecon = async (mode: 'install' | 'launch') => {
+    if (!hasTerminalApi) {
+      setLaunchMsg({ kind: 'info', text: 'This desktop app predates the in-app terminal. Download the latest installer from /download and reinstall.' });
       setTimeout(() => setLaunchMsg(null), 8000);
       return;
     }
-    try {
-      const result = await api.launchReconConnect();
-      if (result?.ok) {
-        setLaunchMsg({ kind: 'ok', text: 'Recon Connect launching in a new terminal…' });
-      } else {
-        setLaunchMsg({ kind: 'err', text: result?.error || 'Launch failed.' });
-      }
-    } catch (err: any) {
-      setLaunchMsg({ kind: 'err', text: err?.message || 'Launch failed.' });
+    const term = ensureTerminal();
+    if (!term) return;
+    term.clear();
+    const res = await api.reconSpawn({ mode });
+    if (!res?.ok) {
+      term.writeln(`\x1b[31m${res?.error || 'Failed to start process.'}\x1b[0m`);
+      return;
     }
-    setTimeout(() => setLaunchMsg(null), 8000);
+    setSessionId(res.sessionId);
+    setTermState('running');
+    setTimeout(() => { try { fitRef.current?.fit(); if (api?.reconResize) api.reconResize(res.sessionId, term.cols, term.rows); } catch { /* ignore */ } }, 50);
+  };
+
+  const stopRecon = async () => {
+    if (sessionId && api?.reconKill) {
+      await api.reconKill(sessionId);
+    }
+    setTermState('idle');
+    setSessionId(null);
   };
 
   return (
@@ -167,30 +222,58 @@ export default function ReconConnectPage() {
       </div>
 
       <div className="bg-[#141414] border border-[#222]">
-        <div className="px-3 py-2 border-b border-[#222] text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
-          Launch
+        <div className="px-3 py-2 border-b border-[#222] text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold flex items-center justify-between">
+          <span>Recon Connect Terminal</span>
+          <span className="text-[#888] normal-case tracking-normal">
+            {termState === 'running' ? 'RUNNING' : 'IDLE'}
+          </span>
         </div>
         <div className="p-3 space-y-2">
-          <code className="block bg-[#050505] border border-[#1a1a1a] p-2 text-[11px] font-mono text-[#d4d4d4] overflow-x-auto">
-            {LAUNCH_COMMANDS[platform] || '# unsupported'}
-          </code>
           <div className="flex gap-2">
             <button
-              onClick={handleLaunchLocal}
-              disabled={!LAUNCH_COMMANDS[platform]}
-              className="px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1.5"
+              onClick={() => runRecon('install')}
+              disabled={!isElectron || termState === 'running'}
+              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-xs hover:bg-[#242424] disabled:opacity-40 flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />
-              {isElectron ? 'Launch on This Workstation' : 'Copy Launch Command'}
+              Install
             </button>
-            {!isElectron && (
-              <span className="text-[10px] text-[#888] self-center">
-                Open Flex in the desktop app to launch directly.
-              </span>
-            )}
+            <button
+              onClick={() => runRecon('launch')}
+              disabled={!isElectron || termState === 'running'}
+              className="px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1.5"
+            >
+              <Play className="w-3.5 h-3.5" />
+              Run Recon Connect
+            </button>
+            <button
+              onClick={stopRecon}
+              disabled={termState !== 'running'}
+              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#b33] text-[#ff8888] text-xs hover:bg-[#2a1414] disabled:opacity-40 flex items-center gap-1.5"
+            >
+              <Square className="w-3.5 h-3.5" />
+              Stop
+            </button>
+            <button
+              onClick={() => copy('install', INSTALL_COMMANDS[platform])}
+              className="ml-auto px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+              title="Copy the install command if you'd rather run it yourself"
+            >
+              {copied === 'install' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied === 'install' ? 'Copied' : 'Copy Install Command'}
+            </button>
           </div>
+          {!isElectron && (
+            <div className="px-2 py-1.5 border border-[#2e2e2e] bg-[#1a1a1a] text-[#d4a017] text-[11px]">
+              Open Flex in the desktop app — the in-app terminal only works in Electron.
+            </div>
+          )}
+          <div
+            ref={termHostRef}
+            className="bg-[#050505] border border-[#1a1a1a] h-[420px] overflow-hidden"
+          />
           {launchMsg && (
-            <div className={`mt-2 px-2 py-1.5 border text-[11px] ${
+            <div className={`px-2 py-1.5 border text-[11px] ${
               launchMsg.kind === 'ok'  ? 'border-[#2e7d32] bg-[#0f1f10] text-[#7fd38a]' :
               launchMsg.kind === 'err' ? 'border-[#b33] bg-[#1f0a0a] text-[#ff8888]' :
                                          'border-[#2e2e2e] bg-[#1a1a1a] text-[#d4a017]'

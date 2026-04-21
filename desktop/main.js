@@ -453,6 +453,215 @@ ipcMain.handle('recon:launch', async () => {
   }
 });
 
+// ─── In-app terminal bridge (xterm.js ↔ child_process) ───
+// Streams stdout/stderr back to the renderer and forwards keystrokes as
+// stdin. Not a full PTY — arrow keys, tab completion, and colored output
+// may be limited — but sufficient for menu-driven Python CLIs.
+const reconSessions = new Map(); // sessionId -> child process
+
+function reconShellCommand(mode) {
+  const os = require('os');
+  const home = os.homedir();
+  const platform = process.platform;
+  if (mode === 'install') {
+    if (platform === 'linux') {
+      return { shell: 'bash', args: ['-c', 'curl -sSL https://raw.githubusercontent.com/Z4nzu/hackingtool/master/install.sh | sudo bash; echo "[install finished]"'] };
+    }
+    if (platform === 'darwin') {
+      const dir = path.join(home, 'recon-connect');
+      const script = [
+        'set -e',
+        'if ! command -v brew >/dev/null; then echo "Homebrew required — install from https://brew.sh"; exit 1; fi',
+        'brew list python >/dev/null 2>&1 || brew install python',
+        'brew list git >/dev/null 2>&1 || brew install git',
+        `if [ ! -d "${dir}" ]; then git clone https://github.com/Z4nzu/hackingtool.git "${dir}"; fi`,
+        `cd "${dir}"`,
+        'if [ ! -d venv ]; then python3 -m venv venv; fi',
+        'source venv/bin/activate',
+        'pip install --upgrade pip',
+        'pip install -r requirements.txt',
+        `echo "[installed at ${dir}]"`,
+      ].join(' && ');
+      return { shell: 'bash', args: ['-c', script] };
+    }
+    if (platform === 'win32') {
+      const dir = path.join(home, 'recon-connect');
+      const script = [
+        `where git >nul 2>nul || (echo Git for Windows required & exit /b 1)`,
+        `where python >nul 2>nul || (echo Python 3.10+ required & exit /b 1)`,
+        `if not exist "${dir}" git clone https://github.com/Z4nzu/hackingtool.git "${dir}"`,
+        `cd /d "${dir}"`,
+        `if not exist venv python -m venv venv`,
+        `call venv\\Scripts\\activate`,
+        `python -m pip install --upgrade pip`,
+        `pip install -r requirements.txt`,
+        `echo [installed at ${dir}]`,
+      ].join(' && ');
+      return { shell: 'cmd.exe', args: ['/c', script] };
+    }
+  }
+  // launch
+  if (platform === 'linux') {
+    return { shell: 'hackingtool', args: [] };
+  }
+  if (platform === 'darwin') {
+    const dir = path.join(home, 'recon-connect');
+    const script = `cd "${dir}" && source venv/bin/activate && exec python3 "recon connect.py"`;
+    return { shell: 'bash', args: ['-c', script] };
+  }
+  if (platform === 'win32') {
+    const dir = path.join(home, 'recon-connect');
+    const script = `cd /d "${dir}" && call venv\\Scripts\\activate && python "recon connect.py"`;
+    return { shell: 'cmd.exe', args: ['/c', script] };
+  }
+  return null;
+}
+
+ipcMain.handle('recon:term-spawn', async (event, { mode } = {}) => {
+  const { spawn } = require('child_process');
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const os = require('os');
+  const platform = process.platform;
+
+  if (mode === 'launch') {
+    const dir = path.join(os.homedir(), 'recon-connect');
+    const linuxInstalled = platform === 'linux' && (fs.existsSync('/usr/bin/hackingtool') || fs.existsSync('/usr/local/bin/hackingtool'));
+    const darwinOrWin = (platform === 'darwin' || platform === 'win32') && fs.existsSync(dir);
+    if (!linuxInstalled && !darwinOrWin) {
+      return { ok: false, error: `Recon Connect is not installed. Click "Install" first.` };
+    }
+  }
+
+  const cmd = reconShellCommand(mode);
+  if (!cmd) return { ok: false, error: `Unsupported platform: ${platform}` };
+
+  try {
+    const child = spawn(cmd.shell, cmd.args, {
+      env: { ...process.env, PYTHONUNBUFFERED: '1', TERM: 'xterm-256color', FORCE_COLOR: '1' },
+      cwd: os.homedir(),
+    });
+    const sessionId = crypto.randomUUID();
+    reconSessions.set(sessionId, child);
+    const send = (data) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win && !win.isDestroyed()) {
+        event.sender.send('recon:term-data', { sessionId, data });
+      }
+    };
+    child.stdout.on('data', (b) => send(b.toString('utf8')));
+    child.stderr.on('data', (b) => send(b.toString('utf8')));
+    child.on('exit', (code) => {
+      reconSessions.delete(sessionId);
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('recon:term-exit', { sessionId, code });
+      }
+    });
+    child.on('error', (err) => {
+      send(`\r\n[spawn error] ${err.message}\r\n`);
+    });
+    return { ok: true, sessionId };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : 'Spawn failed' };
+  }
+});
+
+ipcMain.on('recon:term-input', (_event, { sessionId, data }) => {
+  const child = reconSessions.get(sessionId);
+  if (child && !child.killed) {
+    try { child.stdin.write(data); } catch { /* pipe closed */ }
+  }
+});
+
+ipcMain.on('recon:term-resize', (_event, _payload) => {
+  // No-op without a PTY — size is cosmetic for piped stdio.
+});
+
+ipcMain.handle('recon:term-kill', async (_event, { sessionId }) => {
+  const child = reconSessions.get(sessionId);
+  if (!child) return { ok: true };
+  try {
+    child.kill('SIGTERM');
+    setTimeout(() => { if (!child.killed) { try { child.kill('SIGKILL'); } catch { /* ignore */ } } }, 1500);
+  } catch { /* ignore */ }
+  reconSessions.delete(sessionId);
+  return { ok: true };
+});
+
+// Quick install-state check so the UI can show the right button.
+ipcMain.handle('recon:check', async () => {
+  const os = require('os');
+  const fs = require('fs');
+  const home = os.homedir();
+  if (process.platform === 'linux') {
+    const p = fs.existsSync('/usr/bin/hackingtool') ? '/usr/bin/hackingtool'
+            : fs.existsSync('/usr/local/bin/hackingtool') ? '/usr/local/bin/hackingtool' : null;
+    return { installed: !!p, path: p || undefined };
+  }
+  const dir = path.join(home, 'recon-connect');
+  return { installed: fs.existsSync(dir), path: fs.existsSync(dir) ? dir : undefined };
+});
+
+// Run the install in a visible terminal so the user can enter sudo/brew
+// prompts, watch git clone / pip install progress, and see any errors.
+ipcMain.handle('recon:install', async () => {
+  const os = require('os');
+  const { spawn } = require('child_process');
+  const platform = process.platform;
+  const home = os.homedir();
+  try {
+    if (platform === 'linux') {
+      const installCmd = 'curl -sSL https://raw.githubusercontent.com/Z4nzu/hackingtool/master/install.sh | sudo bash';
+      const term = process.env.TERMINAL || 'x-terminal-emulator';
+      spawn(term, ['-e', 'bash', '-c', `${installCmd}; echo; echo "Install finished — press enter to close."; read`], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    if (platform === 'darwin') {
+      const dir = path.join(home, 'recon-connect');
+      const script = [
+        `cd "${home}"`,
+        `if ! command -v brew >/dev/null; then echo "Homebrew is required. Install from https://brew.sh then retry."; exit 1; fi`,
+        `brew list python >/dev/null 2>&1 || brew install python`,
+        `brew list git >/dev/null 2>&1 || brew install git`,
+        `if [ ! -d "${dir}" ]; then git clone https://github.com/Z4nzu/hackingtool.git "${dir}"; fi`,
+        `cd "${dir}"`,
+        `if [ ! -d venv ]; then python3 -m venv venv; fi`,
+        `source venv/bin/activate`,
+        `pip install --upgrade pip`,
+        `pip install -r requirements.txt`,
+        `echo`,
+        `echo "✓ Recon Connect installed at ${dir}"`,
+        `echo "You can close this window."`,
+      ].join(' && ');
+      const appleScript = `tell application "Terminal" to do script "${script.replace(/"/g, '\\"').replace(/\\/g, '\\\\').replace(/\\\\"/g, '\\"')}"`;
+      spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    if (platform === 'win32') {
+      const dir = path.join(home, 'recon-connect');
+      const cmd = [
+        `cd /d "${home}"`,
+        `where git >nul 2>nul || (echo Git for Windows is required. Install from https://git-scm.com then retry. ^& pause ^& exit /b 1)`,
+        `where python >nul 2>nul || (echo Python 3.10+ is required. Install from https://python.org then retry. ^& pause ^& exit /b 1)`,
+        `if not exist "${dir}" git clone https://github.com/Z4nzu/hackingtool.git "${dir}"`,
+        `cd /d "${dir}"`,
+        `if not exist venv python -m venv venv`,
+        `call venv\\Scripts\\activate`,
+        `python -m pip install --upgrade pip`,
+        `pip install -r requirements.txt`,
+        `echo.`,
+        `echo Recon Connect installed at ${dir}`,
+        `pause`,
+      ].join(' && ');
+      spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', cmd], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    return { ok: false, error: `Unsupported platform: ${platform}` };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : 'Install failed' };
+  }
+});
+
 // Force clear all caches and reload — called by web app update banner
 ipcMain.handle('app:force-refresh', async () => {
   if (mainWindow) {

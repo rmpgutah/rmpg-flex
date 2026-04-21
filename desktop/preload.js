@@ -45,6 +45,30 @@ contextBridge.exposeInMainWorld('electron', {
   // Returns { ok: boolean, error?: string } — never throws.
   launchReconConnect: () => ipcRenderer.invoke('recon:launch'),
 
+  // Run the platform-appropriate install flow in a visible terminal window.
+  // Returns { ok: boolean, error?: string }.
+  installReconConnect: () => ipcRenderer.invoke('recon:install'),
+
+  // Quick existence check — returns { installed: boolean, path?: string }.
+  checkReconConnect: () => ipcRenderer.invoke('recon:check'),
+
+  // ─── In-app terminal (xterm.js bridge) ──────────────
+  // Spawn a Recon Connect process and stream stdio through IPC events.
+  reconSpawn: (opts) => ipcRenderer.invoke('recon:term-spawn', opts),
+  reconInput: (sessionId, data) => ipcRenderer.send('recon:term-input', { sessionId, data }),
+  reconResize: (sessionId, cols, rows) => ipcRenderer.send('recon:term-resize', { sessionId, cols, rows }),
+  reconKill: (sessionId) => ipcRenderer.invoke('recon:term-kill', { sessionId }),
+  onReconData: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.data);
+    ipcRenderer.on('recon:term-data', handler);
+    return () => ipcRenderer.removeListener('recon:term-data', handler);
+  },
+  onReconExit: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.code);
+    ipcRenderer.on('recon:term-exit', handler);
+    return () => ipcRenderer.removeListener('recon:term-exit', handler);
+  },
+
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
 
