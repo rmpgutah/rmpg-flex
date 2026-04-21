@@ -1347,12 +1347,41 @@ ipcMain.handle('recon:catalog-run', async (event, { category, className, kind, i
     const tool = entries.find((t) => t.className === className);
     if (!tool) return { ok: false, error: `Tool "${className}" not in category "${category}".` };
     const cmdList = kind === 'install' ? (tool.install || []) : (tool.run || []);
-    const cmd = cmdList[index];
+    let cmd = cmdList[index];
     if (typeof cmd !== 'string' || !cmd.trim()) {
       return { ok: false, error: `No ${kind} command at index ${index} for ${tool.title}.` };
     }
 
-    const pathParts = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/opt/homebrew/opt/python@3.12/bin', '/usr/local/bin', '/usr/local/sbin', '/usr/bin', '/bin', process.env.PATH || ''].filter(Boolean);
+    // macOS-adapt the original Linux-oriented commands so Install links actually work.
+    // Most hackingtool originals assume Debian (apt, /usr/share writes, sudo). On macOS
+    // users install to their home dir via brew/git/pip without root.
+    if (process.platform === 'darwin') {
+      cmd = cmd
+        // apt → brew translations (common prefixes)
+        .replace(/\bsudo\s+apt(?:-get)?\s+update(\s+(?:-y|--yes))?/g, 'brew update')
+        .replace(/\bsudo\s+apt(?:-get)?\s+upgrade(\s+(?:-y|--yes))?/g, 'brew upgrade')
+        .replace(/\bsudo\s+apt(?:-get)?\s+install(\s+(?:-y|--yes))?/g, 'brew install')
+        .replace(/\bapt(?:-get)?\s+install(\s+(?:-y|--yes))?/g, 'brew install')
+        // pip → pip3 (macOS brew python ships pip3)
+        .replace(/\bsudo\s+pip3?\s+install\b/g, 'pip3 install --user')
+        .replace(/\bpip\s+install\b/g, 'pip3 install')
+        // Strip standalone sudo for git/chmod/mkdir/cp (user home is writable)
+        .replace(/\bsudo\s+(git|chmod|mkdir|cp|mv|rm|ln|curl|wget|unzip|tar)\b/g, '$1')
+        // ./configure && make && sudo make install → install to user prefix
+        .replace(/\bsudo\s+make\s+install\b/g, 'make install PREFIX="$HOME/.local"');
+    }
+
+    const pathParts = [
+      '/opt/homebrew/bin', '/opt/homebrew/sbin',
+      '/opt/homebrew/opt/python@3.12/bin',
+      '/opt/homebrew/opt/ruby/bin',
+      '/opt/homebrew/opt/go/libexec/bin',
+      path.join(os.homedir(), '.local', 'bin'),
+      path.join(os.homedir(), 'go', 'bin'),
+      '/usr/local/bin', '/usr/local/sbin',
+      '/usr/bin', '/bin',
+      process.env.PATH || '',
+    ].filter(Boolean);
 
     // Run inside ~/recon-connect so relative `cd foo`/`./tool` paths from
     // the original hackingtool Install/Run commands resolve as they would
