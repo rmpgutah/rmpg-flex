@@ -9,7 +9,7 @@ export const ON_DUTY_STATUSES = [
 
 /** Pure policy function: age in ms → escalation level. Monotonic. */
 export function evaluateLevel(ageMs: number): 0 | 1 | 2 | 3 {
-  if (ageMs < 3  * 60_000) return 0;
+  if (ageMs < STALE_THRESHOLD_MS) return 0;
   if (ageMs < 10 * 60_000) return 1;
   if (ageMs < 15 * 60_000) return 2;
   return 3;
