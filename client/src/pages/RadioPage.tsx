@@ -1067,8 +1067,7 @@ export default function RadioPage() {
             {isMobile ? (
               showMobileSidebar ? (
                 <div
-                  className="absolute inset-0 z-40 flex flex-col"
-                  className="bg-surface-sunken"
+                  className="absolute inset-0 z-40 flex flex-col bg-surface-sunken"
                 >
                   <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid #1e3048' }}>
                     <span className="text-[10px] font-mono font-bold text-rmpg-400 tracking-wider">CHANNEL INFO</span>
@@ -1085,8 +1084,7 @@ export default function RadioPage() {
               ) : null
             ) : (
               <div
-                className="flex flex-col w-72 border-l border-rmpg-700"
-                className="bg-surface-sunken flex-shrink-0"
+                className="flex flex-col w-72 border-l border-rmpg-700 bg-surface-sunken flex-shrink-0"
               >
                 {renderSidebarContent()}
               </div>

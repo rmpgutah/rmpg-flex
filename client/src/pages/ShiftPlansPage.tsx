@@ -126,8 +126,7 @@ export default function ShiftPlansPage() {
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {/* ── DATE SELECTOR BAR ─────────────────────────────── */}
       <div
-        className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        className="bg-surface-sunken border-b border-rmpg-700"
+        className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0 bg-surface-sunken border-b border-rmpg-700`}
       >
         <div className="flex items-center gap-3">
           <Calendar style={{ width: 14, height: 14, color: '#3b82f6' }} />
@@ -370,9 +369,8 @@ export default function ShiftPlansPage() {
 
               {/* Assignments table */}
               <div className="flex-1 overflow-auto">
-                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between"
-                  className="bg-surface-sunken border-b border-rmpg-700"
-                >
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between bg-surface-sunken border-b border-rmpg-700">
+
                   <span>Area Assignments ({sp.activePlan.assignments.length})</span>
                   {sp.activePlan.assignments.length > 0 && (
                     <button

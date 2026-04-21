@@ -521,8 +521,7 @@ export default function MdtPage() {
 
       {/* ── TOP BAR: Unit Identity & Status ─────────────── */}
       <div
-        className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        className="bg-surface-sunken border-b border-rmpg-700"
+        className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0 bg-surface-sunken border-b border-rmpg-700`}
       >
         <div className="flex items-center gap-3">
           <Monitor style={{ width: 16, height: 16, color: '#22c55e' }} />

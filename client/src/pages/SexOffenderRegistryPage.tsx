@@ -477,8 +477,7 @@ export default function SexOffenderRegistryPage() {
         <div className="flex gap-4">
           {/* Large Mugshot */}
           <div
-            className="w-[100px] h-[130px] rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-            className="bg-surface-sunken border-2 border-rmpg-600"
+            className="w-[100px] h-[130px] rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden bg-surface-sunken border-2 border-rmpg-600"
           >
             {selected.photo_url ? (
               <img src={selected.photo_url} alt="" className="w-full h-full object-cover" />
@@ -967,8 +966,7 @@ function RecordFormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl"
-        className="bg-surface-base border border-rmpg-600"
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl bg-surface-base border border-rmpg-600"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-strong)' }}>
@@ -1131,8 +1129,7 @@ function ImportModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl"
-        className="bg-surface-base border border-rmpg-600"
+        className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl bg-surface-base border border-rmpg-600"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-strong)' }}>
