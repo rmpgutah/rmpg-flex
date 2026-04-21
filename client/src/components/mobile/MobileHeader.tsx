@@ -42,7 +42,7 @@ export default function MobileHeader({
 
   return (
     <div
-      className="flex items-center justify-between relative"
+      className="flex items-center justify-between relative safe-px"
       style={{
         height: 48,
         paddingLeft: 4,

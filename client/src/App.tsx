@@ -6,11 +6,13 @@ import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { ToastProvider } from './components/ToastProvider';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
+import { InstallCoachingModal } from './components/InstallCoachingModal';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
+import { useStandalone } from './hooks/useStandalone';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
@@ -83,6 +85,7 @@ const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
+const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -173,6 +176,13 @@ function NotFoundPage() {
   );
 }
 
+/** Redirects installed-PWA phone users landing on `/` to `/mobile`. */
+function HomeRedirect({ children }: { children: React.ReactNode }) {
+  const { isStandalone, isMobileViewport } = useStandalone();
+  if (isStandalone && isMobileViewport) return <Navigate to="/mobile" replace />;
+  return <>{children}</>;
+}
+
 /** Per-route error boundary wrapper for lazy-loaded routes */
 function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
@@ -189,6 +199,7 @@ function AppRoutes() {
     <>
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
+      {isAuthenticated && <InstallCoachingModal />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>
         <Routes>
           {/* Public */}
@@ -200,6 +211,7 @@ function AppRoutes() {
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
+          <Route path="/mobile" element={<ProtectedRoute><RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary></ProtectedRoute>} />
 
           {/* Protected routes with Layout */}
           <Route
@@ -209,7 +221,7 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
+            <Route path="/" element={<HomeRedirect>{window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />}</HomeRedirect>} />
             <Route path="/dispatch" element={<DispatchPage />} />
             <Route path="/map" element={<Navigate to="/map-v2" replace />} />
             <Route path="/map-v2" element={<RouteErrorBoundary><MapPageV2 /></RouteErrorBoundary>} />

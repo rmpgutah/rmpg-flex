@@ -31,6 +31,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
 
   return (
     <nav
+      className="safe-px safe-pb"
       style={{
         background: 'var(--surface-raised)',
         borderTop: '1px solid var(--border-default)',
