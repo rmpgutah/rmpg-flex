@@ -3,7 +3,6 @@
 import { getGraphClientForUser, isUserAuthorized, isEnabled, getConfigValue, CONFIG_KEYS } from './msGraphClient';
 import { sendViaSMTP, isSmtpConfigured } from './smtpClient';
 import { getDb } from '../models/database';
-import { logSafe } from './logSafe';
 
 export interface SendEmailOptions {
   to: string | string[];
@@ -68,7 +67,7 @@ export async function sendEmail(userId: number, options: SendEmailOptions): Prom
       }
 
       await client.api('/me/sendMail').post({ message, saveToSentItems: true });
-      console.log(`[Email] Sent via Graph API to ${logSafe(options.to)}`);
+      console.log(`[Email] Sent via Graph API to ${String(options.to ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
       return { ok: true, transport: 'graph' };
     } catch (err: any) {
       lastGraphErr = err;
@@ -79,7 +78,7 @@ export async function sendEmail(userId: number, options: SendEmailOptions): Prom
   if (isSmtpConfigured()) {
     try {
       await sendViaSMTP(options);
-      console.log(`[Email] Sent via SMTP fallback to ${logSafe(options.to)}`);
+      console.log(`[Email] Sent via SMTP fallback to ${String(options.to ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
       return { ok: true, transport: 'smtp' };
     } catch (err: any) {
       console.error('[Email] SMTP fallback send failed:', err.message);
