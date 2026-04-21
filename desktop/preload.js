@@ -40,6 +40,11 @@ contextBridge.exposeInMainWorld('electron', {
   // Trigger a manual update check
   checkForUpdates: () => ipcRenderer.send('updater:check'),
 
+  // ─── Recon Connect ─────────────────────────────────
+  // Spawn the locally-installed Recon Connect toolkit in a new terminal window.
+  // Returns { ok: boolean, error?: string } — never throws.
+  launchReconConnect: () => ipcRenderer.invoke('recon:launch'),
+
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
 

@@ -408,6 +408,51 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
 
+// ─── Recon Connect launcher ───────────────────────────────
+// Spawns the locally-installed toolkit in a detached terminal window. The
+// Python CLI lives outside Flex; we only hand off — no stdio piping, no
+// privilege delegation. Returns { ok, error? } so the renderer can show
+// a copy-command fallback if the binary isn't installed.
+ipcMain.handle('recon:launch', async () => {
+  const os = require('os');
+  const { spawn } = require('child_process');
+  const fs = require('fs');
+  const platform = process.platform;
+  const home = os.homedir();
+  try {
+    if (platform === 'linux') {
+      if (!fs.existsSync('/usr/bin/hackingtool') && !fs.existsSync('/usr/local/bin/hackingtool')) {
+        return { ok: false, error: 'Recon Connect is not installed. Run the install command shown on the page.' };
+      }
+      const term = process.env.TERMINAL || 'x-terminal-emulator';
+      spawn(term, ['-e', 'hackingtool'], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    if (platform === 'darwin') {
+      const dir = path.join(home, 'recon-connect');
+      if (!fs.existsSync(dir)) {
+        return { ok: false, error: `Recon Connect is not installed at ${dir}.` };
+      }
+      const cmd = `cd "${dir}" && source venv/bin/activate && python3 "recon connect.py"`;
+      const appleScript = `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`;
+      spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    if (platform === 'win32') {
+      const dir = path.join(home, 'recon-connect');
+      if (!fs.existsSync(dir)) {
+        return { ok: false, error: `Recon Connect is not installed at ${dir}.` };
+      }
+      const cmd = `cd /d "${dir}" && venv\\Scripts\\activate && python "recon connect.py"`;
+      spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', cmd], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    return { ok: false, error: `Unsupported platform: ${platform}` };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : 'Launch failed' };
+  }
+});
+
 // Force clear all caches and reload — called by web app update banner
 ipcMain.handle('app:force-refresh', async () => {
   if (mainWindow) {

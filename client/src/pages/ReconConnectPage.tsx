@@ -1,0 +1,201 @@
+import { useMemo, useState } from 'react';
+import { Terminal, Download, Copy, CheckCircle2, ExternalLink, ShieldAlert, Search, Globe, Radio, Server, Cloud, Smartphone, Lock, Eye, Database, Wifi, Bug, FileSearch, Users, Zap, GitBranch, KeyRound } from 'lucide-react';
+import PanelTitleBar from '../components/PanelTitleBar';
+import { useAuth } from '../context/AuthContext';
+
+type Platform = 'linux' | 'macos' | 'windows' | 'unknown';
+type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager' | 'client_viewer' | 'human_resources' | 'investigator';
+
+const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string }> = [
+  { icon: Search,     name: 'OSINT',                count: 18, desc: 'Open-source intel: usernames, emails, phone, social' },
+  { icon: Globe,      name: 'Web Recon',            count: 14, desc: 'Subdomain enum, WHOIS, directory brute, tech fingerprint' },
+  { icon: Wifi,       name: 'Network Scanning',     count: 12, desc: 'Nmap, masscan, service enumeration' },
+  { icon: Lock,       name: 'Password Tools',       count: 9,  desc: 'Hash crackers, wordlist generators' },
+  { icon: Eye,        name: 'Wireless Attacks',     count: 8,  desc: 'WiFi recon, WPA/WPS, bluetooth' },
+  { icon: Bug,        name: 'Exploitation',         count: 15, desc: 'Metasploit, exploit search (pentest scope only)' },
+  { icon: Server,     name: 'Active Directory',     count: 11, desc: 'BloodHound, Kerberoasting, enum' },
+  { icon: Cloud,      name: 'Cloud Security',       count: 10, desc: 'AWS/GCP/Azure recon & misconfig checks' },
+  { icon: Smartphone, name: 'Mobile Security',      count: 9,  desc: 'APK analysis, iOS triage' },
+  { icon: FileSearch, name: 'Forensics',            count: 12, desc: 'Disk, memory, log analysis' },
+  { icon: Radio,      name: 'Anonymity',            count: 7,  desc: 'Tor, proxychains, VPN chains' },
+  { icon: KeyRound,   name: 'Reverse Engineering',  count: 10, desc: 'Ghidra, Radare2, decompilers' },
+  { icon: Database,   name: 'SQL Injection',        count: 6,  desc: 'SQLMap and variants' },
+  { icon: Users,      name: 'Social Engineering',   count: 8,  desc: 'Phishing simulation (authorized testing)' },
+  { icon: Zap,        name: 'DDoS (defensive use)', count: 5,  desc: 'Stress testing — authorized scope only' },
+  { icon: GitBranch,  name: 'Post-Exploitation',    count: 9,  desc: 'Persistence, lateral movement (labs only)' },
+];
+
+function detectPlatform(): Platform {
+  if (typeof navigator === 'undefined') return 'unknown';
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes('mac')) return 'macos';
+  if (ua.includes('win')) return 'windows';
+  if (ua.includes('linux')) return 'linux';
+  return 'unknown';
+}
+
+const INSTALL_COMMANDS: Record<Platform, string> = {
+  linux:   'curl -sSL https://raw.githubusercontent.com/Z4nzu/hackingtool/master/install.sh | sudo bash',
+  macos:   'brew install python git && git clone https://github.com/Z4nzu/hackingtool.git ~/recon-connect && cd ~/recon-connect && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt',
+  windows: 'git clone https://github.com/Z4nzu/hackingtool.git %USERPROFILE%\\recon-connect && cd %USERPROFILE%\\recon-connect && python -m venv venv && venv\\Scripts\\activate && pip install -r requirements.txt',
+  unknown: '# Unsupported platform — see README at https://github.com/Z4nzu/hackingtool',
+};
+
+const LAUNCH_COMMANDS: Record<Platform, string> = {
+  linux:   'hackingtool',
+  macos:   'cd ~/recon-connect && source venv/bin/activate && python3 "recon connect.py"',
+  windows: 'cd %USERPROFILE%\\recon-connect && venv\\Scripts\\activate && python "recon connect.py"',
+  unknown: '',
+};
+
+// Who is allowed to see / launch Recon Connect from inside Flex.
+// TODO: you own this policy decision — see ReconConnectPage prompt below.
+const ALLOWED_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'investigator', 'dispatcher', 'officer'];
+
+function canAccessReconConnect(role: string | undefined): boolean {
+  if (!role) return false;
+  return ALLOWED_ROLES.includes(role as UserRole);
+}
+
+export default function ReconConnectPage() {
+  const { user } = useAuth();
+  const platform = useMemo(detectPlatform, []);
+  const isElectron = typeof window !== 'undefined' && Boolean((window as any).electron?.isElectron);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  if (!canAccessReconConnect(user?.role)) {
+    return (
+      <div className="p-6">
+        <div className="bg-[#141414] border border-[#2e2e2e] p-4 flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-[#d4a017] shrink-0 mt-0.5" />
+          <div>
+            <div className="text-[#d4a017] font-semibold text-sm">ACCESS RESTRICTED</div>
+            <div className="text-[#888] text-xs mt-1">Recon Connect is restricted to authorized roles. Contact your administrator.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const copy = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(null), 1800);
+    } catch { /* clipboard denied */ }
+  };
+
+  const handleLaunchLocal = async () => {
+    // Electron-only: ask the main process to spawn the tool in the user's shell.
+    // If window.electron.launchReconConnect isn't wired yet, fall back to copy.
+    const api = (window as any).electron;
+    if (api?.launchReconConnect) {
+      try { await api.launchReconConnect(); return; } catch { /* fall through */ }
+    }
+    copy('launch', LAUNCH_COMMANDS[platform]);
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      <PanelTitleBar title="RECON CONNECT — INVESTIGATIVE TOOLKIT" icon={Terminal} />
+
+      <div className="bg-[#141414] border border-[#222] p-4 flex items-start gap-3">
+        <ShieldAlert className="w-5 h-5 text-[#d4a017] shrink-0 mt-0.5" />
+        <div className="text-xs text-[#bbb] leading-relaxed">
+          <div className="text-[#d4a017] font-semibold mb-1">AUTHORIZED USE ONLY</div>
+          Recon Connect bundles offensive-security tooling. Use only within the scope of
+          lawful investigations, authorized pentesting engagements, or defensive research.
+          All local usage is subject to RMPG policy and applicable law.
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-[#141414] border border-[#222] p-3">
+          <div className="text-[9px] text-[#888] uppercase tracking-wider">Detected Platform</div>
+          <div className="text-[#d4a017] font-mono text-sm mt-1">{platform.toUpperCase()}</div>
+        </div>
+        <div className="bg-[#141414] border border-[#222] p-3">
+          <div className="text-[9px] text-[#888] uppercase tracking-wider">Flex Client</div>
+          <div className="text-[#d4a017] font-mono text-sm mt-1">{isElectron ? 'DESKTOP (ELECTRON)' : 'WEB BROWSER'}</div>
+        </div>
+        <div className="bg-[#141414] border border-[#222] p-3">
+          <div className="text-[9px] text-[#888] uppercase tracking-wider">Signed In As</div>
+          <div className="text-[#d4a017] font-mono text-sm mt-1">{user?.role?.toUpperCase() ?? 'UNKNOWN'}</div>
+        </div>
+      </div>
+
+      <div className="bg-[#141414] border border-[#222]">
+        <div className="px-3 py-2 border-b border-[#222] text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
+          Install on this workstation
+        </div>
+        <div className="p-3 space-y-2">
+          <code className="block bg-[#050505] border border-[#1a1a1a] p-2 text-[11px] font-mono text-[#d4d4d4] overflow-x-auto">
+            {INSTALL_COMMANDS[platform]}
+          </code>
+          <div className="flex gap-2">
+            <button
+              onClick={() => copy('install', INSTALL_COMMANDS[platform])}
+              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+            >
+              {copied === 'install' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied === 'install' ? 'Copied' : 'Copy Install Command'}
+            </button>
+            <a
+              href="https://github.com/Z4nzu/hackingtool#installation"
+              target="_blank" rel="noreferrer"
+              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Full install guide
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#141414] border border-[#222]">
+        <div className="px-3 py-2 border-b border-[#222] text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
+          Launch
+        </div>
+        <div className="p-3 space-y-2">
+          <code className="block bg-[#050505] border border-[#1a1a1a] p-2 text-[11px] font-mono text-[#d4d4d4] overflow-x-auto">
+            {LAUNCH_COMMANDS[platform] || '# unsupported'}
+          </code>
+          <div className="flex gap-2">
+            <button
+              onClick={handleLaunchLocal}
+              disabled={!LAUNCH_COMMANDS[platform]}
+              className="px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {isElectron ? 'Launch on This Workstation' : 'Copy Launch Command'}
+            </button>
+            {!isElectron && (
+              <span className="text-[10px] text-[#888] self-center">
+                Open Flex in the desktop app to launch directly.
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold mb-2">
+          Tool Categories ({CATEGORIES.reduce((s, c) => s + c.count, 0)}+ tools across {CATEGORIES.length} categories)
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+          {CATEGORIES.map(({ icon: Icon, name, count, desc }) => (
+            <div key={name} className="bg-[#141414] border border-[#222] p-3 flex items-start gap-3">
+              <Icon className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <div className="text-[#d4d4d4] text-xs font-semibold">{name}</div>
+                  <div className="text-[#888] text-[10px] font-mono">{count} tools</div>
+                </div>
+                <div className="text-[#888] text-[10px] leading-snug mt-0.5">{desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
