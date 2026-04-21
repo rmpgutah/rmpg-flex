@@ -14,22 +14,22 @@ type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 
 // tools. The upstream tool's tag keywords are the most reliable handle — see
 // https://github.com/Z4nzu/hackingtool#tags
 const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string; query: string; route?: string }> = [
-  { icon: Search,     name: 'OSINT',                count: 18, desc: 'Open-source intel: usernames, emails, phone, social',     query: 'osint' },
-  { icon: Globe,      name: 'Web Recon',            count: 14, desc: 'Subdomain enum, WHOIS, directory brute, tech fingerprint', query: 'web' },
-  { icon: Wifi,       name: 'Network Scanning',     count: 12, desc: 'Nmap, masscan, service enumeration',                       query: 'network' },
-  { icon: Lock,       name: 'Password Tools',       count: 9,  desc: 'Hash crackers, wordlist generators',                       query: 'password' },
-  { icon: Eye,        name: 'Wireless Attacks',     count: 8,  desc: 'WiFi recon, WPA/WPS, bluetooth — native UI',               query: 'wireless', route: '/recon-connect/wireless' },
-  { icon: Bug,        name: 'Exploitation',         count: 15, desc: 'CVE lookup, searchsploit, nmap vuln, nikto — native UI',    query: 'exploit', route: '/recon-connect/exploits' },
-  { icon: Server,     name: 'Active Directory',     count: 11, desc: 'BloodHound, Kerberoasting, enum',                          query: 'ad' },
-  { icon: Cloud,      name: 'Cloud Security',       count: 10, desc: 'AWS/GCP/Azure recon & misconfig checks',                   query: 'cloud' },
-  { icon: Smartphone, name: 'Mobile Security',      count: 9,  desc: 'APK analysis, iOS triage',                                 query: 'mobile' },
-  { icon: FileSearch, name: 'Forensics',            count: 12, desc: 'Disk, memory, log analysis',                               query: 'forensics' },
-  { icon: Radio,      name: 'Anonymity',            count: 7,  desc: 'Tor, proxychains, VPN chains',                             query: 'anonymity' },
-  { icon: KeyRound,   name: 'Reverse Engineering',  count: 10, desc: 'Ghidra, Radare2, decompilers',                             query: 'reverse' },
-  { icon: Database,   name: 'SQL Injection',        count: 6,  desc: 'SQLMap and variants',                                      query: 'sqli' },
-  { icon: Users,      name: 'Social Engineering',   count: 8,  desc: 'Phishing simulation (authorized testing)',                 query: 'social' },
-  { icon: Zap,        name: 'DDoS (defensive use)', count: 5,  desc: 'Stress testing — authorized scope only',                   query: 'ddos' },
-  { icon: GitBranch,  name: 'Post-Exploitation',    count: 9,  desc: 'Persistence, lateral movement (labs only)',                query: 'post' },
+  { icon: Search,     name: 'OSINT',                count: 5, desc: 'WHOIS, DNS, sherlock, theHarvester, holehe',                query: 'osint',     route: '/recon-connect/c/osint' },
+  { icon: Globe,      name: 'Web Recon',            count: 5, desc: 'Subfinder, HTTPX, nuclei, WAF detect, ffuf',                 query: 'web',       route: '/recon-connect/c/web-recon' },
+  { icon: Wifi,       name: 'Network Scanning',     count: 5, desc: 'nmap quick/full, masscan, naabu, ARP',                       query: 'network',   route: '/recon-connect/c/network-scanning' },
+  { icon: Lock,       name: 'Password Tools',       count: 4, desc: 'hashid, john, crunch, CeWL',                                 query: 'password',  route: '/recon-connect/c/password-tools' },
+  { icon: Eye,        name: 'Wireless Attacks',     count: 5, desc: 'WiFi, Bluetooth, local net, port scan',                      query: 'wireless',  route: '/recon-connect/wireless' },
+  { icon: Bug,        name: 'Exploitation',         count: 10, desc: 'CVE, searchsploit, nmap vuln, nikto, sqlmap, wpscan…',      query: 'exploit',   route: '/recon-connect/exploits' },
+  { icon: Server,     name: 'Active Directory',     count: 3, desc: 'LDAP anon bind, SMB enum, DC SRV lookup',                    query: 'ad',        route: '/recon-connect/c/active-directory' },
+  { icon: Cloud,      name: 'Cloud Security',       count: 2, desc: 'AWS identity, Trivy config scan',                            query: 'cloud',     route: '/recon-connect/c/cloud-security' },
+  { icon: Smartphone, name: 'Mobile Security',      count: 2, desc: 'apktool decode, strings on APK',                             query: 'mobile',    route: '/recon-connect/c/mobile-security' },
+  { icon: FileSearch, name: 'Forensics',            count: 4, desc: 'exiftool, binwalk, file, hexdump',                           query: 'forensics', route: '/recon-connect/c/forensics' },
+  { icon: Radio,      name: 'Anonymity',            count: 2, desc: 'Public IP, Tor status',                                      query: 'anonymity', route: '/recon-connect/c/anonymity' },
+  { icon: KeyRound,   name: 'Reverse Engineering',  count: 4, desc: 'objdump, radare2, strings, hexdump',                         query: 'reverse',   route: '/recon-connect/c/reverse-engineering' },
+  { icon: Database,   name: 'SQL Injection',        count: 1, desc: 'SQLMap (non-intrusive probe)',                               query: 'sqli',      route: '/recon-connect/c/sql-injection' },
+  { icon: Users,      name: 'Social Engineering',   count: 3, desc: 'MX, SPF/DMARC, WHOIS — defensive only',                      query: 'social',    route: '/recon-connect/c/social-engineering' },
+  { icon: Zap,        name: 'DDoS / Stress',        count: 1, desc: 'Defensive uptime probe only — no attack tooling',            query: 'ddos',      route: '/recon-connect/c/ddos' },
+  { icon: GitBranch,  name: 'Post-Exploitation',    count: 3, desc: 'Local-host audit only — no lateral movement tools',          query: 'post',      route: '/recon-connect/c/post-exploitation' },
 ];
 
 function detectPlatform(): Platform {

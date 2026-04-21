@@ -782,14 +782,27 @@ const RECON_TOOLS = {
     title: 'Gobuster Directory Brute',
     command: 'gobuster',
     buildArgs: ({ url }) => {
+      const fs = require('fs');
       if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
         throw new Error('URL must be http(s)://hostname[:port][/path].');
       }
-      // Use the common.txt wordlist shipped with dirb via brew
-      return ['dir', '-u', url, '-w', '/opt/homebrew/share/dirb/wordlists/common.txt', '--no-color', '-t', '20', '--timeout', '10s'];
+      // Try multiple known wordlist locations; fall back to seclists install hint
+      const candidates = [
+        '/opt/homebrew/share/seclists/Discovery/Web-Content/common.txt',
+        '/opt/homebrew/share/seclists/Discovery/Web-Content/directory-list-2.3-small.txt',
+        '/opt/homebrew/share/dirb/wordlists/common.txt',
+        '/usr/share/seclists/Discovery/Web-Content/common.txt',
+        '/usr/share/dirb/wordlists/common.txt',
+        '/usr/share/wordlists/dirb/common.txt',
+      ];
+      const wordlist = candidates.find((p) => fs.existsSync(p));
+      if (!wordlist) {
+        throw new Error('No wordlist found. Click Install to fetch seclists (brew install seclists).');
+      }
+      return ['dir', '-u', url, '-w', wordlist, '--no-color', '-t', '20', '--timeout', '10s'];
     },
     platform: ['darwin', 'linux'],
-    requiresInstall: 'gobuster',
+    requiresInstall: 'seclists',
   },
   'sslscan': {
     title: 'SSL/TLS Scan',
@@ -815,6 +828,367 @@ const RECON_TOOLS = {
     platform: ['darwin', 'linux'],
     requiresInstall: 'testssl',
   },
+  // ─── OSINT ──────────────────────────────────────────
+  'whois': {
+    title: 'WHOIS Lookup',
+    command: 'whois',
+    buildArgs: ({ target }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(target || '') && !/^\d{1,3}(\.\d{1,3}){3}$/.test(target || '')) {
+        throw new Error('Target must be a domain or IP.');
+      }
+      return [target];
+    },
+    platform: ['darwin', 'linux'],
+  },
+  'dig-dns': {
+    title: 'DNS Records (dig)',
+    command: 'dig',
+    buildArgs: ({ target }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(target || '')) throw new Error('Target must be a domain.');
+      return ['+noall', '+answer', 'ANY', target];
+    },
+    platform: ['darwin', 'linux'],
+  },
+  'sherlock': {
+    title: 'Sherlock (Username Search)',
+    command: 'sherlock',
+    buildArgs: ({ username }) => {
+      if (!/^[a-zA-Z0-9._-]{1,64}$/.test(username || '')) throw new Error('Username: 1-64 chars letters/digits/._-');
+      return ['--no-color', '--print-found', '--timeout', '10', username];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'sherlock',
+  },
+  'theharvester': {
+    title: 'theHarvester (Email/Subdomain)',
+    command: 'theHarvester',
+    buildArgs: ({ domain }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(domain || '')) throw new Error('Domain required.');
+      return ['-d', domain, '-l', '100', '-b', 'crtsh,duckduckgo,bing'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'theharvester',
+  },
+  'holehe': {
+    title: 'Holehe (Email → Accounts)',
+    command: 'holehe',
+    buildArgs: ({ email }) => {
+      if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email || '')) throw new Error('Valid email required.');
+      return ['--only-used', '--no-color', email];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'holehe',
+  },
+
+  // ─── Web Recon ─────────────────────────────────────
+  'subfinder': {
+    title: 'Subfinder (Subdomain Enum)',
+    command: 'subfinder',
+    buildArgs: ({ domain }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(domain || '')) throw new Error('Domain required.');
+      return ['-d', domain, '-silent', '-no-color'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'subfinder',
+  },
+  'nuclei': {
+    title: 'Nuclei (Vuln Templates)',
+    command: 'nuclei',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) throw new Error('Valid URL required.');
+      return ['-u', url, '-silent', '-no-color', '-severity', 'medium,high,critical'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'nuclei',
+  },
+  'wafw00f': {
+    title: 'WAFW00F (WAF Detection)',
+    command: 'wafw00f',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) throw new Error('Valid URL required.');
+      return ['-a', url];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'wafw00f',
+  },
+  'ffuf': {
+    title: 'ffuf (Web Fuzzer)',
+    command: 'ffuf',
+    buildArgs: ({ url }) => {
+      const fs = require('fs');
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?\/.*FUZZ/i.test(url || '')) {
+        throw new Error('URL must contain FUZZ placeholder, e.g. https://example.com/FUZZ');
+      }
+      const wordlist = [
+        '/opt/homebrew/share/seclists/Discovery/Web-Content/common.txt',
+        '/usr/share/seclists/Discovery/Web-Content/common.txt',
+      ].find((p) => fs.existsSync(p));
+      if (!wordlist) throw new Error('Install seclists wordlists first.');
+      return ['-u', url, '-w', wordlist, '-mc', '200,204,301,302,307', '-noninteractive'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'ffuf',
+  },
+
+  // ─── Network Scanning ──────────────────────────────
+  'nmap-quick': {
+    title: 'Nmap Quick Scan (Top 100 Ports)',
+    command: 'nmap',
+    buildArgs: ({ target }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*(\/\d{1,2})?$/.test(target || '') && !/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(target || '')) {
+        throw new Error('Target must be hostname or IP/CIDR.');
+      }
+      return ['-sT', '-Pn', '-T4', '--top-ports', '100', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'nmap',
+  },
+  'nmap-full': {
+    title: 'Nmap Full Scan (All TCP + Service Detection)',
+    command: 'nmap',
+    buildArgs: ({ target }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(target || '') && !/^\d{1,3}(\.\d{1,3}){3}$/.test(target || '')) {
+        throw new Error('Target must be hostname or IP.');
+      }
+      return ['-sT', '-sV', '-p-', '-Pn', '-T4', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'nmap',
+  },
+  'masscan': {
+    title: 'masscan (High-Speed Port Scan)',
+    command: 'masscan',
+    buildArgs: ({ target, ports }) => {
+      if (!/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(target || '')) throw new Error('Target must be IP/CIDR.');
+      const p = ports && /^[\d,-]+$/.test(ports) ? ports : '1-1000';
+      return ['-p', p, '--rate', '1000', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'masscan',
+  },
+  'naabu': {
+    title: 'naabu (Fast Port Scan)',
+    command: 'naabu',
+    buildArgs: ({ target }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(target || '') && !/^\d{1,3}(\.\d{1,3}){3}$/.test(target || '')) {
+        throw new Error('Target must be hostname or IP.');
+      }
+      return ['-host', target, '-silent', '-no-color'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'naabu',
+  },
+
+  // ─── Password Tools ────────────────────────────────
+  'hash-identifier': {
+    title: 'Hash Identifier',
+    command: 'hashid',
+    buildArgs: ({ hash }) => {
+      if (!/^[a-fA-F0-9$./:]{8,512}$/.test(hash || '')) throw new Error('Hash must be hex/base64 chars only.');
+      return [hash];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'hashid',
+  },
+  'john-show': {
+    title: 'John the Ripper (Hash Crack)',
+    command: 'john',
+    buildArgs: ({ hash }) => {
+      if (!/^[a-fA-F0-9$./:]{8,512}$/.test(hash || '')) throw new Error('Hash must be hex/base64 chars only.');
+      // Write hash to a temp file, then crack
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const f = path.join(os.tmpdir(), `john-${Date.now()}.hash`);
+      fs.writeFileSync(f, hash + '\n');
+      return ['--format=raw-md5', f];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'john',
+  },
+  'crunch': {
+    title: 'crunch (Wordlist Generator)',
+    command: 'crunch',
+    buildArgs: ({ min, max, charset }) => {
+      if (!/^\d+$/.test(min || '') || !/^\d+$/.test(max || '')) throw new Error('Min and max must be integers.');
+      if (parseInt(max) > 12) throw new Error('Max length capped at 12 to prevent runaway generation.');
+      const args = [min, max];
+      if (charset && /^[a-zA-Z0-9]{1,62}$/.test(charset)) args.push(charset);
+      return args;
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'crunch',
+  },
+  'cewl': {
+    title: 'CeWL (Custom Wordlist from URL)',
+    command: 'cewl',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) throw new Error('Valid URL required.');
+      return ['-d', '2', '-m', '5', url];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'cewl',
+  },
+
+  // ─── Active Directory ──────────────────────────────
+  'ldapsearch': {
+    title: 'LDAP Anonymous Bind',
+    command: 'ldapsearch',
+    buildArgs: ({ host, base }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?$/.test(host || '')) throw new Error('Host required (host or host:port).');
+      if (base && !/^[a-zA-Z0-9,=. -]*$/.test(base)) throw new Error('Base DN has invalid characters.');
+      return ['-x', '-H', `ldap://${host}`, '-b', base || '', '-s', 'base', 'namingContexts'];
+    },
+    platform: ['darwin', 'linux'],
+  },
+  'smbclient-list': {
+    title: 'SMB Share Enumeration',
+    command: 'smbclient',
+    buildArgs: ({ host }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(host || '') && !/^\d{1,3}(\.\d{1,3}){3}$/.test(host || '')) {
+        throw new Error('Host required.');
+      }
+      return ['-L', host, '-N'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'samba',
+  },
+
+  // ─── Cloud Security ────────────────────────────────
+  'aws-whoami': {
+    title: 'AWS Caller Identity',
+    command: 'aws',
+    buildArgs: () => ['sts', 'get-caller-identity'],
+    platform: ['darwin', 'linux', 'win32'],
+    requiresInstall: 'awscli',
+  },
+  'trivy-config': {
+    title: 'Trivy (Config Misconfig Scan)',
+    command: 'trivy',
+    buildArgs: ({ target }) => {
+      if (!/^[a-zA-Z0-9._/-]{1,256}$/.test(target || '')) throw new Error('Target must be a local path.');
+      return ['config', '--no-progress', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'trivy',
+  },
+
+  // ─── Mobile Security ───────────────────────────────
+  'apktool-info': {
+    title: 'APKTool (Decode APK)',
+    command: 'apktool',
+    buildArgs: ({ apkPath }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}\.apk$/.test(apkPath || '')) throw new Error('Path must end in .apk with no shell metacharacters.');
+      return ['d', '-f', '-o', '/tmp/apktool-out', apkPath];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'apktool',
+  },
+  'strings-apk': {
+    title: 'Strings (APK/binary)',
+    command: 'strings',
+    buildArgs: ({ path: p }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}$/.test(p || '')) throw new Error('Path has invalid characters.');
+      return ['-a', '-n', '6', p];
+    },
+    platform: ['darwin', 'linux'],
+  },
+
+  // ─── Forensics ─────────────────────────────────────
+  'exiftool': {
+    title: 'ExifTool (Metadata Extract)',
+    command: 'exiftool',
+    buildArgs: ({ path: p }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}$/.test(p || '')) throw new Error('Path has invalid characters.');
+      return ['-a', '-u', '-g1', p];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'exiftool',
+  },
+  'binwalk': {
+    title: 'Binwalk (Firmware Analysis)',
+    command: 'binwalk',
+    buildArgs: ({ path: p }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}$/.test(p || '')) throw new Error('Path has invalid characters.');
+      return [p];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'binwalk',
+  },
+  'file-identify': {
+    title: 'File Type Identification',
+    command: 'file',
+    buildArgs: ({ path: p }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}$/.test(p || '')) throw new Error('Path has invalid characters.');
+      return ['-b', p];
+    },
+    platform: ['darwin', 'linux'],
+  },
+  'hexdump': {
+    title: 'Hexdump (First 512 bytes)',
+    command: 'hexdump',
+    buildArgs: ({ path: p }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}$/.test(p || '')) throw new Error('Path has invalid characters.');
+      return ['-C', '-n', '512', p];
+    },
+    platform: ['darwin', 'linux'],
+  },
+
+  // ─── Anonymity ─────────────────────────────────────
+  'tor-check': {
+    title: 'Tor Status Check',
+    command: 'curl',
+    buildArgs: () => ['-sSfL', '--socks5', '127.0.0.1:9050', 'https://check.torproject.org/api/ip'],
+    platform: ['darwin', 'linux'],
+  },
+  'public-ip': {
+    title: 'Current Public IP',
+    command: 'curl',
+    buildArgs: () => ['-sfL', 'https://api.ipify.org?format=json'],
+    platform: ['darwin', 'linux', 'win32'],
+  },
+
+  // ─── Reverse Engineering ───────────────────────────
+  'objdump-disasm': {
+    title: 'objdump Disassembly',
+    command: 'objdump',
+    buildArgs: ({ path: p }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}$/.test(p || '')) throw new Error('Path has invalid characters.');
+      return ['-d', p];
+    },
+    platform: ['darwin', 'linux'],
+  },
+  'r2-info': {
+    title: 'radare2 Binary Info',
+    command: 'r2',
+    buildArgs: ({ path: p }) => {
+      if (!/^[a-zA-Z0-9._/ -]{1,256}$/.test(p || '')) throw new Error('Path has invalid characters.');
+      return ['-A', '-q', '-c', 'iI', p];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'radare2',
+  },
+
+  // ─── Social Engineering (defensive: recon only) ────
+  'mx-records': {
+    title: 'MX Records (Email Validation)',
+    command: 'dig',
+    buildArgs: ({ domain }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(domain || '')) throw new Error('Domain required.');
+      return ['+short', 'MX', domain];
+    },
+    platform: ['darwin', 'linux'],
+  },
+  'spf-records': {
+    title: 'SPF/DMARC Check',
+    command: 'dig',
+    buildArgs: ({ domain }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(domain || '')) throw new Error('Domain required.');
+      return ['+short', 'TXT', domain];
+    },
+    platform: ['darwin', 'linux'],
+  },
+
   'wpscan': {
     title: 'WPScan (WordPress)',
     command: 'wpscan',
@@ -835,8 +1209,29 @@ ipcMain.handle('recon:tool-install', async (event, { pkg } = {}) => {
   const crypto = require('crypto');
   // Whitelist to prevent arbitrary brew package installs via IPC
   const ALLOWED = new Set([
+    // Exploits
     'nmap', 'nikto', 'exploitdb', 'httpx', 'sqlmap', 'gobuster',
-    'sslscan', 'testssl', 'wpscan', 'python@3.12', 'git',
+    'sslscan', 'testssl', 'wpscan', 'seclists',
+    // OSINT
+    'sherlock', 'theharvester', 'holehe',
+    // Web Recon
+    'subfinder', 'nuclei', 'wafw00f', 'ffuf',
+    // Network Scanning
+    'masscan', 'naabu',
+    // Password Tools
+    'hashid', 'john', 'crunch', 'cewl',
+    // Active Directory
+    'samba',
+    // Cloud Security
+    'awscli', 'trivy',
+    // Mobile Security
+    'apktool',
+    // Forensics
+    'exiftool', 'binwalk',
+    // RE
+    'radare2',
+    // Infrastructure
+    'python@3.12', 'git',
   ]);
   if (!ALLOWED.has(pkg)) {
     return { ok: false, error: `Package "${pkg}" is not in the allow-list.` };
