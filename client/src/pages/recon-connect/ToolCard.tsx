@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Download } from 'lucide-react';
+import { Play, Square, Download, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export type ToolArg = { name: string; label: string; placeholder?: string; required?: boolean };
 export type ToolDef = {
@@ -12,16 +12,69 @@ export type ToolDef = {
   runLabel?: string;
   /** Homebrew package to offer a one-click install for, if the binary is missing */
   installPkg?: string;
+  /** Primary binary to check for install status. Defaults to installPkg. */
+  checkBinary?: string;
 };
+
+// Common exit-code interpretations and stderr patterns → friendly messages
+function diagnose(output: Array<{ kind: string; text: string }>, code: number | null): string | null {
+  const stderr = output.filter((l) => l.kind === 'stderr').map((l) => l.text).join('');
+  const all = output.map((l) => l.text).join('').toLowerCase();
+
+  if (/command not found|no such file or directory|enoent/i.test(stderr)) {
+    return 'Tool binary not found in PATH. Click Install to add it.';
+  }
+  if (/permission denied/i.test(stderr)) {
+    return 'Permission denied — this operation requires elevated privileges that cannot be prompted from inside the app. Run the command in Terminal if truly needed.';
+  }
+  if (/modulenotfounderror|no module named/i.test(stderr)) {
+    const m = stderr.match(/no module named ['"]?([a-zA-Z0-9_.-]+)['"]?/i);
+    return m ? `Python module "${m[1]}" missing. Try: pip3 install ${m[1]}` : 'Python module missing.';
+  }
+  if (/connection refused|could not resolve|name or service not known/i.test(all)) {
+    return 'Target unreachable — check the URL/host and network connectivity.';
+  }
+  if (/sslerror|certificate verify failed/i.test(all)) {
+    return 'TLS verification failed. Target may have an invalid certificate.';
+  }
+  if (code === 2) return 'Exit 2 usually means a file path or argument is wrong.';
+  if (code === 126) return 'Exit 126: command found but not executable.';
+  if (code === 127) return 'Exit 127: command not found.';
+  if (code === 130) return 'Stopped (Ctrl+C / SIGINT).';
+  if (code === 139) return 'Segmentation fault — the tool crashed.';
+  return null;
+}
 
 export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: boolean }) {
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [output, setOutput] = useState<Array<{ kind: 'stdout' | 'stderr' | 'meta'; text: string }>>([]);
   const [running, setRunning] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [installed, setInstalled] = useState<boolean | null>(null); // null=unknown, true/false=probed
+  const [lastExit, setLastExit] = useState<number | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
   const api = (typeof window !== 'undefined' ? (window as any).electron : null) as any;
+
+  const binaryName = tool.checkBinary || tool.installPkg;
+
+  // Probe install state on mount + cache to localStorage so the badge is
+  // instant on revisit. "Unknown" (null) only on the very first load.
+  useEffect(() => {
+    if (!binaryName || !api?.reconCheckBinary) {
+      setInstalled(true); // no binary to check = built-in (curl, dig, etc.)
+      return;
+    }
+    const cacheKey = `rmpg:recon:installed:${binaryName}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached !== null) setInstalled(cached === '1');
+    (async () => {
+      const res = await api.reconCheckBinary(binaryName);
+      const is = Boolean(res?.installed);
+      setInstalled(is);
+      localStorage.setItem(cacheKey, is ? '1' : '0');
+    })();
+  }, [binaryName]);
 
   useEffect(() => {
     if (!api?.onReconToolData) return;
@@ -31,10 +84,19 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
     });
     const unsubExit = api.onReconToolExit?.((id: string, code: number) => {
       if (id !== sessionIdRef.current) return;
+      setLastExit(code);
       setOutput((prev) => [...prev, { kind: 'meta', text: `\n[exited with code ${code}]\n` }]);
       setRunning(false);
       sessionIdRef.current = null;
       setSessionId(null);
+      // Re-check install state after an install run — binary may now exist
+      if (binaryName && api?.reconCheckBinary) {
+        api.reconCheckBinary(binaryName).then((r: any) => {
+          const is = Boolean(r?.installed);
+          setInstalled(is);
+          localStorage.setItem(`rmpg:recon:installed:${binaryName}`, is ? '1' : '0');
+        });
+      }
     });
     return () => { try { unsubData?.(); unsubExit?.(); } catch { /* ignore */ } };
   }, []);
@@ -50,7 +112,14 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
       setOutput([{ kind: 'meta', text: `Missing required: ${missing.map((m) => m.label).join(', ')}\n` }]);
       return;
     }
+    // Pre-flight: skip the spawn if binary is known-missing
+    if (installed === false && tool.installPkg) {
+      setOutput([{ kind: 'stderr', text: `${binaryName || 'binary'} is not installed. Click "Install ${tool.installPkg}" below.` }]);
+      setLastExit(null);
+      return;
+    }
     setOutput([]);
+    setLastExit(null);
     setRunning(true);
     const res = await api.reconToolSpawn(tool.id, formValues);
     if (!res?.ok) {
@@ -83,20 +152,32 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
     setSessionId(res.sessionId);
   };
 
-  // Detect "<tool> is not installed" error so we can surface an Install button
-  const notInstalled = useMemo(() => {
+  // Show Install button whenever:
+  //  - preflight found the binary missing, OR
+  //  - runtime error says "not installed"
+  const needsInstall = useMemo(() => {
+    if (installed === false) return true;
     return output.some((line) =>
       line.kind === 'stderr' &&
-      (line.text.includes('is not installed') || line.text.includes('Run: brew install'))
+      (line.text.includes('is not installed') || line.text.includes('Run: brew install') || line.text.includes('command not found'))
     );
-  }, [output]);
+  }, [installed, output]);
 
   const Icon = tool.icon;
+  const diagnostic = !running && lastExit !== null && lastExit !== 0 ? diagnose(output, lastExit) : null;
   return (
     <div className="bg-[#141414] border border-[#222] flex flex-col">
       <div className="px-3 py-2 border-b border-[#222] flex items-center gap-2">
         <Icon className="w-4 h-4 text-[#d4a017]" />
         <div className="text-[#d4d4d4] text-xs font-semibold flex-1">{tool.title}</div>
+        {binaryName && installed !== null && (
+          <div className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 border flex items-center gap-1 ${
+            installed ? 'text-[#7fd38a] border-[#2e7d32]' : 'text-[#d4a017] border-[#d4a017]/60'
+          }`}>
+            {installed ? <CheckCircle2 className="w-2.5 h-2.5" /> : <AlertCircle className="w-2.5 h-2.5" />}
+            {installed ? 'INSTALLED' : 'NOT INSTALLED'}
+          </div>
+        )}
         <div className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 border ${
           running ? 'text-[#7fd38a] border-[#2e7d32]' : 'text-[#888] border-[#2e2e2e]'
         }`}>
@@ -138,7 +219,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           >
             <Square className="w-3.5 h-3.5" /> Stop
           </button>
-          {notInstalled && tool.installPkg && (
+          {needsInstall && tool.installPkg && (
             <button
               onClick={installPkg}
               disabled={running}
@@ -157,6 +238,12 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             </button>
           )}
         </div>
+        {diagnostic && (
+          <div className="border border-[#d4a017]/60 bg-[#d4a017]/10 text-[#d4a017] text-[11px] px-2 py-1.5 flex items-start gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>{diagnostic}</span>
+          </div>
+        )}
         <div
           ref={outputRef}
           className="bg-[#050505] border border-[#1a1a1a] h-56 overflow-auto p-2 font-mono text-[11px] text-[#d4d4d4] whitespace-pre-wrap"

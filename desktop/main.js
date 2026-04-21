@@ -1317,6 +1317,36 @@ ipcMain.handle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => 
   }
 });
 
+// Check whether a binary is on PATH — used by the renderer to show
+// INSTALLED/NOT INSTALLED badges and skip the run if pre-flight fails.
+ipcMain.handle('recon:check-binary', async (_event, { binary } = {}) => {
+  if (!binary || !/^[a-zA-Z0-9._+-]+$/.test(binary)) return { installed: false, error: 'Invalid binary name' };
+  const { spawnSync } = require('child_process');
+  const pathParts = [
+    '/opt/homebrew/bin', '/opt/homebrew/sbin',
+    '/opt/homebrew/opt/python@3.12/bin',
+    '/opt/homebrew/opt/ruby/bin',
+    '/opt/homebrew/opt/go/libexec/bin',
+    require('os').homedir() + '/.local/bin',
+    require('os').homedir() + '/go/bin',
+    '/usr/local/bin', '/usr/local/sbin',
+    '/usr/bin', '/bin',
+    process.env.PATH || '',
+  ].filter(Boolean);
+  const r = spawnSync('command', ['-v', binary], {
+    shell: 'bash',
+    env: { ...process.env, PATH: pathParts.join(':') },
+  });
+  const stdout = (r.stdout || '').toString().trim();
+  if (r.status === 0 && stdout) return { installed: true, path: stdout };
+  // Also probe known paths directly in case `command -v` wasn't available
+  const fs = require('fs');
+  for (const dir of pathParts) {
+    if (dir && fs.existsSync(`${dir}/${binary}`)) return { installed: true, path: `${dir}/${binary}` };
+  }
+  return { installed: false };
+});
+
 ipcMain.handle('recon:tool-kill', async (_event, { sessionId }) => {
   const child = toolSessions.get(sessionId);
   if (!child) return { ok: true };
