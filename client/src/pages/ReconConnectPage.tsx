@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -12,12 +13,12 @@ type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 
 // `query` is typed into hackingtool's `/` search to filter to that category's
 // tools. The upstream tool's tag keywords are the most reliable handle — see
 // https://github.com/Z4nzu/hackingtool#tags
-const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string; query: string }> = [
+const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string; query: string; route?: string }> = [
   { icon: Search,     name: 'OSINT',                count: 18, desc: 'Open-source intel: usernames, emails, phone, social',     query: 'osint' },
   { icon: Globe,      name: 'Web Recon',            count: 14, desc: 'Subdomain enum, WHOIS, directory brute, tech fingerprint', query: 'web' },
   { icon: Wifi,       name: 'Network Scanning',     count: 12, desc: 'Nmap, masscan, service enumeration',                       query: 'network' },
   { icon: Lock,       name: 'Password Tools',       count: 9,  desc: 'Hash crackers, wordlist generators',                       query: 'password' },
-  { icon: Eye,        name: 'Wireless Attacks',     count: 8,  desc: 'WiFi recon, WPA/WPS, bluetooth',                           query: 'wireless' },
+  { icon: Eye,        name: 'Wireless Attacks',     count: 8,  desc: 'WiFi recon, WPA/WPS, bluetooth — native UI',               query: 'wireless', route: '/recon-connect/wireless' },
   { icon: Bug,        name: 'Exploitation',         count: 15, desc: 'Metasploit, exploit search (pentest scope only)',          query: 'exploit' },
   { icon: Server,     name: 'Active Directory',     count: 11, desc: 'BloodHound, Kerberoasting, enum',                          query: 'ad' },
   { icon: Cloud,      name: 'Cloud Security',       count: 10, desc: 'AWS/GCP/Azure recon & misconfig checks',                   query: 'cloud' },
@@ -65,6 +66,7 @@ function canAccessReconConnect(role: string | undefined): boolean {
 
 export default function ReconConnectPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const platform = useMemo(detectPlatform, []);
   const isElectron = typeof window !== 'undefined' && Boolean((window as any).electron?.isElectron);
   const [copied, setCopied] = useState<string | null>(null);
@@ -318,26 +320,32 @@ export default function ReconConnectPage() {
           Tool Categories ({CATEGORIES.reduce((s, c) => s + c.count, 0)}+ tools across {CATEGORIES.length} categories)
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-          {CATEGORIES.map(({ icon: Icon, name, count, desc, query }) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => openCategory(query, name)}
-              disabled={!isElectron}
-              title={isElectron ? `Open "${name}" in the terminal (hackingtool search: /${query})` : 'Requires the desktop app'}
-              className="group text-left bg-[#141414] border border-[#222] p-3 flex items-start gap-3 hover:bg-[#1a1a1a] hover:border-[#d4a017] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-            >
-              <Icon className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <div className="text-[#d4d4d4] text-xs font-semibold group-hover:text-[#d4a017]">{name}</div>
-                  <div className="text-[#888] text-[10px] font-mono">{count} tools</div>
+          {CATEGORIES.map(({ icon: Icon, name, count, desc, query, route }) => {
+            const isNative = Boolean(route);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => route ? navigate(route) : openCategory(query, name)}
+                disabled={!route && !isElectron}
+                title={route ? `Open native ${name} workspace` : isElectron ? `Filter hackingtool to ${name}` : 'Requires the desktop app'}
+                className="group text-left bg-[#141414] border border-[#222] p-3 flex items-start gap-3 hover:bg-[#1a1a1a] hover:border-[#d4a017] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                <Icon className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <div className="text-[#d4d4d4] text-xs font-semibold group-hover:text-[#d4a017]">{name}</div>
+                    <div className="text-[#888] text-[10px] font-mono">{count} tools</div>
+                    {isNative && (
+                      <span className="text-[8px] font-mono uppercase tracking-wider text-[#d4a017] border border-[#d4a017]/40 px-1 py-[1px]">NATIVE</span>
+                    )}
+                  </div>
+                  <div className="text-[#888] text-[10px] leading-snug mt-0.5">{desc}</div>
+                  <div className="text-[#555] text-[9px] font-mono mt-1 group-hover:text-[#d4a017]">{isNative ? 'Open workspace →' : `/${query} ↵`}</div>
                 </div>
-                <div className="text-[#888] text-[10px] leading-snug mt-0.5">{desc}</div>
-                <div className="text-[#555] text-[9px] font-mono mt-1 group-hover:text-[#d4a017]">/{query} ↵</div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

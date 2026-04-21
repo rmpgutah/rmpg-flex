@@ -58,6 +58,20 @@ contextBridge.exposeInMainWorld('electron', {
   reconInput: (sessionId, data) => ipcRenderer.send('recon:term-input', { sessionId, data }),
   reconResize: (sessionId, cols, rows) => ipcRenderer.send('recon:term-resize', { sessionId, cols, rows }),
   reconKill: (sessionId) => ipcRenderer.invoke('recon:term-kill', { sessionId }),
+
+  // ─── Native tool runner (Wireless pilot) ───────────
+  reconToolSpawn: (toolId, args) => ipcRenderer.invoke('recon:tool-spawn', { toolId, args }),
+  reconToolKill: (sessionId) => ipcRenderer.invoke('recon:tool-kill', { sessionId }),
+  onReconToolData: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.kind, payload.data);
+    ipcRenderer.on('recon:tool-data', handler);
+    return () => ipcRenderer.removeListener('recon:tool-data', handler);
+  },
+  onReconToolExit: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.code);
+    ipcRenderer.on('recon:tool-exit', handler);
+    return () => ipcRenderer.removeListener('recon:tool-exit', handler);
+  },
   onReconData: (callback) => {
     const handler = (_e, payload) => callback(payload.sessionId, payload.data);
     ipcRenderer.on('recon:term-data', handler);

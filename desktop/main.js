@@ -643,6 +643,110 @@ ipcMain.on('recon:term-resize', (_event, _payload) => {
   // No-op without a PTY — size is cosmetic for piped stdio.
 });
 
+// ─── Tool registry (Wireless Attacks pilot) ──────────────
+// toolId → { command, buildArgs(formArgs) } so the renderer never
+// interpolates arbitrary strings into a shell. Everything goes through
+// spawn() with an argv array, no shell:true.
+const RECON_TOOLS = {
+  // macOS-native: list nearby wifi networks via Apple's airport utility
+  'wifi-scan': {
+    title: 'Nearby WiFi Networks',
+    command: '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport',
+    buildArgs: () => ['-s'],
+    platform: ['darwin'],
+  },
+  // Current connected WiFi details
+  'wifi-info': {
+    title: 'Current WiFi Network',
+    command: 'networksetup',
+    buildArgs: () => ['-getairportnetwork', 'en0'],
+    platform: ['darwin'],
+  },
+  // Bluetooth inventory
+  'bluetooth-scan': {
+    title: 'Bluetooth Devices',
+    command: 'system_profiler',
+    buildArgs: () => ['SPBluetoothDataType'],
+    platform: ['darwin'],
+  },
+  // Local subnet host discovery via arp cache (no root needed)
+  'local-network': {
+    title: 'Local Network Hosts (ARP)',
+    command: 'arp',
+    buildArgs: () => ['-an'],
+    platform: ['darwin', 'linux'],
+  },
+  // Port scan — uses nmap if installed, requires explicit target
+  'port-scan': {
+    title: 'Port Scan (nmap)',
+    command: 'nmap',
+    buildArgs: ({ target }) => {
+      if (!target || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(target) && !/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(target)) {
+        throw new Error('Target must be a hostname or IP/CIDR (no shell metacharacters).');
+      }
+      return ['-sT', '-Pn', '-T4', '--top-ports', '100', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'nmap',
+  },
+};
+
+const toolSessions = new Map();
+
+ipcMain.handle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
+  const { spawn } = require('child_process');
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const tool = RECON_TOOLS[toolId];
+  if (!tool) return { ok: false, error: `Unknown tool: ${toolId}` };
+  if (!tool.platform.includes(process.platform)) {
+    return { ok: false, error: `${tool.title} is not supported on ${process.platform}.` };
+  }
+  let argv;
+  try {
+    argv = tool.buildArgs(args);
+  } catch (err) {
+    return { ok: false, error: err.message || 'Invalid arguments' };
+  }
+  // Confirm binary exists — give users a clear "install X" message
+  if (tool.requiresInstall) {
+    const pathDirs = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+    const found = pathDirs.some((d) => fs.existsSync(`${d}/${tool.command}`));
+    if (!found) {
+      return { ok: false, error: `${tool.command} is not installed. Run: brew install ${tool.requiresInstall}` };
+    }
+  }
+  try {
+    const pathParts = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources', process.env.PATH || ''].filter(Boolean);
+    const child = spawn(tool.command, argv, {
+      env: { ...process.env, PATH: pathParts.join(':') },
+    });
+    const sessionId = crypto.randomUUID();
+    toolSessions.set(sessionId, child);
+    const send = (kind, data) => {
+      if (!event.sender.isDestroyed()) event.sender.send('recon:tool-data', { sessionId, kind, data });
+    };
+    child.stdout.on('data', (b) => send('stdout', b.toString('utf8')));
+    child.stderr.on('data', (b) => send('stderr', b.toString('utf8')));
+    child.on('exit', (code) => {
+      toolSessions.delete(sessionId);
+      if (!event.sender.isDestroyed()) event.sender.send('recon:tool-exit', { sessionId, code });
+    });
+    child.on('error', (err) => send('stderr', `[spawn error] ${err.message}\n`));
+    return { ok: true, sessionId, title: tool.title };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : 'Spawn failed' };
+  }
+});
+
+ipcMain.handle('recon:tool-kill', async (_event, { sessionId }) => {
+  const child = toolSessions.get(sessionId);
+  if (!child) return { ok: true };
+  try { child.kill('SIGTERM'); } catch { /* ignore */ }
+  toolSessions.delete(sessionId);
+  return { ok: true };
+});
+
 ipcMain.handle('recon:term-kill', async (_event, { sessionId }) => {
   const child = reconSessions.get(sessionId);
   if (!child) return { ok: true };
