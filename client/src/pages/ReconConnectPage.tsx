@@ -62,6 +62,7 @@ export default function ReconConnectPage() {
   const platform = useMemo(detectPlatform, []);
   const isElectron = typeof window !== 'undefined' && Boolean((window as any).electron?.isElectron);
   const [copied, setCopied] = useState<string | null>(null);
+  const [launchMsg, setLaunchMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
 
   if (!canAccessReconConnect(user?.role)) {
     return (
@@ -86,13 +87,27 @@ export default function ReconConnectPage() {
   };
 
   const handleLaunchLocal = async () => {
-    // Electron-only: ask the main process to spawn the tool in the user's shell.
-    // If window.electron.launchReconConnect isn't wired yet, fall back to copy.
     const api = (window as any).electron;
-    if (api?.launchReconConnect) {
-      try { await api.launchReconConnect(); return; } catch { /* fall through */ }
+    if (!isElectron) {
+      copy('launch', LAUNCH_COMMANDS[platform]);
+      return;
     }
-    copy('launch', LAUNCH_COMMANDS[platform]);
+    if (!api?.launchReconConnect) {
+      setLaunchMsg({ kind: 'info', text: 'This desktop app predates the Recon Connect launcher. Download the latest installer from /download and reinstall.' });
+      setTimeout(() => setLaunchMsg(null), 8000);
+      return;
+    }
+    try {
+      const result = await api.launchReconConnect();
+      if (result?.ok) {
+        setLaunchMsg({ kind: 'ok', text: 'Recon Connect launching in a new terminal…' });
+      } else {
+        setLaunchMsg({ kind: 'err', text: result?.error || 'Launch failed.' });
+      }
+    } catch (err: any) {
+      setLaunchMsg({ kind: 'err', text: err?.message || 'Launch failed.' });
+    }
+    setTimeout(() => setLaunchMsg(null), 8000);
   };
 
   return (
@@ -174,6 +189,15 @@ export default function ReconConnectPage() {
               </span>
             )}
           </div>
+          {launchMsg && (
+            <div className={`mt-2 px-2 py-1.5 border text-[11px] ${
+              launchMsg.kind === 'ok'  ? 'border-[#2e7d32] bg-[#0f1f10] text-[#7fd38a]' :
+              launchMsg.kind === 'err' ? 'border-[#b33] bg-[#1f0a0a] text-[#ff8888]' :
+                                         'border-[#2e2e2e] bg-[#1a1a1a] text-[#d4a017]'
+            }`}>
+              {launchMsg.text}
+            </div>
+          )}
         </div>
       </div>
 
