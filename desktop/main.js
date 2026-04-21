@@ -799,9 +799,10 @@ const RECON_TOOLS = {
       if (!wordlist) {
         throw new Error('No wordlist found. Click Install to fetch seclists (brew install seclists).');
       }
-      // --wildcard: modern SPAs serve 200 for all paths; allow gobuster
-      //             to proceed and surface real paths by unique length.
-      return ['dir', '-u', url, '-w', wordlist, '--no-color', '-t', '20', '--timeout', '10s', '--wildcard'];
+      // --force: modern SPAs serve 200 for all paths; gobuster 3.8+ uses
+      //          --force to proceed past wildcard-response prechecks
+      //          (older versions used --wildcard).
+      return ['dir', '-u', url, '-w', wordlist, '--no-color', '-t', '20', '--timeout', '10s', '--force'];
     },
     platform: ['darwin', 'linux'],
     requiresInstall: 'seclists',
