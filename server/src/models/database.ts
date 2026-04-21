@@ -1414,6 +1414,31 @@ function createTables(): void {
       FOREIGN KEY (resolved_by) REFERENCES users(id)
     )
   `).run();
+
+  // ─── GPS STALE ALERTS TABLE ───────────────────────
+  // Server-side watchdog for officer GPS heartbeat loss.
+  // Uses db.prepare().run() pattern per CLAUDE.md Gotcha #42.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS gps_stale_alerts (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id             INTEGER NOT NULL,
+      call_sign           TEXT NOT NULL,
+      officer_id          INTEGER,
+      officer_name        TEXT,
+      last_gps_at         TEXT NOT NULL,
+      stale_detected_at   TEXT NOT NULL,
+      last_escalated_at   TEXT NOT NULL,
+      escalation_level    INTEGER NOT NULL DEFAULT 1,
+      recovered_at        TEXT,
+      duration_sec        INTEGER,
+      last_lat            REAL,
+      last_lng            REAL,
+      last_source         TEXT,
+      notes               TEXT
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_open ON gps_stale_alerts(unit_id, recovered_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_time ON gps_stale_alerts(stale_detected_at)`).run();
 }
 
 /**
