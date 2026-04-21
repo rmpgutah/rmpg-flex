@@ -9,23 +9,26 @@ import { useAuth } from '../context/AuthContext';
 type Platform = 'linux' | 'macos' | 'windows' | 'unknown';
 type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager' | 'client_viewer' | 'human_resources' | 'investigator';
 
-const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string }> = [
-  { icon: Search,     name: 'OSINT',                count: 18, desc: 'Open-source intel: usernames, emails, phone, social' },
-  { icon: Globe,      name: 'Web Recon',            count: 14, desc: 'Subdomain enum, WHOIS, directory brute, tech fingerprint' },
-  { icon: Wifi,       name: 'Network Scanning',     count: 12, desc: 'Nmap, masscan, service enumeration' },
-  { icon: Lock,       name: 'Password Tools',       count: 9,  desc: 'Hash crackers, wordlist generators' },
-  { icon: Eye,        name: 'Wireless Attacks',     count: 8,  desc: 'WiFi recon, WPA/WPS, bluetooth' },
-  { icon: Bug,        name: 'Exploitation',         count: 15, desc: 'Metasploit, exploit search (pentest scope only)' },
-  { icon: Server,     name: 'Active Directory',     count: 11, desc: 'BloodHound, Kerberoasting, enum' },
-  { icon: Cloud,      name: 'Cloud Security',       count: 10, desc: 'AWS/GCP/Azure recon & misconfig checks' },
-  { icon: Smartphone, name: 'Mobile Security',      count: 9,  desc: 'APK analysis, iOS triage' },
-  { icon: FileSearch, name: 'Forensics',            count: 12, desc: 'Disk, memory, log analysis' },
-  { icon: Radio,      name: 'Anonymity',            count: 7,  desc: 'Tor, proxychains, VPN chains' },
-  { icon: KeyRound,   name: 'Reverse Engineering',  count: 10, desc: 'Ghidra, Radare2, decompilers' },
-  { icon: Database,   name: 'SQL Injection',        count: 6,  desc: 'SQLMap and variants' },
-  { icon: Users,      name: 'Social Engineering',   count: 8,  desc: 'Phishing simulation (authorized testing)' },
-  { icon: Zap,        name: 'DDoS (defensive use)', count: 5,  desc: 'Stress testing — authorized scope only' },
-  { icon: GitBranch,  name: 'Post-Exploitation',    count: 9,  desc: 'Persistence, lateral movement (labs only)' },
+// `query` is typed into hackingtool's `/` search to filter to that category's
+// tools. The upstream tool's tag keywords are the most reliable handle — see
+// https://github.com/Z4nzu/hackingtool#tags
+const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string; query: string }> = [
+  { icon: Search,     name: 'OSINT',                count: 18, desc: 'Open-source intel: usernames, emails, phone, social',     query: 'osint' },
+  { icon: Globe,      name: 'Web Recon',            count: 14, desc: 'Subdomain enum, WHOIS, directory brute, tech fingerprint', query: 'web' },
+  { icon: Wifi,       name: 'Network Scanning',     count: 12, desc: 'Nmap, masscan, service enumeration',                       query: 'network' },
+  { icon: Lock,       name: 'Password Tools',       count: 9,  desc: 'Hash crackers, wordlist generators',                       query: 'password' },
+  { icon: Eye,        name: 'Wireless Attacks',     count: 8,  desc: 'WiFi recon, WPA/WPS, bluetooth',                           query: 'wireless' },
+  { icon: Bug,        name: 'Exploitation',         count: 15, desc: 'Metasploit, exploit search (pentest scope only)',          query: 'exploit' },
+  { icon: Server,     name: 'Active Directory',     count: 11, desc: 'BloodHound, Kerberoasting, enum',                          query: 'ad' },
+  { icon: Cloud,      name: 'Cloud Security',       count: 10, desc: 'AWS/GCP/Azure recon & misconfig checks',                   query: 'cloud' },
+  { icon: Smartphone, name: 'Mobile Security',      count: 9,  desc: 'APK analysis, iOS triage',                                 query: 'mobile' },
+  { icon: FileSearch, name: 'Forensics',            count: 12, desc: 'Disk, memory, log analysis',                               query: 'forensics' },
+  { icon: Radio,      name: 'Anonymity',            count: 7,  desc: 'Tor, proxychains, VPN chains',                             query: 'anonymity' },
+  { icon: KeyRound,   name: 'Reverse Engineering',  count: 10, desc: 'Ghidra, Radare2, decompilers',                             query: 'reverse' },
+  { icon: Database,   name: 'SQL Injection',        count: 6,  desc: 'SQLMap and variants',                                      query: 'sqli' },
+  { icon: Users,      name: 'Social Engineering',   count: 8,  desc: 'Phishing simulation (authorized testing)',                 query: 'social' },
+  { icon: Zap,        name: 'DDoS (defensive use)', count: 5,  desc: 'Stress testing — authorized scope only',                   query: 'ddos' },
+  { icon: GitBranch,  name: 'Post-Exploitation',    count: 9,  desc: 'Persistence, lateral movement (labs only)',                query: 'post' },
 ];
 
 function detectPlatform(): Platform {
@@ -162,6 +165,26 @@ export default function ReconConnectPage() {
     setTimeout(() => { try { fitRef.current?.fit(); if (api?.reconResize) api.reconResize(res.sessionId, term.cols, term.rows); } catch { /* ignore */ } }, 50);
   };
 
+  const openCategory = async (query: string, label: string) => {
+    if (!hasTerminalApi) {
+      setLaunchMsg({ kind: 'info', text: 'Open Flex in the desktop app to drive the terminal from here.' });
+      setTimeout(() => setLaunchMsg(null), 6000);
+      return;
+    }
+    if (termState !== 'running') {
+      await runRecon('launch');
+      // wait for hackingtool's banner to render so `/` reaches the search prompt
+      await new Promise((r) => setTimeout(r, 1400));
+    }
+    termHostRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    termRef.current?.focus();
+    if (sessionIdRef.current && api?.reconInput) {
+      api.reconInput(sessionIdRef.current, `/${query}\n`);
+      setLaunchMsg({ kind: 'ok', text: `Filtering hackingtool by "${label}" (${query}). Press Esc in the terminal to clear.` });
+      setTimeout(() => setLaunchMsg(null), 6000);
+    }
+  };
+
   const stopRecon = async () => {
     if (sessionId && api?.reconKill) {
       await api.reconKill(sessionId);
@@ -295,17 +318,25 @@ export default function ReconConnectPage() {
           Tool Categories ({CATEGORIES.reduce((s, c) => s + c.count, 0)}+ tools across {CATEGORIES.length} categories)
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-          {CATEGORIES.map(({ icon: Icon, name, count, desc }) => (
-            <div key={name} className="bg-[#141414] border border-[#222] p-3 flex items-start gap-3">
+          {CATEGORIES.map(({ icon: Icon, name, count, desc, query }) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => openCategory(query, name)}
+              disabled={!isElectron}
+              title={isElectron ? `Open "${name}" in the terminal (hackingtool search: /${query})` : 'Requires the desktop app'}
+              className="group text-left bg-[#141414] border border-[#222] p-3 flex items-start gap-3 hover:bg-[#1a1a1a] hover:border-[#d4a017] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
               <Icon className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <div className="text-[#d4d4d4] text-xs font-semibold">{name}</div>
+                  <div className="text-[#d4d4d4] text-xs font-semibold group-hover:text-[#d4a017]">{name}</div>
                   <div className="text-[#888] text-[10px] font-mono">{count} tools</div>
                 </div>
                 <div className="text-[#888] text-[10px] leading-snug mt-0.5">{desc}</div>
+                <div className="text-[#555] text-[9px] font-mono mt-1 group-hover:text-[#d4a017]">/{query} ↵</div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
