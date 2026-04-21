@@ -37,13 +37,16 @@ export default {
         'display': ['24px', { lineHeight: '32px' }],
       },
       colors: {
-        // ── Surface tokens (CSS variable backed) ──────────
+        // ── Surface tokens (CSS variable backed, alpha-capable) ──
+        // Uses rgb(<channels> / <alpha-value>) so Tailwind's /NN opacity
+        // modifier works (e.g. bg-surface-sunken/50). RGB channels are
+        // declared in index.css as --surface-*-rgb (space-separated).
         surface: {
-          base:    'var(--surface-base)',     // #141e2b
-          raised:  'var(--surface-raised)',   // #1a2636
-          sunken:  'var(--surface-sunken)',   // #0d1520
-          overlay: 'var(--surface-overlay)',  // #0a1018
-          deep:    'var(--surface-deep)',     // #060c14
+          base:    'rgb(var(--surface-base-rgb) / <alpha-value>)',     // #141e2b / #0d2a4d
+          raised:  'rgb(var(--surface-raised-rgb) / <alpha-value>)',   // #1a2636 / #153a6a
+          sunken:  'rgb(var(--surface-sunken-rgb) / <alpha-value>)',   // #0d1520 / #081e3d
+          overlay: 'rgb(var(--surface-overlay-rgb) / <alpha-value>)',  // #0a1018 / #061630
+          deep:    'rgb(var(--surface-deep-rgb) / <alpha-value>)',     // #060c14 / #041022
         },
 
         // ── RMPG Brand ─────────────────────────────────────

@@ -15,6 +15,14 @@
   --surface-sunken: #0d1520;
   --surface-overlay: #0a1018;
   --surface-deep: #060c14;
+  /* RGB channels (space-separated) for Tailwind's <alpha-value> substitution.
+     Needed so bg-surface-sunken/50 etc. work. Keep in sync with the hex
+     values above — they represent the same colors. */
+  --surface-base-rgb: 20 30 43;
+  --surface-raised-rgb: 26 38 54;
+  --surface-sunken-rgb: 13 21 32;
+  --surface-overlay-rgb: 10 16 24;
+  --surface-deep-rgb: 6 12 20;
   --border-default: #1e3048;
   --border-subtle: #182840;
   --border-strong: #2a3e58;
@@ -41,6 +49,12 @@
   --surface-sunken: #081e3d;
   --surface-overlay: #061630;
   --surface-deep: #041022;
+  /* Light-mode RGB channels — same color space as hex values above. */
+  --surface-base-rgb: 13 42 77;
+  --surface-raised-rgb: 21 58 106;
+  --surface-sunken-rgb: 8 30 61;
+  --surface-overlay-rgb: 6 22 48;
+  --surface-deep-rgb: 4 16 34;
   --border-default: #2a5a9e;
   --border-subtle: #234d87;
   --border-strong: #3a75c2;
