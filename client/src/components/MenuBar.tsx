@@ -732,6 +732,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'MicroBilt', icon: Search, action: () => navigate('/microbilt') },
           { type: 'action', label: 'Web Research', icon: Globe, action: () => navigate('/web-research') },
+          { type: 'action', label: 'Recon Connect', icon: Search, action: () => navigate('/recon-connect') },
         ],
       },
       {

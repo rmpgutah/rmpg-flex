@@ -40,6 +40,53 @@ contextBridge.exposeInMainWorld('electron', {
   // Trigger a manual update check
   checkForUpdates: () => ipcRenderer.send('updater:check'),
 
+  // ─── Recon Connect ─────────────────────────────────
+  // Spawn the locally-installed Recon Connect toolkit in a new terminal window.
+  // Returns { ok: boolean, error?: string } — never throws.
+  launchReconConnect: () => ipcRenderer.invoke('recon:launch'),
+
+  // Run the platform-appropriate install flow in a visible terminal window.
+  // Returns { ok: boolean, error?: string }.
+  installReconConnect: () => ipcRenderer.invoke('recon:install'),
+
+  // Quick existence check — returns { installed: boolean, path?: string }.
+  checkReconConnect: () => ipcRenderer.invoke('recon:check'),
+
+  // ─── In-app terminal (xterm.js bridge) ──────────────
+  // Spawn a Recon Connect process and stream stdio through IPC events.
+  reconSpawn: (opts) => ipcRenderer.invoke('recon:term-spawn', opts),
+  reconInput: (sessionId, data) => ipcRenderer.send('recon:term-input', { sessionId, data }),
+  reconResize: (sessionId, cols, rows) => ipcRenderer.send('recon:term-resize', { sessionId, cols, rows }),
+  reconKill: (sessionId) => ipcRenderer.invoke('recon:term-kill', { sessionId }),
+
+  // ─── Native tool runner (Wireless pilot) ───────────
+  reconToolSpawn: (toolId, args) => ipcRenderer.invoke('recon:tool-spawn', { toolId, args }),
+  reconToolKill: (sessionId) => ipcRenderer.invoke('recon:tool-kill', { sessionId }),
+  reconToolInstall: (pkg) => ipcRenderer.invoke('recon:tool-install', { pkg }),
+  reconCatalogRun: (opts) => ipcRenderer.invoke('recon:catalog-run', opts),
+  reconCheckBinary: (binary) => ipcRenderer.invoke('recon:check-binary', { binary }),
+  reconCatalogTerminal: (opts) => ipcRenderer.invoke('recon:catalog-terminal', opts),
+  onReconToolData: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.kind, payload.data);
+    ipcRenderer.on('recon:tool-data', handler);
+    return () => ipcRenderer.removeListener('recon:tool-data', handler);
+  },
+  onReconToolExit: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.code);
+    ipcRenderer.on('recon:tool-exit', handler);
+    return () => ipcRenderer.removeListener('recon:tool-exit', handler);
+  },
+  onReconData: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.data);
+    ipcRenderer.on('recon:term-data', handler);
+    return () => ipcRenderer.removeListener('recon:term-data', handler);
+  },
+  onReconExit: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.code);
+    ipcRenderer.on('recon:term-exit', handler);
+    return () => ipcRenderer.removeListener('recon:term-exit', handler);
+  },
+
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
 

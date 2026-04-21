@@ -74,6 +74,10 @@ const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
 const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
 const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
 const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
+const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
+const WirelessAttacksPage = lazyRetry(() => import('./pages/recon-connect/WirelessAttacksPage'));
+const ExploitsPage = lazyRetry(() => import('./pages/recon-connect/ExploitsPage'));
+const CategoryRoute = lazyRetry(() => import('./pages/recon-connect/CategoryRoute'));
 const ArrestRecordsPage = lazyRetry(() => import('./pages/ArrestRecordsPage'));
 const EmailPage = lazyRetry(() => import('./pages/EmailPage'));
 const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
@@ -263,6 +267,10 @@ function AppRoutes() {
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
             <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />
+            <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
+            <Route path="/recon-connect/wireless" element={<RouteErrorBoundary><WirelessAttacksPage /></RouteErrorBoundary>} />
+            <Route path="/recon-connect/exploits" element={<RouteErrorBoundary><ExploitsPage /></RouteErrorBoundary>} />
+            <Route path="/recon-connect/c/:slug" element={<RouteErrorBoundary><CategoryRoute /></RouteErrorBoundary>} />
             <Route path="/arrest-records" element={<RouteErrorBoundary><ArrestRecordsPage /></RouteErrorBoundary>} />
             <Route path="/email" element={<RouteErrorBoundary><EmailPage /></RouteErrorBoundary>} />
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
