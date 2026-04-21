@@ -689,6 +689,83 @@ const RECON_TOOLS = {
     platform: ['darwin', 'linux'],
     requiresInstall: 'nmap',
   },
+
+  // ─── Exploitation category ──────────────────────────
+  // Pure read-only vulnerability identification — no payload execution.
+  'cve-lookup': {
+    title: 'CVE Lookup (NVD)',
+    command: 'curl',
+    buildArgs: ({ cve }) => {
+      if (!/^CVE-\d{4}-\d{4,}$/i.test(cve || '')) {
+        throw new Error('Enter a CVE ID like CVE-2024-3094.');
+      }
+      return ['-sfL', '-H', 'Accept: application/json', `https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${cve.toUpperCase()}`];
+    },
+    platform: ['darwin', 'linux', 'win32'],
+  },
+  'cve-search': {
+    title: 'CVE Keyword Search',
+    command: 'curl',
+    buildArgs: ({ keyword }) => {
+      if (!/^[a-zA-Z0-9 .+_-]{2,64}$/.test(keyword || '')) {
+        throw new Error('Keyword must be 2-64 chars: letters, digits, spaces, .+_-');
+      }
+      const q = encodeURIComponent(keyword);
+      return ['-sfL', '-H', 'Accept: application/json', `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${q}&resultsPerPage=20`];
+    },
+    platform: ['darwin', 'linux', 'win32'],
+  },
+  'searchsploit': {
+    title: 'SearchSploit',
+    command: 'searchsploit',
+    buildArgs: ({ query }) => {
+      if (!/^[a-zA-Z0-9 ._+-]{1,128}$/.test(query || '')) {
+        throw new Error('Query must be 1-128 chars: letters, digits, spaces, ._+-');
+      }
+      // split on whitespace so each term is its own argv entry
+      return ['--no-color', ...query.split(/\s+/).filter(Boolean)];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'exploitdb',
+  },
+  'nmap-vuln': {
+    title: 'Nmap Vulnerability Scan',
+    command: 'nmap',
+    buildArgs: ({ target }) => {
+      const hostRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+      const ipRe = /^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/;
+      if (!target || (!hostRe.test(target) && !ipRe.test(target))) {
+        throw new Error('Target must be a hostname or IP/CIDR.');
+      }
+      return ['-sV', '--script', 'vuln', '-Pn', '-T4', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'nmap',
+  },
+  'nikto-scan': {
+    title: 'Nikto Web Scan',
+    command: 'nikto',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
+        throw new Error('URL must be http(s)://hostname[:port][/path], no shell metacharacters.');
+      }
+      return ['-h', url, '-ask', 'no'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'nikto',
+  },
+  'whatweb': {
+    title: 'WhatWeb Fingerprint',
+    command: 'whatweb',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
+        throw new Error('URL must be http(s)://hostname[:port][/path], no shell metacharacters.');
+      }
+      return ['--color=never', url];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'whatweb',
+  },
 };
 
 const toolSessions = new Map();

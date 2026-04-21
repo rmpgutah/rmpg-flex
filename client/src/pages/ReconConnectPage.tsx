@@ -19,7 +19,7 @@ const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string; 
   { icon: Wifi,       name: 'Network Scanning',     count: 12, desc: 'Nmap, masscan, service enumeration',                       query: 'network' },
   { icon: Lock,       name: 'Password Tools',       count: 9,  desc: 'Hash crackers, wordlist generators',                       query: 'password' },
   { icon: Eye,        name: 'Wireless Attacks',     count: 8,  desc: 'WiFi recon, WPA/WPS, bluetooth — native UI',               query: 'wireless', route: '/recon-connect/wireless' },
-  { icon: Bug,        name: 'Exploitation',         count: 15, desc: 'Metasploit, exploit search (pentest scope only)',          query: 'exploit' },
+  { icon: Bug,        name: 'Exploitation',         count: 15, desc: 'CVE lookup, searchsploit, nmap vuln, nikto — native UI',    query: 'exploit', route: '/recon-connect/exploits' },
   { icon: Server,     name: 'Active Directory',     count: 11, desc: 'BloodHound, Kerberoasting, enum',                          query: 'ad' },
   { icon: Cloud,      name: 'Cloud Security',       count: 10, desc: 'AWS/GCP/Azure recon & misconfig checks',                   query: 'cloud' },
   { icon: Smartphone, name: 'Mobile Security',      count: 9,  desc: 'APK analysis, iOS triage',                                 query: 'mobile' },
@@ -111,6 +111,7 @@ export default function ReconConnectPage() {
       cursorBlink: true,
       convertEol: true,
       scrollback: 5000,
+      allowProposedApi: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -120,6 +121,12 @@ export default function ReconConnectPage() {
       const id = sessionIdRef.current;
       if (id && api?.reconInput) api.reconInput(id, data);
     });
+    // xterm's input goes through a hidden <textarea>; clicking anywhere on
+    // the host should hand focus to that textarea so keystrokes reach onData.
+    termHostRef.current.addEventListener('mousedown', () => {
+      setTimeout(() => term.focus(), 0);
+    });
+    term.focus();
     termRef.current = term;
     fitRef.current = fit;
     return term;
@@ -301,7 +308,9 @@ export default function ReconConnectPage() {
           )}
           <div
             ref={termHostRef}
-            className="bg-[#050505] border border-[#1a1a1a] h-[420px] overflow-hidden"
+            tabIndex={0}
+            onClick={() => termRef.current?.focus()}
+            className="bg-[#050505] border border-[#1a1a1a] h-[420px] overflow-hidden focus-within:border-[#d4a017] cursor-text"
           />
           {launchMsg && (
             <div className={`px-2 py-1.5 border text-[11px] ${
