@@ -834,7 +834,7 @@ export default function MenuBar({
                 // Lazy-import so the jsPDF chunk only loads when a user
                 // actually downloads the guide — keeps the login bundle lean.
                 const { generateDispatchGuidePdf } = await import('../utils/dispatchGuidePdfGenerator');
-                generateDispatchGuidePdf();
+                await generateDispatchGuidePdf();
               } catch (err) {
                 console.error('[DispatchGuide] Generation failed:', err);
               }

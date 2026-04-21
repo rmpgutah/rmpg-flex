@@ -31,10 +31,44 @@ const COLOR = {
 };
 
 // ─── Types ──────────────────────────────────────────────────
+
+/**
+ * A 10-code or signal code row. The live endpoint
+ * `/api/dispatch/geography/codes` returns richer metadata but we only need
+ * these three fields to render the reference table; any extra fields are
+ * ignored. If the fetch fails, we fall back to the hardcoded tables below.
+ */
+export interface LiveDispatchCode {
+  code: string;
+  description: string;
+  category?: string;
+  /** Status chip rendered next to the code in the roster, if any. */
+  status_label?: string;
+}
+
+interface SectionAnchor {
+  /** Label shown in the cover-page TOC. */
+  label: string;
+  /** 1-indexed page the section starts on, captured at emit time. */
+  page: number;
+}
+
 interface GuideContext {
   doc: jsPDF;
   y: number;
   page: number;
+  /** Optional live-fetched codes; when null, sections use hardcoded tables. */
+  liveCodes: LiveDispatchCode[] | null;
+  /** Populated as sections emit; consumed by the cover-page TOC renderer. */
+  anchors: SectionAnchor[];
+}
+
+/**
+ * Record the current page as the start of a section so the cover-page TOC
+ * can link to it. Call immediately after `newPage(ctx)` + before `title(...)`.
+ */
+function anchor(ctx: GuideContext, label: string): void {
+  ctx.anchors.push({ label, page: ctx.page });
 }
 
 // ─── Primitive helpers ──────────────────────────────────────
@@ -225,70 +259,264 @@ function table(
   ctx.y += 4;
 }
 
+// ─── Diagram primitives ─────────────────────────────────────
+// Shared low-level helpers for building vector diagrams throughout the
+// guide. Everything below assumes the Spillman dark-console aesthetic:
+// black fills, gold accents, thin gray rules, gold arrowheads. All sizes
+// are in PDF points (1/72"). All coordinates are absolute on the page.
+
+/**
+ * Draw a labeled rectangle node. Used as the standard "state box" or
+ * "component box" building block for state machines, data flows, and
+ * architecture diagrams. Returns the rect for chaining.
+ */
+function dBox(
+  d: jsPDF,
+  x: number, y: number, w: number, h: number,
+  label: string,
+  opts: { fill?: string; stroke?: string; textColor?: string; fontSize?: number; bold?: boolean } = {},
+): { x: number; y: number; w: number; h: number } {
+  const fill = opts.fill ?? '#141414';
+  const stroke = opts.stroke ?? '#2e2e2e';
+  const textColor = opts.textColor ?? '#e5e5e5';
+  const fontSize = opts.fontSize ?? 9;
+
+  d.setFillColor(fill);
+  d.setDrawColor(stroke);
+  d.setLineWidth(0.75);
+  d.roundedRect(x, y, w, h, 2, 2, 'FD');
+  d.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+  d.setFontSize(fontSize);
+  d.setTextColor(textColor);
+  const lines = d.splitTextToSize(label, w - 8) as string[];
+  const totalH = lines.length * (fontSize + 2);
+  const startY = y + (h - totalH) / 2 + fontSize;
+  for (let i = 0; i < lines.length; i++) {
+    d.text(lines[i], x + w / 2, startY + i * (fontSize + 2), { align: 'center' });
+  }
+  return { x, y, w, h };
+}
+
+/**
+ * Arrow from (x1,y1) to (x2,y2) with a gold arrowhead at the destination.
+ * Optional label sits at the midpoint above the line.
+ */
+function dArrow(
+  d: jsPDF,
+  x1: number, y1: number, x2: number, y2: number,
+  label?: string,
+  color = '#d4a017',
+): void {
+  d.setDrawColor(color);
+  d.setLineWidth(0.9);
+  d.line(x1, y1, x2, y2);
+
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const ah = 6;
+  const aw = 3;
+  const baseX = x2 - ah * Math.cos(angle);
+  const baseY = y2 - ah * Math.sin(angle);
+  const perpX = aw * Math.sin(angle);
+  const perpY = -aw * Math.cos(angle);
+  d.setFillColor(color);
+  d.triangle(
+    x2, y2,
+    baseX + perpX, baseY + perpY,
+    baseX - perpX, baseY - perpY,
+    'F',
+  );
+
+  if (label) {
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(7);
+    d.setTextColor('#888888');
+    d.text(label, mx, my - 3, { align: 'center' });
+  }
+}
+
+/** Caption below a diagram; advances the y-cursor. */
+function dCaption(ctx: GuideContext, text: string): void {
+  const d = ctx.doc;
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.MUTED);
+  d.text(text, PAGE.MARGIN, ctx.y);
+  ctx.y += 14;
+}
+
+/** Black-with-gold-border container frame for diagrams. */
+function dFrame(
+  d: jsPDF,
+  x: number, y: number, w: number, h: number,
+): void {
+  d.setFillColor('#0a0a0a');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.rect(x, y, w, h, 'FD');
+}
+
 // ─── Content blocks ─────────────────────────────────────────
+
+/**
+ * Draw a small stylized console-mockup badge on the cover.
+ * Pure jsPDF vectors so it stays crisp at any zoom and adds no image payload.
+ */
+function coverConsoleBadge(d: jsPDF, cx: number, topY: number): void {
+  const bw = 220;
+  const bh = 120;
+  const x = cx - bw / 2;
+  const y = topY;
+
+  // Outer bezel (dark console)
+  d.setFillColor('#0a0a0a');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1.5);
+  d.rect(x, y, bw, bh, 'FD');
+
+  // Inner screen area
+  d.setFillColor('#141414');
+  d.setDrawColor('#222222');
+  d.setLineWidth(0.75);
+  d.rect(x + 8, y + 22, bw - 16, bh - 40, 'FD');
+
+  // Header strip
+  d.setFillColor(COLOR.ACCENT);
+  d.rect(x, y, bw, 14, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(7);
+  d.setTextColor(COLOR.BLACK);
+  d.text('RMPG DISPATCH', x + 6, y + 10);
+  d.text('P1:0  P2:0  AVAIL:0', x + bw - 6, y + 10, { align: 'right' });
+
+  // LED dots (red / amber / green)
+  const ledY = y + 7;
+  [['#c0392b', 6], ['#d4a017', 14], ['#166534', 22]].forEach(([color, dx]) => {
+    d.setFillColor(color as string);
+    d.circle(x + bw - 80 + (dx as number), ledY, 2, 'F');
+  });
+
+  // Fake call rows (thin bars)
+  d.setFillColor('#d4a017');
+  d.rect(x + 14, y + 32, 4, 10, 'F');
+  d.setFillColor('#666666');
+  d.rect(x + 22, y + 34, 100, 2, 'F');
+  d.rect(x + 22, y + 39, 70, 2, 'F');
+
+  d.setFillColor('#b91c1c');
+  d.rect(x + 14, y + 48, 4, 10, 'F');
+  d.setFillColor('#666666');
+  d.rect(x + 22, y + 50, 120, 2, 'F');
+  d.rect(x + 22, y + 55, 60, 2, 'F');
+
+  d.setFillColor('#888888');
+  d.rect(x + 14, y + 64, 4, 10, 'F');
+  d.setFillColor('#666666');
+  d.rect(x + 22, y + 66, 90, 2, 'F');
+  d.rect(x + 22, y + 71, 110, 2, 'F');
+
+  // Command line strip
+  d.setFillColor('#000000');
+  d.rect(x + 8, y + bh - 14, bw - 16, 8, 'F');
+  d.setFont('courier', 'bold');
+  d.setFontSize(6);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('> CMD:', x + 12, y + bh - 8);
+}
 
 function coverPage(ctx: GuideContext): void {
   const d = ctx.doc;
   const cx = PAGE.W / 2;
 
-  // Gold bar at top
+  // Subtle gold top stripe
   d.setFillColor(COLOR.ACCENT);
-  d.rect(0, 120, PAGE.W, 6, 'F');
+  d.rect(0, 0, PAGE.W, 4, 'F');
+
+  // Console-mockup badge up top
+  coverConsoleBadge(d, cx, 60);
+
+  // Gold bar
+  d.setFillColor(COLOR.ACCENT);
+  d.rect(0, 210, PAGE.W, 6, 'F');
 
   d.setFont('helvetica', 'bold');
   d.setFontSize(32);
   d.setTextColor(COLOR.BLACK);
-  d.text('DISPATCH CONSOLE', cx, 220, { align: 'center' });
+  d.text('DISPATCH CONSOLE', cx, 260, { align: 'center' });
 
-  d.setFontSize(22);
-  d.text('Training & Quick Reference Guide', cx, 258, { align: 'center' });
+  d.setFontSize(18);
+  d.text('Training & Quick Reference Guide', cx, 290, { align: 'center' });
 
   d.setFont('helvetica', 'normal');
-  d.setFontSize(12);
+  d.setFontSize(11);
   d.setTextColor(COLOR.MUTED);
-  d.text('Rocky Mountain Protective Group', cx, 300, { align: 'center' });
-  d.text('Salt Lake City, Utah', cx, 318, { align: 'center' });
+  d.text('Rocky Mountain Protective Group  •  Salt Lake City, Utah', cx, 312, { align: 'center' });
 
-  // Gold bar
+  // Second gold bar — separates hero from TOC
   d.setFillColor(COLOR.ACCENT);
-  d.rect(0, 390, PAGE.W, 6, 'F');
+  d.rect(0, 338, PAGE.W, 3, 'F');
 
-  d.setFont('helvetica', 'normal');
-  d.setFontSize(10);
-  d.setTextColor(COLOR.INK);
-  const tocY = 410;
+  // Contents heading
   d.setFont('helvetica', 'bold');
   d.setFontSize(11);
-  d.text('CONTENTS', cx, tocY, { align: 'center' });
+  d.setTextColor(COLOR.BLACK);
+  d.text('CONTENTS', cx, 360, { align: 'center' });
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.line(cx - 30, 363, cx + 30, 363);
+
+  // Clickable TOC entries in a 2-column layout. Each row is
+  //   <label>  ........................  <page>
+  // and the whole row is a click-target that jumps to that page.
+  const entries = ctx.anchors;
+  const colW = (PAGE.W - PAGE.MARGIN * 2 - 30) / 2;
+  const rowH = 14;
+  const halfCount = Math.ceil(entries.length / 2);
+  const tocTopY = 380;
+
   d.setFont('helvetica', 'normal');
-  d.setFontSize(10);
-  const toc = [
-    '1. Console Overview',
-    '2. Taking a Call End-to-End',
-    '3. Unit Status & 10-Codes',
-    '4. Safety Flags & Priority Levels',
-    '5. F-Key Hotkeys',
-    '6. CAD Command Line',
-    '7. Voice Features (Dispatcher Brain)',
-    '8. Common Workflows',
-    '9. Troubleshooting',
-    '10. Radio Etiquette & Voice Protocols',
-    '11. Documentation Standards',
-    '12. Using the Map',
-    '13. Shift Change Procedure',
-    'Appendix A — Incident Type Reference',
-    'Appendix B — Disposition Codes',
-    'Appendix C — Architecture for Dispatchers',
-    '— Quick-Reference Card (last page) —',
-  ];
-  for (let i = 0; i < toc.length; i++) {
-    d.text(toc[i], cx, tocY + 20 + i * 15, { align: 'center' });
+  d.setFontSize(9.5);
+  d.setTextColor(COLOR.INK);
+
+  for (let i = 0; i < entries.length; i++) {
+    const col = i < halfCount ? 0 : 1;
+    const rowInCol = i < halfCount ? i : i - halfCount;
+    const x = PAGE.MARGIN + col * (colW + 30);
+    const y = tocTopY + rowInCol * rowH;
+    const entry = entries[i];
+
+    const labelW = d.getTextWidth(entry.label);
+    const pageStr = String(entry.page);
+    const pageW = d.getTextWidth(pageStr);
+    const dotsStart = x + labelW + 4;
+    const dotsEnd = x + colW - pageW - 4;
+
+    d.setTextColor(COLOR.INK);
+    d.text(entry.label, x, y);
+
+    // Dotted leader
+    d.setTextColor(COLOR.MUTED);
+    if (dotsEnd > dotsStart) {
+      const dotWidth = d.getTextWidth('.');
+      const dotCount = Math.max(0, Math.floor((dotsEnd - dotsStart) / dotWidth));
+      d.text('.'.repeat(dotCount), dotsStart, y);
+    }
+
+    d.setTextColor(COLOR.INK);
+    d.text(pageStr, x + colW - pageW, y);
+
+    // Make the whole row clickable — jsPDF expects the top-left of the
+    // link rect, and text was drawn with y as the baseline, so shift up.
+    d.link(x, y - 10, colW, rowH, { pageNumber: entry.page });
   }
 
   // Bottom stamp
   d.setFontSize(9);
   d.setTextColor(COLOR.MUTED);
   d.text(`${generatedStamp()}  •  CONFIDENTIAL — AUTHORIZED USE ONLY`, cx, PAGE.H - 48, { align: 'center' });
+  d.setFontSize(8);
+  d.text('Tap any entry above to jump to that section', cx, PAGE.H - 32, { align: 'center' });
 }
 
 function section1(ctx: GuideContext): void {
@@ -308,7 +536,7 @@ function section1(ctx: GuideContext): void {
   );
   bullet(ctx, 'Brand bar (52px tall) — agency logo, workstation identifier, and the current dispatcher\'s name and role. The role badge is color-coded: gold for admin, gray for dispatcher, blue for supervisor.');
   bullet(ctx, 'Menu bar (22px) — File, View, Tools, Help dropdowns plus the global search box. Press Alt-F / Alt-V / Alt-T / Alt-H to open each menu with the keyboard.');
-  bullet(ctx, 'Icon toolbar (46px) — quick-jump buttons to Dispatch, Map, Records, BOLO, Warrants, Incidents, Citations, Cases. Each icon has an F-key mapping listed in Help → Keyboard Shortcuts.');
+  bullet(ctx, 'Icon toolbar (46px) — quick-jump buttons to Dispatch, Map, Records, BOLO, Warrants, Incidents, Citations, Cases. Each icon has an F-key mapping listed in Help -> Keyboard Shortcuts.');
   bullet(ctx, 'Call list (left column, default 320px wide) — every active call sorted by priority descending, then by age. Pending calls float to the top within their priority class. Priority tint: red background for P1, orange for P2, yellow for P3, gray for P4.');
   bullet(ctx, 'Unit roster (center column, default 280px) — grouped by status: Available, Dispatched, Enroute, On Scene, Busy, Out of Service, Off Duty. The group header shows the count; click it to collapse. An LED dot next to each call sign indicates GPS freshness: green = updated within 2 minutes, amber = 2-10 minutes, red = stale beyond 10 minutes.');
   bullet(ctx, 'Detail pane (right column, default 480px) — everything about the selected call: address with map pin, caller info, narrative notes (newest at top), linked persons and vehicles, safety flags, disposition, and the full audit log.');
@@ -373,6 +601,8 @@ function section2(ctx: GuideContext): void {
   paragraph(ctx,
     'This section walks through a typical call from ring-in to archive, with the keystrokes, the required fields, and the judgment calls that only a human can make. Section 8 covers specific workflows (pursuits, multi-unit, mental-health response) in detail.',
   );
+
+  drawCallLifecycleDiagram(ctx);
 
   h2(ctx, 'Step 1 — Create the call');
   paragraph(ctx,
@@ -497,44 +727,65 @@ function section3(ctx: GuideContext): void {
     'A common question during training is "why 10-codes instead of plain English?" The answer is threefold: brevity on a crowded radio channel, privacy from bystanders and scanners, and unambiguous meaning. "Ten-ninety-seven" is impossible to confuse with any other transmission; "on scene" can get cut off in radio traffic and become "scene" which means nothing specific.',
   );
 
+  drawUnitStatusDiagram(ctx);
+
   h2(ctx, '10-Code Reference');
   paragraph(ctx,
     'This is the full set recognized by the CAD command line and voice channel. Cells in the Status column match the unit-status values that appear in the roster.',
   );
+  // Prefer live codes from /api/dispatch/geography/codes so a code added via
+  // the admin UI shows up in the next generated guide without a code change.
+  // If the fetch failed (offline dispatcher, auth cookie expired, etc.), fall
+  // back to the canonical hardcoded set below — the guide must never refuse
+  // to download because the network hiccuped.
+  const hardcoded10Codes: string[][] = [
+    ['10-1',  '-',           'Receiving poorly / signal weak'],
+    ['10-2',  '-',           'Receiving well'],
+    ['10-3',  '-',           'Stop transmitting'],
+    ['10-4',  'ACK',         'Acknowledged / understood'],
+    ['10-5',  '-',           'Relay (pass message to third party)'],
+    ['10-6',  'BUSY',        'Busy — not immediately available'],
+    ['10-7',  'OUT SERVICE', 'Out of service (meals, fuel, admin)'],
+    ['10-7B', 'OUT SERVICE', 'Out of service for restroom'],
+    ['10-7C', 'OUT SERVICE', 'Out of service for court'],
+    ['10-8',  'AVAILABLE',   'In service, available for calls'],
+    ['10-9',  '-',           'Repeat last transmission'],
+    ['10-10', 'BREAK',       'On break / off duty temporarily'],
+    ['10-15', '-',           'Prisoner in custody / transport'],
+    ['10-19', '-',           'Return to station'],
+    ['10-20', 'LOCATION',    'What is your location?'],
+    ['10-22', '-',           'Disregard'],
+    ['10-23', 'STANDBY',     'Stand by'],
+    ['10-25', '-',           'Can you meet?'],
+    ['10-27', '-',           'Driver\'s license check'],
+    ['10-28', '-',           'Vehicle registration check'],
+    ['10-29', '-',           'Want / warrant check'],
+    ['10-32', '-',           'Subject with gun / weapons'],
+    ['10-33', '-',           'EMERGENCY — all units hold traffic'],
+    ['10-50', 'TC',          'Traffic collision'],
+    ['10-55', '-',           'Intoxicated driver'],
+    ['10-70', '-',           'Fire alarm / fire'],
+    ['10-76', 'EN ROUTE',    'En route / responding'],
+    ['10-97', 'ON SCENE',    'Arrived / on scene'],
+    ['10-98', '-',           'Assignment completed'],
+    ['10-99', 'EMERGENCY',   'Officer emergency (triggers panic)'],
+  ];
+
+  const liveTen = (ctx.liveCodes ?? [])
+    .filter((c) => /^10-/i.test(c.code ?? ''))
+    .map((c) => [c.code, c.status_label ?? '-', c.description ?? '']);
+
+  const tenRows = liveTen.length > 0 ? liveTen : hardcoded10Codes;
+
+  if (liveTen.length > 0) {
+    paragraph(ctx,
+      `Live snapshot — ${liveTen.length} 10-codes pulled from this server's dispatch_codes table at generation time. Edit admin -> Dispatch Codes to change what appears here on the next guide download.`,
+    );
+  }
+
   table(ctx,
     ['Code', 'Status', 'Meaning'],
-    [
-      ['10-1',  '-',           'Receiving poorly / signal weak'],
-      ['10-2',  '-',           'Receiving well'],
-      ['10-3',  '-',           'Stop transmitting'],
-      ['10-4',  'ACK',         'Acknowledged / understood'],
-      ['10-5',  '-',           'Relay (pass message to third party)'],
-      ['10-6',  'BUSY',        'Busy — not immediately available'],
-      ['10-7',  'OUT SERVICE', 'Out of service (meals, fuel, admin)'],
-      ['10-7B', 'OUT SERVICE', 'Out of service for restroom'],
-      ['10-7C', 'OUT SERVICE', 'Out of service for court'],
-      ['10-8',  'AVAILABLE',   'In service, available for calls'],
-      ['10-9',  '-',           'Repeat last transmission'],
-      ['10-10', 'BREAK',       'On break / off duty temporarily'],
-      ['10-15', '-',           'Prisoner in custody / transport'],
-      ['10-19', '-',           'Return to station'],
-      ['10-20', 'LOCATION',    'What is your location?'],
-      ['10-22', '-',           'Disregard'],
-      ['10-23', 'STANDBY',     'Stand by'],
-      ['10-25', '-',           'Can you meet?'],
-      ['10-27', '-',           'Driver\'s license check'],
-      ['10-28', '-',           'Vehicle registration check'],
-      ['10-29', '-',           'Want / warrant check'],
-      ['10-32', '-',           'Subject with gun / weapons'],
-      ['10-33', '-',           'EMERGENCY — all units hold traffic'],
-      ['10-50', 'TC',          'Traffic collision'],
-      ['10-55', '-',           'Intoxicated driver'],
-      ['10-70', '-',           'Fire alarm / fire'],
-      ['10-76', 'EN ROUTE',    'En route / responding'],
-      ['10-97', 'ON SCENE',    'Arrived / on scene'],
-      ['10-98', '-',           'Assignment completed'],
-      ['10-99', 'EMERGENCY',   'Officer emergency (triggers panic)'],
-    ],
+    tenRows,
     [2, 3, 6],
   );
 
@@ -560,20 +811,26 @@ function section3(ctx: GuideContext): void {
   paragraph(ctx,
     'In addition to 10-codes, RMPG uses signal codes for operational categories that do not have standard 10-code equivalents. Signal codes are typed as "S" followed by a number and always spoken in full ("signal fifty").',
   );
+  const hardcodedSignals: string[][] = [
+    ['S-3',   'Shots fired'],
+    ['S-10',  'Bomb threat'],
+    ['S-20',  'Robbery in progress'],
+    ['S-30',  'Burglary in progress'],
+    ['S-40',  'Prowler'],
+    ['S-50',  'Suicide attempt / threat'],
+    ['S-60',  'Missing person'],
+    ['S-70',  'Mental health subject'],
+    ['S-99',  'Officer needs assistance — not life threatening'],
+    ['S-100', 'Disturbance'],
+  ];
+  const liveSignals = (ctx.liveCodes ?? [])
+    .filter((c) => /^s-/i.test(c.code ?? ''))
+    .map((c) => [c.code, c.description ?? '']);
+  const signalRows = liveSignals.length > 0 ? liveSignals : hardcodedSignals;
+
   table(ctx,
     ['Signal', 'Meaning'],
-    [
-      ['S-3',   'Shots fired'],
-      ['S-10',  'Bomb threat'],
-      ['S-20',  'Robbery in progress'],
-      ['S-30',  'Burglary in progress'],
-      ['S-40',  'Prowler'],
-      ['S-50',  'Suicide attempt / threat'],
-      ['S-60',  'Missing person'],
-      ['S-70',  'Mental health subject'],
-      ['S-99',  'Officer needs assistance — not life threatening'],
-      ['S-100', 'Disturbance'],
-    ],
+    signalRows,
     [2, 8],
   );
 
@@ -597,6 +854,8 @@ function section4(ctx: GuideContext): void {
   paragraph(ctx,
     'Priority and safety flags do two things: they tell responding officers what they are walking into, and they tell the CAD system how urgently to dispatch. Priority is a single P1-P4 level; safety flags are one or more tags that describe specific hazards. A call can have any combination of flags regardless of priority.',
   );
+
+  drawPriorityPyramidDiagram(ctx);
 
   h2(ctx, 'Priority Levels');
   paragraph(ctx,
@@ -742,6 +1001,8 @@ function section5(ctx: GuideContext): void {
     'Memorizing the F-key row is the single highest-value training investment you can make. A dispatcher who knows F2-F7 by muscle memory will triage calls noticeably faster than one who hunts through menus. Print the quick-reference card at the end of this guide and tape it to the side of your monitor until the keys become automatic.',
   );
 
+  drawFKeyboardDiagram(ctx);
+
   h2(ctx, 'Primary F-Keys');
   table(ctx,
     ['Key', 'Action', 'When to Use'],
@@ -830,6 +1091,8 @@ function section6(ctx: GuideContext): void {
   paragraph(ctx,
     'Commands are case-insensitive — "nc domestic 123 main" works identically to "NC DOMESTIC 123 MAIN". Arguments are space-separated; quote values that contain spaces ("NC \\"open container\\" 123 main"). Press Tab to cycle autocomplete suggestions, Up/Down arrows to recall recent commands.',
   );
+
+  drawCommandLineAnatomyDiagram(ctx);
 
   h2(ctx, 'Call Management Commands');
   table(ctx,
@@ -962,6 +1225,8 @@ function section7(ctx: GuideContext): void {
   paragraph(ctx,
     'The design philosophy: the brain should be an attentive second dispatcher who never gets tired. It speaks up when safety flags are relevant, reminds you of overdue checks, and announces events you might have missed — but it never barks, never repeats itself, and always defers to human judgment.',
   );
+
+  drawBrainPipelineDiagram(ctx);
 
   h2(ctx, 'Voice Persona');
   paragraph(ctx,
@@ -1100,6 +1365,8 @@ function section8(ctx: GuideContext): void {
   paragraph(ctx,
     'Every dispatcher develops patterns for routine calls. This section documents agency-preferred workflows for fifteen of the most common dispatch scenarios. Treat them as starting points — the facts of each call may require deviation, but these patterns cover the typical case.',
   );
+
+  drawPursuitSwimlaneDiagram(ctx);
 
   h2(ctx, 'Call Intake Workflows');
 
@@ -1519,6 +1786,8 @@ function section12(ctx: GuideContext): void {
     'The map is the spatial complement to the call list and unit roster. During a pursuit, tactical operation, or area search, the map becomes your primary situational-awareness surface.',
   );
 
+  drawMapLayerStackDiagram(ctx);
+
   h2(ctx, 'Map Layers');
   bullet(ctx, 'Base map — dark CartoDB (Spillman-style) by default. Switch to Google Satellite for aerial imagery when searching outdoors.');
   bullet(ctx, 'Beat polygons — semi-transparent colored overlays showing sector and beat boundaries. Toggle visibility with the layer selector.');
@@ -1592,6 +1861,2157 @@ function section13(ctx: GuideContext): void {
 
   calloutBox(ctx, 'Worst Case',
     'If a shift change happens during an active P1 pursuit or tactical operation, the outgoing dispatcher stays on until the incident is resolved. Do not hand off mid-pursuit. Continuity outweighs scheduled shift ends.',
+    'warn',
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sections 14-19 — coverage for subsystems that shipped after
+// the original guide was authored. These stay fairly short on
+// purpose; the guide is a quickref, not a manual. Deep content
+// belongs in the in-app Help pages.
+// ═══════════════════════════════════════════════════════════
+
+function section14(ctx: GuideContext): void {
+  title(ctx, '14. Real-Time Sync & Offline Behavior');
+
+  paragraph(ctx,
+    'Every workstation holds a WebSocket to the server. When a dispatcher changes a call, unit status, or premise alert, the server broadcasts the change to every other workstation within roughly one second. There is no manual refresh and no polling; if your screen does not show a recent change, the socket dropped — see below.',
+  );
+
+  drawWebSocketArchDiagram(ctx);
+
+  h2(ctx, 'Connection Indicator');
+  bullet(ctx, 'Status bar (bottom right): LIVE (green LED) means socket is connected and receiving events.');
+  bullet(ctx, 'OFFLINE (red LED) means the socket has been closed for more than 3 seconds. Writes still work but updates from other workstations will not appear.');
+  bullet(ctx, 'The console auto-reconnects with exponential backoff (1s, 2s, 4s, 8s, capped at 30s). You do not need to refresh.');
+  bullet(ctx, 'After reconnect, the client re-fetches the active call list and unit roster so you catch up to any events missed while offline.');
+
+  h2(ctx, 'Offline Survival');
+  paragraph(ctx,
+    'The service worker caches the full app shell, Google Maps tiles for Utah, and your most recent call/unit snapshot. If the server is unreachable, you can still:',
+  );
+  bullet(ctx, 'View the last known call stack and unit roster (read-only, marked STALE).');
+  bullet(ctx, 'Pan and zoom the map — CartoDB dark_matter fallback tiles are pre-cached Z7-Z15 for the operational area.');
+  bullet(ctx, 'Read already-opened incident and citation records from the local cache.');
+
+  paragraph(ctx,
+    'You CANNOT create or update anything while offline. Radio still works — use the backup paper log (pre-printed stack in the console drawer) and key the events into the system once connectivity returns.',
+  );
+
+  calloutBox(ctx, 'Important',
+    'If you are unsure whether a dispatch went through, say so on the radio rather than silently retrying. Double-dispatches are far more dangerous than an extra transmission asking "10-9 on that last dispatch?"',
+    'warn',
+  );
+}
+
+function section15(ctx: GuideContext): void {
+  title(ctx, '15. Map V2 (OpenLayers, Beta)');
+
+  paragraph(ctx,
+    'Map V2 is a parallel map surface at /map-v2 built on OpenLayers and the offline CartoDB raster tile cache. It runs read-only alongside the production Google Maps page at /map and exists so the team can iterate on a non-Google tile stack without risking the live dispatch map. Production dispatch continues to use /map — do NOT direct officers to V2 for live operations yet.',
+  );
+
+  drawMapV2ArchDiagram(ctx);
+
+  h2(ctx, 'What V2 Shows Today');
+  bullet(ctx, 'Base map: CartoDB dark_matter raster tiles (same ones the offline cache already holds).');
+  bullet(ctx, 'Beat polygons: all 719 features from beat.geojson, colored by parent sector.');
+  bullet(ctx, 'Live units and calls: pulled from /dispatch/units and /dispatch/calls?limit=200, refreshed on WebSocket unit_update and dispatch_update events (debounced).');
+  bullet(ctx, 'Click a unit or call marker for a popup with ID, status, and location — same data as the /map hover cards.');
+
+  h2(ctx, 'What V2 Cannot Do Yet');
+  bullet(ctx, 'No drag-to-dispatch. Clicking a unit onto a call has no effect.');
+  bullet(ctx, 'No drawing tools (route planning, perimeter, search grid).');
+  bullet(ctx, 'No status changes from the map — use the roster.');
+  bullet(ctx, 'No GPS breadcrumb playback.');
+
+  paragraph(ctx,
+    'Feature parity is tracked in the OpenLayers migration plan (docs/plans/2026-04-19-openlayers-migration-phase1.md). Until Phase 4 lands, all write paths stay on /map.',
+  );
+
+  calloutBox(ctx, 'Coordinate Gotcha',
+    'Google Maps accepts {lat, lng} objects. OpenLayers wants [lng, lat] arrays in EPSG:3857. If you are debugging V2 and coordinates are in the wrong hemisphere, check that you are calling fromLonLat([lng, lat]) with LNG FIRST.',
+    'info',
+  );
+}
+
+function section16(ctx: GuideContext): void {
+  title(ctx, '16. Field Interviews');
+
+  paragraph(ctx,
+    'A Field Interview (FI) is a documented contact with a person who is not being arrested, cited, or detained in an ongoing call. FI cards build the intelligence baseline — associates, known addresses, vehicles, tattoos — that drives the MNI dossier and compound search. Every FI auto-generates an FI-YY-NNNNN number and pins to a GPS point.',
+  );
+
+  h2(ctx, 'When to File an FI');
+  bullet(ctx, 'Suspicious subject interviewed during a premise check or patrol.');
+  bullet(ctx, 'Voluntary contact that produced useful intelligence (associates, vehicle, admission of parole status).');
+  bullet(ctx, 'Passenger on a traffic stop who was not cited but is worth documenting.');
+  bullet(ctx, 'Person at the scene of a call who was not a party to it but is worth remembering.');
+
+  paragraph(ctx,
+    'Do NOT file an FI for a subject who was arrested or cited — that information belongs on the arrest report or citation. FIs are for encounters that would otherwise leave no trail.',
+  );
+
+  h2(ctx, 'Dispatcher Role');
+  bullet(ctx, 'Officer radios "show me out with one, need an FI" — dispatcher creates or locates the call (type PSO-CONTACT) and notes "FI pending".');
+  bullet(ctx, 'Officer files the FI on their MDT. Dispatcher does not need to do anything in the FI form itself.');
+  bullet(ctx, 'On clear, officer provides the FI number for the log. Confirm by repeating back before clearing.');
+
+  h2(ctx, 'Finding FIs on a Person');
+  paragraph(ctx,
+    'From any person record, Intelligence -> Field Interviews lists every FI that person appears on. The map view (/field-interviews) supports radius search — useful for "show me every FI within 500 feet of this address in the last 90 days" when a dispatcher is building context for a responding officer.',
+  );
+}
+
+function section17(ctx: GuideContext): void {
+  title(ctx, '17. Process Service / Serve Queue');
+
+  paragraph(ctx,
+    'RMPG holds a process-service contract alongside patrol. The Serve Queue is the list of legal documents (subpoenas, summons, eviction notices, restraining orders, small-claims papers) that have been accepted for service and are awaiting officer assignment and attempt.',
+  );
+
+  drawServeLifecycleDiagram(ctx);
+
+  h2(ctx, 'Lifecycle');
+  bullet(ctx, 'Intake: document scanned, recipient and deadline entered, job created. Auto-geocoded to the service address.');
+  bullet(ctx, 'Assignment: dispatcher or supervisor assigns the job to a specific officer (or to a zone pool).');
+  bullet(ctx, 'Attempt: officer marks attempted — photo, signature, GPS, attempt outcome (served / no contact / refused / bad address).');
+  bullet(ctx, 'Close: after successful service OR after the contractual attempt limit, the job closes with a final disposition.');
+
+  h2(ctx, 'PSO Calls That Auto-Create Serve Jobs');
+  paragraph(ctx,
+    'When a PSO-type call is dispatched with a document-service intent, the serveQueueLinker utility on the server side auto-creates the serve job from the call fields. The call and the serve job stay linked — clearing the call does NOT close the serve job; that has to happen on the serve side.',
+  );
+
+  h2(ctx, 'Route Planning');
+  paragraph(ctx,
+    'The Serve Routes feature clusters pending jobs by geography into an optimized day-route with waypoints. This is most useful for contract managers and process servers planning a shift, not for live dispatch.',
+  );
+
+  calloutBox(ctx, 'Privacy',
+    'Serve records contain sensitive information — restraining-order addresses, family names in eviction notices. Serve job details are visible only to roles with process_server, contract_manager, supervisor, or admin. Do NOT read serve contents over an open radio channel.',
+    'warn',
+  );
+}
+
+function section18(ctx: GuideContext): void {
+  title(ctx, '18. Skip Tracer V2');
+
+  paragraph(ctx,
+    'Skip Tracer V2 is the consolidated person-search tool under Intelligence -> Skip Tracer. It queries 22 public and agency data sources in parallel and returns a deduplicated result set. Adapters handle rate limiting, response caching, and per-source retry so you do not burn a lookup quota on a flaky source.',
+  );
+
+  drawSkipTracerFanoutDiagram(ctx);
+
+  h2(ctx, 'Covered Sources (Partial)');
+  bullet(ctx, 'FBI Wanted and OFAC sanctions lists (federal flags, highest-priority hit).');
+  bullet(ctx, 'National Sex Offender Public Registry (NSOPW).');
+  bullet(ctx, 'Utah State Court docket search.');
+  bullet(ctx, 'SLC Assessor property records (address history and ownership).');
+  bullet(ctx, 'Salt Lake County jail roster (current and recent bookings).');
+  bullet(ctx, 'Social and professional directory adapters.');
+
+  h2(ctx, 'Dispatcher Use Cases');
+  bullet(ctx, 'A 10-29 (wants/warrant check) that needs more than NCIC — skip tracer adds civil, sex offender, and federal context.');
+  bullet(ctx, 'Welfare check on a subject whose last known address is stale. Skip tracer may surface recent property or arrest activity pointing at a newer address.');
+  bullet(ctx, 'Pre-dispatch context for a PSO serve job where the recipient "should be" at the service address but has not been seen there.');
+
+  calloutBox(ctx, 'Legal',
+    'Skip Tracer V2 searches are audited. Each lookup requires a case number or an incident number as justification. Running a skip trace without a legitimate law-enforcement purpose is a policy violation and potentially a criminal one.',
+    'warn',
+  );
+}
+
+function section19(ctx: GuideContext): void {
+  title(ctx, '19. Compound & Universal Search');
+
+  paragraph(ctx,
+    'Two complementary search tools live under Records -> Search. Compound Search is a structured NCIC-style query form; Universal Search is a single box that fans out across nine record types.',
+  );
+
+  drawCompoundSearchMatrixDiagram(ctx);
+
+  h2(ctx, 'Compound Search');
+  paragraph(ctx,
+    'The compound form accepts multiple simultaneous criteria and returns records that match ALL of them. Most-used fields:',
+  );
+  bullet(ctx, 'Name: supports wildcards (SMITH*, *JOHN*, ?ARKUS). Partial-match is default.');
+  bullet(ctx, 'DOB: accepts a single date or a date range (useful when DOB is approximate).');
+  bullet(ctx, 'Physical description: height / weight ranges, hair, eyes, build, distinguishing marks.');
+  bullet(ctx, 'Address: radius search — "everyone in our records within 500 feet of this point."');
+  bullet(ctx, 'Vehicle plate: partial or full, plus state and year range.');
+  bullet(ctx, 'Flags: officer safety, mental health, gang affiliate, known associate — boolean filter.');
+
+  h2(ctx, 'Universal Search');
+  paragraph(ctx,
+    'Universal Search takes one query string and returns grouped hits across persons, vehicles, calls, incidents, citations, arrests, warrants, field interviews, and properties. Use it when you do not yet know what kind of record you are looking for — a name that might be a person or might be a business, a number that might be a plate or might be a case number.',
+  );
+
+  h2(ctx, 'MNI Dossier');
+  paragraph(ctx,
+    'From any person hit, the Dossier button (or /api/records/persons/:id/dossier) compiles the full intelligence package — every call, incident, citation, arrest, warrant, FI, associate, and vehicle linkage for that person, in one scrollable document. This is the right artifact to hand to a responding officer before they get on scene with a high-risk subject.',
+  );
+
+  calloutBox(ctx, 'Tip',
+    'Save frequent compound-search configurations as Saved Searches. Common examples: "All active P1 callers in Beat 14 this shift", "All field interviews of a specific gang affiliation in the last 30 days". Saved searches are per-user and do not leak across accounts.',
+    'info',
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sections 20-22 — deep educational content. These sections
+// are intentionally longer than 1-19 because they are the
+// "learning" material a new dispatcher reads once cover-to-
+// cover, whereas 1-19 are reference content a working
+// dispatcher flips to as needed.
+// ═══════════════════════════════════════════════════════════
+
+/**
+// ═══════════════════════════════════════════════════════════
+// Section diagrams. Each drawXxxDiagram() is a self-contained
+// vector rendering that advances ctx.y past its own height.
+// Call these from within the relevant section function, after
+// the opening paragraph and before the prose that references
+// the figure number.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Fig. 2-1 — Call state lifecycle. Five state boxes left-to-right
+ * with transition arrows and typical timings. Dispatched-unstuck
+ * and on-scene-stuck thresholds annotated below the states they
+ * apply to.
+ */
+function drawCallLifecycleDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 170);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 150;
+
+  dFrame(d, x, y, w, h);
+
+  const states: Array<[string, string]> = [
+    ['PENDING',     'F2 opens intake\nunassigned'],
+    ['DISPATCHED',  'Unit(s) assigned\nnot moving'],
+    ['ENROUTE',     'F5 set\nunit moving'],
+    ['ON SCENE',    'F6 set\nunit at location'],
+    ['CLEARED',     'F7 + disposition\nauditable close'],
+  ];
+  const boxW = 76;
+  const boxH = 44;
+  const gap = (w - boxW * states.length - 24) / (states.length - 1);
+  const cy = y + 40;
+
+  const boxes: ReturnType<typeof dBox>[] = [];
+  for (let i = 0; i < states.length; i++) {
+    const bx = x + 12 + i * (boxW + gap);
+    const [title, sub] = states[i];
+    const box = dBox(d, bx, cy, boxW, boxH, `${title}\n${sub}`, {
+      fill: i === 0 ? '#141414' : (i === states.length - 1 ? '#0d2818' : '#1a1a1a'),
+      stroke: COLOR.ACCENT,
+      textColor: '#e5e5e5',
+      fontSize: 7,
+      bold: true,
+    });
+    boxes.push(box);
+  }
+  for (let i = 0; i < boxes.length - 1; i++) {
+    const from = boxes[i];
+    const to = boxes[i + 1];
+    dArrow(d, from.x + from.w, from.y + boxH / 2, to.x, to.y + boxH / 2);
+  }
+
+  // Timing callouts under the relevant transition
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('P1: dispatch <45s', boxes[0].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+  d.text('brain alerts >90s', boxes[1].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+  d.text('P1: 3-5 min', boxes[2].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+  d.text('brain alerts >8 min', boxes[3].x + boxW + gap / 2, cy + boxH + 12, { align: 'center' });
+
+  // Rewind arrow: CLEARED -> (archive); PENDING <- (new call)
+  d.setDrawColor('#888888');
+  d.setLineWidth(0.5);
+  d.text('Every transition is audited (who, when, from -> to, unit)', x + w / 2, y + h - 8, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 2-1 — Call state lifecycle with typical transition timings.');
+}
+
+/**
+ * Fig. 3-1 — Unit status state machine. Nodes for each status with
+ * directional edges showing legal transitions. Uses a hub-and-spoke
+ * layout because AVAILABLE is the central hub most transitions pass
+ * through.
+ */
+function drawUnitStatusDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 280);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 260;
+
+  dFrame(d, x, y, w, h);
+
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  // Central hub: AVAILABLE
+  const hub = dBox(d, cx - 50, cy - 18, 100, 36, 'AVAILABLE', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#22c55e', fontSize: 10, bold: true,
+  });
+
+  // Satellite nodes: DISPATCHED, ENROUTE, ON SCENE, BUSY, OUT OF SERVICE, OFF DUTY
+  const satellites: Array<{ label: string; dx: number; dy: number; color: string }> = [
+    { label: 'OFF DUTY',     dx:    0, dy: -100, color: '#666666' },
+    { label: 'DISPATCHED',   dx:  170, dy:  -70, color: '#d4a017' },
+    { label: 'ENROUTE',      dx:  170, dy:    0, color: '#d4a017' },
+    { label: 'ON SCENE',     dx:  170, dy:   70, color: '#b91c1c' },
+    { label: 'BUSY',         dx: -170, dy:  -70, color: '#d97706' },
+    { label: 'OUT OF SVC',   dx: -170, dy:   70, color: '#888888' },
+  ];
+  const nodes: Record<string, ReturnType<typeof dBox>> = { AVAILABLE: hub };
+  for (const s of satellites) {
+    const nx = cx + s.dx - 42;
+    const ny = cy + s.dy - 14;
+    nodes[s.label] = dBox(d, nx, ny, 84, 28, s.label, {
+      fill: '#141414', stroke: s.color, textColor: s.color, fontSize: 8, bold: true,
+    });
+  }
+
+  // Transitions (edges). Each edge is rendered with dArrow.
+  const edge = (fromLabel: string, toLabel: string, label?: string) => {
+    const f = nodes[fromLabel];
+    const t = nodes[toLabel];
+    if (!f || !t) return;
+    // Attach at nearest edge midpoints
+    const fxCenter = f.x + f.w / 2;
+    const fyCenter = f.y + f.h / 2;
+    const txCenter = t.x + t.w / 2;
+    const tyCenter = t.y + t.h / 2;
+    const dx = txCenter - fxCenter;
+    const dy = tyCenter - fyCenter;
+    const angle = Math.atan2(dy, dx);
+    const fRx = (Math.abs(Math.cos(angle)) > 0.5) ? f.w / 2 : Math.abs(dx / dy) * (f.h / 2);
+    const fRy = (Math.abs(Math.sin(angle)) > 0.5) ? f.h / 2 : Math.abs(dy / dx) * (f.w / 2);
+    const tRx = (Math.abs(Math.cos(angle)) > 0.5) ? t.w / 2 : Math.abs(dx / dy) * (t.h / 2);
+    const tRy = (Math.abs(Math.sin(angle)) > 0.5) ? t.h / 2 : Math.abs(dy / dx) * (t.w / 2);
+    const startX = fxCenter + Math.cos(angle) * Math.min(fRx, f.w / 2);
+    const startY = fyCenter + Math.sin(angle) * Math.min(fRy, f.h / 2);
+    const endX = txCenter - Math.cos(angle) * Math.min(tRx, t.w / 2);
+    const endY = tyCenter - Math.sin(angle) * Math.min(tRy, t.h / 2);
+    dArrow(d, startX, startY, endX, endY, label);
+  };
+
+  edge('OFF DUTY', 'AVAILABLE', 'log on');
+  edge('AVAILABLE', 'DISPATCHED', 'F3');
+  edge('DISPATCHED', 'ENROUTE', 'F5');
+  edge('ENROUTE', 'ON SCENE', 'F6');
+  edge('ON SCENE', 'AVAILABLE', 'F7');
+  edge('AVAILABLE', 'BUSY');
+  edge('BUSY', 'AVAILABLE');
+  edge('AVAILABLE', 'OUT OF SVC');
+  edge('OUT OF SVC', 'AVAILABLE');
+  edge('AVAILABLE', 'OFF DUTY', 'log off');
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 3-1 — Legal unit status transitions. AVAILABLE is the hub; illegal transitions are blocked by the server.');
+}
+
+/**
+ * Fig. 4-1 — Priority triage pyramid. Four horizontal bars stacked
+ * narrowest-at-top (P1) to widest-at-bottom (P4) to visually reinforce
+ * that most calls are P3/P4 and only a small fraction are true P1s.
+ */
+function drawPriorityPyramidDiagram(ctx: GuideContext): void {
+  // Restructured into clean columns so nothing overlaps:
+  //   [ response-time ] [ P-badge ] [ bar+desc ] [ frequency ]
+  // The previous layout put the P-badge INSIDE the bar at the left edge,
+  // which collided with the centered description label on the narrow P1
+  // bar. Separating into columns gives each element its own real estate.
+  ensureSpace(ctx, 210);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 190;
+
+  dFrame(d, x, y, w, h);
+
+  const levels: Array<{ p: string; label: string; color: string; widthPct: number; freq: string; response: string }> = [
+    { p: 'P1', label: 'Life / safety emergency',    color: '#b91c1c', widthPct: 0.20, freq: '~2% of calls',  response: 'lights + siren'   },
+    { p: 'P2', label: 'Crime in progress / urgent', color: '#d97706', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
+    { p: 'P3', label: 'Routine',                    color: '#ca8a04', widthPct: 0.65, freq: '~55% of calls', response: 'closest unit'     },
+    { p: 'P4', label: 'Cold / report only',         color: '#6b7280', widthPct: 0.85, freq: '~28% of calls', response: 'phone / deferred' },
+  ];
+
+  // Column anchors
+  const colResponse = x + 10;        // left: response time
+  const colBadge    = x + 78;        // small P-badge
+  const colBar      = x + 108;       // bar starts (left-aligned)
+  const colFreqR    = x + w - 10;    // right edge: frequency
+
+  const barAreaW = (colFreqR - 76) - colBar;  // reserve space for frequency column
+  const barH = 30;
+  const gap = 8;
+  const pyramidTopY = y + 32;
+
+  // Column headings
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('RESPONSE', colResponse, y + 16);
+  d.text('LEVEL',    colBadge,    y + 16);
+  d.text('DESCRIPTION (bar width = call-volume share)', colBar, y + 16);
+  d.text('SHARE',    colFreqR,    y + 16, { align: 'right' });
+
+  for (let i = 0; i < levels.length; i++) {
+    const lvl = levels[i];
+    const by = pyramidTopY + i * (barH + gap);
+    const bw = Math.max(60, barAreaW * lvl.widthPct);
+
+    // Response-time column
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(7);
+    d.setTextColor('#888888');
+    d.text(lvl.response, colResponse, by + barH / 2 + 2);
+
+    // P-badge: small solid colored chip
+    d.setFillColor(lvl.color);
+    d.roundedRect(colBadge, by + 4, 22, barH - 8, 2, 2, 'F');
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(10);
+    d.setTextColor('#ffffff');
+    d.text(lvl.p, colBadge + 11, by + barH / 2 + 3, { align: 'center' });
+
+    // Bar (left-aligned, width-proportional to share)
+    d.setFillColor(lvl.color);
+    d.roundedRect(colBar, by, bw, barH, 2, 2, 'F');
+
+    // Description text, centered inside the bar
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(9);
+    d.setTextColor('#ffffff');
+    d.text(lvl.label, colBar + bw / 2, by + barH / 2 + 3, { align: 'center' });
+
+    // Frequency (right column, outside bar)
+    d.setFont('helvetica', 'italic');
+    d.setFontSize(8);
+    d.setTextColor('#888888');
+    d.text(lvl.freq, colFreqR, by + barH / 2 + 2, { align: 'right' });
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 4-1 — Priority pyramid. Bar width is proportional to typical call-volume share.');
+}
+
+/**
+ * Fig. 5-1 — F-key keyboard layout. Renders a stylized keyboard row
+ * with F1-F12 keys and their dispatch-console mapping printed
+ * underneath each. Includes ESC + a "cmd" marker to orient readers.
+ */
+function drawFKeyboardDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 130);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 110;
+
+  dFrame(d, x, y, w, h);
+
+  const keys: Array<[string, string]> = [
+    ['F1', 'Help'],
+    ['F2', 'New Call'],
+    ['F3', 'Dispatch'],
+    ['F4', 'Select Unit'],
+    ['F5', 'Enroute'],
+    ['F6', 'On Scene'],
+    ['F7', 'Clear'],
+    ['F8', 'CMD Line'],
+    ['F9', 'Voice Toggle'],
+    ['F10', 'Mic Arm'],
+    ['F11', 'BOLO Panel'],
+    ['F12', 'NCIC / Panic'],
+  ];
+  const keyW = (w - 24) / 12;
+  const keyH = 44;
+  const keyY = y + 28;
+
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('KEYBOARD  F-ROW', x + 12, y + 18);
+
+  for (let i = 0; i < keys.length; i++) {
+    const [label, action] = keys[i];
+    const kx = x + 12 + i * keyW;
+    // Key cap
+    d.setFillColor('#1a1a1a');
+    d.setDrawColor('#444444');
+    d.setLineWidth(0.75);
+    d.roundedRect(kx, keyY, keyW - 4, keyH, 3, 3, 'FD');
+    // Inner highlight
+    d.setDrawColor('#2a2a2a');
+    d.setLineWidth(0.3);
+    d.roundedRect(kx + 2, keyY + 2, keyW - 8, keyH - 4, 2, 2, 'S');
+    // Key label
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(9);
+    d.setTextColor(COLOR.ACCENT);
+    d.text(label, kx + (keyW - 4) / 2, keyY + 16, { align: 'center' });
+    // Action
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(6.5);
+    d.setTextColor('#e5e5e5');
+    const actLines = d.splitTextToSize(action, keyW - 8) as string[];
+    for (let li = 0; li < actLines.length; li++) {
+      d.text(actLines[li], kx + (keyW - 4) / 2, keyY + 28 + li * 8, { align: 'center' });
+    }
+  }
+
+  // Modifier strip
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('Modifiers: Shift+F-key = reverse action  |  Ctrl+F-key = same action for previously selected unit/call', x + 12, y + h - 8);
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 5-1 — F-key mapping for the dispatch console. Hints echo in the bottom status bar.');
+}
+
+/**
+ * Fig. 7-1 — Dispatcher Brain signal flow. Horizontal pipeline:
+ * Mic -> STT -> NLU -> Rule Engine -> Event Bus -> TTS -> Speakers.
+ * Rule Engine has a sideband input from the Call/Unit Event Stream
+ * coming from WebSocket, since brain reacts to system events too.
+ */
+function drawBrainPipelineDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 180);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 160;
+
+  dFrame(d, x, y, w, h);
+
+  const stages: string[] = ['Microphone', 'Web Speech\nRecognition', 'Intent\nParser', 'Rule Engine', 'Event Bus', 'Edge TTS\nSynthesis', 'Speakers'];
+  const boxW = 62;
+  const boxH = 38;
+  const gap = (w - boxW * stages.length - 24) / (stages.length - 1);
+  const cy = y + 40;
+
+  const boxes: ReturnType<typeof dBox>[] = [];
+  for (let i = 0; i < stages.length; i++) {
+    const bx = x + 12 + i * (boxW + gap);
+    const isRule = stages[i] === 'Rule Engine';
+    boxes.push(dBox(d, bx, cy, boxW, boxH, stages[i], {
+      fill: isRule ? '#1f1a00' : '#141414',
+      stroke: isRule ? COLOR.ACCENT : '#2e2e2e',
+      textColor: '#e5e5e5',
+      fontSize: 7,
+      bold: isRule,
+    }));
+  }
+  for (let i = 0; i < boxes.length - 1; i++) {
+    dArrow(d, boxes[i].x + boxW, boxes[i].y + boxH / 2, boxes[i + 1].x, boxes[i + 1].y + boxH / 2);
+  }
+
+  // Sideband: WebSocket event stream feeding Rule Engine
+  const sideY = cy + 80;
+  const sideBox = dBox(d, x + w / 2 - 90, sideY, 180, 28, 'WebSocket: call/unit/premise events', {
+    fill: '#0d1a2b', stroke: '#2b4b6b', textColor: '#93c5fd', fontSize: 8, bold: true,
+  });
+  // Arrow from sideband up to Rule Engine
+  const ruleBox = boxes[3];
+  dArrow(d,
+    sideBox.x + sideBox.w / 2, sideBox.y,
+    ruleBox.x + ruleBox.w / 2, ruleBox.y + ruleBox.h,
+    undefined, '#93c5fd',
+  );
+
+  // Labels
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(6.5);
+  d.setTextColor('#888888');
+  d.text('YOUR VOICE  ->', x + 20, cy - 8);
+  d.text('<- BRAIN SPEAKS', x + w - 20, cy - 8, { align: 'right' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 7-1 — Dispatcher Brain signal flow. Rule Engine fires on both your speech AND live system events.');
+}
+
+/**
+ * Fig. 14-1 — WebSocket sync architecture. Central server with four
+ * client workstations + one MDT connected via WS. Shows the
+ * broadcast pattern ("any dispatcher's change propagates to all
+ * peers within ~1s") and the offline queue.
+ */
+function drawWebSocketArchDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 240);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 220;
+
+  dFrame(d, x, y, w, h);
+
+  // Central server node
+  const cx = x + w / 2;
+  const cy = y + h / 2 - 10;
+  const server = dBox(d, cx - 70, cy - 22, 140, 44, 'RMPG FLEX SERVER\nws://rmpgutah.us', {
+    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+  });
+
+  // Database below server
+  const db = dBox(d, cx - 50, cy + 40, 100, 24, 'SQLite (audit log)', {
+    fill: '#0a0a0a', stroke: '#2e2e2e', textColor: '#888888', fontSize: 8,
+  });
+  dArrow(d, server.x + server.w / 2, server.y + server.h, db.x + db.w / 2, db.y, undefined, '#888888');
+
+  // Four client workstations in a semicircle above
+  const clients = [
+    { label: 'Dispatcher A\n(console)',  angle: -Math.PI * 0.85 },
+    { label: 'Dispatcher B\n(console)',  angle: -Math.PI * 0.65 },
+    { label: 'Supervisor\n(console)',    angle: -Math.PI * 0.35 },
+    { label: 'Unit U07\n(MDT)',           angle: -Math.PI * 0.15 },
+  ];
+  const radius = 90;
+  for (const c of clients) {
+    const ncx = cx + Math.cos(c.angle) * radius;
+    const ncy = cy + Math.sin(c.angle) * radius * 0.8;
+    const nb = dBox(d, ncx - 48, ncy - 16, 96, 32, c.label, {
+      fill: '#141414', stroke: '#166534', textColor: '#22c55e', fontSize: 7, bold: true,
+    });
+    // Bidirectional arrow indicator (two lines)
+    const fx = nb.x + nb.w / 2;
+    const fy = nb.y + nb.h;
+    const tx = server.x + server.w / 2;
+    const ty = server.y;
+    dArrow(d, fx, fy, tx + 10, ty - 1, undefined, '#22c55e');
+    dArrow(d, tx - 10, ty, fx, fy, undefined, '#22c55e');
+  }
+
+  // Offline queue indicator
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('Every change -> server -> broadcast to every peer within ~1s.', x + w / 2, y + h - 22, { align: 'center' });
+  d.text('Offline: writes queue in IndexedDB and replay on reconnect.', x + w / 2, y + h - 10, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 14-1 — Real-time sync topology. Single server, N clients, WebSocket broadcast.');
+}
+
+/**
+ * Fig. 18-1 — Skip Tracer V2 fan-out. Central query node with 22
+ * source adapters fanning out in a radial pattern, grouped by
+ * category (federal, state, local, open-source).
+ */
+function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
+  // Two concentric rings — 22 sources on a single ring at r=88 with 52pt
+  // boxes mathematically overlap (~25pt adjacent separation). Split into
+  // an inner ring (federal + state = 10) and outer ring (local + open-
+  // source = 12). Each ring's per-node spacing roughly doubles.
+  ensureSpace(ctx, 340);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 320;
+
+  dFrame(d, x, y, w, h);
+
+  // Central query node
+  const cx = x + w / 2;
+  const cy = y + h / 2 - 4;
+  dBox(d, cx - 50, cy - 16, 100, 32, 'SKIP TRACER', {
+    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
+  });
+
+  type Src = { label: string; cat: 'fed' | 'state' | 'local' | 'oss' };
+
+  // Inner ring: authoritative law-enforcement sources (federal + state) — 10
+  const innerSources: Src[] = [
+    { label: 'FBI WANTED',    cat: 'fed'   },
+    { label: 'OFAC',          cat: 'fed'   },
+    { label: 'NSOPW',         cat: 'fed'   },
+    { label: 'TSA No-Fly',    cat: 'fed'   },
+    { label: 'DEA Diversion', cat: 'fed'   },
+    { label: 'UT Courts',     cat: 'state' },
+    { label: 'UT DMV',        cat: 'state' },
+    { label: 'UT DOC',        cat: 'state' },
+    { label: 'UT MVR',        cat: 'state' },
+    { label: 'UT BCI',        cat: 'state' },
+  ];
+  // Outer ring: local + open-source — 12
+  const outerSources: Src[] = [
+    { label: 'SLC Assessor',   cat: 'local' },
+    { label: 'SL Co Jail',     cat: 'local' },
+    { label: 'SLCPD RMS',      cat: 'local' },
+    { label: 'UPD RMS',        cat: 'local' },
+    { label: 'SL Co Rec',      cat: 'local' },
+    { label: 'Voter Reg',      cat: 'oss'   },
+    { label: 'Social Dir',     cat: 'oss'   },
+    { label: 'Prof Licenses',  cat: 'oss'   },
+    { label: 'Business Reg',   cat: 'oss'   },
+    { label: 'News Archive',   cat: 'oss'   },
+    { label: 'Obituaries',     cat: 'oss'   },
+    { label: 'Utility Lookup', cat: 'oss'   },
+  ];
+
+  const catColors: Record<string, { fill: string; stroke: string; text: string }> = {
+    fed:   { fill: '#1a0505', stroke: '#b91c1c', text: '#fca5a5' },
+    state: { fill: '#0a1a2b', stroke: '#2563eb', text: '#93c5fd' },
+    local: { fill: '#0d2818', stroke: '#166534', text: '#86efac' },
+    oss:   { fill: '#141414', stroke: '#666666', text: '#cccccc' },
+  };
+
+  const drawRing = (sources: Src[], radius: number, startAngle: number): void => {
+    for (let i = 0; i < sources.length; i++) {
+      const angle = startAngle + (i / sources.length) * Math.PI * 2;
+      const nx = cx + Math.cos(angle) * radius;
+      const ny = cy + Math.sin(angle) * radius;
+      const src = sources[i];
+      const c = catColors[src.cat];
+      const box = dBox(d, nx - 24, ny - 7, 48, 14, src.label, {
+        fill: c.fill, stroke: c.stroke, textColor: c.text, fontSize: 6, bold: true,
+      });
+      d.setDrawColor(c.stroke);
+      d.setLineWidth(0.3);
+      d.line(cx, cy, box.x + box.w / 2, box.y + box.h / 2);
+    }
+  };
+
+  drawRing(innerSources, 80,  -Math.PI / 2);
+  drawRing(outerSources, 140, -Math.PI / 2 + Math.PI / outerSources.length);
+
+  // Legend
+  const legendY = y + h - 14;
+  const legX = x + 12;
+  let lx = legX;
+  const legends: Array<[string, string]> = [
+    ['fed', 'Federal'],
+    ['state', 'State (UT)'],
+    ['local', 'Local'],
+    ['oss', 'Open-source'],
+  ];
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(7);
+  for (const [cat, name] of legends) {
+    const c = catColors[cat];
+    d.setFillColor(c.stroke);
+    d.rect(lx, legendY - 6, 6, 6, 'F');
+    d.setTextColor('#888888');
+    d.text(name, lx + 10, legendY - 1);
+    lx += d.getTextWidth(name) + 26;
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 18-1 — Skip Tracer V2 source fan-out. 22 parallel adapters grouped by jurisdiction.');
+}
+
+/**
+ * Fig. 21-1 — Shots-fired call timeline. Horizontal timeline from
+ * T+00:00 to T+20:30 with annotated event markers for every
+ * critical moment in the worked example.
+ */
+function drawCallTimelineDiagram(ctx: GuideContext): void {
+  // Taller frame to accommodate multi-tier stacked labels for the
+  // early-clustered events (T+0 through T+1 has 6 events in 60s).
+  ensureSpace(ctx, 300);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 280;
+
+  dFrame(d, x, y, w, h);
+
+  // Horizontal axis: T+00:00 to T+21:00 (21 minutes)
+  const axisY = y + h / 2;
+  const axisX0 = x + 30;
+  const axisX1 = x + w - 20;
+  const axisW = axisX1 - axisX0;
+  const durationMin = 21;
+
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.line(axisX0, axisY, axisX1, axisY);
+
+  // Minute ticks (every 3 minutes)
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(6.5);
+  d.setTextColor('#888888');
+  for (let m = 0; m <= durationMin; m += 3) {
+    const tx = axisX0 + (m / durationMin) * axisW;
+    d.setDrawColor('#666666');
+    d.setLineWidth(0.5);
+    d.line(tx, axisY - 2, tx, axisY + 2);
+    d.text(`T+${String(m).padStart(2, '0')}:00`, tx, axisY + 12, { align: 'center' });
+  }
+
+  // Pare the event list down and spread the clustered early events to
+  // discrete times (+0, +20s, +25s, +40s, +55s, +1m) so the label
+  // anchor points on the axis don't land on top of each other.
+  // Then alternate sides AND stagger each side into 3 vertical tiers
+  // so neighbors never collide.
+  type Evt = { min: number; label: string; color: string };
+  const events: Evt[] = [
+    { min: 0,     label: 'Phone rings\nF2 pressed',     color: '#d4a017' },
+    { min: 0.33,  label: 'Caller gives\nlocation',       color: '#888888' },
+    { min: 0.42,  label: 'Incident type\nclassified',    color: '#888888' },
+    { min: 0.48,  label: 'Voice-channel\nalert',          color: '#d4a017' },
+    { min: 0.9,   label: 'U07 enroute\n(F5)',            color: '#22c55e' },
+    { min: 1.5,   label: 'Caller update:\nveh flees NB',  color: '#b91c1c' },
+    { min: 2.0,   label: 'U07 diverts\nto intercept',     color: '#888888' },
+    { min: 2.8,   label: 'U12 on scene\n(F6)',            color: '#b91c1c' },
+    { min: 3.5,   label: 'BOLO broadcast\n(F8 + bolo)',   color: '#d4a017' },
+    { min: 5.7,   label: 'U07 posted\n(F6)',              color: '#b91c1c' },
+    { min: 12.5,  label: 'U12 clears\n(F7)',              color: '#22c55e' },
+    { min: 19.25, label: 'U07 clears\n(F7)',              color: '#22c55e' },
+    { min: 20.5,  label: 'Close call\ndisp: GOA',         color: '#666666' },
+  ];
+
+  // Each event gets a side (top/bot) and a tier (0,1,2). We walk through
+  // events in order and assign them to the next free tier on alternating
+  // sides. "Free" means the event's x-position doesn't overlap the
+  // previously-placed event on that (side, tier) — with a minimum
+  // horizontal separation of 48pt.
+  const TIERS = 3;
+  const MIN_SEP = 48;
+  const lastXBySideTier: Record<string, number> = {};
+  const placements: Array<{ ev: Evt; side: 'top' | 'bot'; tier: number; ex: number }> = [];
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    const ex = axisX0 + (ev.min / durationMin) * axisW;
+    // Prefer alternating by index; fall through tiers if occupied.
+    const preferredSide: 'top' | 'bot' = i % 2 === 0 ? 'top' : 'bot';
+    const sidesInOrder: Array<'top' | 'bot'> = [preferredSide, preferredSide === 'top' ? 'bot' : 'top'];
+    let placed = false;
+    outer: for (const side of sidesInOrder) {
+      for (let tier = 0; tier < TIERS; tier++) {
+        const key = `${side}-${tier}`;
+        const lastX = lastXBySideTier[key] ?? -Infinity;
+        if (ex - lastX >= MIN_SEP) {
+          lastXBySideTier[key] = ex;
+          placements.push({ ev, side, tier, ex });
+          placed = true;
+          break outer;
+        }
+      }
+    }
+    if (!placed) {
+      // Fallback: use side top tier 0 and accept overlap; should be unreachable
+      // with the current 13-event budget but defensive.
+      placements.push({ ev, side: 'top', tier: 0, ex });
+    }
+  }
+
+  // Tier offsets (how far from the axis): tier 0 nearest, tier 2 furthest.
+  const tierOffsets = [30, 58, 86];
+
+  for (const p of placements) {
+    const { ev, side, tier, ex } = p;
+
+    // Marker dot on the axis
+    d.setFillColor(ev.color);
+    d.circle(ex, axisY, 2.5, 'F');
+
+    const offset = tierOffsets[tier];
+    const labelY = side === 'top' ? axisY - offset : axisY + offset;
+    const anchorY = side === 'top' ? axisY - 4 : axisY + 4;
+
+    // Connector line
+    d.setDrawColor(ev.color);
+    d.setLineWidth(0.4);
+    d.line(ex, anchorY, ex, labelY + (side === 'top' ? 10 : -4));
+
+    // Label (2 lines)
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(6);
+    d.setTextColor(ev.color);
+    const lines = ev.label.split('\n');
+    // Anchor label block above-the-anchor for top, below-the-anchor for bot
+    const blockBaseY = side === 'top' ? labelY : labelY;
+    for (let i = 0; i < lines.length; i++) {
+      d.text(lines[i], ex, blockBaseY + i * 7, { align: 'center' });
+    }
+  }
+
+  // Title strip
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(9);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('SHOTS FIRED — 2100 S STATE — P1 — DISP T+0 -> CLOSE T+20:30', x + w / 2, y + 16, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 21-1 — Worked-example call timeline. Labels stagger into 3 tiers per side to avoid cluster overlap.');
+}
+
+/**
+ * Fig. 6-1 — CAD command line anatomy. Annotated single command with
+ * callout labels pointing at the verb, subject, and argument portions.
+ * Teaches the grammar by showing it.
+ */
+function drawCommandLineAnatomyDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 160);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 140;
+
+  dFrame(d, x, y, w, h);
+
+  // Command line strip
+  const cmdY = y + 60;
+  const cmdX = x + 30;
+  const cmdW = w - 60;
+  const cmdH = 28;
+  d.setFillColor('#000000');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.rect(cmdX, cmdY, cmdW, cmdH, 'FD');
+
+  // Caret
+  d.setFont('courier', 'bold');
+  d.setFontSize(14);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('>', cmdX + 8, cmdY + 19);
+
+  // Example command — each token colored differently for callouts
+  const verbX = cmdX + 22;
+  d.setTextColor('#d4a017');
+  d.text('DS',   verbX, cmdY + 19);
+  d.setTextColor('#22c55e');
+  d.text('U07',  verbX + 26, cmdY + 19);
+  d.setTextColor('#e5e5e5');
+  d.text('C24-0415',  verbX + 64, cmdY + 19);
+  d.setTextColor('#888888');
+  d.text('; NOTE "rolling code 3"',  verbX + 146, cmdY + 19);
+
+  // Callout labels
+  const drawCallout = (fromX: number, label: string, color: string, labelX: number, labelY: number) => {
+    d.setDrawColor(color);
+    d.setLineWidth(0.5);
+    d.line(fromX, cmdY, fromX, labelY);
+    d.line(fromX, labelY, labelX, labelY);
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor(color);
+    d.text(label, labelX + 3, labelY + 2);
+  };
+  drawCallout(verbX + 8, 'VERB: dispatch', '#d4a017', x + 20, y + 30);
+  drawCallout(verbX + 40, 'UNIT: callsign', '#22c55e', x + 170, y + 30);
+  drawCallout(verbX + 100, 'CALL: number', '#e5e5e5', x + w - 220, y + 30);
+  drawCallout(verbX + 200, 'MODIFIER: note', '#888888', x + w - 120, y + 108);
+
+  // Title
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('GRAMMAR: <verb> <subject> <argument> [; modifier ...]', x + w / 2, y + h - 10, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 6-1 — CAD command-line syntax. Tokens are space-separated; semicolons chain modifiers.');
+}
+
+/**
+ * Fig. 8-1 — Multi-unit pursuit workflow. Three swim-lanes (Primary
+ * officer, Dispatcher, Supervisor) showing the parallel steps each
+ * role takes from pursuit initiation to termination. Emphasizes
+ * that pursuit handling is collaborative, not sequential.
+ */
+function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 230);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 210;
+
+  dFrame(d, x, y, w, h);
+
+  const lanes: Array<{ label: string; color: string }> = [
+    { label: 'PRIMARY OFFICER', color: '#22c55e' },
+    { label: 'DISPATCHER',      color: '#d4a017' },
+    { label: 'SUPERVISOR',      color: '#b91c1c' },
+  ];
+  const laneH = (h - 30) / lanes.length;
+  const topY = y + 20;
+
+  // Lane backgrounds + labels
+  for (let i = 0; i < lanes.length; i++) {
+    const ly = topY + i * laneH;
+    d.setFillColor(i % 2 === 0 ? '#0d0d0d' : '#111111');
+    d.rect(x, ly, w, laneH, 'F');
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor(lanes[i].color);
+    d.text(lanes[i].label, x + 6, ly + 10);
+  }
+
+  // Events per lane at discrete time slots
+  type Evt = { lane: number; slot: number; label: string };
+  const evts: Evt[] = [
+    { lane: 0, slot: 0, label: 'Initiates\npursuit' },
+    { lane: 1, slot: 0, label: 'Acknowledges\non channel' },
+    { lane: 0, slot: 1, label: 'Calls speed\n+ direction' },
+    { lane: 1, slot: 1, label: 'Holds all\ntraffic (F9)' },
+    { lane: 2, slot: 1, label: 'Notified\nautomatically' },
+    { lane: 1, slot: 2, label: 'Dispatches\n2nd unit' },
+    { lane: 0, slot: 2, label: 'Continues\nnarration' },
+    { lane: 2, slot: 2, label: 'Reviews\nrisk factors' },
+    { lane: 2, slot: 3, label: 'Termination\ndecision' },
+    { lane: 1, slot: 3, label: 'Broadcasts\ntermination' },
+    { lane: 0, slot: 3, label: 'Disengages\n10-4s out' },
+  ];
+  const slots = 4;
+  const slotW = (w - 80) / slots;
+  for (const ev of evts) {
+    const ex = x + 70 + ev.slot * slotW + slotW / 2 - 30;
+    const ey = topY + ev.lane * laneH + 18;
+    dBox(d, ex, ey, 60, 28, ev.label, {
+      fill: '#141414', stroke: lanes[ev.lane].color, textColor: lanes[ev.lane].color, fontSize: 6, bold: true,
+    });
+  }
+  // Time-slot labels across the top
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(6.5);
+  d.setTextColor('#888888');
+  const slotLabels = ['T+0  Initiate', 'T+30s  Escalate', 'T+2m  Stabilize', 'T+Nm  Resolve'];
+  for (let s = 0; s < slots; s++) {
+    d.text(slotLabels[s], x + 70 + s * slotW + slotW / 2, topY + 4, { align: 'center' });
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 8-1 — Pursuit swim-lane. Three roles work in parallel, not sequence.');
+}
+
+/**
+ * Fig. 12-1 — Map layer stack. Vertical stack showing the render order
+ * of layers on the /map surface: base tiles at bottom, beats above,
+ * premise alerts, calls, units, interactive overlays at top.
+ */
+function drawMapLayerStackDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 210);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 190;
+
+  dFrame(d, x, y, w, h);
+
+  const layers: Array<{ label: string; detail: string; color: string }> = [
+    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#374151' },
+    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#60a5fa' },
+    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#a78bfa' },
+    { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#f59e0b' },
+    { label: 'Active calls',       detail: 'Incident-type pins, priority color',  color: '#d4a017' },
+    { label: 'Units (GPS)',        detail: 'Dots colored by status, 5s updates',  color: '#22c55e' },
+    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: '#93c5fd' },
+    { label: 'Interaction layer',  detail: 'Hover, click, drag-to-dispatch',      color: '#ffffff' },
+  ];
+
+  const barH = 16;
+  const gap = 3;
+  const startY = y + 20;
+  for (let i = 0; i < layers.length; i++) {
+    const lyr = layers[i];
+    const by = startY + i * (barH + gap);
+    const xIndent = 40 + i * 6; // cascade indent
+    d.setFillColor(lyr.color);
+    d.rect(x + xIndent, by, w - xIndent - 14, barH, 'F');
+    d.setFillColor('#000000');
+    d.rect(x + xIndent, by, 22, barH, 'F');
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor('#ffffff');
+    d.text(String(layers.length - i), x + xIndent + 11, by + 11, { align: 'center' });
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(8);
+    d.setTextColor('#0a0a0a');
+    d.text(lyr.label, x + xIndent + 28, by + 11);
+    d.setFont('helvetica', 'normal');
+    d.setFontSize(7);
+    d.setTextColor('#111111');
+    d.text(lyr.detail, x + xIndent + 110, by + 11);
+  }
+
+  // Z-axis indicator
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('z-index: bottom (drawn first) -> top (drawn last, receives clicks)', x + 12, y + h - 10);
+  d.setFont('helvetica', 'bold');
+  d.text('v', x + 30, y + 28);
+  d.text('v', x + 30, y + 64);
+  d.text('v', x + 30, y + 100);
+  d.text('v', x + 30, y + 136);
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 12-1 — Map layer stack on /map. Interaction layer is always on top.');
+}
+
+/**
+ * Fig. 15-1 — Map V2 architecture. Three-column diagram: data sources
+ * on the left, OpenLayers pipeline in the middle, rendered output
+ * on the right. Shows how V2 reuses the same /api endpoints as /map
+ * but swaps the rendering engine.
+ */
+function drawMapV2ArchDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 220);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 200;
+
+  dFrame(d, x, y, w, h);
+
+  const colW = (w - 40) / 3;
+  const colX = [x + 10, x + 10 + colW + 10, x + 10 + 2 * (colW + 10)];
+
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('DATA SOURCES', colX[0] + colW / 2, y + 16, { align: 'center' });
+  d.text('OPENLAYERS PIPELINE', colX[1] + colW / 2, y + 16, { align: 'center' });
+  d.text('RENDERED OUTPUT', colX[2] + colW / 2, y + 16, { align: 'center' });
+
+  // Left column: data sources
+  const sources = [
+    '/tiles/{z}/{x}/{y}.png\n(CartoDB cache)',
+    '/geojson/beat.geojson\n(719 features)',
+    '/dispatch/units\n(poll + WS)',
+    '/dispatch/calls\n(poll + WS)',
+  ];
+  for (let i = 0; i < sources.length; i++) {
+    dBox(d, colX[0], y + 30 + i * 36, colW, 30, sources[i], {
+      fill: '#0d1a2b', stroke: '#2563eb', textColor: '#93c5fd', fontSize: 7,
+    });
+  }
+
+  // Middle column: pipeline stages
+  const stages = [
+    'VectorSource\n(reproject 4326->3857)',
+    'Style fn\n(sector-color)',
+    'VectorLayer<Feature>\n(mount to map)',
+    'Debounced refetch\n(WS events)',
+  ];
+  for (let i = 0; i < stages.length; i++) {
+    dBox(d, colX[1], y + 30 + i * 36, colW, 30, stages[i], {
+      fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 7,
+    });
+  }
+
+  // Right column: output
+  const outputs = [
+    'Dark basemap\n(raster layer)',
+    'Beat polygons\n(colored fills)',
+    'Unit dots\n(clickable popups)',
+    'Call markers\n(priority icons)',
+  ];
+  for (let i = 0; i < outputs.length; i++) {
+    dBox(d, colX[2], y + 30 + i * 36, colW, 30, outputs[i], {
+      fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 7,
+    });
+  }
+
+  // Arrows between columns
+  for (let i = 0; i < 4; i++) {
+    const ry = y + 30 + i * 36 + 15;
+    dArrow(d, colX[0] + colW + 2, ry, colX[1] - 2, ry);
+    dArrow(d, colX[1] + colW + 2, ry, colX[2] - 2, ry);
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 15-1 — Map V2 architecture. Same data sources as /map, different rendering engine.');
+}
+
+/**
+ * Fig. 17-1 — Serve queue lifecycle timeline. Horizontal timeline
+ * from intake to close with branch for "no contact" vs "served"
+ * outcomes. Emphasizes the attempt-limit contract.
+ */
+function drawServeLifecycleDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 200);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 180;
+
+  dFrame(d, x, y, w, h);
+
+  // Main lifecycle stages
+  const stages = [
+    { label: 'INTAKE',      detail: 'Doc scanned\nRecipient captured' },
+    { label: 'ASSIGN',      detail: 'To officer or\nzone pool' },
+    { label: 'ATTEMPT 1',   detail: 'Officer visits\nGPS + photo' },
+    { label: 'OUTCOME',     detail: 'SERVED or\nNO CONTACT' },
+  ];
+  const boxW = 84;
+  const boxH = 44;
+  const gap = (w - boxW * stages.length - 24) / (stages.length - 1);
+  const cy = y + 50;
+
+  const boxes: ReturnType<typeof dBox>[] = [];
+  for (let i = 0; i < stages.length; i++) {
+    const bx = x + 12 + i * (boxW + gap);
+    const s = stages[i];
+    const isOutcome = s.label === 'OUTCOME';
+    boxes.push(dBox(d, bx, cy, boxW, boxH, `${s.label}\n${s.detail}`, {
+      fill: isOutcome ? '#1f1a00' : '#141414',
+      stroke: isOutcome ? COLOR.ACCENT : '#2e2e2e',
+      textColor: '#e5e5e5',
+      fontSize: 7,
+      bold: true,
+    }));
+  }
+  for (let i = 0; i < boxes.length - 1; i++) {
+    dArrow(d, boxes[i].x + boxW, boxes[i].y + boxH / 2, boxes[i + 1].x, boxes[i + 1].y + boxH / 2);
+  }
+
+  // Branches from OUTCOME — centered under the OUTCOME box horizontally
+  // to keep both children inside the frame. The previous layout placed
+  // RE-ATTEMPT at (OUTCOME.x + boxW + 40) which pushed its right edge
+  // well past the frame's right border.
+  const outcomeBox = boxes[boxes.length - 1];
+  const branchY = cy + 80;
+  const childW = 120;
+  const childGap = 40;
+  // Center the two children as a pair beneath the OUTCOME box, but
+  // clamp so the right edge stays inside the frame.
+  const childrenTotalW = childW * 2 + childGap;
+  const frameRightEdge = x + w - 10;
+  const loopExtension = 18;
+  let childrenCenter = outcomeBox.x + boxW / 2;
+  const rightmost = childrenCenter + childrenTotalW / 2 + loopExtension;
+  if (rightmost > frameRightEdge) childrenCenter -= rightmost - frameRightEdge;
+
+  const servedX = childrenCenter - childrenTotalW / 2;
+  const retryX  = servedX + childW + childGap;
+
+  const served = dBox(d, servedX, branchY, childW, 32, 'CLOSED — SERVED\nFinal disposition', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 7, bold: true,
+  });
+  const retry = dBox(d, retryX, branchY, childW, 32, 'RE-ATTEMPT\nup to contract limit', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 7, bold: true,
+  });
+  dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, served.x + served.w / 2, served.y, 'served');
+  dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, retry.x + retry.w / 2, retry.y, 'no contact');
+
+  // Retry loop back to ATTEMPT 1 — stays inside the frame because we
+  // clamped the retry box position above.
+  const attemptBox = boxes[2];
+  const loopX = Math.min(retry.x + retry.w + loopExtension, frameRightEdge - 4);
+  d.setDrawColor('#b91c1c');
+  d.setLineWidth(0.5);
+  d.line(retry.x + retry.w, retry.y + retry.h / 2, loopX, retry.y + retry.h / 2);
+  d.line(loopX, retry.y + retry.h / 2, loopX, attemptBox.y + boxH + 6);
+  d.line(loopX, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6);
+  dArrow(d, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH, undefined, '#b91c1c');
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 17-1 — Serve-queue lifecycle. Re-attempts loop until served or the contract attempt limit.');
+}
+
+/**
+ * Fig. 19-1 — Compound search field matrix. 3x3 grid of query
+ * criteria with icon-style cells, showing how fields combine
+ * with implicit AND to narrow the result set.
+ */
+function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 200);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 180;
+
+  dFrame(d, x, y, w, h);
+
+  const fields: Array<{ label: string; example: string; color: string }> = [
+    { label: 'NAME',       example: 'SMITH*\n(wildcard)',           color: '#d4a017' },
+    { label: 'DOB',        example: '1985-01-01\n..1990-12-31',     color: '#d4a017' },
+    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: '#60a5fa' },
+    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#60a5fa' },
+    { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: '#22c55e' },
+    { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: '#22c55e' },
+    { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: '#b91c1c' },
+    { label: 'DATE RANGE', example: 'last 60d\nlast shift',          color: '#888888' },
+    { label: 'RECORD TYPE',example: 'Calls | Inc\nFI | Citations',  color: '#888888' },
+  ];
+  const cols = 3;
+  const rows = 3;
+  const cellW = (w - 40) / cols;
+  const cellH = (h - 60) / rows;
+  const gridY = y + 30;
+
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('ALL FIELDS COMBINE WITH IMPLICIT AND', x + w / 2, y + 16, { align: 'center' });
+
+  for (let i = 0; i < fields.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = x + 20 + col * cellW;
+    const cy = gridY + row * cellH;
+    const f = fields[i];
+    dBox(d, cx, cy, cellW - 8, cellH - 6, `${f.label}\n\n${f.example}`, {
+      fill: '#141414', stroke: f.color, textColor: f.color, fontSize: 7, bold: true,
+    });
+  }
+
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(7);
+  d.setTextColor('#888888');
+  d.text('Partial matches are allowed; only filled fields filter the result.', x + w / 2, y + h - 10, { align: 'center' });
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. 19-1 — Compound search field matrix. Fill any subset; empty fields are ignored.');
+}
+
+/**
+ * Fig. C-1 — System data-flow architecture. Left-to-right: browser
+ * clients -> nginx -> Express server -> SQLite DB. Sideband: WebSocket
+ * channel, systemd service, SSL certs.
+ */
+function drawArchDataFlowDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 240);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 220;
+
+  dFrame(d, x, y, w, h);
+
+  // Three tiers: client, edge, server, data
+  const tierY = y + 40;
+  const tierH = 60;
+  const browser = dBox(d, x + 12, tierY, 96, tierH, 'BROWSER\nReact SPA\nVite bundle', {
+    fill: '#0d1a2b', stroke: '#2563eb', textColor: '#93c5fd', fontSize: 8, bold: true,
+  });
+  const nginx = dBox(d, x + 130, tierY, 90, tierH, 'NGINX\nSSL terminator\nStatic + proxy', {
+    fill: '#1a1a1a', stroke: '#666666', textColor: '#cccccc', fontSize: 8, bold: true,
+  });
+  const express = dBox(d, x + 240, tierY, 100, tierH, 'EXPRESS 5\ntsx runtime\nREST + WS', {
+    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+  });
+  const sqlite = dBox(d, x + 360, tierY, 90, tierH, 'SQLITE\nbetter-sqlite3\naudit log', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 8, bold: true,
+  });
+
+  // Flow arrows (HTTPS 443, proxy 3001, file I/O)
+  dArrow(d, browser.x + browser.w, browser.y + tierH / 2, nginx.x, nginx.y + tierH / 2, 'HTTPS 443');
+  dArrow(d, nginx.x, nginx.y + tierH / 2, browser.x + browser.w, browser.y + tierH / 2);
+  dArrow(d, nginx.x + nginx.w, nginx.y + tierH / 2, express.x, express.y + tierH / 2, 'proxy 3001');
+  dArrow(d, express.x, express.y + tierH / 2, nginx.x + nginx.w, nginx.y + tierH / 2);
+  dArrow(d, express.x + express.w, express.y + tierH / 2, sqlite.x, sqlite.y + tierH / 2, 'prepared stmts');
+  dArrow(d, sqlite.x, sqlite.y + tierH / 2, express.x + express.w, express.y + tierH / 2);
+
+  // Sideband systems below
+  const sideY = tierY + tierH + 26;
+  const sidebands = [
+    { from: nginx,   label: "Let's Encrypt\ncerts (symlinks)", color: '#888888' },
+    { from: express, label: 'systemd unit\nrmpg-flex.service', color: '#888888' },
+    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#60a5fa' },
+    { from: sqlite,  label: 'server/data/\nexcluded from deploy', color: '#888888' },
+  ];
+  for (const sb of sidebands) {
+    const sbX = sb.from.x + sb.from.w / 2 - 60;
+    const sbBox = dBox(d, sbX, sideY, 120, 30, sb.label, {
+      fill: '#0a0a0a', stroke: sb.color, textColor: sb.color, fontSize: 7,
+    });
+    dArrow(d, sb.from.x + sb.from.w / 2, sb.from.y + sb.from.h, sbBox.x + sbBox.w / 2, sbBox.y, undefined, sb.color);
+  }
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. C-1 — RMPG Flex system architecture. Browser -> nginx -> Express -> SQLite.');
+}
+
+/**
+ * Fig. F-1 — Officer-down (10-99) decision flowchart. Converts the
+ * numbered bullet list in Flow 1 into an actual flowchart with
+ * decision diamonds and parallel paths, so a dispatcher can scan
+ * the page and follow a line rather than read through seven bullets.
+ */
+function drawOfficerDownFlowchart(ctx: GuideContext): void {
+  // Frame must be tall enough for all 7 rows of content plus the final
+  // "do not clear" box. The previous 300-tall frame clipped the bottom
+  // two boxes into the caption region.
+  ensureSpace(ctx, 400);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 380;
+
+  dFrame(d, x, y, w, h);
+
+  const centerX = x + w / 2;
+
+  // Step 1 — Trigger
+  const trigger = dBox(d, centerX - 90, y + 16, 180, 28, '"10-99" heard on channel', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 9, bold: true,
+  });
+
+  // Step 2 — Broadcast
+  const broadcast = dBox(d, centerX - 100, y + 60, 200, 28, 'STEP 1 — Press F12 (panic)', {
+    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+  });
+  dArrow(d, centerX, trigger.y + trigger.h, centerX, broadcast.y);
+
+  // Step 3 — Hold traffic
+  const holdTraffic = dBox(d, centerX - 100, y + 104, 200, 28, 'STEP 2 — Hold all traffic', {
+    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+  });
+  dArrow(d, centerX, broadcast.y + broadcast.h, centerX, holdTraffic.y);
+
+  // Decision diamond — is GPS current?
+  const decisionY = y + 150;
+  const diamond = (cx: number, cy: number, label: string) => {
+    d.setFillColor('#1a1a00');
+    d.setDrawColor(COLOR.ACCENT);
+    d.setLineWidth(1);
+    const size = 40;
+    d.triangle(cx, cy - size, cx + size * 1.5, cy, cx, cy + size, 'FD');
+    d.triangle(cx, cy - size, cx - size * 1.5, cy, cx, cy + size, 'FD');
+    d.setFont('helvetica', 'bold');
+    d.setFontSize(7);
+    d.setTextColor(COLOR.ACCENT);
+    const lines = label.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      d.text(lines[i], cx, cy - 4 + i * 9, { align: 'center' });
+    }
+  };
+  diamond(centerX, decisionY + 40, 'GPS current?\n(< 60s)');
+  dArrow(d, centerX, holdTraffic.y + holdTraffic.h, centerX, decisionY);
+
+  // Yes branch (left)
+  const yesBox = dBox(d, x + 40, decisionY + 80, 150, 30, 'Use GPS location\nDispatch 3 nearest', {
+    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 8, bold: true,
+  });
+  dArrow(d, centerX - 50, decisionY + 40, yesBox.x + yesBox.w, yesBox.y + 10, 'YES');
+
+  // No branch (right)
+  const noBox = dBox(d, x + w - 190, decisionY + 80, 150, 30, 'Ask for 20\nEscalate if no response', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 8, bold: true,
+  });
+  dArrow(d, centerX + 50, decisionY + 40, noBox.x, noBox.y + 10, 'NO');
+
+  // Final steps (merge)
+  const supY = decisionY + 140;
+  const supervisor = dBox(d, centerX - 100, supY, 200, 26, 'STEP 5 — Page supervisor', {
+    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+  });
+  dArrow(d, yesBox.x + yesBox.w / 2, yesBox.y + yesBox.h, supervisor.x + supervisor.w / 2 - 30, supervisor.y);
+  dArrow(d, noBox.x + noBox.w / 2, noBox.y + noBox.h, supervisor.x + supervisor.w / 2 + 30, supervisor.y);
+
+  const clear = dBox(d, centerX - 120, supY + 38, 240, 26, 'STEP 7 — Do NOT clear until 10-4 from officer', {
+    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 8, bold: true,
+  });
+  dArrow(d, centerX, supervisor.y + supervisor.h, centerX, clear.y);
+
+  ctx.y = y + h + 8;
+  dCaption(ctx, 'Fig. F-1 — Officer-down flowchart. Diamonds are decisions; follow one path end-to-end.');
+}
+
+/**
+ * Render a stylized, annotated anatomy diagram of the dispatch console.
+ * Every labeled region corresponds to a bullet in the accompanying prose.
+ * We draw it in vector primitives (no image payload) so it stays crisp on
+ * a commander's 13" laptop and on a 32" console workstation alike.
+ *
+ * The diagram is roughly 500pt wide by 320pt tall and should be rendered
+ * just after the section title so the prose can reference regions by
+ * number.
+ */
+function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
+  ensureSpace(ctx, 340);
+  const d = ctx.doc;
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  const w = PAGE.W - PAGE.MARGIN * 2;
+  const h = 310;
+
+  // Outer frame
+  d.setFillColor('#0a0a0a');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1.5);
+  d.rect(x, y, w, h, 'FD');
+
+  // --- 1. Brand bar (top, ~18pt tall) ---
+  d.setFillColor(COLOR.ACCENT);
+  d.rect(x, y, w, 18, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.BLACK);
+  d.text('RMPG FLEX  •  DISPATCH', x + 6, y + 12);
+  d.text('10:47:22 MT', x + w - 6, y + 12, { align: 'right' });
+  // Anchor label
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, y + 9, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('1', x + w + 12, y + 11, { align: 'center' });
+
+  // --- 2. Menu bar ---
+  d.setFillColor('#141414');
+  d.rect(x, y + 18, w, 14, 'F');
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(6);
+  d.setTextColor('#999999');
+  d.text('File  Edit  View  Dispatch  Records  Map  Intel  Admin  Help', x + 6, y + 28);
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, y + 25, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('2', x + w + 12, y + 27, { align: 'center' });
+
+  // --- 3. Icon toolbar ---
+  d.setFillColor('#1a1a1a');
+  d.rect(x, y + 32, w, 22, 'F');
+  // Draw fake icons as small squares
+  for (let i = 0; i < 10; i++) {
+    d.setFillColor('#2e2e2e');
+    d.rect(x + 8 + i * 24, y + 38, 16, 10, 'F');
+  }
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, y + 43, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('3', x + w + 12, y + 45, { align: 'center' });
+
+  // --- 4. Active call stack (left panel, big) ---
+  const cpY = y + 58;
+  const cpH = h - 58 - 28;
+  const leftW = w * 0.38;
+  d.setFillColor('#050505');
+  d.setDrawColor('#2e2e2e');
+  d.rect(x, cpY, leftW, cpH, 'FD');
+  // Stack header
+  d.setFillColor('#141414');
+  d.rect(x, cpY, leftW, 14, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(6);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('ACTIVE CALLS (7)', x + 6, cpY + 10);
+  // Fake call rows
+  const colors = ['#b91c1c', '#d4a017', '#666666', '#166534', '#666666'];
+  for (let i = 0; i < 5; i++) {
+    d.setFillColor(colors[i]);
+    d.rect(x + 4, cpY + 18 + i * 24, 3, 18, 'F');
+    d.setFillColor('#666666');
+    d.rect(x + 12, cpY + 22 + i * 24, leftW * 0.6, 2, 'F');
+    d.rect(x + 12, cpY + 28 + i * 24, leftW * 0.4, 2, 'F');
+  }
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x - 12, cpY + 30, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('4', x - 12, cpY + 32, { align: 'center' });
+
+  // --- 5. Map + unit overlay (center/right top) ---
+  const mapX = x + leftW + 2;
+  const mapW = w - leftW - 2;
+  const mapH = cpH * 0.6;
+  d.setFillColor('#111827');
+  d.setDrawColor('#2e2e2e');
+  d.rect(mapX, cpY, mapW, mapH, 'FD');
+  // Fake beat lines
+  d.setDrawColor('#374151');
+  d.setLineWidth(0.4);
+  for (let i = 1; i < 6; i++) d.line(mapX + (mapW / 6) * i, cpY, mapX + (mapW / 6) * i, cpY + mapH);
+  for (let j = 1; j < 4; j++) d.line(mapX, cpY + (mapH / 4) * j, mapX + mapW, cpY + (mapH / 4) * j);
+  // Unit dots
+  d.setFillColor('#166534'); d.circle(mapX + 30, cpY + 40, 3, 'F');
+  d.setFillColor('#d4a017'); d.circle(mapX + 80, cpY + 60, 3, 'F');
+  d.setFillColor('#b91c1c'); d.circle(mapX + 140, cpY + 30, 3, 'F');
+  d.setFillColor('#166534'); d.circle(mapX + 50, cpY + 80, 3, 'F');
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(mapX + mapW + 12, cpY + mapH / 2, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('5', mapX + mapW + 12, cpY + mapH / 2 + 2, { align: 'center' });
+
+  // --- 6. Unit roster (right, below map) ---
+  const rosterY = cpY + mapH + 2;
+  const rosterH = cpH - mapH - 2;
+  d.setFillColor('#050505');
+  d.setDrawColor('#2e2e2e');
+  d.rect(mapX, rosterY, mapW, rosterH, 'FD');
+  d.setFillColor('#141414');
+  d.rect(mapX, rosterY, mapW, 12, 'F');
+  d.setFont('helvetica', 'bold');
+  d.setFontSize(6);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('UNITS (12 AVAIL / 4 BUSY)', mapX + 6, rosterY + 9);
+  // Fake unit chips
+  for (let i = 0; i < 8; i++) {
+    d.setFillColor(i % 3 === 0 ? '#166534' : (i % 3 === 1 ? '#d4a017' : '#2e2e2e'));
+    d.rect(mapX + 6 + (i % 4) * (mapW / 4 - 2), rosterY + 16 + Math.floor(i / 4) * 14, mapW / 4 - 10, 10, 'F');
+  }
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(mapX + mapW + 12, rosterY + rosterH / 2, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('6', mapX + mapW + 12, rosterY + rosterH / 2 + 2, { align: 'center' });
+
+  // --- 7. Command line (bottom strip above status bar) ---
+  const cmdY = y + h - 28;
+  d.setFillColor('#000000');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(0.75);
+  d.rect(x, cmdY, w, 14, 'FD');
+  d.setFont('courier', 'bold');
+  d.setFontSize(7);
+  d.setTextColor(COLOR.ACCENT);
+  d.text('CMD>  U07 10-97', x + 6, cmdY + 10);
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x - 12, cmdY + 7, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('7', x - 12, cmdY + 9, { align: 'center' });
+
+  // --- 8. Status bar (very bottom) ---
+  const sbY = y + h - 14;
+  d.setFillColor('#141414');
+  d.rect(x, sbY, w, 14, 'F');
+  d.setFont('helvetica', 'normal');
+  d.setFontSize(6);
+  d.setTextColor('#888888');
+  d.text('P1:1  P2:2  AVAIL:12  BUSY:4  |  F2 New  F3 Disp  F5 Enr  F6 Scn  F7 Clr', x + 6, sbY + 10);
+  d.setTextColor('#166534');
+  d.text('● LIVE', x + w - 30, sbY + 10);
+  d.setFillColor(COLOR.ACCENT);
+  d.circle(x + w + 12, sbY + 7, 6, 'F');
+  d.setTextColor(COLOR.BLACK);
+  d.setFontSize(7);
+  d.text('8', x + w + 12, sbY + 9, { align: 'center' });
+
+  ctx.y += h + 20;
+
+  // Caption
+  d.setFont('helvetica', 'italic');
+  d.setFontSize(8);
+  d.setTextColor(COLOR.MUTED);
+  d.text('Fig. 20-1 — Dispatch console anatomy, with numbered regions referenced below.', x, ctx.y);
+  ctx.y += 12;
+}
+
+function section20(ctx: GuideContext): void {
+  title(ctx, '20. Anatomy of the Console');
+
+  paragraph(ctx,
+    'This section walks the console from top to bottom, region by region, so you know the name and purpose of every element a supervisor or trainer might point at. The numbered regions in the figure below correspond to the eight subsections that follow. Nothing here is operational — this is orientation.',
+  );
+
+  drawConsoleAnatomyDiagram(ctx);
+
+  h2(ctx, 'Region 1 — Brand Bar');
+  paragraph(ctx,
+    'The top 52-pixel strip is the brand bar: gold background, agency name on the left, current time (America/Denver, Mountain Time, never UTC) on the right. The time display is the server\'s time, not your workstation\'s clock — if the two ever disagree, the server wins, because that is the clock that stamps every call, transition, and audit entry. If the brand bar flashes red briefly, the workstation has detected more than 2 seconds of clock drift and is forcing an NTP resync.',
+  );
+
+  h2(ctx, 'Region 2 — Menu Bar');
+  paragraph(ctx,
+    'A traditional desktop menu (File, Edit, View, Dispatch, Records, Map, Intelligence, Admin, Help). Everything in the console is reachable from here, even things that also have a hotkey or toolbar icon. Menus are organized by noun (what you want to act on), not verb (what you want to do). Examples:',
+  );
+  bullet(ctx, 'Dispatch -> New Call opens the intake form. Same as F2.');
+  bullet(ctx, 'Records -> Search opens compound search. Same as Ctrl+Shift+F.');
+  bullet(ctx, 'Help -> Dispatch Guide (PDF) downloads this document — now you know where it came from.');
+  bullet(ctx, 'Admin is only visible to admin / manager / supervisor roles; officer and dispatcher roles will not see it in the bar at all.');
+
+  h2(ctx, 'Region 3 — Icon Toolbar');
+  paragraph(ctx,
+    'The icon toolbar mirrors the most-used actions as single-click buttons: New Call, Dispatch Selected, Mark Enroute, Mark On Scene, Clear, CMD Line, Map, Roster, Records. Hovering any icon shows both its name and its hotkey, so the toolbar doubles as a hotkey-learning tool for new dispatchers. Once you know the F-keys you will not use this toolbar often, but during the first week it is how you discover what is available.',
+  );
+
+  h2(ctx, 'Region 4 — Active Call Stack');
+  paragraph(ctx,
+    'The left panel lists every unclosed call, sorted by priority then by age. Each row has a colored priority bar on the left (red=P1, amber=P2, gray=P3, green=P4), call number, incident type, status chip, assigned units, and elapsed time. Clicking a row selects it; selected call becomes the target of subsequent F-key presses. The selected call also highlights on the map and pulses its markers.',
+  );
+  paragraph(ctx,
+    'The call stack is real-time. A new call created by another dispatcher appears here within roughly one second, with a subtle gold flash animation so you notice new additions without them being disruptive. Calls that change priority mid-incident (e.g. an upgrade from P3 disturbance to P1 shots-fired) animate their priority bar transition so the change is visually unmistakable.',
+  );
+
+  h2(ctx, 'Region 5 — Map + Unit Overlay');
+  paragraph(ctx,
+    'The center/right top area is the live map. By default it shows the dark_matter basemap with beat polygons colored by sector, active calls as pinned incident-type icons, and units as dots colored by status. The map is pannable, zoomable, and rotatable. Clicking a unit dot opens a quick-info popup with call sign, current status, last-known location timestamp, and a button to dispatch that unit to the selected call.',
+  );
+  paragraph(ctx,
+    'Under the hood this is Google Maps with a styled dark palette; when the Google API fails (billing, quota, or network), the map transparently falls back to offline CartoDB tiles pre-cached for the Utah operational area. You will usually not know the difference, but a small "OFFLINE TILES" badge appears in the corner when the fallback is active.',
+  );
+
+  h2(ctx, 'Region 6 — Unit Roster');
+  paragraph(ctx,
+    'Below the map, the roster shows every unit on the current shift as a status chip: call sign, badge number, current status, last-transition time. Chips are color-coded: green=available, amber=dispatched/enroute, red=on scene or busy, gray=off duty. Clicking a chip selects that unit; right-clicking opens a context menu with every legal status transition. The roster respects the server-side transition rules (see Section 3) — illegal transitions are grayed out, not rejected with an error.',
+  );
+
+  h2(ctx, 'Region 7 — Command Line');
+  paragraph(ctx,
+    'Above the status bar sits the CAD command line — a single-line text input with a terminal-style gold caret on black. This is the fastest way to act on calls and units once you know the shorthand (Section 6). Everything you can do in the menus or with F-keys, you can also do here with fewer keystrokes. The command line has tab-completion for unit call signs and call numbers, command history (up-arrow), and a response area that shows the result of the last command.',
+  );
+
+  h2(ctx, 'Region 8 — Status Bar');
+  paragraph(ctx,
+    'The bottom 22-pixel strip is permanent situational awareness. Left side: live P1 / P2 counts, available / busy unit totals. Center: F-key hints for current context. Right side: WebSocket connection indicator (green LIVE LED when connected, red OFFLINE LED when not — see Section 14). Never hide this strip; it is the fastest way to spot that the console is losing sync before the rest of the UI shows it.',
+  );
+
+  calloutBox(ctx, 'Orientation Exercise',
+    'On your first shift, spend ten minutes clicking through every region while nothing is happening. Open a menu, hover every toolbar icon, click a call row and watch the map center, click a unit chip and watch the roster highlight. Muscle memory for the console geography is more valuable than any 10-code memorization.',
+    'info',
+  );
+}
+
+function section21(ctx: GuideContext): void {
+  title(ctx, '21. Worked Example — A Shots-Fired Call, End to End');
+
+  paragraph(ctx,
+    'This section walks a complete, realistic call from the moment the phone rings to the moment everyone clears. Every keystroke, every radio exchange, every console state change is shown. Read it once to build a mental model of "what a whole call looks like," then use it as a benchmark when you run your own calls.',
+  );
+
+  drawCallTimelineDiagram(ctx);
+
+  h2(ctx, 'The Scenario');
+  paragraph(ctx,
+    '21:47 Mountain Time on a Friday. You are the sole dispatcher on the night watch. A 911 call rings in on console line 1 from a caller at a gas station near 2100 South State Street. Caller reports two subjects in a verbal altercation in the parking lot, one has just produced a handgun, and there has been one round fired into the air. No injuries reported. Caller is hiding inside the store.',
+  );
+
+  h2(ctx, 'T+00:00 — Ring-Down');
+  paragraph(ctx,
+    'Phone rings. You answer with the standard agency greeting: "RMPG Dispatch, recorded line, what is your emergency?" Simultaneously you press F2 — the intake form opens on your second monitor and begins recording the call automatically.',
+  );
+  bullet(ctx, 'F2 opens intake form. Cursor is in the Location field.');
+  bullet(ctx, 'Timer on the intake form starts the moment F2 is pressed. This becomes the call creation time.');
+  bullet(ctx, 'The caller ANI/ALI (if available from the SIP trunk) auto-populates the reporting party phone number.');
+
+  h2(ctx, 'T+00:03 to T+00:20 — Pulling Information');
+  paragraph(ctx,
+    'Caller gives the location. You type "2100 S State" into the Location field; autocomplete offers "2100 S State St, Salt Lake City, UT" — you arrow-down and Tab to accept. Map pans to the address and drops a pending-call pin. You ask: "What is happening right now?" Caller: "There are two guys fighting, one has a gun, he shot it once into the sky." You do not paraphrase. You type verbatim into the Description: "RP reports two male subjects in verbal altercation, one has produced handgun and fired one round into air. No reported injuries."',
+  );
+  paragraph(ctx,
+    'You ask three more questions in order of safety value: (1) "Is anyone hurt?" — No. (2) "Where is the subject with the gun right now?" — Still in the parking lot, pacing. (3) "Can you safely stay on the line?" — Yes, I\'m behind the counter. You do NOT ask for the caller\'s full name or DOB at this stage; that can wait until units are dispatched.',
+  );
+
+  h2(ctx, 'T+00:22 — Classifying & Dispatching');
+  paragraph(ctx,
+    'You click the Incident Type field, type "shot" — autocomplete surfaces "Shots Fired" (Signal-3). You press Tab to accept. The form auto-applies the default for Signal-3: Priority 1, flags WEAPON and OFFICER_SAFETY. The form asks "Confirm P1 and 2-unit backup rule?" — you click Confirm. The moment you confirm, the call is saved and broadcast to every workstation and MDT. On your own screen, the new call row slides in at the top of the call stack with a red priority bar and a pulsing border.',
+  );
+  calloutBox(ctx, 'The Two-Question Rule',
+    'For any weapon call, the two questions you MUST answer before continuing information-gathering are: "Is anyone hurt?" and "Where is the weapon right now?" Everything else can wait 30 seconds while you dispatch units.',
+    'warn',
+  );
+
+  h2(ctx, 'T+00:25 — Voice Channel Alert');
+  paragraph(ctx,
+    'The Dispatcher Brain voice engine speaks the call on the dispatch channel automatically, in a calm radio voice: "Attention all units, priority 1 shots fired, 2100 South State. Two subjects, one armed, one round fired into the air. No injuries reported. Requesting two-unit response." This broadcasts at the same time as the visual alert, so officers hear and see simultaneously. Units closest to the call receive a distinctive priority tone first — a three-note ascending pattern — not the normal two-tone.',
+  );
+
+  h2(ctx, 'T+00:28 — First Acknowledgment');
+  paragraph(ctx,
+    'Radio: "U07, show me enroute, I\'m southbound on State at 21st South." You click U07 in the roster and press F5 (Enroute). The chip turns amber, the unit dot on the map begins moving toward the call, and the ETA estimate appears. Time-to-enroute was 3 seconds — excellent.',
+  );
+  paragraph(ctx,
+    'Radio: "U12, I\'m copying, I\'m two blocks east, enroute." You click U12, press F5. U12 is now also amber. Two units enroute to a P1 weapon call — backup rule satisfied.',
+  );
+
+  h2(ctx, 'T+00:58 — Second Update From Caller');
+  paragraph(ctx,
+    'While units are moving, you stay on the line with the caller. Caller: "The guy with the gun just got into a black pickup truck, it looks like a Chevy, older model, and he\'s leaving. He went north on State." You immediately type into Description: "UPDATE T+58 — subject with handgun departed NB State in older-model black Chevy pickup, direction of travel north." You press Enter; the update broadcasts to every MDT and re-speaks to the voice channel.',
+  );
+  paragraph(ctx,
+    'You click the Vehicle tab on the call form, type a partial vehicle record: Make Chevrolet, Color Black, Style Pickup, Direction North from 2100 S State. This populates the call\'s vehicle record and is visible to every responding officer on their MDT within a second.',
+  );
+
+  h2(ctx, 'T+01:04 — Units Diverted');
+  paragraph(ctx,
+    'Radio: "U07, I heard that, I\'m going to post at State and 13th South to intercept." You do not have to do anything — this is an officer tactical decision. You document by typing in your own dispatcher notes: "U07 posting at State/13th to intercept NB pickup." U12 continues to the scene to check on the caller and the other party.',
+  );
+
+  h2(ctx, 'T+01:48 — On Scene');
+  paragraph(ctx,
+    'Radio: "U12, 10-97 at the Chevron." You click U12, press F6 (On Scene). Chip turns red, map dot freezes at the location with a small "ON SCENE" label. Dispatcher Brain note: the rule engine starts an 8-minute stuck-check timer on U12.',
+  );
+
+  h2(ctx, 'T+02:30 — BOLO Broadcast');
+  paragraph(ctx,
+    'You now have enough to push a BOLO. You press F8 to open the command line and type: "BOLO NB STATE BLK CHEV PU POSS HANDGUN, NO PLATE, LRM IN AREA OF 2100 S STATE T-3 MIN". Press Enter. The BOLO broadcasts to every MDT, to the dispatch channel voice, and to adjacent agencies via the inter-agency BOLO relay (SLCPD, UHP, Unified PD).',
+  );
+
+  h2(ctx, 'T+03:15 — Supplemental Caller Info');
+  paragraph(ctx,
+    'Caller, still on the line, tells you the subject with the gun was "about six foot, wearing a red hoodie, black pants, maybe 25 years old." You add a person record to the call: Unknown Male, DESC red hoodie black pants H/6-0 appx age 25. This auto-updates the BOLO with a subject description; the updated BOLO re-speaks on the voice channel and re-pushes to MDTs.',
+  );
+
+  h2(ctx, 'T+04:42 — Second Unit On Scene');
+  paragraph(ctx,
+    'Radio: "U07, 10-97 at State and 13th, no contact on the vehicle, I\'ll standby at this location for 15." You click U07, press F6. Both units are on scene. The dispatcher note field gets: "U07 posting at State/13th x 15 min for BOLO interception."',
+  );
+
+  h2(ctx, 'T+12:30 — U12 Clears');
+  paragraph(ctx,
+    'Radio: "U12, 10-98, spoke with the other subject and the RP, no injuries, will file an FI on the second subject and a supplemental on this call, show me available." You click U12, press F7 (Clear). Chip turns green, map dot resumes normal movement. The call stays open because U07 is still posted and the BOLO is active.',
+  );
+
+  h2(ctx, 'T+20:15 — U07 Clears');
+  paragraph(ctx,
+    'Radio: "U07, negative contact on the vehicle after 15 minutes, going 10-8." You click U07, F7. The call now has zero assigned units. The call row in the stack turns gray with an "UNSTAFFED — BOLO ACTIVE" flag.',
+  );
+
+  h2(ctx, 'T+20:30 — Close Out');
+  paragraph(ctx,
+    'You review the call one last time: description complete, vehicle record attached, person record attached, both units documented with their arrival and clearance times, BOLO is active and persistent. You click Close Call — the dialog asks for Disposition. You choose "GOA — Gone on Arrival, BOLO Active." The call moves from Active to Closed. The BOLO remains active for the shift and will auto-expire at 08:00 unless renewed.',
+  );
+
+  h2(ctx, 'Post-Call Review');
+  paragraph(ctx,
+    'After the call closes, take 30 seconds for self-review: Did I dispatch within 45 seconds of the first ring? (3 seconds to enroute — yes.) Did I get the weapon location before dispatching? (Yes, with the pacing detail.) Did I update the call with every new piece of info? (Yes, three updates.) Did I push the BOLO as soon as I had enough? (~2 minutes after first ring — yes.) These five questions, run after every significant call, are what separate a working dispatcher from a great one.',
+  );
+}
+
+function section22(ctx: GuideContext): void {
+  title(ctx, '22. Your First Shift — New Dispatcher Onboarding');
+
+  paragraph(ctx,
+    'This section is for dispatchers on their first solo shift or first shift after certification. Senior dispatchers may skip it. Everything here is about the first 60 minutes: what to do, what order, and what to do BEFORE the first call comes in so you are ready.',
+  );
+
+  h2(ctx, 'The First 15 Minutes');
+  bullet(ctx, 'Log in to the console. Verify your display name and role in the status bar bottom-right. If it says anything other than your name, DO NOT PROCEED — get a supervisor.');
+  bullet(ctx, 'Check the call stack for overnight / carryover calls. Read each one. If you do not understand a call, ask the outgoing dispatcher before they leave.');
+  bullet(ctx, 'Check the unit roster: who is on duty, who is off, who is posted (assigned to a specific location), who is available.');
+  bullet(ctx, 'Scan the BOLO panel (F11). Know what vehicles and persons are active — one of them may drive past a unit during your shift.');
+  bullet(ctx, 'Verify the voice channel is armed: press F10, speak a test phrase, listen for the synthesized playback.');
+  bullet(ctx, 'Check the WebSocket LIVE indicator in the status bar is green.');
+
+  h2(ctx, 'The Next 15 Minutes — Practice the Console');
+  paragraph(ctx,
+    'If no calls are active, spend this time on deliberate practice, not social chat with your partner:',
+  );
+  bullet(ctx, 'Press F2 to open the intake form, look at every field, press Escape to cancel.');
+  bullet(ctx, 'Press F8, type "LE 29" — verify the 10-code popup shows "Want/warrant check".');
+  bullet(ctx, 'Click a unit chip, right-click, look at every status transition.');
+  bullet(ctx, 'Open the map, zoom to your operational area, pan around. Find the beat labels.');
+  bullet(ctx, 'Open Records -> Search, do a test compound search for your own name. Should return your user record.');
+
+  h2(ctx, 'The First 30 Minutes — Mental Model');
+  paragraph(ctx,
+    'Before the first real call comes in, rehearse the flow in your head. For each of the following scenarios, talk through what you would do out loud (or silently to yourself):',
+  );
+  bullet(ctx, 'A disturbance call at a residence, no weapons mentioned.');
+  bullet(ctx, 'A traffic stop where the officer radios the plate before you have a call open.');
+  bullet(ctx, 'A BOLO hit — an officer spots a vehicle matching an active BOLO.');
+  bullet(ctx, 'An officer does not respond to two consecutive radio checks.');
+  bullet(ctx, 'A 911 hang-up with an ANI/ALI but no voice.');
+  paragraph(ctx,
+    'The goal is not to have a perfect answer to each; the goal is that the muscle memory is warm when the real thing happens. The first call of the shift is always the slowest one.',
+  );
+
+  h2(ctx, 'Things New Dispatchers Commonly Get Wrong');
+  bullet(ctx, 'Paraphrasing the caller. Do not. Type what they said. "He has a gun" is different from "suspect is armed."');
+  bullet(ctx, 'Waiting for all the information before dispatching. Dispatch with what you have. Updates come later.');
+  bullet(ctx, 'Treating a 10-29 as a formality. It is not. A wanted-persons check on a traffic stop can change the call from ticket to felony stop in two seconds.');
+  bullet(ctx, 'Stepping on radio traffic. When an officer is transmitting, wait. The console will buffer your announcement and speak it when the channel clears.');
+  bullet(ctx, 'Clearing a call too early. A call is not cleared when the officer leaves the scene — it is cleared when the incident is resolved and everything is documented.');
+  bullet(ctx, 'Not asking for help. The senior dispatcher next to you has run the call you are on a hundred times. Asking is faster than guessing.');
+
+  h2(ctx, 'The Three Questions');
+  paragraph(ctx,
+    'When you are overwhelmed on a call, come back to these three questions in order:',
+  );
+  bullet(ctx, '1. Is anyone in immediate danger? If yes, prioritize their safety — dispatch more units, push an emergency tone, whatever it takes.');
+  bullet(ctx, '2. Do responding officers have what they need to be safe? If no, get it: weapon description, subject location, vehicle direction.');
+  bullet(ctx, '3. Is this call documented? If no, type it in. If you did not type it, it did not happen.');
+
+  calloutBox(ctx, 'Mindset',
+    'Dispatching is a skill that takes two years to become competent at and ten to master. On your first shift, you are allowed to be slow. You are not allowed to be silent. Talk on the radio, narrate in the notes, ask questions out loud. Silence is where errors hide.',
+    'info',
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Section 23 — "How To Use" activation guides. Each subsystem
+// gets a step-by-step enable / operate / troubleshoot recipe
+// a dispatcher can follow the first time they touch it.
+// Reads like a cookbook, not a reference — every recipe is
+// self-contained and written in the imperative.
+// ═══════════════════════════════════════════════════════════
+
+function section23(ctx: GuideContext): void {
+  title(ctx, '23. How To Use — Activating AI & Subsystems');
+
+  paragraph(ctx,
+    'Sections 1-22 explain what the console does. This section explains HOW to turn on the individual features and sub-systems, step by step. Every recipe below is self-contained: the prerequisites are listed, the click path is spelled out, and there is a quick test you can run to confirm it works. Read the recipe that matches the feature you need right now; the others can wait until you do.',
+  );
+
+  calloutBox(ctx, 'Orientation',
+    'None of these features require a supervisor or admin to enable per-dispatcher. If a recipe below asks for a setting you cannot see, check your user role in the status bar. Some features (audit-log viewing, BOLO broadcast to adjacent agencies, premise-alert creation) require supervisor or admin role — those are called out in the recipe.',
+    'info',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.1 AI Dispatcher Brain — Activation');
+  paragraph(ctx,
+    'The Dispatcher Brain is the rule-based AI system that watches every call and unit in real time and speaks coaching cues, safety reminders, and stuck-state warnings to you. It is NOT a replacement for judgment — treat it as a very attentive second dispatcher who only speaks when it sees a pattern you asked it to watch for.',
+  );
+
+  h3(ctx, 'Prerequisites');
+  bullet(ctx, 'Your account has the dispatcher, supervisor, or admin role.');
+  bullet(ctx, 'Your workstation has working speakers or headphones and browser audio is not muted.');
+  bullet(ctx, 'The WebSocket LIVE indicator in the status bar is green. Brain needs live events to fire rules.');
+
+  h3(ctx, 'Enable Steps');
+  bullet(ctx, 'Click your name in the top-right corner of the console. The user menu drops down.');
+  bullet(ctx, 'Select User Profile. The profile panel opens.');
+  bullet(ctx, 'Click the Voice tab along the top of the profile panel.');
+  bullet(ctx, 'Find the "Dispatcher Brain" toggle. Flip it ON. A green "Brain Active" badge appears in the status bar.');
+  bullet(ctx, 'Choose a Terseness preset: Narrative (full sentences, best for training), Standard (clipped professional phrasing, default), or Terse (5-word prompts, best for veterans who know the console cold).');
+  bullet(ctx, 'Optional: set Voice Gender (Jenny / Guy / Aria), Speaking Rate (0.8x to 1.3x of normal), and which rule categories fire — Safety, Timer, Coaching, Context, Events.');
+  bullet(ctx, 'Click Save. The brain immediately speaks a test line: "Dispatcher Brain active. I will notify you when something needs attention."');
+
+  h3(ctx, 'Verify');
+  bullet(ctx, 'Create a test call (F2) with priority P1. Brain should speak "Priority 1 dispatched. Two-unit rule engaged." within 2 seconds of save.');
+  bullet(ctx, 'Close the test call with disposition UNFOUNDED.');
+
+  h3(ctx, 'Turn Off');
+  bullet(ctx, 'Same path — User Profile -> Voice tab -> Dispatcher Brain toggle OFF. Or press Ctrl+Shift+B for an instant mute without losing your preset settings.');
+
+  calloutBox(ctx, 'Common Mistake',
+    'If you hear nothing when the brain should be speaking, first check the master sound toggle in the status bar — it can mute ALL audio including brain, voice alerts, and radio tones. The Brain Active badge will still show green even when the master mute is on.',
+    'warn',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.2 Voice Dictation — Call Intake By Speaking');
+  paragraph(ctx,
+    'You can populate a call intake form by speaking rather than typing. Useful when you are on the phone with a caller and want to keep both hands free, or when you are a slower typist than you are a listener. Voice dictation uses the browser\'s Web Speech API plus a CAD-specific vocabulary model that recognizes Utah street names, 10-codes, and standard incident types.',
+  );
+
+  h3(ctx, 'Prerequisites');
+  bullet(ctx, 'Chrome, Edge, or any Chromium-based browser. Firefox and Safari fall back to the default Web Speech recognizer which is notably less accurate on CAD vocabulary.');
+  bullet(ctx, 'Microphone permission granted to the console domain (rmpgutah.us). If you have never used the mic before, the browser will prompt the first time you press V.');
+
+  h3(ctx, 'Use');
+  bullet(ctx, 'Press F2 to open the intake form.');
+  bullet(ctx, 'Press V (for Voice). A red recording indicator appears in the top-right of the intake form.');
+  bullet(ctx, 'Speak naturally: "Shots fired at 2100 South State Street, two subjects, one armed, one round fired into the air." The form populates Incident Type (Shots Fired), Location (auto-geocoded), and Description (verbatim transcript) as you speak.');
+  bullet(ctx, 'Press V again to stop recording. Review the populated fields and edit any misheard words.');
+  bullet(ctx, 'Press Enter to save. Dispatch proceeds normally.');
+
+  h3(ctx, 'Transcript Review');
+  paragraph(ctx,
+    'Press T on any open call to see the full voice transcript for that call — every speak-to-call interaction, timestamped and attributable. This is the official record of what you said into the mic; the dispatcher brain uses it for coaching and the supervisor uses it for QA review.',
+  );
+
+  calloutBox(ctx, 'Privacy',
+    'Voice dictation records audio locally and transmits only the text transcript to the server. Raw audio is NOT stored. However, the transcript IS audited and discoverable — treat your microphone like an open radio channel.',
+    'warn',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.3 BOLO System — Create, Broadcast, Clear');
+  paragraph(ctx,
+    'A BOLO (Be On the Look-Out) is a persistent broadcast about a person, vehicle, or pattern that stays active across shifts until explicitly cleared or auto-expired. Every officer on duty sees active BOLOs on their MDT the moment they log on.',
+  );
+
+  h3(ctx, 'Create');
+  bullet(ctx, 'Press F11 (or Dispatch menu -> New BOLO). The BOLO form opens.');
+  bullet(ctx, 'Choose BOLO Type: Vehicle, Person, Pattern (e.g. "series of garage burglaries"), or Property (stolen item).');
+  bullet(ctx, 'Fill in known details. Leave unknowns blank — partial BOLOs are better than no BOLOs.');
+  bullet(ctx, 'Set safety flags if applicable: WEAPON, FELONY, KNOWN_GANG, OFFICER_SAFETY, JUVENILE. Flags drive the priority tone officers hear when the BOLO broadcasts.');
+  bullet(ctx, 'Set expiration: default 8 hours (end of shift), override for up to 72 hours with supervisor approval.');
+  bullet(ctx, 'Set Agency Scope: RMPG only (default), RMPG + SLCPD (metro relay), or RMPG + UHP + Unified PD + SLCPD (valley-wide).');
+  bullet(ctx, 'Click Broadcast. Voice channel speaks the BOLO immediately, MDTs pop a BOLO card, and the BOLO appears in the F11 BOLO panel on every workstation.');
+
+  h3(ctx, 'Amend');
+  bullet(ctx, 'From the BOLO panel, click the BOLO row. Click Amend (not Edit — amendments are versioned).');
+  bullet(ctx, 'Add or update fields. Every amendment re-broadcasts with an "UPDATED BOLO" prefix so officers know to re-read.');
+
+  h3(ctx, 'Clear');
+  bullet(ctx, 'When the subject is located, arrested, or the pattern stops, clear the BOLO: click the BOLO row, click Clear, choose a disposition (SUBJECT IN CUSTODY, VEHICLE RECOVERED, PATTERN RESOLVED, EXPIRED UNRESOLVED).');
+  bullet(ctx, 'Cleared BOLOs stay in the searchable history forever; they just stop broadcasting and drop off the active panel.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.4 Premise Alerts — Creating and Using');
+  paragraph(ctx,
+    'A premise alert is a persistent warning tied to a specific address. Examples: "known aggressive dog," "wheelchair-bound resident," "prior DV at this location," "known meth lab — HAZMAT protocols." When any call is dispatched to that address, the alert surfaces automatically on the call form and is voice-announced to responding officers.',
+  );
+
+  h3(ctx, 'Create (Requires Supervisor Role)');
+  bullet(ctx, 'From the map or the Records -> Addresses page, find the address.');
+  bullet(ctx, 'Click the address pin. Click Add Premise Alert.');
+  bullet(ctx, 'Choose alert severity: INFO (gray, informational only — "cameras on property"), CAUTION (amber, officer-safety advisory — "aggressive dog"), or WARNING (red, serious — "known violent subject, weapons at location").');
+  bullet(ctx, 'Write the alert text. Keep it under 80 characters — it will be spoken on the voice channel, so brevity is clarity.');
+  bullet(ctx, 'Optional: set an expiration date. Default is no expiration (persistent).');
+  bullet(ctx, 'Click Save. The alert is immediately live on any future dispatch to that address.');
+
+  h3(ctx, 'How It Surfaces');
+  bullet(ctx, 'When you type an address into a new call, if that address has one or more premise alerts, a red/amber/gray banner appears at the top of the intake form with the alert text.');
+  bullet(ctx, 'The voice channel speaks the alert as part of the dispatch announcement: "Priority 2 disturbance, 1234 Example Ave. Premise warning: aggressive dog at this location."');
+  bullet(ctx, 'MDTs display a full-screen premise card that the officer must dismiss before they can acknowledge the call. This is intentional friction — life-safety information should be impossible to skip past.');
+
+  h3(ctx, 'Review and Retire');
+  paragraph(ctx,
+    'Premise alerts need periodic review. A "wheelchair-bound resident" alert from 2018 may be stale if the resident moved. Supervisors should review and retire obsolete alerts quarterly under Records -> Premise Alerts -> Review Queue.',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.5 NCIC Queries — Wants, Warrants, Stolen Property');
+  paragraph(ctx,
+    'NCIC is the FBI\'s national crime information center. RMPG is configured as a secondary operator with read-only query access (we can ask NCIC questions; we cannot enter records into NCIC). Use NCIC for any person, vehicle, plate, firearm, or article check that may have a federal or cross-jurisdictional dimension.',
+  );
+
+  h3(ctx, 'Run a Query');
+  bullet(ctx, 'Press F12 to open the NCIC query panel. The panel defaults to Person query.');
+  bullet(ctx, 'Choose query type: Person (by name + DOB), Vehicle (by VIN or by plate+state), Article (by serial number), Firearm (by serial + make), Plate (partial or full).');
+  bullet(ctx, 'Fill in the fields. Person queries require at a minimum a last name AND either DOB or a first name and approximate age.');
+  bullet(ctx, 'Click Run Query. Responses typically return in 2-4 seconds; during peak federal load it can take up to 15 seconds.');
+
+  h3(ctx, 'Reading Responses');
+  bullet(ctx, 'NO HIT — no matching record. This is NOT the same as "clear" — you only asked one question, and NCIC only answers what it has.');
+  bullet(ctx, 'HIT — one or more matching records. Read the hit: ORI (originating agency), record type (wanted, missing, sex offender, protection order), caveats, and any special instructions.');
+  bullet(ctx, 'VERIFY — NCIC hits MUST be verified with the originating agency before acting. The console auto-sends a hit-confirmation request; do not make officer-safety decisions on the hit alone until verified.');
+
+  calloutBox(ctx, 'Misuse',
+    'NCIC access is federally audited. Every query is logged with your user ID, timestamp, justification (which you are required to enter for each query: incident number or case number). Running NCIC on a person for non-law-enforcement reasons is a federal crime under 18 U.S.C. 1030. Do not help friends, family, or curious acquaintances run "just one quick check" — the audit trail is forever.',
+    'warn',
+  );
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.6 Live GPS Breadcrumbs — Unit Tracking');
+  paragraph(ctx,
+    'Every unit with an MDT or a mobile-app session broadcasts GPS approximately every 5 seconds while in service. The breadcrumb trail — the unit\'s path over the last N minutes — is available for review and replay.',
+  );
+
+  h3(ctx, 'View Breadcrumbs');
+  bullet(ctx, 'Click a unit on the map. The quick-info popup opens.');
+  bullet(ctx, 'Click "Breadcrumbs" in the popup. The unit\'s last 30 minutes of movement draws on the map as a fading blue trail.');
+  bullet(ctx, 'Adjust the time window: 15 minutes, 30 minutes, 1 hour, entire shift.');
+  bullet(ctx, 'Click Play to animate the movement in sped-up playback — useful for post-incident reconstruction.');
+
+  h3(ctx, 'When to Use');
+  bullet(ctx, 'Welfare check on a non-responsive officer: where have they been in the last 5 minutes?');
+  bullet(ctx, 'Pursuit debrief: reconstruct the chase path for the supervisor report.');
+  bullet(ctx, 'Posted-unit verification: did the unit actually go to the post, or just report "on post" from the parking lot across the street?');
+  bullet(ctx, 'Training review: new-officer patrol-coverage evaluation over a shift.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.7 Skip Tracer V2 — Running a Lookup');
+  paragraph(ctx,
+    'Skip Tracer V2 consolidates 22 public and agency data sources into a single query interface. Use for deep background, stale-address investigation, or pre-dispatch context on a high-risk subject.',
+  );
+
+  h3(ctx, 'Open the Tool');
+  bullet(ctx, 'Intelligence menu -> Skip Tracer, or the keyboard shortcut Ctrl+Shift+S.');
+  bullet(ctx, 'The search form opens. Required: at least a last name OR a phone number OR an address.');
+
+  h3(ctx, 'Required Justification');
+  bullet(ctx, 'Every skip trace requires a case number or incident number in the Justification field. The form will not submit without one.');
+  bullet(ctx, 'If the lookup is for proactive intelligence with no open case, use "INTEL-" prefix followed by your initials and date (e.g. INTEL-JS-2026-04-20). Supervisors review INTEL prefixes for pattern abuse.');
+
+  h3(ctx, 'Running');
+  bullet(ctx, 'Fill the form, click Run. The query fans out to all 22 sources in parallel.');
+  bullet(ctx, 'Results stream in as sources respond — NSOPW is usually fastest (<2s), federal sanctions take 5-10s, SLC Assessor can take 30s on cold queries.');
+  bullet(ctx, 'Results are deduplicated across sources and grouped by confidence: HIGH (multiple sources corroborate), MEDIUM (single authoritative source), LOW (single weak source, e.g. social directory).');
+
+  h3(ctx, 'Interpreting Hits');
+  bullet(ctx, 'FBI WANTED hit: treat as armed and dangerous until verified. Notify supervisor immediately.');
+  bullet(ctx, 'OFAC Sanctions hit: likely a false positive on a common name. Verify by DOB and photo before acting.');
+  bullet(ctx, 'NSOPW hit: registered sex offender. Note any address-of-record mismatch — that itself may be a registration violation.');
+  bullet(ctx, 'Utah Court hit: active or recent case. Open the court record for charge specifics and next-hearing date.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.8 Compound Search — Building a Query');
+  paragraph(ctx,
+    'Compound Search (Records -> Search -> Compound, or Ctrl+Shift+F) is the NCIC-style structured query form. Use it when you need records that match multiple criteria simultaneously.',
+  );
+
+  h3(ctx, 'Example — Build This Query');
+  paragraph(ctx,
+    'Scenario: an officer just cleared a call and wants to know if a subject named "Smith" in their late 30s has been contacted in Beat 14 in the last 60 days.',
+  );
+  bullet(ctx, 'Open compound search (Ctrl+Shift+F).');
+  bullet(ctx, 'Name: Smith* (wildcard suffix catches Smithson, Smithers, etc.).');
+  bullet(ctx, 'DOB: range, 1985-01-01 to 1990-12-31 (gives "late 30s in 2026").');
+  bullet(ctx, 'Location: Beat 14 (click Beat from the drop-down, select 14).');
+  bullet(ctx, 'Date range: 2026-02-20 to 2026-04-20 (last 60 days).');
+  bullet(ctx, 'Record types: check Calls, Incidents, Field Interviews (the three that geotag to a beat).');
+  bullet(ctx, 'Click Run. Results group by record type; click through to each.');
+
+  h3(ctx, 'Save for Reuse');
+  bullet(ctx, 'Click Save Search at the top of the query form. Name it (e.g. "Late-30s Smiths in Beat 14").');
+  bullet(ctx, 'Saved searches live under Records -> Saved Searches and are per-user (not shared).');
+  bullet(ctx, 'Running a saved search re-executes against CURRENT data, so "Calls in Beat 14 this week" works every week without re-editing.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.9 Offline Tile Pre-cache — Before a Long Deployment');
+  paragraph(ctx,
+    'Before a planned event with limited connectivity (parade detail, festival, remote tactical operation), pre-cache map tiles for the operational area so the map continues to work without network. The service worker auto-caches tiles you pan over, but you can force a deeper cache for a specific bounding box.',
+  );
+
+  h3(ctx, 'Steps');
+  bullet(ctx, 'Open the map. Pan to the event area.');
+  bullet(ctx, 'Tools menu -> Pre-cache Map Area. A rectangle overlay appears.');
+  bullet(ctx, 'Drag the rectangle to cover the area. Choose zoom levels to cache: typically Z10 (overview) to Z17 (street detail). Z18-19 adds significant time and cache size.');
+  bullet(ctx, 'Click Pre-cache. A progress bar shows tile download. Typical 1-square-mile area at Z10-Z17 = ~500 tiles = ~20MB, takes 30-90 seconds.');
+  bullet(ctx, 'Verify: turn off your network (airplane mode on a laptop) and pan around the cached area. Tiles load from cache.');
+
+  h3(ctx, 'Cache Eviction');
+  bullet(ctx, 'The service worker enforces a max-tile-cache size (default 1GB). Tiles you have not used in 30 days get evicted first.');
+  bullet(ctx, 'To force-evict everything and rebuild: Tools -> Clear Map Cache. Note this also clears your personal tile history and the next shift will start with a cold cache.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.10 Dispatcher Brain — Rule Customization');
+  paragraph(ctx,
+    'The dispatcher brain comes with ~40 pre-configured rules (see Section 7 for categories). You can enable, disable, or threshold-adjust individual rules per your workstation without affecting other dispatchers.',
+  );
+
+  h3(ctx, 'Access');
+  bullet(ctx, 'User Profile -> Voice tab -> "Edit Rules" at the bottom.');
+  bullet(ctx, 'The rule editor opens, grouped by category: Safety, Timer, Coaching, Context, Events.');
+  bullet(ctx, 'Each rule has: On/Off toggle, severity (how urgently it speaks), cool-down (minimum seconds between re-fires), and any rule-specific thresholds (e.g. "on-scene stuck time" defaults to 8 minutes; you can raise to 10 for slow-moving welfare-check shifts).');
+
+  h3(ctx, 'Common Tweaks');
+  bullet(ctx, 'Night-shift dispatchers on slow beats often raise the on-scene stuck-time threshold from 8 minutes to 15 minutes to reduce spurious alerts on long welfare checks.');
+  bullet(ctx, 'Metro-shift dispatchers on a busy Friday night often disable the "coaching" category entirely so the brain only speaks safety and timer rules — coaching adds chatter when the channel is already saturated.');
+  bullet(ctx, 'Trainees leave everything on default for the first 90 days.');
+
+  h3(ctx, 'Reset');
+  bullet(ctx, 'At the bottom of the rule editor: "Reset to Defaults." Brings every rule back to factory settings. Useful when you have drifted your config over time and want a known baseline.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.11 Dark Mode / High-Contrast — Accessibility Presets');
+  paragraph(ctx,
+    'The console defaults to the Spillman Flex pure-black theme (dark background, gold accents). For dispatchers with visual accessibility needs, two additional presets exist.',
+  );
+  bullet(ctx, 'High Contrast — increases text weight, thickens borders, and bumps accent saturation. User Profile -> Appearance -> High Contrast.');
+  bullet(ctx, 'Light Theme — inverted color scheme with white background. NOT recommended for night-shift workstations (reduces dark adaptation) but useful for day-shift in bright rooms. User Profile -> Appearance -> Light Theme.');
+  bullet(ctx, 'Text Size — three steps: Small (compact, default on 1440p+ displays), Medium, Large. Applies to every panel in the console uniformly.');
+
+  // ───────────────────────────────────────────────────────
+  h2(ctx, '23.12 Workstation Handoff — Leaving Your Post');
+  paragraph(ctx,
+    'When you step away from the console (bathroom break, end of shift, emergency), the workstation should know you are not there. This is separate from logging out — you can "hand off" temporary control to the next dispatcher without losing your session.',
+  );
+  bullet(ctx, 'Ctrl+Shift+H opens the Handoff dialog. Alternatively, click your name -> Handoff.');
+  bullet(ctx, 'Choose handoff type: Short Break (<15 min, session stays open, you return to the same state), Shift Change (end of shift, session closes cleanly with a summary export), Emergency (abandon the workstation, the next dispatcher gets a fresh login but inherits your active call list).');
+  bullet(ctx, 'On Short Break: the screen dims with a "DISPATCHER AWAY" banner, but the WebSocket stays connected and incoming events are queued. On your return, press any key and the dim lifts.');
+
+  calloutBox(ctx, 'Handoff Discipline',
+    'Never walk away from an active call without either handing it to another dispatcher explicitly or setting Short Break. An unhandled call with a unit on scene and no dispatcher awareness is how officer-safety incidents turn into officer-safety emergencies.',
     'warn',
   );
 }
@@ -1720,6 +4140,8 @@ function appendixC(ctx: GuideContext): void {
     'A light-touch overview of how the system is put together, aimed at dispatchers who want to understand the plumbing enough to troubleshoot intelligently without becoming system administrators.',
   );
 
+  drawArchDataFlowDiagram(ctx);
+
   h2(ctx, 'Where Things Live');
   bullet(ctx, 'Server — hosted at the VPS, accessible at https://rmpgutah.us. Node.js Express application running under systemd.');
   bullet(ctx, 'Database — SQLite file on the server. Every call, unit, incident, citation, person, and vehicle record lives here.');
@@ -1760,6 +4182,236 @@ function appendixC(ctx: GuideContext): void {
       ['Legal request for records',                       'Chief / legal counsel, not dispatch'],
     ],
     [5, 5],
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Appendices D-F — educational reference material.
+// D is the glossary (every term of art a new dispatcher will
+// encounter), E is the phonetic alphabet + radio signals, F
+// is the decision-flowchart appendix (radio phrase -> action).
+// ═══════════════════════════════════════════════════════════
+
+function appendixD(ctx: GuideContext): void {
+  title(ctx, 'Appendix D — Glossary of Terms');
+
+  paragraph(ctx,
+    'A curated glossary of every term of art a new dispatcher will encounter in their first year. Terms are grouped by domain; within each group they are alphabetical. Items in ALL CAPS are acronyms; mixed-case items are commonly-spelled terms.',
+  );
+
+  h2(ctx, 'Dispatch & CAD');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['ANI / ALI',      'Automatic Number Identification / Automatic Location Identification. Caller\'s phone number and registered service address, delivered by the 911 trunk before you pick up.'],
+      ['BOLO',           'Be On the Look-Out. A broadcast describing a person, vehicle, or pattern to watch for. Active BOLOs persist across shifts until manually cleared or auto-expired.'],
+      ['CAD',            'Computer-Aided Dispatch. The software system (this one) that manages calls, units, and radio traffic.'],
+      ['Call Stack',     'The list of open calls-for-service. Called a "stack" because it is sorted top-down by priority.'],
+      ['Dispatcher Brain','The rule engine that watches call and unit state for anomalies (stuck states, missing backup, overdue check-ins) and speaks reminders on the voice channel.'],
+      ['GOA',            'Gone on Arrival. Disposition for a call where the reported activity or subject was no longer present when units arrived.'],
+      ['MDT',            'Mobile Data Terminal. The in-vehicle computer an officer uses to see calls, run plates, and file reports.'],
+      ['NCIC',           'National Crime Information Center. The FBI\'s national warrant / wanted-persons / stolen-property database.'],
+      ['Premise Alert',  'A persistent warning tied to a specific address (e.g. "known aggressive dog", "wheelchair-bound resident"). Auto-displayed on any call to that address.'],
+      ['Priority',       'P1 (life/safety) to P4 (administrative). See Section 4 for full definitions.'],
+      ['PSO',            'Private Security Officer. RMPG contract-patrol designation for calls routed to contract patrol rather than sworn response.'],
+      ['Ten-Code',       '10-series numeric radio brevity code (e.g. 10-4, 10-97). See Section 3.'],
+      ['Signal Code',    'S-series agency-specific brevity code for incident types without a standard 10-code (e.g. S-3 shots fired).'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Records (RMS) & Reporting');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Case',           'An investigative unit that may span many calls, incidents, citations, arrests, warrants, and pieces of evidence.'],
+      ['Citation',       'A ticket issued for a traffic or municipal-code violation. Each citation has one or more violation line items.'],
+      ['Disposition',    'Final classification of a closed call or closed incident (e.g. CLEARED, REFERRED, UNFOUNDED, GOA).'],
+      ['FI',             'Field Interview. Documented contact with a person not arrested, cited, or detained. See Section 16.'],
+      ['Incident',       'A Spillman-style record documenting an event. An incident is created from a call once the call is closed with a reportable disposition.'],
+      ['MNI',            'Master Name Index. The unified person table across calls, incidents, citations, arrests, warrants, and FIs.'],
+      ['NIBRS',          'National Incident-Based Reporting System. FBI\'s successor to the summary UCR; each incident may have multiple NIBRS offense codes.'],
+      ['Offense',        'A specific statute violation attached to an incident. One incident can have many offenses.'],
+      ['RMS',             'Records Management System. The side of this application that keeps persisted records (as opposed to CAD, which is live state).'],
+      ['Supplemental',   'An additional narrative filed against an already-closed incident (e.g. witness interviewed later, evidence located after the fact).'],
+      ['UCR',            'Uniform Crime Reporting. Summary-level crime statistics (being phased out in favor of NIBRS).'],
+      ['UoF',            'Use of Force. Any officer application of force that triggers a mandatory report regardless of outcome.'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Geography');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Area',    'Tier 1 of the dispatch geography hierarchy. Largest unit (e.g. "Wasatch Front").'],
+      ['Sector',  'Tier 2. Subdivision of an area (e.g. "SLC Central").'],
+      ['Zone',    'Tier 3. Subdivision of a sector, often aligned to patrol shifts.'],
+      ['Beat',    'Tier 4. Smallest unit — typically a few square blocks. 719 beats cover the full Utah operational area.'],
+      ['Geofence','A polygon triggering an automatic alert when a unit enters or leaves (used for perimeter operations, hot zones, and evidence areas).'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Radio & Voice');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Clear Channel', 'No radio traffic for at least 2 seconds. Good moment to transmit.'],
+      ['Double-Key',    'Two units attempt to transmit at the same time; the result is a garbled squeal. Both back off and retry.'],
+      ['Hot Mic',       'A stuck transmit button; a unit\'s microphone is broadcasting everything around it. The channel is unusable until fixed.'],
+      ['Hold Traffic',  'Stop all non-emergency radio traffic (triggered by 10-33). The channel is reserved for the active emergency only.'],
+      ['Simplex',       'Unit-to-unit radio without repeater. Short range, used for tactical. Dispatch does NOT hear simplex traffic.'],
+      ['Squelch',       'The noise gate that opens when a signal is strong enough. Bad squelch = choppy audio. Heard as "you are broken / garbled" on the air.'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Legal & Safety');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['Exigent Circumstances', 'A legal standard allowing warrantless entry when immediate action is required to prevent harm, escape, or evidence destruction.'],
+      ['Probable Cause',        'Standard required for arrest or search warrant — facts sufficient to lead a reasonable person to believe a crime occurred.'],
+      ['Reasonable Suspicion',  'Lower standard than probable cause, sufficient for a Terry stop or investigative detention.'],
+      ['Terry Stop',            'Brief investigative detention based on reasonable suspicion (named for Terry v. Ohio, 392 U.S. 1, 1968).'],
+      ['Two-Unit Rule',         'RMPG policy: any P1 call, any weapon involvement, any domestic violence, any known mental-health crisis, or any call at a business after hours requires a minimum of two units.'],
+    ],
+    [2, 8],
+  );
+}
+
+function appendixE(ctx: GuideContext): void {
+  title(ctx, 'Appendix E — Phonetic Alphabet & Radio Signals');
+
+  paragraph(ctx,
+    'The NATO / ICAO phonetic alphabet is the standard for spelling over the radio. It is used whenever any letter could be misheard — plate numbers, license plate configurations, names, spelled locations. RMPG dispatchers must use the NATO set; regional variants (Adam / Boy / Charles) are NOT accepted because they conflict with the FBI NCIC response format.',
+  );
+
+  h2(ctx, 'NATO Phonetic Alphabet');
+  table(ctx,
+    ['Letter', 'Phonetic', 'Pronunciation'],
+    [
+      ['A', 'Alfa',     'AL-fah'],
+      ['B', 'Bravo',    'BRAH-voh'],
+      ['C', 'Charlie',  'CHAR-lee'],
+      ['D', 'Delta',    'DELL-tah'],
+      ['E', 'Echo',     'EK-oh'],
+      ['F', 'Foxtrot',  'FOKS-trot'],
+      ['G', 'Golf',     'golf'],
+      ['H', 'Hotel',    'hoh-TEL'],
+      ['I', 'India',    'IN-dee-ah'],
+      ['J', 'Juliett',  'JEW-lee-ett'],
+      ['K', 'Kilo',     'KEY-loh'],
+      ['L', 'Lima',     'LEE-mah'],
+      ['M', 'Mike',     'mike'],
+      ['N', 'November', 'no-VEM-ber'],
+      ['O', 'Oscar',    'OSS-kah'],
+      ['P', 'Papa',     'pah-PAH'],
+      ['Q', 'Quebec',   'keh-BECK'],
+      ['R', 'Romeo',    'ROW-me-oh'],
+      ['S', 'Sierra',   'see-AIR-rah'],
+      ['T', 'Tango',    'TANG-go'],
+      ['U', 'Uniform',  'YOU-nee-form'],
+      ['V', 'Victor',   'VIK-tah'],
+      ['W', 'Whiskey',  'WISS-key'],
+      ['X', 'X-ray',    'EKS-ray'],
+      ['Y', 'Yankee',   'YANG-key'],
+      ['Z', 'Zulu',     'ZOO-loo'],
+    ],
+    [2, 3, 5],
+  );
+
+  h2(ctx, 'Numbers — Spoken Form');
+  paragraph(ctx,
+    'Numbers are spoken digit-by-digit, NOT as grouped words. Plate "ABC 1234" is transmitted as "Alfa Bravo Charlie, one two three four" — NEVER "twelve thirty-four". The digit 9 is sometimes pronounced "NINE-er" to distinguish from "five" on a poor signal. Zero is "ZEE-row", never "oh".',
+  );
+  bullet(ctx, '0 — ZEE-row (never "oh")');
+  bullet(ctx, '9 — NINE-er on poor signals');
+  bullet(ctx, 'Decimals — "point" (e.g. "four point five")');
+  bullet(ctx, 'Thousands — individual digits, NOT "one thousand two hundred"');
+
+  h2(ctx, 'Transmission Standards');
+  bullet(ctx, 'Call the unit FIRST, then identify yourself. "U07 Dispatch" — U07 hears their call sign and listens for the message that follows.');
+  bullet(ctx, 'Pause briefly after keying before speaking; repeaters take about 200ms to come up.');
+  bullet(ctx, 'Release the key at end of transmission; do not trail off with "... uh ... over".');
+  bullet(ctx, '"Over" means "your turn to transmit". "Out" means "transmission complete, no reply expected". Do NOT say "over and out" — it is contradictory and immediately identifies a non-professional.');
+  bullet(ctx, 'Transmissions under 5 seconds. Longer than that, break into two transmissions with an acknowledgment between.');
+
+  h2(ctx, 'Common Q-Signals (Supplementary)');
+  paragraph(ctx,
+    'Q-signals are amateur-radio style brevity codes. RMPG uses very few, but these three are occasionally heard from adjacent agencies or on simplex:',
+  );
+  table(ctx,
+    ['Code', 'Meaning'],
+    [
+      ['QRM', 'Interference on the channel'],
+      ['QSL', 'Acknowledged / received'],
+      ['QTH', 'What is your location? (interchangeable with 10-20)'],
+    ],
+    [2, 8],
+  );
+
+  calloutBox(ctx, 'Clarity Over Brevity',
+    'If a transmission is unclear, say "say again all after [last clear word]" — NOT just "repeat" (which in artillery convention means "fire again"). "Say again" is unambiguous and works on any channel.',
+    'info',
+  );
+}
+
+function appendixF(ctx: GuideContext): void {
+  title(ctx, 'Appendix F — Decision Flowcharts');
+
+  paragraph(ctx,
+    'These flowcharts are meant to be scanned, not read linearly. Each one starts with a trigger — something you hear on the radio or see on the screen — and walks through the first one or two decisions. The goal is to compress the "what do I do first?" moment to under 5 seconds.',
+  );
+
+  h2(ctx, 'Flow 1 — Officer Says "10-99" (Officer Emergency)');
+  drawOfficerDownFlowchart(ctx);
+  bullet(ctx, 'STEP 1: Immediately press F12 (panic broadcast). Every workstation and MDT hears the emergency tone.');
+  bullet(ctx, 'STEP 2: Hold all non-emergency radio traffic. Say "All units, stand by for emergency traffic" on the voice channel.');
+  bullet(ctx, 'STEP 3: Confirm unit location. If GPS is current, use it. If not, ask "U__ Dispatch, give me your 20."');
+  bullet(ctx, 'STEP 4: Dispatch nearest units (F3). Minimum three-unit response for 10-99.');
+  bullet(ctx, 'STEP 5: Page on-call supervisor. If supervisor already on-duty, that supervisor takes command.');
+  bullet(ctx, 'STEP 6: Notify SLCPD dispatch if within SLC city limits; notify Unified PD Central Dispatch if not.');
+  bullet(ctx, 'STEP 7: Do NOT clear the 10-99 status until the officer personally confirms 10-4 on the air.');
+
+  h2(ctx, 'Flow 2 — Officer Does Not Respond to Two Radio Checks');
+  bullet(ctx, 'STEP 1: Wait 10 seconds between your first and second radio check. Do not stack them.');
+  bullet(ctx, 'STEP 2: After second no-response, call by partner if any. ("U08, do you have eyes on U07?")');
+  bullet(ctx, 'STEP 3: Check the unit\'s last GPS point. If within last 60 seconds AND reasonable for their assignment, escalate cautiously.');
+  bullet(ctx, 'STEP 4: If GPS is stale (>90s) OR the unit was on a risky call (traffic stop, premise check, domestic), treat as 10-99 and run Flow 1.');
+  bullet(ctx, 'STEP 5: Assume the officer is fine until you have reason to believe otherwise, but act on the reasonable worst-case.');
+
+  h2(ctx, 'Flow 3 — BOLO Hit by an Officer');
+  bullet(ctx, 'STEP 1: Officer radios "I\'m on the BOLO vehicle at [location]." You immediately acknowledge: "10-4, U__, on the BOLO at [repeat location]."');
+  bullet(ctx, 'STEP 2: Check the BOLO record for officer-safety flags. Voice-channel those flags immediately: "BOLO flags: WEAPON, GANG, FELONY WARRANT."');
+  bullet(ctx, 'STEP 3: Dispatch minimum two-unit backup if not already en route. Three units for weapon flag.');
+  bullet(ctx, 'STEP 4: Stay on top of radio traffic — officers on a BOLO stop will be quiet for 15-30 seconds while they approach. Silence does not mean problem.');
+  bullet(ctx, 'STEP 5: If the stop generates arrests, felony charges, or a pursuit, escalate to supervisor. Clear the BOLO only when the officer confirms the subject(s) are in custody or cleared.');
+
+  h2(ctx, 'Flow 4 — 911 Hang-Up With ANI/ALI But No Voice');
+  bullet(ctx, 'STEP 1: Call back the ANI number from a recorded line. Up to two attempts.');
+  bullet(ctx, 'STEP 2: If no answer or immediate hang-up on callback, create a call: type "911 HANGUP - CHECK WELFARE" at the ALI address.');
+  bullet(ctx, 'STEP 3: Priority 2. Minimum one-unit response, two-unit if the address has a premise alert or prior DV history.');
+  bullet(ctx, 'STEP 4: DO NOT assume pocket-dial. Treat every 911 hang-up as a potential DV or medical emergency until units can verify otherwise.');
+
+  h2(ctx, 'Flow 5 — Traffic Stop Escalates');
+  bullet(ctx, 'STEP 1: Officer radios something unusual ("stand by," "I need backup," change in tone). Acknowledge calmly: "10-4 U__, you need assistance?"');
+  bullet(ctx, 'STEP 2: If confirmed, dispatch nearest available unit — do not wait for the officer to specify.');
+  bullet(ctx, 'STEP 3: Hold the channel for that officer. Stop any non-emergency traffic: "All units, hold traffic for U__."');
+  bullet(ctx, 'STEP 4: Run the plate and occupants again in the background while the stop is developing. New warrant hits or felony flags change the whole call.');
+  bullet(ctx, 'STEP 5: If the stop becomes a felony / weapon stop, escalate to Flow 3 (BOLO Hit) logic for additional units and supervisor notification.');
+
+  h2(ctx, 'Flow 6 — Mental-Health Crisis Call');
+  bullet(ctx, 'STEP 1: Get the subject\'s immediate state. Armed? Actively self-harming? Compliant? Stable and talking?');
+  bullet(ctx, 'STEP 2: If armed or actively self-harming, dispatch as P1 with WEAPON (if applicable) + MENTAL_HEALTH flags, two-unit minimum, and request CIT-certified officer via /cit-request.');
+  bullet(ctx, 'STEP 3: If stable and talking, dispatch as P2 with MENTAL_HEALTH flag. CIT-preferred, one-unit OK if low risk and known to the system.');
+  bullet(ctx, 'STEP 4: Check the person record for prior MH history — if this is a repeat contact, voice-channel that fact to responding units so they have context.');
+  bullet(ctx, 'STEP 5: Do NOT dispatch mental-health calls as "welfare check" unless you truly have no information. "Welfare check" hides the clinical flag and responding units do not know what they are walking into.');
+
+  calloutBox(ctx, 'Meta-Rule',
+    'Every flow above has a final unwritten step: document. Every decision, every escalation, every consultation with a supervisor goes in the call notes with a timestamp. If it is not in the notes, it did not happen — regardless of how correct the decision was.',
+    'warn',
   );
 }
 
@@ -1919,9 +4571,23 @@ function quickReferenceCard(ctx: GuideContext): void {
   d.setFont('helvetica', 'normal');
   d.setFontSize(9);
   d.setTextColor(COLOR.INK);
-  d.text('User Profile → Voice tab. Toggle Dispatcher Brain (Beta). Terseness: narrative / standard / terse.', PAGE.MARGIN, bottomY);
-  d.text('Brain speaks: events (citations, incidents, warrants, evidence, arrests, HR) + coaching (DV, felony, MH,', PAGE.MARGIN, bottomY + 12);
-  d.text('overdue status, geofence breach). Press V for mic. "Tell me about that call." Press T for transcript.', PAGE.MARGIN, bottomY + 24);
+  // Use splitTextToSize so lines wrap inside the page margins. Hardcoded
+  // d.text() calls overflow the right edge and clip to "standa..." at
+  // fontSize 9 because 100+ char lines exceed the 504pt content width.
+  const voiceLines = [
+    'User Profile -> Voice tab. Toggle Dispatcher Brain (Beta). Terseness: narrative / standard / terse.',
+    'Brain speaks: events (citations, incidents, warrants, evidence, arrests, HR) + coaching (DV, felony, MH, overdue status, geofence breach).',
+    'Press V for mic. "Tell me about that call." Press T for transcript.',
+  ];
+  const voiceContentW = PAGE.W - PAGE.MARGIN * 2;
+  let voiceOffsetY = 0;
+  for (const rawLine of voiceLines) {
+    const wrapped = d.splitTextToSize(rawLine, voiceContentW) as string[];
+    for (const w of wrapped) {
+      d.text(w, PAGE.MARGIN, bottomY + voiceOffsetY);
+      voiceOffsetY += 11;
+    }
+  }
 
   // Emergency box at very bottom
   bottomY = PAGE.H - 120;
@@ -1940,49 +4606,135 @@ function quickReferenceCard(ctx: GuideContext): void {
   d.text('and SLCPD if within city limits. Do NOT clear until officer confirms 10-4.', PAGE.MARGIN + 12, bottomY + 44);
 }
 
+// ─── Live-data fetch ────────────────────────────────────────
+
+/**
+ * Attempt to fetch the current 10-code and signal-code list from the
+ * server. Returns null on any failure so callers fall back to the
+ * hardcoded tables — dispatchers on a flaky connection still need the guide.
+ */
+async function fetchLiveCodes(): Promise<LiveDispatchCode[] | null> {
+  try {
+    const res = await fetch('/api/dispatch/geography/codes', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    return data as LiveDispatchCode[];
+  } catch {
+    return null;
+  }
+}
+
 // ─── Public API ─────────────────────────────────────────────
+
+/** Registry of emitters in the order they appear in the final PDF. */
+interface SectionSpec {
+  label: string;
+  emit: (ctx: GuideContext) => void;
+}
+
+function buildSectionSpecs(): SectionSpec[] {
+  return [
+    { label: '1. Console Overview',                        emit: section1 },
+    { label: '2. Taking a Call End-to-End',                emit: section2 },
+    { label: '3. Unit Status & 10-Codes',                  emit: section3 },
+    { label: '4. Safety Flags & Priority Levels',          emit: section4 },
+    { label: '5. F-Key Hotkeys',                           emit: section5 },
+    { label: '6. CAD Command Line',                        emit: section6 },
+    { label: '7. Voice Features (Dispatcher Brain)',       emit: section7 },
+    { label: '8. Common Workflows',                        emit: section8 },
+    { label: '9. Troubleshooting',                         emit: section9 },
+    { label: '10. Radio Etiquette & Voice Protocols',      emit: section10 },
+    { label: '11. Documentation Standards',                emit: section11 },
+    { label: '12. Using the Map',                          emit: section12 },
+    { label: '13. Shift Change Procedure',                 emit: section13 },
+    { label: '14. Real-Time Sync & Offline Behavior',      emit: section14 },
+    { label: '15. Map V2 (OpenLayers, Beta)',              emit: section15 },
+    { label: '16. Field Interviews',                       emit: section16 },
+    { label: '17. Process Service / Serve Queue',          emit: section17 },
+    { label: '18. Skip Tracer V2',                         emit: section18 },
+    { label: '19. Compound & Universal Search',            emit: section19 },
+    { label: '20. Anatomy of the Console',                 emit: section20 },
+    { label: '21. Worked Example — Shots-Fired Call',      emit: section21 },
+    { label: '22. Your First Shift — Onboarding',          emit: section22 },
+    { label: '23. How To Use — AI & Subsystems',           emit: section23 },
+    { label: 'Appendix A — Incident Type Reference',       emit: appendixA },
+    { label: 'Appendix B — Disposition Codes',             emit: appendixB },
+    { label: 'Appendix C — Architecture for Dispatchers',  emit: appendixC },
+    { label: 'Appendix D — Glossary of Terms',             emit: appendixD },
+    { label: 'Appendix E — Phonetic Alphabet & Radio',     emit: appendixE },
+    { label: 'Appendix F — Decision Flowcharts',           emit: appendixF },
+    { label: 'Quick-Reference Card',                       emit: quickReferenceCard },
+  ];
+}
 
 /**
  * Build the Dispatch Guide PDF and trigger a browser download.
- * Filename includes today's date so dispatchers can see at a glance
- * which version they have on the console.
+ *
+ * Flow: (1) fetch live 10-codes (best-effort), (2) emit every section on a
+ * temporary scratch document to collect page-start anchors, (3) prepend the
+ * cover page with a clickable TOC pointing at those anchors, (4) re-render
+ * footers now that the page total is known, (5) save.
+ *
+ * We emit sections first and the cover page last so the TOC can hold real
+ * page numbers. jsPDF doesn't support "named destinations" that survive
+ * page reordering, so we build the cover at the end and use `movePage` to
+ * slide it to position 1.
+ *
+ * Filename includes today's date so dispatchers can see at a glance which
+ * version they have on the console.
  */
-export function generateDispatchGuidePdf(): void {
+export async function generateDispatchGuidePdf(): Promise<void> {
+  const liveCodes = await fetchLiveCodes();
+
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
-  const ctx: GuideContext = { doc, y: PAGE.MARGIN, page: 1 };
+  const ctx: GuideContext = {
+    doc,
+    y: PAGE.MARGIN,
+    page: 1,
+    liveCodes,
+    anchors: [],
+  };
 
-  // Cover page (no header/footer)
+  const specs = buildSectionSpecs();
+
+  // The first page is auto-created by jsPDF and doesn't pass through newPage(),
+  // so the running header is never drawn on it. Draw it manually for parity
+  // with every subsequent page.
+  pageHeader(ctx);
+
+  // Pass 1 — emit every section, recording each one's start page in ctx.anchors.
+  // Section 1 lands on the auto-created page 1 so we don't waste a blank page
+  // before reordering.
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    if (i > 0) newPage(ctx);
+    anchor(ctx, spec.label);
+    spec.emit(ctx);
+  }
+
+  // Pass 2 — add the cover page at the END, then relocate to position 1.
+  // Anchors were captured in pass 1 and still reference pages 1..N; after
+  // we insert the cover at the front each anchor's page increments by 1.
+  doc.addPage();
+  const coverPageNum = doc.getNumberOfPages();
+  doc.setPage(coverPageNum);
+
+  // Shift every recorded page by +1 to account for the cover going in front.
+  for (const a of ctx.anchors) a.page += 1;
+
   coverPage(ctx);
+  doc.movePage(coverPageNum, 1);
 
-  // Sections 1-13 — each starts on a fresh page for readability
-  newPage(ctx);    section1(ctx);
-  newPage(ctx);    section2(ctx);
-  newPage(ctx);    section3(ctx);
-  newPage(ctx);    section4(ctx);
-  newPage(ctx);    section5(ctx);
-  newPage(ctx);    section6(ctx);
-  newPage(ctx);    section7(ctx);
-  newPage(ctx);    section8(ctx);
-  newPage(ctx);    section9(ctx);
-  newPage(ctx);    section10(ctx);
-  newPage(ctx);    section11(ctx);
-  newPage(ctx);    section12(ctx);
-  newPage(ctx);    section13(ctx);
-
-  // Appendices
-  newPage(ctx);    appendixA(ctx);
-  newPage(ctx);    appendixB(ctx);
-  newPage(ctx);    appendixC(ctx);
-
-  // Quick-reference card on its own fresh page
-  quickReferenceCard(ctx);
-
-  // Footer pass — re-render page numbers now that total is known.
+  // Pass 3 — render footers (page N of M) on every page except the cover.
   const total = doc.getNumberOfPages();
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
     if (p === 1) continue; // cover page has no footer
-    pageFooter({ doc, y: 0, page: p }, total);
+    pageFooter({ ...ctx, y: 0, page: p }, total);
   }
 
   const stamp = new Date().toISOString().slice(0, 10);
