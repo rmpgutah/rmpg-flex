@@ -43,10 +43,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l')) return;
-      // Don't steal the keystroke while user is typing in an input/textarea/contenteditable.
-      // CAD/dispatch users are keyboard-heavy — accidental theme flips mid-input would be jarring.
+      // Don't steal the keystroke while the user is typing. CAD/dispatch users
+      // are keyboard-heavy — accidental theme flips mid-input would be jarring.
+      //
+      // Uses isContentEditable (walks the contenteditable inheritance chain) to
+      // cover (a) <div contenteditable> with an empty attribute value, and
+      // (b) nested descendants inside a contenteditable region — both of which
+      // a direct target.matches('[contenteditable="true"]') check misses.
       const target = e.target as HTMLElement | null;
-      if (target?.matches?.('input, textarea, [contenteditable="true"]')) return;
+      if (target && (
+        target.isContentEditable ||
+        (typeof target.matches === 'function' && target.matches('input, textarea'))
+      )) return;
       e.preventDefault();
       setThemeState(prev => (prev === 'dark' ? 'light' : 'dark'));
     }
