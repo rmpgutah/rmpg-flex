@@ -43,7 +43,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
           height: 32,
           borderRadius: 2,
           background: 'rgba(13, 21, 32, 0.9)',
-          border: '1px solid #1e3048',
+          border: '1px solid var(--border-default)',
         }}
         title="Show legend"
       >
@@ -65,14 +65,14 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       style={{
         borderRadius: 2,
         background: 'rgba(13, 21, 32, 0.9)',
-        border: '1px solid #1e3048',
+        border: '1px solid var(--border-default)',
         maxHeight: 360,
         overflowY: 'auto',
         width: 168,
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
+      <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid var(--border-default)' }}>
         <span className="text-[9px] font-mono font-black tracking-wider text-rmpg-300 uppercase">Legend</span>
         <button onClick={() => setExpanded(false)} className="text-rmpg-400 hover:text-white transition-colors p-0.5">
           <ChevronDown className="w-3 h-3" />
