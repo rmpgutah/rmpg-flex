@@ -64,9 +64,11 @@ of signal loss, with escalation up to supervisor notification at 15 minutes.
 
 ### Scope — who gets watched
 
-Only units where `status` ∈ (`available`, `enroute`, `on_scene`, `investigating`,
-`transport`, `pursuit`). `off_duty` and `out_of_service` are skipped. This is a
-query predicate (one SQL line), not a role check — keeps logic auditable.
+Only units where `status` ∈ (`available`, `dispatched`, `enroute`, `onscene`,
+`busy`). `off_duty` and `out_of_service` are skipped. Values match the live
+enum in `server/src/routes/dispatch/units.ts` `VALID_UNIT_STATUSES` — note
+`onscene` is one word. This is a query predicate (one SQL line), not a role
+check — keeps logic auditable.
 
 ## Data model
 
@@ -104,8 +106,7 @@ rotations (same pattern `gps_breadcrumbs` uses).
 // server/src/utils/gpsStaleWatchdog.ts
 const STALE_THRESHOLD_MS = 3 * 60_000;
 const TICK_INTERVAL_MS   = 30_000;
-const ON_DUTY = ['available', 'enroute', 'on_scene',
-                 'investigating', 'transport', 'pursuit'];
+const ON_DUTY = ['available', 'dispatched', 'enroute', 'onscene', 'busy'];
 
 export function evaluateLevel(ageMs: number): 0 | 1 | 2 | 3 {
   if (ageMs < 3  * 60_000) return 0;
