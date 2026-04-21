@@ -1445,9 +1445,9 @@ ipcMain.handle('recon:catalog-run', async (event, { category, className, kind, i
         .replace(/\bsudo\s+apt(?:-get)?\s+upgrade(\s+(?:-y|--yes))?/g, 'brew upgrade')
         .replace(/\bsudo\s+apt(?:-get)?\s+install(\s+(?:-y|--yes))?/g, 'brew install')
         .replace(/\bapt(?:-get)?\s+install(\s+(?:-y|--yes))?/g, 'brew install')
-        // pip → pip3 (macOS brew python ships pip3)
-        .replace(/\bsudo\s+pip3?\s+install\b/g, 'pip3 install --user')
-        .replace(/\bpip\s+install\b/g, 'pip3 install')
+        // pip → python3.12 -m pip (avoids the broken 3.14 pyexpat on this machine)
+        .replace(/\bsudo\s+pip3?\s+install\b/g, 'python3.12 -m pip install --user')
+        .replace(/\bpip3?\s+install\b/g, 'python3.12 -m pip install')
         // python setup.py install with sudo → user-local install
         .replace(/\bsudo\s+python3?\s+setup\.py\s+install\b/g, 'python3 setup.py install --user')
         // ./configure && make && sudo make install → install to user prefix
