@@ -276,7 +276,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             <button
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#1e3048', border: '1px solid #2a3e58', color: '#8a9aaa' }}
+              style={{ background: 'var(--border-default)', border: '1px solid var(--border-strong)', color: '#8a9aaa' }}
             >
               Cancel
             </button>
@@ -332,7 +332,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: '#0d1520', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: 'var(--surface-sunken)', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
@@ -346,7 +346,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
 
               {/* Auto-created dispatch card info */}
               {incomingAlert.call_number && (
-                <div className="text-center p-2" style={{ background: '#0d1520', border: '1px solid #dc2626' }}>
+                <div className="text-center p-2" style={{ background: 'var(--surface-sunken)', border: '1px solid #dc2626' }}>
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider animate-emergency-blink"
@@ -371,14 +371,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div className="text-xs text-center text-white p-2" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
@@ -392,7 +392,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
                 </div>
               )}
 
-              <div className="text-center text-[10px] font-mono" style={{ color: '#3a5070' }}>
+              <div className="text-center text-[10px] font-mono" style={{ color: 'var(--bevel-highlight)' }}>
                 {new Date(incomingAlert.triggered_at).toLocaleTimeString('en-US', { hour12: false })}
               </div>
 

@@ -544,7 +544,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
+    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: 'var(--surface-base)' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -564,9 +564,9 @@ export default function Layout() {
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#141e2b',
-              border: '1px solid #1e3048',
-              borderTop: '3px solid #1a5a9e',
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border-default)',
+              borderTop: '3px solid var(--brand-blue)',
               WebkitAppRegion: 'no-drag',
             } as React.CSSProperties}
           >
@@ -666,14 +666,14 @@ export default function Layout() {
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
             paddingRight: '12px',
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-            borderBottom: '1px solid #1e3048',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+            borderBottom: '1px solid var(--border-default)',
             flexShrink: 0,
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
           {/* Blue accent at very top */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)', zIndex: 1 }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, var(--brand-blue), #0e3359)', zIndex: 1 }} />
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -686,7 +686,7 @@ export default function Layout() {
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+              <div className="w-px h-6" style={{ background: 'var(--border-strong)' }} />
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
                 {pageTitle.toUpperCase()}
               </span>
@@ -735,7 +735,7 @@ export default function Layout() {
               {/* GPS */}
               <div
                 className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
-                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#0d1520' }}
+                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : 'var(--surface-sunken)' }}
                 title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || 'no unit'}` : 'GPS acquiring...'}
               >
                 <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#5a6e80', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
@@ -764,13 +764,13 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2a3e58' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: 'var(--border-strong)' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2a3e58' }} />
+            <div className="w-px h-7" style={{ background: 'var(--border-strong)' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
@@ -788,13 +788,13 @@ export default function Layout() {
                     src={user.profile_image}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover"
-                    style={{ border: '2px solid #3a5070', borderRadius: '50%' }}
+                    style={{ border: '2px solid var(--bevel-highlight)', borderRadius: '50%' }}
                   />
                 ) : (
                   <div
                     className="w-8 h-8 flex items-center justify-center text-[11px] font-bold"
                     style={{
-                      background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                      background: 'linear-gradient(135deg, #124070, var(--brand-blue))',
                       color: '#fff',
                       border: '2px solid #3b8ad4',
                       borderRadius: '50%',
@@ -882,7 +882,7 @@ export default function Layout() {
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #141e2b, #1e2a1e, #141e2b)',
+            background: 'linear-gradient(90deg, var(--surface-base), #1e2a1e, var(--surface-base))',
             borderBottom: '1px solid #2a3a2a',
             flexShrink: 0,
           }}
@@ -903,8 +903,8 @@ export default function Layout() {
         className="hidden md:flex items-center justify-between px-2"
         style={{
           height: '22px',
-          background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
-          borderBottom: '1px solid #141e2b',
+          background: 'linear-gradient(180deg, var(--border-default) 0%, var(--surface-raised) 100%)',
+          borderBottom: '1px solid var(--surface-base)',
           flexShrink: 0,
         }}
       >
@@ -934,8 +934,8 @@ export default function Layout() {
         className="hidden md:flex items-center gap-0 px-1 select-none"
         style={{
           height: 46,
-          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-          borderBottom: '1px solid #1e3048',
+          background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+          borderBottom: '1px solid var(--border-default)',
           flexShrink: 0,
         }}
         data-nav-dropdown
@@ -963,7 +963,7 @@ export default function Layout() {
         </button>
         <div
           className="self-stretch mx-0.5"
-          style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+          style={{ width: 1, background: 'var(--border-default)', margin: '6px 2px' }}
         />
 
         {(() => {
@@ -1011,7 +1011,7 @@ export default function Layout() {
                 {showSep && (
                   <div
                     className="self-stretch mx-0.5"
-                    style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+                    style={{ width: 1, background: 'var(--border-default)', margin: '6px 2px' }}
                   />
                 )}
                 <div className="relative">
@@ -1072,7 +1072,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141e2b',
+                          borderRadius: 7, border: '1px solid var(--surface-base)',
                         }}
                       >
                         {emailUnreadCount > 99 ? '99+' : emailUnreadCount}
@@ -1119,9 +1119,9 @@ export default function Layout() {
                       className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
                       style={{
                         minWidth: 200,
-                        background: '#1a2636',
-                        border: '1px solid #2a3e58',
-                        borderTop: '2px solid #1a5a9e',
+                        background: 'var(--surface-raised)',
+                        border: '1px solid var(--border-strong)',
+                        borderTop: '2px solid var(--brand-blue)',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                       }}
                     >
@@ -1179,7 +1179,7 @@ export default function Layout() {
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
-        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
+        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: 'var(--surface-raised)' }}>
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>
