@@ -1361,6 +1361,45 @@ ipcMain.handle('recon:check-binary', async (_event, { binary } = {}) => {
   return { installed: false };
 });
 
+// Open Terminal.app with a catalog command that needs interactive sudo.
+// The command is resolved from the bundled catalog by (category, className, kind, index),
+// same guardrails as recon:catalog-run.
+ipcMain.handle('recon:catalog-terminal', async (_event, { category, className, kind, index } = {}) => {
+  const fs = require('fs');
+  const { spawn } = require('child_process');
+  try {
+    const catalog = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'originalCatalog.json'), 'utf8'));
+    const entries = catalog[category] || [];
+    const tool = entries.find((t) => t.className === className);
+    if (!tool) return { ok: false, error: `Tool "${className}" not found.` };
+    const cmdList = kind === 'install' ? (tool.install || []) : (tool.run || []);
+    const cmd = cmdList[index];
+    if (!cmd) return { ok: false, error: `No ${kind}[${index}] command.` };
+    // Run in ~/recon-connect so relative paths resolve like in the CLI
+    const cwd = require('os').homedir() + '/recon-connect';
+    const fullCmd = `cd "${cwd}" && ${cmd}`;
+    if (process.platform === 'darwin') {
+      const appleScript = `tell application "Terminal" to do script "${fullCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
+      // Also activate Terminal.app so it comes forward
+      spawn('osascript', ['-e', 'tell application "Terminal" to activate'], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    if (process.platform === 'linux') {
+      const term = process.env.TERMINAL || 'x-terminal-emulator';
+      spawn(term, ['-e', 'bash', '-c', `${fullCmd}; echo; echo "Press enter to close."; read`], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    if (process.platform === 'win32') {
+      spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', fullCmd], { detached: true, stdio: 'ignore' }).unref();
+      return { ok: true };
+    }
+    return { ok: false, error: `Unsupported platform: ${process.platform}` };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Failed to open terminal' };
+  }
+});
+
 ipcMain.handle('recon:tool-kill', async (_event, { sessionId }) => {
   const child = toolSessions.get(sessionId);
   if (!child) return { ok: true };

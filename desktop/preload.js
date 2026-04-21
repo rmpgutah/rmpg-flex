@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('electron', {
   reconToolInstall: (pkg) => ipcRenderer.invoke('recon:tool-install', { pkg }),
   reconCatalogRun: (opts) => ipcRenderer.invoke('recon:catalog-run', opts),
   reconCheckBinary: (binary) => ipcRenderer.invoke('recon:check-binary', { binary }),
+  reconCatalogTerminal: (opts) => ipcRenderer.invoke('recon:catalog-terminal', opts),
   onReconToolData: (callback) => {
     const handler = (_e, payload) => callback(payload.sessionId, payload.kind, payload.data);
     ipcRenderer.on('recon:tool-data', handler);

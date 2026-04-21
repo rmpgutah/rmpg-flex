@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Play, Square, ExternalLink, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Download, Play, Square, ExternalLink, ChevronDown, ChevronRight, Search, Terminal } from 'lucide-react';
 import catalogData from './originalCatalog.json';
 
 type CatalogEntry = {
@@ -125,26 +125,42 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                 <div className="mt-2 space-y-2 pl-5">
                   <div className="flex flex-wrap gap-1.5">
                     {tool.install.map((cmd, i) => (
-                      <button
-                        key={`i${i}`}
-                        onClick={() => run(tool, 'install', i)}
-                        disabled={Boolean(running)}
-                        title={cmd}
-                        className="px-2 py-1 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-[10px] hover:bg-[#242424] disabled:opacity-40 flex items-center gap-1 font-mono max-w-full truncate"
-                      >
-                        <Download className="w-3 h-3 shrink-0" /> Install {tool.install.length > 1 ? `[${i + 1}]` : ''}
-                      </button>
+                      <div key={`i${i}`} className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => run(tool, 'install', i)}
+                          disabled={Boolean(running)}
+                          title={cmd}
+                          className="px-2 py-1 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-[10px] hover:bg-[#242424] disabled:opacity-40 flex items-center gap-1 font-mono"
+                        >
+                          <Download className="w-3 h-3 shrink-0" /> Install {tool.install.length > 1 ? `[${i + 1}]` : ''}
+                        </button>
+                        <button
+                          onClick={() => api?.reconCatalogTerminal?.({ category: categorySlug, className: tool.className, kind: 'install', index: i })}
+                          title={`Open in macOS Terminal (needed if the command prompts for sudo)\n\n${cmd}`}
+                          className="px-1.5 py-1 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                        >
+                          <Terminal className="w-3 h-3" />
+                        </button>
+                      </div>
                     ))}
                     {tool.run.map((cmd, i) => (
-                      <button
-                        key={`r${i}`}
-                        onClick={() => run(tool, 'run', i)}
-                        disabled={Boolean(running)}
-                        title={cmd}
-                        className="px-2 py-1 bg-[#d4a017] text-black text-[10px] font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1"
-                      >
-                        <Play className="w-3 h-3" /> Run {tool.run.length > 1 ? `[${i + 1}]` : ''}
-                      </button>
+                      <div key={`r${i}`} className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => run(tool, 'run', i)}
+                          disabled={Boolean(running)}
+                          title={cmd}
+                          className="px-2 py-1 bg-[#d4a017] text-black text-[10px] font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1"
+                        >
+                          <Play className="w-3 h-3" /> Run {tool.run.length > 1 ? `[${i + 1}]` : ''}
+                        </button>
+                        <button
+                          onClick={() => api?.reconCatalogTerminal?.({ category: categorySlug, className: tool.className, kind: 'run', index: i })}
+                          title={`Open in macOS Terminal (needed if the tool prompts for sudo)\n\n${cmd}`}
+                          className="px-1.5 py-1 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                        >
+                          <Terminal className="w-3 h-3" />
+                        </button>
+                      </div>
                     ))}
                     {isRunning && (
                       <button
