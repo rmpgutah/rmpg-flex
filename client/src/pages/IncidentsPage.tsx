@@ -762,7 +762,7 @@ export default function IncidentsPage() {
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} className="bg-surface-sunken">
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0 bg-surface-sunken`}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
