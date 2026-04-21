@@ -475,13 +475,15 @@ echo "[1/7] Checking Homebrew..."
 if ! command -v brew >/dev/null; then echo "ERROR: Homebrew required — install from https://brew.sh"; exit 1; fi
 echo "      ✓ brew found: $(brew --version | head -1)"
 
-echo "[2/7] Ensuring Python 3..."
-if brew list python >/dev/null 2>&1 || command -v python3 >/dev/null; then
-  echo "      ✓ python3 ready: $(python3 --version)"
+echo "[2/7] Ensuring Python 3.12 (hackingtool requires 3.10+ and 3.14 has known issues)..."
+if [ -x /opt/homebrew/opt/python@3.12/bin/python3.12 ]; then
+  echo "      ✓ python3.12 ready"
 else
-  echo "      → brew install python (this can take 2-5 min, be patient)"
-  brew install python
+  echo "      → brew install python@3.12 (1-2 min)"
+  brew install python@3.12
 fi
+PYBIN=/opt/homebrew/opt/python@3.12/bin/python3.12
+echo "      using: $($PYBIN --version)"
 
 echo "[3/7] Ensuring git..."
 if command -v git >/dev/null; then
@@ -499,11 +501,16 @@ else
 fi
 cd "${dir}"
 
-echo "[5/7] Creating venv..."
-if [ -d venv ]; then
-  echo "      ✓ venv exists"
+echo "[5/7] Creating venv with Python 3.12..."
+VENV_PY=""
+if [ -x venv/bin/python3 ]; then
+  VENV_PY=$(venv/bin/python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "")
+fi
+if [ "$VENV_PY" = "3.12" ] || [ "$VENV_PY" = "3.13" ]; then
+  echo "      ✓ venv already uses Python $VENV_PY"
 else
-  python3 -m venv venv
+  [ -d venv ] && echo "      → rebuilding venv (was Python $VENV_PY)" && rm -rf venv
+  $PYBIN -m venv venv
 fi
 source venv/bin/activate
 
@@ -574,9 +581,22 @@ ipcMain.handle('recon:term-spawn', async (event, { mode } = {}) => {
   if (!cmd) return { ok: false, error: `Unsupported platform: ${platform}` };
 
   try {
+    // Electron apps launched from /Applications inherit a minimal PATH
+    // that excludes Homebrew. Prepend the common dev-tool locations so
+    // `brew`, `python3.12`, `git`, etc. resolve without the user having
+    // to configure a login shell.
+    const pathParts = [
+      '/opt/homebrew/bin',
+      '/opt/homebrew/sbin',
+      '/opt/homebrew/opt/python@3.12/bin',
+      '/usr/local/bin',
+      '/usr/local/sbin',
+      process.env.PATH || '',
+    ].filter(Boolean);
     const child = spawn(cmd.shell, cmd.args, {
       env: {
         ...process.env,
+        PATH: pathParts.join(':'),
         PYTHONUNBUFFERED: '1',
         PIP_NO_INPUT: '1',
         PIP_DISABLE_PIP_VERSION_CHECK: '1',
