@@ -43,7 +43,22 @@ function toIntOrNull(v: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function importCsv(db: Database.Database, csvPath: string): Promise<{ inserted: number; skipped: number }> {
+function s(v: string | undefined | null): string | null {
+  return v == null || v === '' ? null : v;
+}
+
+function sOr(...vals: Array<string | undefined | null>): string | null {
+  for (const v of vals) {
+    if (v != null && v !== '') return v;
+  }
+  return null;
+}
+
+async function importCsv(
+  db: Database.Database,
+  csvPath: string,
+  objectIdToKey: Map<number, string>,
+): Promise<{ inserted: number; skipped: number }> {
   const insert = db.prepare(`INSERT OR IGNORE INTO roads (
     utah_road_unique_id, unique_id, full_name, street_name,
     pre_dir, post_type, post_dir,
@@ -90,33 +105,39 @@ async function importCsv(db: Database.Database, csvPath: string): Promise<{ inse
   }));
 
   for await (const rec of parser) {
+    const key = sOr(rec.UtahRoadUniqueID, rec.UniqueID);
+    if (!key) continue;
+    const objectId = toIntOrNull(rec.OBJECTID ?? rec['\uFEFFOBJECTID']);
+    if (objectId != null && !objectIdToKey.has(objectId)) {
+      objectIdToKey.set(objectId, key);
+    }
     rows.push({
-      utah_road_unique_id: rec.UtahRoadUniqueID ?? rec.UniqueID ?? null,
-      unique_id: rec.UniqueID ?? null,
-      full_name: rec.FullName ?? null,
+      utah_road_unique_id: key,
+      unique_id: s(rec.UniqueID),
+      full_name: s(rec.FullName),
       street_name: rec.StreetName ? normalizeStreetName(rec.StreetName) : null,
-      pre_dir: rec.StreetNamePreDirectional ?? null,
-      post_type: rec.StreetNamePostType ?? null,
-      post_dir: rec.StreetNamePostDirectional ?? null,
+      pre_dir: s(rec.StreetNamePreDirectional),
+      post_type: s(rec.StreetNamePostType),
+      post_dir: s(rec.StreetNamePostDirectional),
       left_from: toIntOrNull(rec.LeftFromAddress),
       left_to: toIntOrNull(rec.LeftToAddress),
       right_from: toIntOrNull(rec.RightFromAddress),
       right_to: toIntOrNull(rec.RightToAddress),
-      parity_left: rec.ParityLeft ?? null,
-      parity_right: rec.ParityRight ?? null,
-      postal_community_left: rec.PostalCommunityNameLeft ?? rec.PostalCommunityLeft ?? null,
-      postal_community_right: rec.PostalCommunityNameRight ?? rec.PostalCommunityRight ?? null,
-      zip_left: rec.PostalZipCodeLeft ?? rec.ZipLeft ?? null,
-      zip_right: rec.PostalZipCodeRight ?? rec.ZipRight ?? null,
-      esn_left: rec.ESNLeft ?? null,
-      esn_right: rec.ESNRight ?? null,
-      msag_community_left: rec.MSAGCommunityLeft ?? null,
-      msag_community_right: rec.MSAGCommunityRight ?? null,
-      one_way: rec.OneWayCode ?? null,
+      parity_left: s(rec.ParityLeft),
+      parity_right: s(rec.ParityRight),
+      postal_community_left: sOr(rec.PostalCommunityNameLeft, rec.PostalCommunityLeft),
+      postal_community_right: sOr(rec.PostalCommunityNameRight, rec.PostalCommunityRight),
+      zip_left: sOr(rec.PostalZipCodeLeft, rec.ZipLeft),
+      zip_right: sOr(rec.PostalZipCodeRight, rec.ZipRight),
+      esn_left: s(rec.ESNLeft),
+      esn_right: s(rec.ESNRight),
+      msag_community_left: s(rec.MSAGCommunityLeft),
+      msag_community_right: s(rec.MSAGCommunityRight),
+      one_way: s(rec.OneWayCode),
       posted_speed: toIntOrNull(rec.PostedSpeedLimit),
-      dot_functional_class: rec['DOTFunctional Class'] ?? rec.DOTFunctionalClass ?? null,
-      county_left: rec.CountyLeft ?? null,
-      county_right: rec.CountyRight ?? null,
+      dot_functional_class: sOr(rec['DOTFunctional Class'], rec.DOTFunctionalClass),
+      county_left: s(rec.CountyLeft),
+      county_right: s(rec.CountyRight),
     });
     if (rows.length >= FLUSH_EVERY) {
       flush(rows.splice(0));
@@ -134,11 +155,12 @@ async function importCsv(db: Database.Database, csvPath: string): Promise<{ inse
 async function importGeoJson(
   db: Database.Database,
   geojsonPath: string,
+  objectIdToKey: Map<number, string>,
 ): Promise<{ inserted: number; skipped: number }> {
   const knownKeys = new Set<string>(
     db.prepare('SELECT utah_road_unique_id FROM roads').all().map((r: any) => r.utah_road_unique_id),
   );
-  console.log(`[geom] loaded ${knownKeys.size} road keys for orphan filter`);
+  console.log(`[geom] loaded ${knownKeys.size} road keys, ${objectIdToKey.size} OBJECTID mappings for orphan filter`);
 
   const insert = db.prepare(
     `INSERT OR IGNORE INTO road_segments_geom (utah_road_unique_id, geom_json) VALUES (?, ?)`,
@@ -166,7 +188,16 @@ async function importGeoJson(
   for await (const chunk of stream as AsyncIterable<{ key: number; value: any }>) {
     const value = chunk.value;
     const props = value.properties ?? {};
-    const key = props.UtahRoadUniqueID ?? props.UniqueID;
+    let key: string | undefined =
+      (props.UtahRoadUniqueID && props.UtahRoadUniqueID !== '' ? props.UtahRoadUniqueID : undefined) ??
+      (props.UniqueID && props.UniqueID !== '' ? props.UniqueID : undefined);
+    if (!key) {
+      // Fall back to OBJECTID / feature.id join (UGRC GeoJSON exports often have no properties).
+      const fid =
+        (typeof value.id === 'number' ? value.id : null) ??
+        (props.OBJECTID != null ? Number(props.OBJECTID) : null);
+      if (fid != null) key = objectIdToKey.get(fid);
+    }
     if (!key) continue;
     if (!knownKeys.has(key)) { orphans++; continue; }
     const coords = value.geometry?.coordinates;
@@ -195,8 +226,9 @@ async function main() {
   }
   const db = new Database(args.db);
   console.log(`[import] db=${args.db} csv=${args.csv} geojson=${args.geojson}`);
-  const csvStats = await importCsv(db, args.csv);
-  const geomStats = await importGeoJson(db, args.geojson);
+  const objectIdToKey = new Map<number, string>();
+  const csvStats = await importCsv(db, args.csv, objectIdToKey);
+  const geomStats = await importGeoJson(db, args.geojson, objectIdToKey);
   db.close();
   console.log('\n[summary]');
   console.log(`  roads:              ${csvStats.inserted} inserted / ${csvStats.skipped} skipped`);
