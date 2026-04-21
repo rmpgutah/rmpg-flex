@@ -469,19 +469,56 @@ function reconShellCommand(mode) {
     }
     if (platform === 'darwin') {
       const dir = path.join(home, 'recon-connect');
-      const script = [
-        'set -e',
-        'if ! command -v brew >/dev/null; then echo "Homebrew required — install from https://brew.sh"; exit 1; fi',
-        'brew list python >/dev/null 2>&1 || brew install python',
-        'brew list git >/dev/null 2>&1 || brew install git',
-        `if [ ! -d "${dir}" ]; then git clone https://github.com/Z4nzu/hackingtool.git "${dir}"; fi`,
-        `cd "${dir}"`,
-        'if [ ! -d venv ]; then python3 -m venv venv; fi',
-        'source venv/bin/activate',
-        'pip install --upgrade pip',
-        'pip install -r requirements.txt',
-        `echo "[installed at ${dir}]"`,
-      ].join(' && ');
+      const script = `
+set -e
+echo "[1/7] Checking Homebrew..."
+if ! command -v brew >/dev/null; then echo "ERROR: Homebrew required — install from https://brew.sh"; exit 1; fi
+echo "      ✓ brew found: $(brew --version | head -1)"
+
+echo "[2/7] Ensuring Python 3..."
+if brew list python >/dev/null 2>&1 || command -v python3 >/dev/null; then
+  echo "      ✓ python3 ready: $(python3 --version)"
+else
+  echo "      → brew install python (this can take 2-5 min, be patient)"
+  brew install python
+fi
+
+echo "[3/7] Ensuring git..."
+if command -v git >/dev/null; then
+  echo "      ✓ git ready: $(git --version)"
+else
+  echo "      → brew install git"
+  brew install git
+fi
+
+echo "[4/7] Cloning repository..."
+if [ -d "${dir}/.git" ]; then
+  echo "      ✓ already cloned at ${dir}"
+else
+  git clone --progress https://github.com/Z4nzu/hackingtool.git "${dir}"
+fi
+cd "${dir}"
+
+echo "[5/7] Creating venv..."
+if [ -d venv ]; then
+  echo "      ✓ venv exists"
+else
+  python3 -m venv venv
+fi
+source venv/bin/activate
+
+echo "[6/7] Upgrading pip..."
+python -m pip install --upgrade pip
+
+echo "[7/7] Installing requirements (this is the slowest step — 2-5 min)..."
+pip install --progress-bar=on -r requirements.txt
+
+echo ""
+echo "==================================================="
+echo "✓ Recon Connect installed at ${dir}"
+echo "  Click 'Run Recon Connect' to launch."
+echo "==================================================="
+`.trim();
       return { shell: 'bash', args: ['-c', script] };
     }
     if (platform === 'win32') {
@@ -506,12 +543,12 @@ function reconShellCommand(mode) {
   }
   if (platform === 'darwin') {
     const dir = path.join(home, 'recon-connect');
-    const script = `cd "${dir}" && source venv/bin/activate && exec python3 "recon connect.py"`;
+    const script = `cd "${dir}" && source venv/bin/activate && exec python3 "$(ls hackingtool.py 'recon connect.py' 2>/dev/null | head -1)"`;
     return { shell: 'bash', args: ['-c', script] };
   }
   if (platform === 'win32') {
     const dir = path.join(home, 'recon-connect');
-    const script = `cd /d "${dir}" && call venv\\Scripts\\activate && python "recon connect.py"`;
+    const script = `cd /d "${dir}" && call venv\\Scripts\\activate && (if exist hackingtool.py (python hackingtool.py) else (python "recon connect.py"))`;
     return { shell: 'cmd.exe', args: ['/c', script] };
   }
   return null;
@@ -538,7 +575,16 @@ ipcMain.handle('recon:term-spawn', async (event, { mode } = {}) => {
 
   try {
     const child = spawn(cmd.shell, cmd.args, {
-      env: { ...process.env, PYTHONUNBUFFERED: '1', TERM: 'xterm-256color', FORCE_COLOR: '1' },
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+        PIP_NO_INPUT: '1',
+        PIP_DISABLE_PIP_VERSION_CHECK: '1',
+        HOMEBREW_NO_AUTO_UPDATE: '1',
+        HOMEBREW_NO_INSTALL_CLEANUP: '1',
+        TERM: 'xterm-256color',
+        FORCE_COLOR: '1',
+      },
       cwd: os.homedir(),
     });
     const sessionId = crypto.randomUUID();
