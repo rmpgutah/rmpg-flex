@@ -780,13 +780,16 @@ const RECON_TOOLS = {
   },
   'gobuster-dir': {
     title: 'Gobuster Directory Brute',
-    command: 'gobuster',
+    // Shell mode — auto-probe the target's wildcard response length before
+    // running gobuster, and pass --exclude-length so SPAs (which return 200
+    // for every path) don't derail the scan.
+    shell: true,
+    command: 'bash',
     buildArgs: ({ url }) => {
       const fs = require('fs');
       if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
         throw new Error('URL must be http(s)://hostname[:port][/path].');
       }
-      // Try multiple known wordlist locations; fall back to seclists install hint
       const candidates = [
         '/opt/homebrew/share/seclists/Discovery/Web-Content/common.txt',
         '/opt/homebrew/share/seclists/Discovery/Web-Content/directory-list-2.3-small.txt',
@@ -799,10 +802,20 @@ const RECON_TOOLS = {
       if (!wordlist) {
         throw new Error('No wordlist found. Click Install to fetch seclists (brew install seclists).');
       }
-      // --force: modern SPAs serve 200 for all paths; gobuster 3.8+ uses
-      //          --force to proceed past wildcard-response prechecks
-      //          (older versions used --wildcard).
-      return ['dir', '-u', url, '-w', wordlist, '--no-color', '-t', '20', '--timeout', '10s', '--force'];
+      // URL already regex-validated above, wordlist path from hardcoded list.
+      // Single-quote both inside the bash command to defend against any
+      // character the regex somehow let through.
+      const safeUrl = url.replace(/'/g, "'\\''");
+      const probeUrl = `${url.replace(/\/+$/, '')}/nonexistent-$(date +%s)-$RANDOM`;
+      return ['-c',
+        `WC_LEN=$(curl -skL -o /dev/null -w '%{size_download}' '${probeUrl.replace(/'/g, "'\\''")}') ; ` +
+        `echo "[pre-probe] wildcard response length: $WC_LEN bytes" ; ` +
+        `if [ -n "$WC_LEN" ] && [ "$WC_LEN" != "0" ]; then ` +
+          `gobuster dir -u '${safeUrl}' -w '${wordlist}' --no-color -t 20 --timeout 10s --exclude-length "$WC_LEN" ; ` +
+        `else ` +
+          `gobuster dir -u '${safeUrl}' -w '${wordlist}' --no-color -t 20 --timeout 10s --force ; ` +
+        `fi`
+      ];
     },
     platform: ['darwin', 'linux'],
     requiresInstall: 'seclists',

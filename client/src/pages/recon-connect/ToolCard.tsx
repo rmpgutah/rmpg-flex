@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Download, CheckCircle2, AlertCircle, Save, History, X } from 'lucide-react';
+import { Play, Square, Download, CheckCircle2, AlertCircle, Save, History, X, FileText, Link2, Layers, Calendar, Copy } from 'lucide-react';
+import jsPDF from 'jspdf';
+import { apiFetch } from '../../hooks/useApi';
 
 export type ToolArg = { name: string; label: string; placeholder?: string; required?: boolean };
 export type ToolDef = {
@@ -53,6 +55,14 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   const [installed, setInstalled] = useState<boolean | null>(null); // null=unknown, true/false=probed
   const [lastExit, setLastExit] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkTargets, setBulkTargets] = useState('');
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [caseModalOpen, setCaseModalOpen] = useState(false);
+  const [cases, setCases] = useState<Array<{ id: number; case_number: string; title?: string; status?: string }> | null>(null);
+  const [linkStatus, setLinkStatus] = useState<string | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const bulkAbortRef = useRef(false);
   const [history, setHistory] = useState<Array<{ ts: number; args: Record<string, string>; exit: number | null; preview: string }>>(
     () => {
       try { return JSON.parse(localStorage.getItem(`rmpg:recon:history:${tool.id}`) || '[]'); }
@@ -161,11 +171,125 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   };
 
   const stop = async () => {
+    bulkAbortRef.current = true;
     if (sessionId && api?.reconToolKill) await api.reconToolKill(sessionId);
     setRunning(false);
     sessionIdRef.current = null;
     setSessionId(null);
+    setBulkProgress(null);
   };
+
+  // Run the same tool against each line in bulkTargets sequentially.
+  // Only works when the tool has exactly one argument (the common case:
+  // target URL / host / domain / path). We reuse the first arg's name.
+  const runBulk = async () => {
+    const firstArg = tool.args?.[0];
+    if (!firstArg || !api?.reconToolSpawn) return;
+    const targets = bulkTargets.split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+    if (targets.length === 0) return;
+    bulkAbortRef.current = false;
+    setOutput([]);
+    setLastExit(null);
+    setBulkProgress({ done: 0, total: targets.length });
+    for (let i = 0; i < targets.length; i++) {
+      if (bulkAbortRef.current) break;
+      const target = targets[i];
+      setOutput((prev) => [...prev, { kind: 'meta', text: `\n━━━ [${i + 1}/${targets.length}] ${target} ━━━\n` }]);
+      setRunning(true);
+      const res = await api.reconToolSpawn(tool.id, { [firstArg.name]: target });
+      if (!res?.ok) {
+        setOutput((prev) => [...prev, { kind: 'stderr', text: `${res?.error || 'Failed to start.'}\n` }]);
+        setBulkProgress((p) => p && { ...p, done: i + 1 });
+        continue;
+      }
+      sessionIdRef.current = res.sessionId;
+      setSessionId(res.sessionId);
+      // Wait for this run's exit before starting the next
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (sessionIdRef.current !== res.sessionId) resolve();
+          else setTimeout(check, 200);
+        };
+        check();
+      });
+      setBulkProgress((p) => p && { ...p, done: i + 1 });
+    }
+    setRunning(false);
+    setBulkProgress(null);
+  };
+
+  const loadCases = async () => {
+    if (cases !== null) return;
+    try {
+      const rows = await apiFetch<any[]>('/cases?limit=100');
+      setCases(rows.map((r) => ({ id: r.id, case_number: r.case_number, title: r.title, status: r.status })));
+    } catch {
+      setCases([]);
+    }
+  };
+
+  const linkToCase = async (caseId: number, caseNumber: string) => {
+    const outputText = output.map((l) => l.text).join('');
+    const argSummary = Object.entries(formValues).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(', ');
+    const body = {
+      note_text: `Recon Connect — ${tool.title}\nArgs: ${argSummary || '(none)'}\nExit: ${lastExit}\nTimestamp: ${new Date().toISOString()}\n\n${outputText.slice(0, 8000)}`,
+    };
+    try {
+      await apiFetch(`/cases/${caseId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      setLinkStatus(`✓ Attached to ${caseNumber}`);
+      setCaseModalOpen(false);
+      setTimeout(() => setLinkStatus(null), 4000);
+    } catch (e: any) {
+      setLinkStatus(`✗ Failed: ${e?.message || 'unknown error'}`);
+      setTimeout(() => setLinkStatus(null), 6000);
+    }
+  };
+
+  const exportPdf = () => {
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const m = 40;
+    let y = m;
+    doc.setFont('helvetica', 'bold').setFontSize(14);
+    doc.text('Recon Connect — Scan Report', m, y); y += 18;
+    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(100);
+    doc.text(`Tool: ${tool.title}  (${tool.id})`, m, y); y += 12;
+    doc.text(`Generated: ${new Date().toLocaleString()}`, m, y); y += 12;
+    if (lastExit !== null) { doc.text(`Exit code: ${lastExit}`, m, y); y += 12; }
+    doc.setTextColor(0);
+    const argLines = Object.entries(formValues).filter(([, v]) => v);
+    if (argLines.length) {
+      doc.setFont('helvetica', 'bold').setFontSize(10); doc.text('Arguments', m, y); y += 14;
+      doc.setFont('courier', 'normal').setFontSize(9);
+      for (const [k, v] of argLines) { doc.text(`${k}: ${v}`, m, y); y += 11; }
+      y += 6;
+    }
+    doc.setFont('helvetica', 'bold').setFontSize(10); doc.text('Output', m, y); y += 14;
+    doc.setFont('courier', 'normal').setFontSize(8);
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const text = output.map((l) => l.text).join('');
+    // Strip ANSI escape sequences
+    const clean = text.replace(/\x1b\[[0-9;]*m/g, '');
+    const wrapped = doc.splitTextToSize(clean, doc.internal.pageSize.getWidth() - 2 * m);
+    for (const line of wrapped) {
+      if (y > pageHeight - m) { doc.addPage(); y = m; }
+      doc.text(line, m, y); y += 9;
+    }
+    const fname = `recon-${tool.id}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.pdf`;
+    doc.save(fname);
+  };
+
+  const cronCommand = useMemo(() => {
+    const firstArg = tool.args?.[0];
+    const argVal = firstArg ? (formValues[firstArg.name] || `<${firstArg.name}>`) : '';
+    const logFile = `$HOME/.recon-connect/logs/${tool.id}.log`;
+    // Approximate what the app would run; not a drop-in for every tool but
+    // gets 80% right for users who want to copy, tweak, and paste into crontab.
+    return `0 */6 * * * mkdir -p $HOME/.recon-connect/logs && ${tool.id.replace(/-.*/, '')} ${argVal} >> ${logFile} 2>&1`;
+  }, [tool.id, tool.args, formValues]);
 
   const installPkg = async () => {
     if (!tool.installPkg || !api?.reconToolInstall) return;
@@ -220,7 +344,24 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             ⚠ {tool.requiresAuthorization}
           </div>
         )}
-        {tool.args?.map((arg) => {
+        {tool.args && tool.args.length > 0 && (
+          <div className="flex items-center gap-2 text-[10px]">
+            <button
+              onClick={() => setBulkMode(false)}
+              className={`px-2 py-0.5 border ${!bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-[#2e2e2e] text-[#888] hover:text-[#d4a017]'}`}
+            >Single</button>
+            {tool.args.length === 1 && (
+              <button
+                onClick={() => setBulkMode(true)}
+                className={`px-2 py-0.5 border flex items-center gap-1 ${bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-[#2e2e2e] text-[#888] hover:text-[#d4a017]'}`}
+                title="Run this tool against multiple targets sequentially"
+              >
+                <Layers className="w-3 h-3" /> Bulk
+              </button>
+            )}
+          </div>
+        )}
+        {!bulkMode && tool.args?.map((arg) => {
           const listId = `rc-${tool.id}-${arg.name}-history`;
           const suggestions = targetHistory[arg.name] || [];
           return (
@@ -243,13 +384,33 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             </div>
           );
         })}
-        <div className="flex gap-2">
+        {bulkMode && tool.args?.[0] && (
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] text-[#888] uppercase tracking-wider">
+              {tool.args[0].label} — one per line
+            </label>
+            <textarea
+              placeholder={`${tool.args[0].placeholder || 'target1'}\ntarget2\ntarget3`}
+              value={bulkTargets}
+              onChange={(e) => setBulkTargets(e.target.value)}
+              disabled={running}
+              rows={4}
+              className="bg-[#050505] border border-[#2e2e2e] text-[#d4d4d4] text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50 resize-y"
+            />
+            {bulkProgress && (
+              <div className="text-[10px] text-[#d4a017]">
+                {bulkProgress.done} / {bulkProgress.total} complete
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex gap-2 flex-wrap">
           <button
-            onClick={run}
+            onClick={bulkMode ? runBulk : run}
             disabled={disabled || running}
             className="px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1.5"
           >
-            <Play className="w-3.5 h-3.5" /> {tool.runLabel || 'Run'}
+            <Play className="w-3.5 h-3.5" /> {bulkMode ? 'Run Bulk' : (tool.runLabel || 'Run')}
           </button>
           <button
             onClick={stop}
@@ -277,22 +438,45 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             </button>
           )}
           {output.length > 0 && !running && (
-            <button
-              onClick={() => {
-                const text = output.map((l) => l.text).join('');
-                const argsSuffix = Object.values(formValues).filter(Boolean).join('_').replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 40);
-                const fname = `${tool.id}${argsSuffix ? '-' + argsSuffix : ''}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
-                const blob = new Blob([text], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = fname; a.click();
-                setTimeout(() => URL.revokeObjectURL(url), 2000);
-              }}
-              className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
-              title="Save output as .txt"
-            >
-              <Save className="w-3 h-3" /> Save
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const text = output.map((l) => l.text).join('');
+                  const argsSuffix = Object.values(formValues).filter(Boolean).join('_').replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 40);
+                  const fname = `${tool.id}${argsSuffix ? '-' + argsSuffix : ''}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
+                  const blob = new Blob([text], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = fname; a.click();
+                  setTimeout(() => URL.revokeObjectURL(url), 2000);
+                }}
+                className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                title="Save output as .txt"
+              >
+                <Save className="w-3 h-3" /> .txt
+              </button>
+              <button
+                onClick={exportPdf}
+                className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                title="Export as PDF"
+              >
+                <FileText className="w-3 h-3" /> PDF
+              </button>
+              <button
+                onClick={() => { setCaseModalOpen(true); loadCases(); }}
+                className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                title="Attach to an existing case as a note"
+              >
+                <Link2 className="w-3 h-3" /> Link to Case
+              </button>
+              <button
+                onClick={() => setScheduleOpen((s) => !s)}
+                className={`px-2 py-1.5 text-[10px] flex items-center gap-1 ${scheduleOpen ? 'text-[#d4a017]' : 'text-[#888] hover:text-[#d4a017]'}`}
+                title="Schedule this scan via cron"
+              >
+                <Calendar className="w-3 h-3" /> Schedule
+              </button>
+            </>
           )}
           {output.length > 0 && (
             <button
@@ -304,6 +488,52 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             </button>
           )}
         </div>
+        {linkStatus && (
+          <div className="text-[11px] px-2 py-1 border border-[#2e7d32] bg-[#0f1f10] text-[#7fd38a]">
+            {linkStatus}
+          </div>
+        )}
+        {scheduleOpen && (
+          <div className="border border-[#2e2e2e] bg-[#0a0a0a] p-2 text-[10px] space-y-1.5">
+            <div className="text-[#888]">Copy this line into your crontab (<code className="text-[#d4a017]">crontab -e</code>) to run every 6 hours:</div>
+            <div className="flex gap-2 items-start">
+              <code className="flex-1 bg-[#050505] border border-[#1a1a1a] px-2 py-1 text-[#d4d4d4] font-mono break-all">{cronCommand}</code>
+              <button
+                onClick={() => navigator.clipboard?.writeText(cronCommand)}
+                className="px-2 py-1 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-[10px] hover:bg-[#242424] flex items-center gap-1 shrink-0"
+              >
+                <Copy className="w-3 h-3" /> Copy
+              </button>
+            </div>
+            <div className="text-[#555]">Note: cron uses your shell PATH, not Flex's — ensure the tool's binary is reachable (e.g., add to ~/.zshrc or use full path).</div>
+          </div>
+        )}
+        {caseModalOpen && (
+          <div className="border border-[#d4a017] bg-[#0a0a0a] p-2 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Link2 className="w-3.5 h-3.5 text-[#d4a017]" />
+              <div className="text-[10px] text-[#d4a017] uppercase tracking-wider font-semibold flex-1">Attach this scan to a case</div>
+              <button onClick={() => setCaseModalOpen(false)} className="text-[#888] hover:text-[#ff8888]"><X className="w-3 h-3" /></button>
+            </div>
+            {cases === null && <div className="text-[11px] text-[#888]">Loading cases…</div>}
+            {cases !== null && cases.length === 0 && <div className="text-[11px] text-[#888]">No cases available. Create one in Case Management first.</div>}
+            {cases && cases.length > 0 && (
+              <div className="max-h-48 overflow-auto divide-y divide-[#1a1a1a]">
+                {cases.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => linkToCase(c.id, c.case_number)}
+                    className="w-full text-left px-2 py-1.5 hover:bg-[#1a1a1a] flex items-baseline gap-2"
+                  >
+                    <span className="text-[#d4a017] text-[10px] font-mono">{c.case_number}</span>
+                    {c.title && <span className="text-[#d4d4d4] text-[11px] truncate flex-1">{c.title}</span>}
+                    {c.status && <span className="text-[#888] text-[9px] uppercase">{c.status}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {historyOpen && (
           <div className="border border-[#2e2e2e] bg-[#0a0a0a] divide-y divide-[#1a1a1a] max-h-48 overflow-auto">
             {history.map((h, i) => (
