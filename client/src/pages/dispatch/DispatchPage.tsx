@@ -1793,7 +1793,7 @@ export default function DispatchPage() {
                   <button
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--brand-blue)', border: '1px solid #2a6ab0' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
@@ -1802,7 +1802,7 @@ export default function DispatchPage() {
                   <button
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--brand-blue)', border: '1px solid #2a6ab0' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
@@ -1811,7 +1811,7 @@ export default function DispatchPage() {
                   <button
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--brand-blue)', border: '1px solid #2a6ab0' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
@@ -1863,7 +1863,7 @@ export default function DispatchPage() {
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                      style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'var(--brand-blue)', border: '1px solid #2a6ab0' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -1875,7 +1875,7 @@ export default function DispatchPage() {
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
-                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--brand-blue)', border: '1px solid #2a6ab0' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
@@ -2024,7 +2024,7 @@ export default function DispatchPage() {
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
                       className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded"
-                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : '#1a5a9e', border: '1px solid #2a6ab0' }}
+                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : 'var(--brand-blue)', border: '1px solid #2a6ab0' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
                     </button>
@@ -2344,8 +2344,8 @@ export default function DispatchPage() {
                   minWidth: '200px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#1a2636',
-                  border: '1px solid #3a5070',
+                  background: 'var(--surface-raised)',
+                  border: '1px solid var(--bevel-highlight)',
                   borderRadius: 0,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                 }}
@@ -2372,7 +2372,7 @@ export default function DispatchPage() {
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
                       style={{ fontSize: '11px', color: '#b0bcc8', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a3e58'; }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--border-strong)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
                       <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || tpl.incident_type}</span>
@@ -4071,7 +4071,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[180px] shadow-xl"
-            style={{ background: '#1a2636', border: '1px solid #3a5070' }}
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--bevel-highlight)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -4128,7 +4128,7 @@ export default function DispatchPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.6)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised"
-            style={{ width: '440px', border: '1px solid #3a5070' }}
+            style={{ width: '440px', border: '1px solid var(--bevel-highlight)' }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -4162,7 +4162,7 @@ export default function DispatchPage() {
 
             <div className="p-4 space-y-4">
               {/* Template banner */}
-              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: '#0d1520' }}>
+              <div className="flex items-center gap-3 p-2 border border-rmpg-600  bg-surface-sunken">
                 <span className={`text-xs font-bold px-2 py-0.5 border ${
                   quickTemplateData.priority === 'P1' ? 'border-red-500 text-red-400 bg-red-900/30' :
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
@@ -4257,7 +4257,7 @@ export default function DispatchPage() {
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #3a5070' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid var(--bevel-highlight)' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
