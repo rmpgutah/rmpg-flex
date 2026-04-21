@@ -433,7 +433,7 @@ ipcMain.handle('recon:launch', async () => {
       if (!fs.existsSync(dir)) {
         return { ok: false, error: `Recon Connect is not installed at ${dir}.` };
       }
-      const cmd = `cd "${dir}" && source venv/bin/activate && python3 "recon connect.py"`;
+      const cmd = `cd "${dir}" && source venv/bin/activate && python3 "$(ls hackingtool.py 'recon connect.py' 2>/dev/null | head -1)"`;
       const appleScript = `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`;
       spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
@@ -443,7 +443,7 @@ ipcMain.handle('recon:launch', async () => {
       if (!fs.existsSync(dir)) {
         return { ok: false, error: `Recon Connect is not installed at ${dir}.` };
       }
-      const cmd = `cd /d "${dir}" && venv\\Scripts\\activate && python "recon connect.py"`;
+      const cmd = `cd /d "${dir}" && venv\\Scripts\\activate && (if exist hackingtool.py (python hackingtool.py) else (python "recon connect.py"))`;
       spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', cmd], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
     }
@@ -799,7 +799,9 @@ const RECON_TOOLS = {
       if (!wordlist) {
         throw new Error('No wordlist found. Click Install to fetch seclists (brew install seclists).');
       }
-      return ['dir', '-u', url, '-w', wordlist, '--no-color', '-t', '20', '--timeout', '10s'];
+      // --wildcard: modern SPAs serve 200 for all paths; allow gobuster
+      //             to proceed and surface real paths by unique length.
+      return ['dir', '-u', url, '-w', wordlist, '--no-color', '-t', '20', '--timeout', '10s', '--wildcard'];
     },
     platform: ['darwin', 'linux'],
     requiresInstall: 'seclists',

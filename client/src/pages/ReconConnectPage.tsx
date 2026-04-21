@@ -50,8 +50,8 @@ const INSTALL_COMMANDS: Record<Platform, string> = {
 
 const LAUNCH_COMMANDS: Record<Platform, string> = {
   linux:   'hackingtool',
-  macos:   'cd ~/recon-connect && source venv/bin/activate && python3 "recon connect.py"',
-  windows: 'cd %USERPROFILE%\\recon-connect && venv\\Scripts\\activate && python "recon connect.py"',
+  macos:   'cd ~/recon-connect && source venv/bin/activate && python3 hackingtool.py',
+  windows: 'cd %USERPROFILE%\\recon-connect && venv\\Scripts\\activate && python hackingtool.py',
   unknown: '',
 };
 
