@@ -4,6 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'csv-parse';
+import Pick from 'stream-json/filters/pick.js';
+import StreamArray from 'stream-json/streamers/stream-array.js';
 import { normalizeStreetName } from '../src/utils/addressRange';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -129,6 +131,60 @@ async function importCsv(db: Database.Database, csvPath: string): Promise<{ inse
   return { inserted, skipped };
 }
 
+async function importGeoJson(
+  db: Database.Database,
+  geojsonPath: string,
+): Promise<{ inserted: number; skipped: number }> {
+  const knownKeys = new Set<string>(
+    db.prepare('SELECT utah_road_unique_id FROM roads').all().map((r: any) => r.utah_road_unique_id),
+  );
+  console.log(`[geom] loaded ${knownKeys.size} road keys for orphan filter`);
+
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO road_segments_geom (utah_road_unique_id, geom_json) VALUES (?, ?)`,
+  );
+
+  const start = Date.now();
+  let inserted = 0;
+  let skipped = 0;
+  let orphans = 0;
+  const batch: Array<{ key: string; geom: string }> = [];
+  const FLUSH_EVERY = 50000;
+
+  const flush = db.transaction((items: typeof batch) => {
+    for (const item of items) {
+      const result = insert.run(item.key, item.geom);
+      if (result.changes > 0) inserted++;
+      else skipped++;
+    }
+  });
+
+  const stream = fs.createReadStream(geojsonPath)
+    .pipe(Pick.withParserAsStream({ filter: 'features' }))
+    .pipe(StreamArray.asStream());
+
+  for await (const chunk of stream as AsyncIterable<{ key: number; value: any }>) {
+    const value = chunk.value;
+    const props = value.properties ?? {};
+    const key = props.UtahRoadUniqueID ?? props.UniqueID;
+    if (!key) continue;
+    if (!knownKeys.has(key)) { orphans++; continue; }
+    const coords = value.geometry?.coordinates;
+    if (!coords) continue;
+    batch.push({ key, geom: JSON.stringify(coords) });
+    if (batch.length >= FLUSH_EVERY) {
+      flush(batch.splice(0));
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      console.log(`[geom] ${inserted} inserted, ${skipped} skipped, ${orphans} orphans, ${elapsed}s elapsed`);
+    }
+  }
+  if (batch.length) flush(batch.splice(0));
+
+  const totalElapsed = ((Date.now() - start) / 1000).toFixed(1);
+  console.log(`[geom] DONE — ${inserted} inserted, ${skipped} skipped, ${orphans} orphans, ${totalElapsed}s total`);
+  return { inserted, skipped };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   for (const [label, file] of [['csv', args.csv], ['geojson', args.geojson]] as const) {
@@ -140,10 +196,11 @@ async function main() {
   const db = new Database(args.db);
   console.log(`[import] db=${args.db} csv=${args.csv} geojson=${args.geojson}`);
   const csvStats = await importCsv(db, args.csv);
-  void csvStats;
-  // TODO Task 6: pass 2 (GeoJSON)
+  const geomStats = await importGeoJson(db, args.geojson);
   db.close();
-  console.log('[import] done (skeleton only)');
+  console.log('\n[summary]');
+  console.log(`  roads:              ${csvStats.inserted} inserted / ${csvStats.skipped} skipped`);
+  console.log(`  road_segments_geom: ${geomStats.inserted} inserted / ${geomStats.skipped} skipped`);
 }
 
 main().catch((err) => {
