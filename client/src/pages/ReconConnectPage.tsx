@@ -68,6 +68,7 @@ export default function ReconConnectPage() {
   const [launchMsg, setLaunchMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
   const [termState, setTermState] = useState<'idle' | 'running'>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const termHostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -111,7 +112,8 @@ export default function ReconConnectPage() {
     term.open(termHostRef.current);
     try { fit.fit(); } catch { /* host not measured yet */ }
     term.onData((data) => {
-      if (sessionId && api?.reconInput) api.reconInput(sessionId, data);
+      const id = sessionIdRef.current;
+      if (id && api?.reconInput) api.reconInput(id, data);
     });
     termRef.current = term;
     fitRef.current = fit;
@@ -132,6 +134,7 @@ export default function ReconConnectPage() {
     const unsubExit = api.onReconExit?.((id: string, code: number) => {
       if (id !== sessionId) return;
       termRef.current?.writeln(`\r\n\x1b[33m[process exited with code ${code}]\x1b[0m`);
+      sessionIdRef.current = null;
       setTermState('idle');
       setSessionId(null);
     });
@@ -152,8 +155,10 @@ export default function ReconConnectPage() {
       term.writeln(`\x1b[31m${res?.error || 'Failed to start process.'}\x1b[0m`);
       return;
     }
+    sessionIdRef.current = res.sessionId;
     setSessionId(res.sessionId);
     setTermState('running');
+    term.focus();
     setTimeout(() => { try { fitRef.current?.fit(); if (api?.reconResize) api.reconResize(res.sessionId, term.cols, term.rows); } catch { /* ignore */ } }, 50);
   };
 
@@ -161,6 +166,7 @@ export default function ReconConnectPage() {
     if (sessionId && api?.reconKill) {
       await api.reconKill(sessionId);
     }
+    sessionIdRef.current = null;
     setTermState('idle');
     setSessionId(null);
   };
