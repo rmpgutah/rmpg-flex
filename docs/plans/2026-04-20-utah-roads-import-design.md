@@ -179,3 +179,59 @@ Vitest at `server/src/utils/__tests__/addressRange.test.ts`:
 - `npx tsc --noEmit` clean in `server/`.
 - `addressRange` vitest passes locally and in pre-push hook.
 - Re-running the importer is a no-op.
+
+## Dry run results
+
+**Date:** 2026-04-20
+**Platform:** macOS darwin 25.2.0, local dev (worktree `modest-haslett-ea2ab4`)
+**Source files:**
+- CSV: `~/Downloads/UtahRoads_1295850999259225145.csv` (144 MB, 412,065 data rows)
+- GeoJSON: `~/Downloads/UtahRoads_3660517298827247026.geojson` (887 MB)
+
+### Result: BLOCKED — importer bug
+
+The CSV ingestion phase finished in 6.6s but produced only **82 inserted / 412,064 skipped** against a throwaway DB (no prior rows). The geom phase then loaded only 82 keys for its orphan filter, meaning essentially every feature in the 887MB GeoJSON would be classified as an orphan. Run was aborted before completing the geom stream.
+
+### Root cause
+
+`server/scripts/import-utah-roads.ts:94` uses the `??` (nullish-coalescing) fallback:
+
+```ts
+utah_road_unique_id: rec.UtahRoadUniqueID ?? rec.UniqueID ?? null,
+```
+
+`csv-parse` with `columns: true` yields **empty strings** (`""`) for blank cells, not `null`/`undefined`. `??` only falls through on `null`/`undefined`, so `"" ?? rec.UniqueID` evaluates to `""`. In the real UGRC CSV, the `UtahRoadUniqueID` column is empty for **411,915 of 412,065 rows** (only 232 populated):
+
+```
+awk … non-empty: 232  empty: 411915
+```
+
+Every row with an empty `UtahRoadUniqueID` gets inserted with `utah_road_unique_id = ""`; the UNIQUE constraint then rejects all subsequent empty-keyed rows via `INSERT OR IGNORE`, yielding the ~82 distinct populated keys plus one empty-string winner.
+
+The GeoJSON features appear to use `UniqueID` (not `UtahRoadUniqueID`) as their stable join key — see `props.UtahRoadUniqueID ?? props.UniqueID` in `importGeoJson()` — confirming that `UniqueID` is the actual primary identifier for the Utah UGRC dataset, and `UtahRoadUniqueID` is a rarely-populated secondary field.
+
+### Partial numbers from the aborted run
+
+- `roads` rows: **82**
+- `road_segments_geom` rows: **0** (geom phase killed after `loaded 82 road keys for orphan filter`)
+- CSV runtime: **6.6s**
+- Geom runtime: n/a (aborted)
+- Orphans count: n/a (aborted)
+- DB file size at abort: **52 KB**
+- Sample MAIN query: returned **0 rows** — none of the 82 inserted rows are in SLC.
+
+### Required fix before retrying
+
+Change line 94 from `??` to `||`, or explicitly treat empty string as missing:
+
+```ts
+utah_road_unique_id: (rec.UtahRoadUniqueID || rec.UniqueID) ?? null,
+// or:
+utah_road_unique_id: rec.UtahRoadUniqueID?.trim() || rec.UniqueID || null,
+```
+
+The same `??` pattern appears on lines 95, 107–119 for other fallback columns (`postal_community_*`, `zip_*`, `dot_functional_class`) and should be audited — those fields will also default to `""` instead of the documented fallback column, which may not fail INSERTs but will silently break downstream geocoder lookups on `postal_community_left` / `zip_left`.
+
+### Action
+
+Reopen the importer task, apply the fix, re-run the dry run. Source files confirmed intact at `~/Downloads/UtahRoads_*.{csv,geojson}`.
