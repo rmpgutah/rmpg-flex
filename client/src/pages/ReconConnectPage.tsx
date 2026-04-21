@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 import { Terminal, Copy, CheckCircle2, ExternalLink, ShieldAlert, Search, Globe, Radio, Server, Cloud, Smartphone, Lock, Eye, Database, Wifi, Bug, FileSearch, Users, Zap, GitBranch, KeyRound, Play, Square, Download } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useAuth } from '../context/AuthContext';
+import GlobalCatalogSearch from './recon-connect/GlobalCatalogSearch';
 
 type Platform = 'linux' | 'macos' | 'windows' | 'unknown';
 type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager' | 'client_viewer' | 'human_resources' | 'investigator';
@@ -323,6 +324,8 @@ export default function ReconConnectPage() {
           )}
         </div>
       </div>
+
+      <GlobalCatalogSearch onNavigate={navigate} />
 
       <div>
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold mb-2">

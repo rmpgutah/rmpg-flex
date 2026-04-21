@@ -1395,10 +1395,19 @@ ipcMain.handle('recon:catalog-run', async (event, { category, className, kind, i
         // pip → pip3 (macOS brew python ships pip3)
         .replace(/\bsudo\s+pip3?\s+install\b/g, 'pip3 install --user')
         .replace(/\bpip\s+install\b/g, 'pip3 install')
-        // Strip standalone sudo for git/chmod/mkdir/cp (user home is writable)
-        .replace(/\bsudo\s+(git|chmod|mkdir|cp|mv|rm|ln|curl|wget|unzip|tar)\b/g, '$1')
+        // python setup.py install with sudo → user-local install
+        .replace(/\bsudo\s+python3?\s+setup\.py\s+install\b/g, 'python3 setup.py install --user')
         // ./configure && make && sudo make install → install to user prefix
-        .replace(/\bsudo\s+make\s+install\b/g, 'make install PREFIX="$HOME/.local"');
+        .replace(/\bsudo\s+make\s+install\b/g, 'make install PREFIX="$HOME/.local"')
+        // gem install with sudo → user-local via ~/.gem
+        .replace(/\bsudo\s+gem\s+install\b/g, 'gem install --user-install')
+        // go get / go install don't need sudo on macOS
+        .replace(/\bsudo\s+go\s+(install|get)\b/g, 'go $1')
+        // Strip sudo for all the rest — macOS user owns /opt/homebrew and home
+        // dir, so user-land installs don't need it. If a tool genuinely needs
+        // root (kernel modules, system services), it'll fail with a clear
+        // error pointing to the specific operation.
+        .replace(/\bsudo\s+/g, '');
     }
 
     const pathParts = [
