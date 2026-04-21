@@ -23,12 +23,21 @@
         document.documentElement.setAttribute('data-theme', 'dark');
       }
     </script>
+    <style>
+      /* Theme-aware pre-splash background — must be in <head> so it's parsed
+         before the pre-splash <div> paints. The boot script above sets
+         data-theme on <html> synchronously, so the correct rule wins from
+         first paint with no FOUC. Kept in sync with the --surface-base
+         values in client/src/index.css. */
+      #pre-splash { background: #141e2b; }
+      html[data-theme="light"] #pre-splash { background: #0d2a4d; }
+    </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
   <body class="text-white">
     <div id="root">
       <!-- Pre-React branded splash — hidden once React hydrates -->
-      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0e14">
+      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100vh">
         <div style="display:flex;flex-direction:column;align-items:center">
           <img src="/rmpg flex.png" alt="RMPG Flex" width="88" height="88"
                style="filter:drop-shadow(0 0 20px rgba(26,90,158,0.3));object-fit:contain" draggable="false" />
