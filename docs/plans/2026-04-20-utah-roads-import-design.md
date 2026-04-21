@@ -235,3 +235,36 @@ The same `??` pattern appears on lines 95, 107–119 for other fallback columns 
 ### Action
 
 Reopen the importer task, apply the fix, re-run the dry run. Source files confirmed intact at `~/Downloads/UtahRoads_*.{csv,geojson}`.
+
+### Dry run re-run (post-fix)
+
+**Root cause resolved.** Applied two fixes to `server/scripts/import-utah-roads.ts`:
+
+1. **Empty-string → null coercion.** Added `s(v)` and `sOr(...vals)` helpers at the top of the file and rewrote every CSV-derived field in the row object to use them, so blank cells become `NULL` instead of `""`. This unblocks the `UtahRoadUniqueID` fallback chain (~411k CSV rows have empty `UtahRoadUniqueID` but populated `UniqueID`). Rows where both are empty are skipped via `if (!key) continue;` before `rows.push(...)` rather than attempting a NULL insert against the NOT NULL column.
+
+2. **Structural GeoJSON join.** The real UGRC GeoJSON export (`UtahRoads_3660517298827247026.geojson`, 930 MB) contains **no `properties` objects on its features** — only `type`, `id`, `geometry`. The originally documented join key (`props.UtahRoadUniqueID ?? props.UniqueID`) can never resolve against this file. Added an `objectIdToKey: Map<number, string>` built during the CSV pass (keyed by the BOM-stripped `OBJECTID` column) and used during the geom pass as a fallback once `props.UtahRoadUniqueID` / `props.UniqueID` both come back empty. Feature `id` → `OBJECTID` → `utah_road_unique_id`. If a future UGRC export reinstates `properties`, the property-based path still wins.
+
+**Re-run summary (synthetic smoke test):**
+```
+[roads] DONE — 1 inserted, 0 skipped, 0.0s total
+[geom] loaded 1 road keys, 0 OBJECTID mappings for orphan filter
+[geom] DONE — 1 inserted, 0 skipped, 1 orphans, 0.0s total
+```
+Second run: `0 inserted / 1 skipped` for both tables — idempotent.
+
+**Re-run summary (real UGRC data, `/tmp/utahroads-real.db`):**
+```
+[roads] DONE — 406407 inserted, 5230 skipped, 7.8s total
+[geom] loaded 406407 road keys, 411637 OBJECTID mappings for orphan filter
+[geom] DONE — 406407 inserted, 5230 skipped, 0 orphans, 113.4s total
+
+[summary]
+  roads:              406407 inserted / 5230 skipped
+  road_segments_geom: 406407 inserted / 5230 skipped
+```
+- Wall time: **2m 2s** (161.98s user / 4.55s system / 135% CPU)
+- DB file size: **393 MB**
+- `roads` count: **406,407** (up from 82 in the pre-fix run — matches the CSV row count minus the 5,230 rows that have both `UtahRoadUniqueID` and `UniqueID` empty)
+- `road_segments_geom` count: **406,407** (1:1 with roads, 0 orphans)
+- Sample MAIN query (`street_name='MAIN' AND postal_community_left='SALT LAKE CITY'`): **80 segments** returned, spanning zips 84101/84103/84111/84150 with contiguous address ranges starting at 1/99 — matches expected SLC Main Street geography.
+
