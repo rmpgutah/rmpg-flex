@@ -1323,6 +1323,71 @@ ipcMain.handle('recon:tool-kill', async (_event, { sessionId }) => {
   return { ok: true };
 });
 
+// Run a shell command from the shipped original catalog. The renderer only
+// passes (categoryId, toolClassName, kind='install'|'run', index) — the main
+// process looks up the actual commands from the bundled catalog JSON,
+// preventing arbitrary shell execution via IPC.
+ipcMain.handle('recon:catalog-run', async (event, { category, className, kind, index } = {}) => {
+  const { spawn } = require('child_process');
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const os = require('os');
+  try {
+    // Bundled alongside main.js — electron-builder ships it inside app.asar,
+    // and Electron's fs transparently reads through the asar.
+    let catalog;
+    try {
+      catalog = JSON.parse(fs.readFileSync(path.join(__dirname, 'originalCatalog.json'), 'utf8'));
+    } catch (err) {
+      return { ok: false, error: `Catalog not found: ${err.message}` };
+    }
+    const entries = catalog[category] || [];
+    const tool = entries.find((t) => t.className === className);
+    if (!tool) return { ok: false, error: `Tool "${className}" not in category "${category}".` };
+    const cmdList = kind === 'install' ? (tool.install || []) : (tool.run || []);
+    const cmd = cmdList[index];
+    if (typeof cmd !== 'string' || !cmd.trim()) {
+      return { ok: false, error: `No ${kind} command at index ${index} for ${tool.title}.` };
+    }
+
+    const pathParts = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/opt/homebrew/opt/python@3.12/bin', '/usr/local/bin', '/usr/local/sbin', '/usr/bin', '/bin', process.env.PATH || ''].filter(Boolean);
+
+    // Run inside ~/recon-connect so relative `cd foo`/`./tool` paths from
+    // the original hackingtool Install/Run commands resolve as they would
+    // in the upstream CLI.
+    const cwd = path.join(os.homedir(), 'recon-connect');
+    try { fs.mkdirSync(cwd, { recursive: true }); } catch { /* ignore */ }
+
+    const child = spawn('bash', ['-c', cmd], {
+      cwd,
+      env: {
+        ...process.env,
+        PATH: pathParts.join(':'),
+        PYTHONUNBUFFERED: '1',
+        HOMEBREW_NO_AUTO_UPDATE: '1',
+        HOMEBREW_NO_INSTALL_CLEANUP: '1',
+        HOMEBREW_NO_ENV_HINTS: '1',
+        TERM: 'xterm-256color',
+      },
+    });
+    const sessionId = crypto.randomUUID();
+    toolSessions.set(sessionId, child);
+    const send = (kindStream, data) => {
+      if (!event.sender.isDestroyed()) event.sender.send('recon:tool-data', { sessionId, kind: kindStream, data });
+    };
+    child.stdout.on('data', (b) => send('stdout', b.toString('utf8')));
+    child.stderr.on('data', (b) => send('stderr', b.toString('utf8')));
+    child.on('exit', (code) => {
+      toolSessions.delete(sessionId);
+      if (!event.sender.isDestroyed()) event.sender.send('recon:tool-exit', { sessionId, code });
+    });
+    child.on('error', (err) => send('stderr', `[spawn error] ${err.message}\n`));
+    return { ok: true, sessionId, title: `${tool.title} — ${kind}[${index}]` };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : 'Catalog run failed' };
+  }
+});
+
 ipcMain.handle('recon:term-kill', async (_event, { sessionId }) => {
   const child = reconSessions.get(sessionId);
   if (!child) return { ok: true };

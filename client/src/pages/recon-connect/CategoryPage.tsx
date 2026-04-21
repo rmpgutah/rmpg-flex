@@ -3,6 +3,7 @@ import { ArrowLeft, ShieldAlert } from 'lucide-react';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import { useAuth } from '../../context/AuthContext';
 import ToolCard, { type ToolDef } from './ToolCard';
+import FullCatalog from './FullCatalog';
 
 type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager' | 'client_viewer' | 'human_resources' | 'investigator';
 const ALLOWED_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'investigator', 'dispatcher', 'officer'];
@@ -12,9 +13,11 @@ export interface CategoryPageProps {
   icon: any;
   authorizationBanner?: { kind: 'standard' | 'critical'; text: string };
   tools: ToolDef[];
+  /** Slug matching originalCatalog.json key — enables the "Full Catalog" section. */
+  catalogSlug?: string;
 }
 
-export default function CategoryPage({ title, icon, authorizationBanner, tools }: CategoryPageProps) {
+export default function CategoryPage({ title, icon, authorizationBanner, tools, catalogSlug }: CategoryPageProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isElectron = typeof window !== 'undefined' && Boolean((window as any).electron?.isElectron);
@@ -63,6 +66,8 @@ export default function CategoryPage({ title, icon, authorizationBanner, tools }
           <ToolCard key={tool.id} tool={tool} disabled={!isElectron} />
         ))}
       </div>
+
+      {catalogSlug && <FullCatalog categorySlug={catalogSlug} />}
     </div>
   );
 }

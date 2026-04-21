@@ -12,6 +12,7 @@ export default function CategoryRoute() {
       icon={category.icon}
       authorizationBanner={category.banner}
       tools={category.tools}
+      catalogSlug={category.slug}
     />
   );
 }

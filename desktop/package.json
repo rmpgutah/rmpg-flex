@@ -33,7 +33,8 @@
       "connectivityMonitor.js",
       "pinManager.js",
       "offlineRouter.js",
-      "syncManager.js"
+      "syncManager.js",
+      "originalCatalog.json"
     ],
     "extraResources": [
       {

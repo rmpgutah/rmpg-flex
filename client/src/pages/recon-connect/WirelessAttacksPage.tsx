@@ -3,6 +3,7 @@ import { ArrowLeft, Wifi, Bluetooth, Network, Radio, ShieldAlert } from 'lucide-
 import PanelTitleBar from '../../components/PanelTitleBar';
 import { useAuth } from '../../context/AuthContext';
 import ToolCard, { type ToolDef } from './ToolCard';
+import FullCatalog from './FullCatalog';
 
 const TOOLS: ToolDef[] = [
   {
@@ -91,6 +92,8 @@ export default function WirelessAttacksPage() {
           <ToolCard key={tool.id} tool={tool} disabled={!isElectron} />
         ))}
       </div>
+
+      <FullCatalog categorySlug="wireless-attacks" />
     </div>
   );
 }
