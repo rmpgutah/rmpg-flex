@@ -3171,6 +3171,53 @@ function migrateSchema(): void {
     `);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_address ON premise_alerts(address)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_coords ON premise_alerts(latitude, longitude)`);
+
+    // Utah Roads import (AGRC): authoritative street centerlines with address ranges,
+    // postal/MSAG community, ESN, ZIP, one-way, speed limit, and DOT functional class.
+    db.prepare(`CREATE TABLE IF NOT EXISTS roads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      utah_road_unique_id TEXT UNIQUE NOT NULL,
+      unique_id TEXT,
+      full_name TEXT,
+      street_name TEXT,
+      pre_dir TEXT,
+      post_type TEXT,
+      post_dir TEXT,
+      left_from INTEGER,
+      left_to INTEGER,
+      right_from INTEGER,
+      right_to INTEGER,
+      parity_left TEXT,
+      parity_right TEXT,
+      postal_community_left TEXT,
+      postal_community_right TEXT,
+      zip_left TEXT,
+      zip_right TEXT,
+      esn_left TEXT,
+      esn_right TEXT,
+      msag_community_left TEXT,
+      msag_community_right TEXT,
+      one_way TEXT,
+      posted_speed INTEGER,
+      dot_functional_class TEXT,
+      county_left TEXT,
+      county_right TEXT
+    )`).run();
+
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_street_community
+      ON roads(street_name, postal_community_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_zip_left
+      ON roads(zip_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_esn_left
+      ON roads(esn_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_esn_right
+      ON roads(esn_right)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS road_segments_geom (
+      utah_road_unique_id TEXT PRIMARY KEY,
+      geom_json TEXT NOT NULL,
+      FOREIGN KEY (utah_road_unique_id) REFERENCES roads(utah_road_unique_id)
+    )`).run();
   } catch (err) {
     console.log('[migrate] Dispatch geography tables:', (err as Error).message);
   }
