@@ -754,19 +754,123 @@ const RECON_TOOLS = {
     platform: ['darwin', 'linux'],
     requiresInstall: 'nikto',
   },
-  'whatweb': {
-    title: 'WhatWeb Fingerprint',
-    command: 'whatweb',
+  'httpx-fingerprint': {
+    title: 'HTTPX Fingerprint',
+    command: 'httpx',
     buildArgs: ({ url }) => {
       if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
         throw new Error('URL must be http(s)://hostname[:port][/path], no shell metacharacters.');
       }
-      return ['--color=never', url];
+      return ['-u', url, '-title', '-tech-detect', '-status-code', '-server', '-no-color'];
     },
     platform: ['darwin', 'linux'],
-    requiresInstall: 'whatweb',
+    requiresInstall: 'httpx',
+  },
+  'sqlmap': {
+    title: 'SQLMap',
+    command: 'sqlmap',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s?=&+.,%/-]*)?(\?[a-zA-Z0-9_=&%.+-]+)?$/.test(url || '')) {
+        throw new Error('URL must be http(s)://hostname[/path][?param=value], no shell metacharacters.');
+      }
+      return ['-u', url, '--batch', '--level=1', '--risk=1'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'sqlmap',
+  },
+  'gobuster-dir': {
+    title: 'Gobuster Directory Brute',
+    command: 'gobuster',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
+        throw new Error('URL must be http(s)://hostname[:port][/path].');
+      }
+      // Use the common.txt wordlist shipped with dirb via brew
+      return ['dir', '-u', url, '-w', '/opt/homebrew/share/dirb/wordlists/common.txt', '--no-color', '-t', '20', '--timeout', '10s'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'gobuster',
+  },
+  'sslscan': {
+    title: 'SSL/TLS Scan',
+    command: 'sslscan',
+    buildArgs: ({ target }) => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?$/.test(target || '')) {
+        throw new Error('Target must be hostname[:port].');
+      }
+      return ['--no-colour', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'sslscan',
+  },
+  'testssl': {
+    title: 'testssl.sh',
+    command: 'testssl',
+    buildArgs: ({ target }) => {
+      if (!/^([a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?|https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?)$/.test(target || '')) {
+        throw new Error('Target must be hostname[:port] or https URL.');
+      }
+      return ['--color', '0', '--quiet', target];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'testssl',
+  },
+  'wpscan': {
+    title: 'WPScan (WordPress)',
+    command: 'wpscan',
+    buildArgs: ({ url }) => {
+      if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
+        throw new Error('URL must be http(s)://hostname[:port][/path].');
+      }
+      return ['--url', url, '--no-banner', '--no-update', '--random-user-agent'];
+    },
+    platform: ['darwin', 'linux'],
+    requiresInstall: 'wpscan',
   },
 };
+
+// One-click brew install for a known package
+ipcMain.handle('recon:tool-install', async (event, { pkg } = {}) => {
+  const { spawn } = require('child_process');
+  const crypto = require('crypto');
+  // Whitelist to prevent arbitrary brew package installs via IPC
+  const ALLOWED = new Set([
+    'nmap', 'nikto', 'exploitdb', 'httpx', 'sqlmap', 'gobuster',
+    'sslscan', 'testssl', 'wpscan', 'python@3.12', 'git',
+  ]);
+  if (!ALLOWED.has(pkg)) {
+    return { ok: false, error: `Package "${pkg}" is not in the allow-list.` };
+  }
+  const brewPath = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew'].find((p) => require('fs').existsSync(p));
+  if (!brewPath) {
+    return { ok: false, error: 'Homebrew is not installed. Install from https://brew.sh' };
+  }
+  try {
+    const child = spawn(brewPath, ['install', pkg], {
+      env: {
+        ...process.env,
+        PATH: ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH || ''].filter(Boolean).join(':'),
+        HOMEBREW_NO_AUTO_UPDATE: '1',
+        HOMEBREW_NO_INSTALL_CLEANUP: '1',
+        HOMEBREW_NO_ENV_HINTS: '1',
+      },
+    });
+    const sessionId = crypto.randomUUID();
+    toolSessions.set(sessionId, child);
+    const send = (kind, data) => {
+      if (!event.sender.isDestroyed()) event.sender.send('recon:tool-data', { sessionId, kind, data });
+    };
+    child.stdout.on('data', (b) => send('stdout', b.toString('utf8')));
+    child.stderr.on('data', (b) => send('stderr', b.toString('utf8')));
+    child.on('exit', (code) => {
+      toolSessions.delete(sessionId);
+      if (!event.sender.isDestroyed()) event.sender.send('recon:tool-exit', { sessionId, code });
+    });
+    return { ok: true, sessionId, title: `brew install ${pkg}` };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : 'Install failed' };
+  }
+});
 
 const toolSessions = new Map();
 

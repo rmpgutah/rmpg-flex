@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Play, Square } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Play, Square, Download } from 'lucide-react';
 
 export type ToolArg = { name: string; label: string; placeholder?: string; required?: boolean };
 export type ToolDef = {
@@ -10,6 +10,8 @@ export type ToolDef = {
   requiresAuthorization?: string;
   args?: ToolArg[];
   runLabel?: string;
+  /** Homebrew package to offer a one-click install for, if the binary is missing */
+  installPkg?: string;
 };
 
 export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: boolean }) {
@@ -67,6 +69,28 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
     setSessionId(null);
   };
 
+  const installPkg = async () => {
+    if (!tool.installPkg || !api?.reconToolInstall) return;
+    setOutput([{ kind: 'meta', text: `Installing ${tool.installPkg} via Homebrew. This takes 1-5 min.\n` }]);
+    setRunning(true);
+    const res = await api.reconToolInstall(tool.installPkg);
+    if (!res?.ok) {
+      setOutput((prev) => [...prev, { kind: 'stderr', text: res?.error || 'Install failed.' }]);
+      setRunning(false);
+      return;
+    }
+    sessionIdRef.current = res.sessionId;
+    setSessionId(res.sessionId);
+  };
+
+  // Detect "<tool> is not installed" error so we can surface an Install button
+  const notInstalled = useMemo(() => {
+    return output.some((line) =>
+      line.kind === 'stderr' &&
+      (line.text.includes('is not installed') || line.text.includes('Run: brew install'))
+    );
+  }, [output]);
+
   const Icon = tool.icon;
   return (
     <div className="bg-[#141414] border border-[#222] flex flex-col">
@@ -114,6 +138,15 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           >
             <Square className="w-3.5 h-3.5" /> Stop
           </button>
+          {notInstalled && tool.installPkg && (
+            <button
+              onClick={installPkg}
+              disabled={running}
+              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#d4a017] text-[#d4a017] text-xs hover:bg-[#242424] disabled:opacity-40 flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" /> Install {tool.installPkg}
+            </button>
+          )}
           {output.length > 0 && (
             <button
               onClick={() => setOutput([])}

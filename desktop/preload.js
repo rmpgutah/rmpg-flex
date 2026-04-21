@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('electron', {
   // ─── Native tool runner (Wireless pilot) ───────────
   reconToolSpawn: (toolId, args) => ipcRenderer.invoke('recon:tool-spawn', { toolId, args }),
   reconToolKill: (sessionId) => ipcRenderer.invoke('recon:tool-kill', { sessionId }),
+  reconToolInstall: (pkg) => ipcRenderer.invoke('recon:tool-install', { pkg }),
   onReconToolData: (callback) => {
     const handler = (_e, payload) => callback(payload.sessionId, payload.kind, payload.data);
     ipcRenderer.on('recon:tool-data', handler);
