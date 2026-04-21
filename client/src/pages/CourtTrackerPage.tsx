@@ -339,7 +339,7 @@ export default function CourtTrackerPage() {
       {/* ── New Event Modal ── */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="panel-surface w-full max-w-lg mx-4">
+          <div className="panel-beveled w-full max-w-lg mx-4">
             <PanelTitleBar title="New Court Event" icon={Plus}>
               <button onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
@@ -397,7 +397,7 @@ export default function CourtTrackerPage() {
       {/* ── Outcome Modal ── */}
       {outcomeOpen && selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="panel-surface w-full max-w-md mx-4">
+          <div className="panel-beveled w-full max-w-md mx-4">
             <PanelTitleBar title="Record Outcome" icon={CheckCircle}>
               <button onClick={() => setOutcomeOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>

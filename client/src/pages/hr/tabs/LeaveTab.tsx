@@ -62,7 +62,7 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+    <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
       <div className="flex items-center gap-2 mb-2">
         <Icon size={14} style={{ color }} />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide">{label}</span>
@@ -70,7 +70,7 @@ function BalanceCard({
       <div className="text-xl font-bold text-white mb-0.5">
         {remaining} <span className="text-sm font-normal text-rmpg-400">of {total} hrs remaining</span>
       </div>
-      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden mt-2">
+      <div className="h-2 bg-surface-sunken rounded-full overflow-hidden mt-2">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
@@ -292,10 +292,10 @@ export default function LeaveTab() {
         </div>
 
         {/* Request History Table */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#1e3048] bg-[#0d1520]">
+              <tr className="border-b border-rmpg-700 bg-surface-sunken">
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Type</th>
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Dates</th>
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Hours</th>
@@ -315,7 +315,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-[#1e3048] ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
+                    className={`border-b border-rmpg-700 ${i % 2 === 0 ? 'bg-surface-base' : 'bg-[#121a27]'}`}
                   >
                     <td className="px-3 py-2 text-white"><TypePill type={req.type} /></td>
                     <td className="px-3 py-2 text-rmpg-200">
@@ -382,7 +382,7 @@ export default function LeaveTab() {
             {pendingRequests.map(req => (
               <div
                 key={req.id}
-                className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 space-y-3"
+                className="bg-surface-base border border-rmpg-700 rounded-sm p-4 space-y-3"
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -398,7 +398,7 @@ export default function LeaveTab() {
                   <StatusBadge status={req.status} />
                 </div>
                 {req.reason && (
-                  <p className="text-xs text-rmpg-300 bg-[#0d1520] border border-[#1e3048] rounded-sm p-2">
+                  <p className="text-xs text-rmpg-300 bg-surface-sunken border border-rmpg-700 rounded-sm p-2">
                     {req.reason}
                   </p>
                 )}
@@ -408,7 +408,7 @@ export default function LeaveTab() {
                     placeholder="Notes (optional)"
                     value={reviewNotes[req.id] || ''}
                     onChange={e => setReviewNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
-                    className="flex-1 bg-[#0d1520] border border-[#1e3048] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+                    className="flex-1 bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
                   />
                   <button
                     onClick={() => handleApprove(req.id)}
@@ -440,10 +440,10 @@ export default function LeaveTab() {
             <CalendarDays size={14} className="text-blue-400" />
             Team Balances ({new Date().getFullYear()})
           </h3>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto">
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#1e3048] bg-[#0d1520]">
+                <tr className="border-b border-rmpg-700 bg-surface-sunken">
                   <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Officer</th>
                   <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Vacation</th>
                   <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Sick</th>
@@ -454,7 +454,7 @@ export default function LeaveTab() {
                 {balances.map((bal, i) => (
                   <tr
                     key={bal.id}
-                    className={`border-b border-[#1e3048] ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
+                    className={`border-b border-rmpg-700 ${i % 2 === 0 ? 'bg-surface-base' : 'bg-[#121a27]'}`}
                   >
                     <td className="px-3 py-2 text-white font-medium">{bal.officer_name || `Officer #${bal.officer_id}`}</td>
                     <td className="px-3 py-2">
@@ -496,7 +496,7 @@ export default function LeaveTab() {
           <select
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Officers</option>
             {officerOptions.map(o => (
@@ -506,7 +506,7 @@ export default function LeaveTab() {
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -517,7 +517,7 @@ export default function LeaveTab() {
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Types</option>
             {Object.entries(LEAVE_TYPE_LABELS).map(([val, label]) => (
@@ -536,10 +536,10 @@ export default function LeaveTab() {
         </div>
 
         {/* All Requests Table */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#1e3048] bg-[#0d1520]">
+              <tr className="border-b border-rmpg-700 bg-surface-sunken">
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Officer</th>
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Type</th>
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Dates</th>
@@ -560,7 +560,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-[#1e3048] ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
+                    className={`border-b border-rmpg-700 ${i % 2 === 0 ? 'bg-surface-base' : 'bg-[#121a27]'}`}
                   >
                     <td className="px-3 py-2 text-white">{req.officer_name || `#${req.officer_id}`}</td>
                     <td className="px-3 py-2"><TypePill type={req.type} /></td>
@@ -608,7 +608,7 @@ function BalanceCell({ used, total, color }: { used: number; total: number; colo
       <div className="text-xs text-rmpg-200 mb-0.5">
         {used} / {total}
       </div>
-      <div className="h-1.5 bg-[#0d1520] rounded-full overflow-hidden">
+      <div className="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}

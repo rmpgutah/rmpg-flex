@@ -303,7 +303,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        style={{ background: '#141e2b', border: '1px solid #1e3048' }}
+                        className="bg-surface-base border border-rmpg-700"
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (

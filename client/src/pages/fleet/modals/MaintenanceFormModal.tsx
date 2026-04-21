@@ -46,51 +46,51 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="panel-beveled w-[480px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }}>
+      <div className="panel-beveled w-[480px] max-h-[80vh] flex flex-col" style={{ background: 'var(--surface-raised)' }}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT MAINTENANCE' : 'LOG MAINTENANCE'} icon={Wrench} id={titleId}>
           <button className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Type</label>
+              <label className="field-label">Type</label>
               <select className="select-dark w-full text-[11px]" value={form.type}
                 onChange={(e) => setField('type', e.target.value)}>
                 {MAINTENANCE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Performed At (Date/Time)</label>
+              <label className="field-label">Performed At (Date/Time)</label>
               <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.performed_at}
                 onChange={(e) => setField('performed_at', e.target.value)} />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Description *</label>
+              <label className="field-label">Description *</label>
               <textarea className="input-dark w-full text-[10px] h-16 resize-none" value={form.description}
                 onChange={(e) => setField('description', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Mileage at Service</label>
+              <label className="field-label">Mileage at Service</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.mileage_at_service}
                 onChange={(e) => setField('mileage_at_service', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Cost ($)</label>
+              <label className="field-label">Cost ($)</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.01" value={form.cost}
                 onChange={(e) => setField('cost', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Vendor</label>
+              <label className="field-label">Vendor</label>
               <input className="input-dark w-full text-[11px]" value={form.vendor}
                 onChange={(e) => setField('vendor', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Performed By</label>
+              <label className="field-label">Performed By</label>
               <input className="input-dark w-full text-[11px]" value={form.performed_by}
                 onChange={(e) => setField('performed_by', e.target.value)} />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Next Due Date/Time</label>
+              <label className="field-label">Next Due Date/Time</label>
               <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.next_due_date}
                 onChange={(e) => setField('next_due_date', e.target.value)} />
             </div>

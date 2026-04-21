@@ -409,7 +409,7 @@ export default function DashCamerasPage() {
 
   // ── Detail Panel (Right Panel) ───────────
   const detailPanel = selectedVideo ? (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full overflow-y-auto  bg-surface-sunken">
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
         style={{ background: 'linear-gradient(180deg, #1e3048, #1a2636)', borderBottom: '1px solid #141e2b' }}>

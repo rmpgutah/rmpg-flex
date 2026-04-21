@@ -593,7 +593,7 @@ export default function DashboardPage() {
             </div>
             {/* Progress Bar */}
             <div className="space-y-1">
-              <div className="h-2 bg-surface-sunken rounded-sm overflow-hidden border border-[#1e3048]">
+              <div className="h-2 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-700">
                 <div
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
@@ -609,7 +609,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-1 border-t border-[#1e3048]">
+            <div className="flex items-center gap-2 pt-1 border-t border-rmpg-700">
               {[
                 { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
                 { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
@@ -637,7 +637,7 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#1e3048]">
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-rmpg-700">
                       <WeatherIcon className="w-10 h-10" style={{ color: isFreezing ? '#60a5fa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#94a3b8' }} />
                     </div>
                     <div>
@@ -656,7 +656,7 @@ export default function DashboardPage() {
                     </div>
                   )}
                   {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#1e3048]">
+                  <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
                     <span className="text-[9px] text-rmpg-500 font-mono">
                       Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -690,7 +690,7 @@ export default function DashboardPage() {
                 <button
                   key={label}
                   onClick={() => navigate(path)}
-                  className={`flex flex-col items-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58]`}
+                  className={`flex flex-col items-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised transition-all duration-150 cursor-pointer group border border-transparent hover:border-rmpg-600`}
                 >
                   <ActionIcon
                     className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} transition-transform group-hover:scale-110`}

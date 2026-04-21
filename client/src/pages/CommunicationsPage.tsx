@@ -672,7 +672,7 @@ export default function CommunicationsPage() {
       <PanelTitleBar title="COMMUNICATIONS" icon={MessageSquare}>
         {activePanel === 'messages' && (
           <>
-            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#0d1520' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset  bg-surface-sunken">
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
@@ -703,7 +703,7 @@ export default function CommunicationsPage() {
       </PanelTitleBar>
 
       {/* Panel Tabs */}
-      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#0d1520' }}>
+      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4  bg-surface-sunken">
         <div className="flex gap-1">
           {panels.map((panel) => {
             const Icon = panel.icon;
@@ -855,7 +855,7 @@ export default function CommunicationsPage() {
                 {selectedThread && (
                   <div className={`${isMobile ? 'w-full' : 'flex-1'} flex flex-col overflow-hidden animate-slide-in-right`}>
                     {/* Thread header */}
-                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0  bg-surface-sunken">
                       <button
                         onClick={() => setSelectedThreadId(null)}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-400 transition-colors"
@@ -942,7 +942,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Reply compose area */}
-                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
+                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0  bg-surface-sunken">
                       <div className="flex items-center gap-2 mb-2">
                         <Reply className="w-3.5 h-3.5 text-rmpg-400" />
                         <span className="text-[10px] text-rmpg-400 font-medium">

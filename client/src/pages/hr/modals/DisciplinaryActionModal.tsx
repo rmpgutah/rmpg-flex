@@ -100,14 +100,14 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
     }
   };
 
-  const inputClass = 'w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none';
+  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none';
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="px-4 py-2 border-b border-[#1e3048] flex items-center justify-between">
+        <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-orange-400" />
             <h3 className="text-sm font-semibold text-white">
@@ -201,7 +201,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-[#1e3048] flex justify-end gap-2">
+        <div className="px-4 py-2 border-t border-rmpg-700 flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
             Cancel
           </button>

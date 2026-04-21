@@ -83,13 +83,13 @@ export default function StatusBar({
               </span>
             )}
             {gpsLastSent && (
-              <span style={{ color: '#505050', marginLeft: 4 }}>
+              <span style={{ color: '#5a6e80', marginLeft: 4 }}>
                 {new Date(gpsLastSent).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}
           </>
         ) : (
-          <span style={{ color: '#505050' }}>GPS: OFF</span>
+          <span style={{ color: '#5a6e80' }}>GPS: OFF</span>
         )}
       </div>
 

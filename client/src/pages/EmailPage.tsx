@@ -1056,13 +1056,13 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-[#141e2b] border border-[#1e3048] rounded-t-lg sm:rounded-lg w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-2xl shadow-black/50 transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
+        className={`bg-surface-base border border-rmpg-700 rounded-t-lg sm:rounded-lg w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-2xl shadow-black/50 transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520] rounded-t-lg">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken rounded-t-lg">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
@@ -1125,7 +1125,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </div>
         </div>
 
-        <div className="border-t border-[#1e3048] mx-4 my-0" />
+        <div className="border-t border-rmpg-700 mx-4 my-0" />
 
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
@@ -1169,7 +1169,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
 
         {/* Reply context */}
         {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0d1520] border-l-2 border-l-brand-500/30 rounded p-2.5">
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-surface-sunken border-l-2 border-l-brand-500/30 rounded p-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <Reply className="w-3 h-3 text-brand-400" />
               <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
@@ -1196,7 +1196,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const isPdf = ext === 'pdf';
                 const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-lg text-[10px] text-rmpg-300 group">
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-lg text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
@@ -1210,7 +1210,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#1e3048] bg-[#0d1520] rounded-b-lg">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-rmpg-700 bg-surface-sunken rounded-b-lg">
           <div className="text-[9px] text-rmpg-600">
             <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
             <span className="sm:hidden">Ctrl+Enter to send</span>
@@ -1394,9 +1394,9 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
 
   if (!expanded) {
     return (
-      <div className="border-t border-[#1e3048] bg-[#0d1520]">
+      <div className="border-t border-rmpg-700 bg-surface-sunken">
         <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#1e3048] rounded-lg cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-rmpg-700 rounded-lg cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600" />
           <span>Click here to reply...</span>
         </div>
@@ -1405,13 +1405,13 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
   }
 
   return (
-    <div className="border-t border-[#1e3048] bg-[#0d1520]">
-      <div className="mx-4 my-3 border border-[#1e3048] rounded-lg bg-[#141e2b] overflow-hidden focus-within:border-brand-500/40 transition-colors">
+    <div className="border-t border-rmpg-700 bg-surface-sunken">
+      <div className="mx-4 my-3 border border-rmpg-700 rounded-lg bg-surface-base overflow-hidden focus-within:border-brand-500/40 transition-colors">
         <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
-        <div className="flex items-center justify-between px-3 py-2 bg-[#0d1520]/50">
+        <div className="flex items-center justify-between px-3 py-2 bg-surface-sunken/50">
           <span className="text-[9px] text-rmpg-600">Ctrl+Enter to send • Esc to cancel</span>
           <div className="flex items-center gap-1.5">
             <button onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">Cancel</button>
@@ -2082,7 +2082,7 @@ export default function EmailPage() {
           <select
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-surface-sunken border border-rmpg-700 rounded px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);

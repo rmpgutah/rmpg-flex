@@ -62,20 +62,20 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="panel-beveled w-[520px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }}>
+      <div className="panel-beveled w-[520px] max-h-[80vh] flex flex-col" style={{ background: 'var(--surface-raised)' }}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT FUEL ENTRY' : 'LOG FUEL ENTRY'} icon={Fuel} id={titleId}>
           <button className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
+              <label className="field-label">Date / Time *</label>
               <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1"
                 value={form.fuel_date}
                 onChange={(e) => setField('fuel_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Fuel Type</label>
+              <label className="field-label">Fuel Type</label>
               <select className="select-dark w-full text-[11px]" value={form.fuel_type}
                 onChange={(e) => setField('fuel_type', e.target.value)}>
                 {FUEL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -86,22 +86,22 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Gallons *</label>
+              <label className="field-label">Gallons *</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.001" value={form.gallons}
                 onChange={(e) => setField('gallons', e.target.value)} placeholder="e.g. 15.500" />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Cost per Gallon ($)</label>
+              <label className="field-label">Cost per Gallon ($)</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.001" value={form.cost_per_gallon}
                 onChange={(e) => setField('cost_per_gallon', e.target.value)} placeholder="e.g. 3.450" />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
+              <label className="field-label">Total Cost ($)</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.01" value={form.total_cost}
                 onChange={(e) => setField('total_cost', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Odometer Reading</label>
+              <label className="field-label">Odometer Reading</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.1" value={form.odometer_reading}
                 onChange={(e) => setField('odometer_reading', e.target.value)} />
             </div>
@@ -111,9 +111,9 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               <div className="col-span-2 panel-beveled p-2.5 flex items-center justify-between bg-surface-sunken">
                 <div className="flex items-center gap-3 text-[10px] font-mono">
                   <DollarSign className="w-3 h-3 text-green-500" />
-                  <span className="text-gray-400">{form.gallons || '0.000'} gal</span>
+                  <span className="text-rmpg-400">{form.gallons || '0.000'} gal</span>
                   <span className="text-rmpg-500">&times;</span>
-                  <span className="text-gray-400">${form.cost_per_gallon || '0.000'}/gal</span>
+                  <span className="text-rmpg-400">${form.cost_per_gallon || '0.000'}/gal</span>
                   <span className="text-rmpg-500">=</span>
                   <span className="text-green-400 font-bold text-xs">${form.total_cost || '0.00'}</span>
                 </div>
@@ -122,12 +122,12 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
             )}
 
             <div className="col-span-2">
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Station</label>
+              <label className="field-label">Station</label>
               <input className="input-dark w-full text-[11px]" value={form.station}
                 onChange={(e) => setField('station', e.target.value)} placeholder="e.g. Shell - Main St" />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Notes</label>
+              <label className="field-label">Notes</label>
               <textarea className="input-dark w-full text-[10px] h-14 resize-none" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} />
             </div>

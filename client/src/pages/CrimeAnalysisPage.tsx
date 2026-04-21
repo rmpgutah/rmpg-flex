@@ -139,7 +139,7 @@ export default function CrimeAnalysisPage() {
 
         <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
           {/* Top Offenses */}
-          <div className="panel-surface">
+          <div className="panel-beveled">
             <PanelTitleBar title="Top Offenses" icon={BarChart3} />
             <div className="p-3 space-y-2">
               {(data.topOffenses || []).slice(0, 10).map((offense: any) => (
@@ -166,7 +166,7 @@ export default function CrimeAnalysisPage() {
           </div>
 
           {/* Hotspots */}
-          <div className="panel-surface">
+          <div className="panel-beveled">
             <PanelTitleBar title="Hotspots (Top Locations)" icon={MapPin} />
             <div className="p-3 space-y-2">
               {(data.hotspots || []).slice(0, 10).map((spot: any, idx: number) => (
@@ -193,7 +193,7 @@ export default function CrimeAnalysisPage() {
           </div>
 
           {/* Time of Day Distribution */}
-          <div className="panel-surface">
+          <div className="panel-beveled">
             <PanelTitleBar title="Time of Day Distribution" icon={Clock} />
             <div className="p-3">
               <div className="flex items-end gap-[2px] h-24">
@@ -234,7 +234,7 @@ export default function CrimeAnalysisPage() {
           </div>
 
           {/* Day of Week */}
-          <div className="panel-surface">
+          <div className="panel-beveled">
             <PanelTitleBar title="Day of Week" icon={Calendar} />
             <div className="p-3 space-y-2">
               {(data.dayOfWeek || []).map((day: any, idx: number) => {
@@ -262,7 +262,7 @@ export default function CrimeAnalysisPage() {
           </div>
 
           {/* Repeat Offenders */}
-          <div className="panel-surface">
+          <div className="panel-beveled">
             <PanelTitleBar title="Repeat Offenders (3+ Incidents)" icon={Users} />
             <div className="p-3">
               {(data.repeatOffenders || []).length === 0 ? (
@@ -281,7 +281,7 @@ export default function CrimeAnalysisPage() {
           </div>
 
           {/* Response Metrics */}
-          <div className="panel-surface">
+          <div className="panel-beveled">
             <PanelTitleBar title="Response Metrics by Priority" icon={AlertTriangle} />
             <div className="p-3">
               {(data.responseMetrics || []).length === 0 ? (
@@ -307,7 +307,7 @@ export default function CrimeAnalysisPage() {
           </div>
 
           {/* Monthly Trend */}
-          <div className={`panel-surface ${isMobile ? '' : 'col-span-2'}`}>
+          <div className={`panel-beveled ${isMobile ? '' : 'col-span-2'}`}>
             <PanelTitleBar title="Monthly Incident Trend" icon={TrendingUp} />
             <div className="p-3">
               {(data.trendData || []).length === 0 ? (

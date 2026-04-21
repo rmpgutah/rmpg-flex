@@ -652,7 +652,7 @@ export default function FleetPage() {
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
 
       {/* ====== FLEET STATS DASHBOARD ====== */}
-      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
+      <div className="flex-shrink-0 border-b border-rmpg-700  bg-surface-sunken">
         <PanelTitleBar title="FLEET MANAGEMENT" icon={Car}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
@@ -763,7 +763,7 @@ export default function FleetPage() {
 
         {/* ---- LEFT PANEL: Vehicle List ---- */}
         <div className={`flex flex-col ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? { background: '#1a2636' } : { width: '36%', minWidth: 300, maxWidth: 440, background: '#1a2636' }}>
-          <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
+          <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-base">
             <select
               className="select-dark text-[10px] py-1 px-2"
               value={filterStatus}
@@ -906,7 +906,7 @@ export default function FleetPage() {
         {!isMobile && <div className="flex-shrink-0 w-px bg-rmpg-600" />}
 
         {/* ---- RIGHT PANEL ---- */}
-        <div className={`${isMobile ? (selectedId ? 'w-full' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`} style={{ background: '#1a2636' }}>
+        <div className={`${isMobile ? (selectedId ? 'w-full' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`} style={{ background: 'var(--surface-raised)' }}>
           {selectedId == null || !detail ? (
             // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
             <div className="flex-1 overflow-y-auto">
@@ -928,7 +928,7 @@ export default function FleetPage() {
           ) : (
             <>
             {isMobile && (
-              <button onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50" style={{ background: '#0d1520' }}>
+              <button onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50  bg-surface-sunken">
                 ◀ Back to Vehicles
               </button>
             )}

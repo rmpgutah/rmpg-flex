@@ -514,7 +514,7 @@ export default function RadioPage() {
   );
 
   return (
-    <div className="h-full flex flex-col" style={{ background: '#141e2b' }}>
+    <div className="h-full flex flex-col bg-surface-base">
 
       {/* ─── HTTPS Warning Banner ────────────────────────────── */}
       {!micSupported && (
@@ -1068,7 +1068,7 @@ export default function RadioPage() {
               showMobileSidebar ? (
                 <div
                   className="absolute inset-0 z-40 flex flex-col"
-                  style={{ background: '#0d1520' }}
+                  className="bg-surface-sunken"
                 >
                   <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid #1e3048' }}>
                     <span className="text-[10px] font-mono font-bold text-rmpg-400 tracking-wider">CHANNEL INFO</span>
@@ -1086,7 +1086,7 @@ export default function RadioPage() {
             ) : (
               <div
                 className="flex flex-col w-72 border-l border-rmpg-700"
-                style={{ background: '#0d1520', flexShrink: 0 }}
+                className="bg-surface-sunken flex-shrink-0"
               >
                 {renderSidebarContent()}
               </div>

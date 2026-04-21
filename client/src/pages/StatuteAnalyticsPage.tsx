@@ -104,7 +104,7 @@ export default function StatuteAnalyticsPage() {
 
       {/* Mobile: day selector */}
       {isMobile && (
-        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#0f1a28', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: 'var(--grid-header-bg)', borderBottom: '1px solid var(--border-default)' }}>
           {[30, 60, 90, 180, 365].map(d => (
             <button
               key={d}
@@ -127,19 +127,19 @@ export default function StatuteAnalyticsPage() {
         <div className="flex-1 overflow-auto p-4 space-y-4">
           {/* Summary Cards */}
           <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
-            <div className="panel-surface p-3">
+            <div className="panel-beveled p-3">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Total Citations</p>
               <p className="text-2xl font-black text-brand-400 mt-1">{totalCitations}</p>
             </div>
-            <div className="panel-surface p-3">
+            <div className="panel-beveled p-3">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Unique Statutes</p>
               <p className="text-2xl font-black text-amber-400 mt-1">{topStatutes.length}</p>
             </div>
-            <div className="panel-surface p-3">
+            <div className="panel-beveled p-3">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Incident Statutes</p>
               <p className="text-2xl font-black text-purple-400 mt-1">{incidentStatutes.length}</p>
             </div>
-            <div className="panel-surface p-3">
+            <div className="panel-beveled p-3">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Time Period</p>
               <p className="text-2xl font-black text-green-400 mt-1">{days}d</p>
             </div>
@@ -147,7 +147,7 @@ export default function StatuteAnalyticsPage() {
 
           <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-3'} gap-4`}>
             {/* Top Violations Bar Chart */}
-            <div className={`${isMobile ? '' : 'col-span-2'} panel-surface p-3`}>
+            <div className={`${isMobile ? '' : 'col-span-2'} panel-beveled p-3`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-3.5 h-3.5 text-brand-400" />
@@ -196,7 +196,7 @@ export default function StatuteAnalyticsPage() {
             </div>
 
             {/* Offense Level Breakdown */}
-            <div className="panel-surface p-3">
+            <div className="panel-beveled p-3">
               <div className="flex items-center gap-2 mb-3">
                 <PieChart className="w-3.5 h-3.5 text-amber-400" />
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">By Offense Level</h3>
@@ -223,7 +223,7 @@ export default function StatuteAnalyticsPage() {
           </div>
 
           {/* Monthly Trend */}
-          <div className="panel-surface p-3">
+          <div className="panel-beveled p-3">
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="w-3.5 h-3.5 text-green-400" />
               <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Monthly Citation Trend</h3>

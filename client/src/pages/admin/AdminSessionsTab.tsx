@@ -106,7 +106,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px] mb-6">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#0f1a28' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider bg-[var(--grid-header-bg)]">
             <th className="text-left px-3 py-1.5 font-bold">User</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>
             <th className="text-left px-3 py-1.5 font-bold">Device</th>
@@ -160,7 +160,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
         <History style={{ width: 10, height: 10 }} />
         Recent Login History
       </div>
-      <div className="panel-surface mb-4">
+      <div className="panel-beveled mb-4">
         <LoginHistoryTable />
       </div>
     </div>

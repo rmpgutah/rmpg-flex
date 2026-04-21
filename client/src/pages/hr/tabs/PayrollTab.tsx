@@ -344,7 +344,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       )}
 
       {/* Sub-tab bar */}
-      <div className="flex flex-wrap items-center gap-1 px-3 py-1.5 border-b border-[#1e3048] bg-[#0d1520]">
+      <div className="flex flex-wrap items-center gap-1 px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken">
         {SUB_TABS.map(t => {
           const Icon = t.icon;
           return (
@@ -387,28 +387,28 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
           {/* Create form */}
           {showPeriodForm && (
-            <div className="bg-[#0d1520] border border-[#1e3048] rounded-lg p-4 space-y-3">
+            <div className="bg-surface-sunken border border-rmpg-700 rounded-lg p-4 space-y-3">
               <h4 className="text-xs font-semibold text-white">Create Pay Period</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
                   <input value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
                   <input type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
                   <input type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
                   <input type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -433,7 +433,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   className={`border rounded-lg transition-all cursor-pointer ${
                     selectedPeriod?.id === period.id
                       ? 'border-brand-500/60 bg-brand-500/5'
-                      : 'border-[#1e3048] bg-[#141e2b] hover:border-rmpg-600'
+                      : 'border-rmpg-700 bg-surface-base hover:border-rmpg-600'
                   }`}
                   onClick={() => { setSelectedPeriod(period); setSubTab('entries'); }}
                 >
@@ -500,13 +500,13 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
           {/* Create rate form */}
           {showRateForm && (
-            <div className="bg-[#0d1520] border border-[#1e3048] rounded-lg p-4 space-y-3">
+            <div className="bg-surface-sunken border border-rmpg-700 rounded-lg p-4 space-y-3">
               <h4 className="text-xs font-semibold text-white">Set Pay Rate</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
                   <select value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white">
                     <option value="">Select employee...</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -514,7 +514,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
                   <select value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white">
                     <option value="hourly">Hourly</option>
                     <option value="salary">Salary</option>
                     <option value="contract">Contract</option>
@@ -523,22 +523,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
                   <input type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" placeholder="25.00" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" placeholder="25.00" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
                   <input type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
                   <input type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
                   <input type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -560,7 +560,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-[#1e3048]">
+                  <tr className="border-b border-rmpg-700">
                     <th className="px-3 py-2 text-left text-rmpg-400 font-medium">Employee</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-medium">Type</th>
                     <th className="px-3 py-2 text-right text-rmpg-400 font-medium">Rate</th>
@@ -571,7 +571,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </thead>
                 <tbody>
                   {rates.map(rate => (
-                    <tr key={rate.id} className="border-b border-[#1e3048]/50 hover:bg-brand-500/5">
+                    <tr key={rate.id} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
                       <td className="px-3 py-2 text-white font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
                         <span className="px-1.5 py-0.5 text-[9px] rounded bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
@@ -602,7 +602,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <select value={selectedPeriod?.id ?? ''} onChange={e => {
               const p = periods.find(pp => pp.id === Number(e.target.value));
               setSelectedPeriod(p || null);
-            }} className="bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1 text-xs text-white">
+            }} className="bg-surface-base border border-rmpg-700 rounded px-2 py-1 text-xs text-white">
               <option value="">Select pay period...</option>
               {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
             </select>
@@ -638,7 +638,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-[#1e3048]">
+                  <tr className="border-b border-rmpg-700">
                     <th className="px-2 py-2 text-left text-rmpg-400 font-medium">Employee</th>
                     <th className="px-2 py-2 text-right text-rmpg-400 font-medium">Rate</th>
                     <th className="px-2 py-2 text-right text-rmpg-400 font-medium">Reg Hrs</th>
@@ -655,7 +655,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   {entries.map(entry => {
                     const isEditing = editingEntry === entry.id;
                     return (
-                      <tr key={entry.id} className={`border-b border-[#1e3048]/50 ${isEditing ? 'bg-brand-500/5' : 'hover:bg-brand-500/5'}`}>
+                      <tr key={entry.id} className={`border-b border-rmpg-700/50 ${isEditing ? 'bg-brand-500/5' : 'hover:bg-brand-500/5'}`}>
                         <td className="px-2 py-2 text-white font-medium whitespace-nowrap">{entry.officer_name}</td>
                         <td className="px-2 py-2 text-right text-rmpg-300 font-mono">{entry.hourly_rate ? formatCurrency(entry.hourly_rate) : '—'}</td>
                         {isEditing ? (
@@ -665,7 +665,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                                 <input type="number" step="0.5" min="0"
                                   value={editValues[field] ?? 0}
                                   onChange={e => setEditValues(v => ({ ...v, [field]: Number(e.target.value) }))}
-                                  className="w-16 bg-[#0d1520] border border-brand-500/40 rounded px-1.5 py-0.5 text-xs text-white text-right font-mono" />
+                                  className="w-16 bg-surface-sunken border border-brand-500/40 rounded px-1.5 py-0.5 text-xs text-white text-right font-mono" />
                               </td>
                             ))}
                           </>
@@ -709,7 +709,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </tbody>
                 {entries.length > 0 && (
                   <tfoot>
-                    <tr className="border-t-2 border-[#1e3048]">
+                    <tr className="border-t-2 border-rmpg-700">
                       <td className="px-2 py-2 text-white font-bold">Totals</td>
                       <td className="px-2 py-2" />
                       <td className="px-2 py-2 text-right text-white font-mono font-bold">{entries.reduce((s, e) => s + e.regular_hours, 0)}</td>

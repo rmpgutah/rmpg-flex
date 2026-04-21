@@ -172,7 +172,7 @@ export default function CustomReportBuilder() {
       </PanelTitleBar>}
 
       {/* Step indicators */}
-      <div className={`flex items-center ${isMobile ? 'px-2 py-1.5 overflow-x-auto' : 'px-4 py-2'} border-b border-rmpg-700/50 flex-shrink-0`} style={{ background: '#0f1a28' }}>
+      <div className={`flex items-center ${isMobile ? 'px-2 py-1.5 overflow-x-auto' : 'px-4 py-2'} border-b border-rmpg-700/50 flex-shrink-0`} style={{ background: 'var(--grid-header-bg)' }}>
         {steps.map((s, i) => (
           <React.Fragment key={s.id}>
             {i > 0 && <ChevronRight className="w-3 h-3 text-rmpg-600 mx-1" />}
@@ -198,7 +198,7 @@ export default function CustomReportBuilder() {
                 <button
                   key={key}
                   onClick={() => handleSourceSelect(key)}
-                  className={`panel-surface p-4 text-left hover:border-brand-500 transition-colors ${
+                  className={`panel-beveled p-4 text-left hover:border-brand-500 transition-colors ${
                     source === key ? 'border-brand-500 bg-brand-900/20' : ''
                   }`}
                 >
@@ -223,7 +223,7 @@ export default function CustomReportBuilder() {
             </div>
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-2`}>
               {availableCols.map(col => (
-                <label key={col} className="flex items-center gap-2 panel-surface p-2 cursor-pointer hover:border-brand-500/50 transition-colors">
+                <label key={col} className="flex items-center gap-2 panel-beveled p-2 cursor-pointer hover:border-brand-500/50 transition-colors">
                   <input
                     type="checkbox"
                     checked={selectedCols.includes(col)}
@@ -251,7 +251,7 @@ export default function CustomReportBuilder() {
             </div>
 
             {filters.map((f, i) => (
-              <div key={`${f.column}-${f.operator}-${i}`} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-surface p-2`}>
+              <div key={`${f.column}-${f.operator}-${i}`} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-beveled p-2`}>
                 <div className="flex items-center gap-2">
                   <select className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={f.column} onChange={e => updateFilter(i, 'column', e.target.value)}>
                     {availableCols.map(c => <option key={c} value={c}>{toDisplayLabel(c)}</option>)}
@@ -274,7 +274,7 @@ export default function CustomReportBuilder() {
               </div>
             ))}
 
-            <div className={`${isMobile ? 'flex flex-col gap-2' : 'flex items-center gap-4'} panel-surface p-3 mt-4`}>
+            <div className={`${isMobile ? 'flex flex-col gap-2' : 'flex items-center gap-4'} panel-beveled p-3 mt-4`}>
               <div className="flex items-center gap-2 flex-wrap">
                 <ArrowUpDown className="w-3 h-3 text-rmpg-400" />
                 <span className="text-[9px] text-rmpg-400 uppercase font-bold">Sort By:</span>

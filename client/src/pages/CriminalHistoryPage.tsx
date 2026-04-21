@@ -211,7 +211,7 @@ export default function CriminalHistoryPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0 bg-surface-sunken border-b border-rmpg-700">
           <select className="select-dark text-[10px] w-16" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
             <option value="name">Name</option>
             <option value="dob">DOB</option>
@@ -291,7 +291,7 @@ export default function CriminalHistoryPage() {
                 </button>
               )}
               {/* Person Card */}
-              <div className="panel-surface p-4">
+              <div className="panel-beveled p-4">
                 <div className={`${isMobile ? '' : 'flex items-start justify-between'}`}>
                   <div>
                     <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-white`}>
@@ -341,7 +341,7 @@ export default function CriminalHistoryPage() {
               </div>
 
               {/* History Timeline */}
-              <div className="panel-surface p-4">
+              <div className="panel-beveled p-4">
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-3">
                   Criminal History — {history.length} records
                 </h3>

@@ -741,7 +741,7 @@ export default function ServeAttemptModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#141e2b] panel-beveled rounded w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+      <div className="bg-surface-base panel-beveled rounded w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600">
           <h2 className="text-sm font-bold text-rmpg-100">

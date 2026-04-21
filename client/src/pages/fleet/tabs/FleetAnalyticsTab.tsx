@@ -48,22 +48,22 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Fleet Summary Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center  bg-surface-sunken">
           <Car className="w-3 h-3 mx-auto text-cyan-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-cyan-400">{fleet_summary.total_vehicles}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Vehicles</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center  bg-surface-sunken">
           <Gauge className="w-3 h-3 mx-auto text-brand-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-brand-400">{fleet_summary.avg_mileage.toLocaleString()}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Avg Mi</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center  bg-surface-sunken">
           <Wrench className="w-3 h-3 mx-auto text-amber-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-amber-400">${(fleet_summary.total_maintenance_cost / 1000).toFixed(1)}k</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Maint Cost</div>
         </div>
-        <div className="panel-beveled p-2 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2 text-center  bg-surface-sunken">
           <Fuel className="w-3 h-3 mx-auto text-green-400 mb-0.5" />
           <div className="text-sm font-bold font-mono text-green-400">${(fleet_summary.total_fuel_cost / 1000).toFixed(1)}k</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Fuel Cost</div>

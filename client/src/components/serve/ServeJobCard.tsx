@@ -40,7 +40,7 @@ const PRIORITY_STYLES: Record<string, string> = {
   rush: 'bg-red-900/60 text-red-300 border-red-700/50',
   high: 'bg-amber-900/60 text-amber-300 border-amber-700/50',
   normal: 'bg-blue-900/60 text-blue-300 border-blue-700/50',
-  low: 'bg-gray-800/60 text-gray-400 border-gray-600/50',
+  low: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
 };
 
 const TIME_WINDOW_CONFIG: Record<string, { icon: typeof Sun; label: string }> = {

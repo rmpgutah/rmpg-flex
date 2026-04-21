@@ -185,7 +185,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       </div>
 
       {/* Compose bar */}
-      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50" style={{ background: '#0d1520' }}>
+      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50  bg-surface-sunken">
         <div className="flex items-center gap-1 mb-1">
           {(['dispatch', 'broadcast'] as const).map(ch => (
             <button
@@ -522,7 +522,7 @@ export default function MdtPage() {
       {/* ── TOP BAR: Unit Identity & Status ─────────────── */}
       <div
         className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}
+        className="bg-surface-sunken border-b border-rmpg-700"
       >
         <div className="flex items-center gap-3">
           <Monitor style={{ width: 16, height: 16, color: '#22c55e' }} />
@@ -635,7 +635,7 @@ export default function MdtPage() {
         {/* ── LEFT: Call List ── */}
         <div className={`${isMobile ? (selectedCall ? 'hidden' : 'w-full') : 'w-2/5'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
           {/* Tabs */}
-          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto" style={{ background: '#0d1520' }}>
+          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto  bg-surface-sunken">
             {(['my-calls', 'pending', 'messages', 'ncic'] as const).map(tab => (
               <button
                 key={tab}
@@ -860,7 +860,7 @@ export default function MdtPage() {
                 {selectedCall.description && (
                   <div>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Description</div>
-                    <div className="text-[10px] text-rmpg-200 p-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                    <div className="text-[10px] text-rmpg-200 p-2 bg-surface-sunken border border-rmpg-700">
                       {selectedCall.description}
                     </div>
                   </div>
@@ -958,7 +958,7 @@ export default function MdtPage() {
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Notes</div>
                     <div className="space-y-1">
                       {selectedCall.notes.slice(-5).map((note, i) => (
-                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1" style={{ background: '#0d1520', borderLeft: '2px solid #1e3048' }}>
+                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1 bg-surface-sunken border-l-2 border-l-rmpg-700">
                           <span className="text-rmpg-500">{new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           {' — '}
                           {note.text}

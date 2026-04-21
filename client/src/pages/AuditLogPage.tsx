@@ -308,7 +308,7 @@ const AuditLogPage: React.FC = () => {
         {/* Stats Row */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+            <div className="panel-beveled p-3  bg-surface-sunken">
               <div className="flex items-center gap-2 mb-2">
                 <ScrollText className="w-4 h-4 text-brand-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Total Entries</span>
@@ -322,7 +322,7 @@ const AuditLogPage: React.FC = () => {
               </div>
               <div className="text-2xl font-bold text-green-400 font-mono">{stats.entriesToday.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+            <div className="panel-beveled p-3  bg-surface-sunken">
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top Action (30d)</span>
@@ -344,7 +344,7 @@ const AuditLogPage: React.FC = () => {
                 </div>
               )}
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+            <div className="panel-beveled p-3  bg-surface-sunken">
               <div className="flex items-center gap-2 mb-2">
                 <Filter className="w-4 h-4 text-cyan-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top User (30d)</span>

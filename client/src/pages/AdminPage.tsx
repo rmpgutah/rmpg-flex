@@ -693,7 +693,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
-          style={{ background: '#0d1520', borderBottom: '1px solid #162236' }}
+          style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--border-subtle)' }}
         >
           {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;

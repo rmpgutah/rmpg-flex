@@ -218,7 +218,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
 
       {/* Add Form */}
       {showAdd && (
-        <div className="panel-surface border border-rmpg-600 p-4 space-y-3">
+        <div className="panel-beveled border border-rmpg-600 p-4 space-y-3">
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">New Radio Channel</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
@@ -272,7 +272,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       )}
 
       {/* Channel List */}
-      <div className="panel-surface border border-rmpg-600 overflow-hidden">
+      <div className="panel-beveled border border-rmpg-600 overflow-hidden">
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-rmpg-800/50 text-rmpg-400 uppercase text-[10px] tracking-wider">
@@ -420,7 +420,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       </div>
 
       {/* Info box */}
-      <div className="panel-surface border border-rmpg-700 p-3 text-[10px] text-rmpg-400 space-y-1">
+      <div className="panel-beveled border border-rmpg-700 p-3 text-[10px] text-rmpg-400 space-y-1">
         <p className="font-bold text-rmpg-300 uppercase tracking-wider">How Radio Channels Work</p>
         <p>Radio channels are used by the PTT (Push-to-Talk) radio system. Active channels appear in the RadioPage channel selector for all officers. The frequency field is cosmetic — actual audio is transmitted over WebSocket.</p>
         <p>Disabling a channel hides it from the selector but preserves its configuration. Officers currently on a disabled channel will not be disconnected until they switch.</p>

@@ -262,7 +262,7 @@ export default function SkipTracerPage() {
               <button
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 border border-blue-700"
+                className="btn-primary w-full justify-center py-2"
               >
                 {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                 Search

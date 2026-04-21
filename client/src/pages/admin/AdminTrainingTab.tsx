@@ -196,7 +196,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px]">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#0f1a28' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider bg-[var(--grid-header-bg)]">
             <th className="text-left px-3 py-1.5 font-bold">Officer</th>
             <th className="text-left px-3 py-1.5 font-bold">Badge</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>

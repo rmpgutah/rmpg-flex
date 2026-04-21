@@ -145,7 +145,7 @@ export default function MapMobileSheet({
             </button>
 
             {showBreadcrumbs && (
-              <div className="px-3 py-2 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+              <div className="px-3 py-2 space-y-2 bg-surface-sunken border border-rmpg-700">
                 <div className="flex gap-1">
                   {[2, 4, 8, 12, 24].map((h) => (
                     <button
@@ -180,7 +180,7 @@ export default function MapMobileSheet({
             )}
 
             {/* Map Style Selector (mobile) */}
-            <div className="px-3 py-2 space-y-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+            <div className="px-3 py-2 space-y-1.5 bg-surface-sunken border border-rmpg-700">
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
               <div className="grid grid-cols-3 gap-1.5">
                 {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {

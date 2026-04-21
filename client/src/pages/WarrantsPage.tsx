@@ -893,26 +893,26 @@ export default function WarrantsPage() {
       </div>
 
       {/* ---- STATS BAR ---- */}
-      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#1e3048] text-[10px] font-mono flex-wrap">
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-rmpg-700 text-[10px] font-mono flex-wrap">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-rmpg-700">
           <span className={`led-dot ${(dashStats?.activeWarrants || 0) > 0 ? 'led-red' : 'led-off'}`} />
           <span className="text-rmpg-400">ACTIVE</span>
           <span className={`font-bold tabular-nums ${(dashStats?.activeWarrants || 0) > 0 ? 'text-red-400' : 'text-rmpg-300'}`}>
             {dashStats?.activeWarrants ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-rmpg-700">
           <span className={`led-dot ${(dashStats?.hitsToday || 0) > 0 ? 'led-amber animate-led-blink' : 'led-off'}`} />
           <span className="text-rmpg-400">HITS TODAY</span>
           <span className={`font-bold tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-rmpg-300'}`}>
             {dashStats?.hitsToday ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-rmpg-700">
           <span className="text-rmpg-400">FLAGGED</span>
           <span className="font-bold tabular-nums text-rmpg-300">{dashStats?.personsFlagged ?? '-'}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-rmpg-700">
           <span className={`led-dot ${(dashStats?.sourcesOnline || 0) > 0 ? 'led-green' : 'led-off'}`} />
           <span className="text-rmpg-400">SOURCES</span>
           <span className={`font-bold tabular-nums ${(dashStats?.sourcesOnline || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -1314,7 +1314,7 @@ export default function WarrantsPage() {
 
           {/* RIGHT: Warrant Detail */}
           <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
-            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#1e3048] bg-[var(--grid-header-bg)]`}>
+            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-rmpg-700 bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Warrant Detail</span>
               <span className="flex-1" />

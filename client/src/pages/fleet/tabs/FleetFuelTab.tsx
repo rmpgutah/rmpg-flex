@@ -22,28 +22,28 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Summary Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center  bg-surface-sunken">
           <Fuel className="w-3.5 h-3.5 mx-auto text-cyan-400 mb-1" />
           <div className="text-sm font-bold font-mono text-cyan-400">
             {summary ? summary.total_gallons.toFixed(3) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Gallons</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center  bg-surface-sunken">
           <DollarSign className="w-3.5 h-3.5 mx-auto text-green-400 mb-1" />
           <div className="text-sm font-bold font-mono text-green-400">
             ${summary ? summary.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center  bg-surface-sunken">
           <Gauge className="w-3.5 h-3.5 mx-auto text-brand-400 mb-1" />
           <div className="text-sm font-bold font-mono text-brand-400">
             {summary?.avg_mpg != null ? summary.avg_mpg.toFixed(1) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center  bg-surface-sunken">
           <DollarSign className="w-3.5 h-3.5 mx-auto text-amber-400 mb-1" />
           <div className="text-sm font-bold font-mono text-amber-400">
             ${summary ? summary.avg_cost_per_gallon.toFixed(3) : '-'}
@@ -65,7 +65,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
       {/* Fuel Log List */}
       {fuelLogs.length === 0 ? (
         <div className="text-center py-10 panel-beveled bg-surface-base">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center  bg-surface-sunken">
             <Fuel className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-[11px] text-rmpg-400 font-semibold">No Fuel Logs Recorded</p>

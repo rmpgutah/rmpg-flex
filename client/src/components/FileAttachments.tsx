@@ -332,7 +332,7 @@ export default function FileAttachments({
                   >
                     <Icon className="w-4 h-4 flex-shrink-0 text-brand-400" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-gray-200 truncate">{att.original_name}</p>
+                      <p className="text-xs text-rmpg-100 truncate">{att.original_name}</p>
                       <p className="text-[10px] text-rmpg-400">
                         {formatFileSize(att.file_size)}
                         {att.uploader_name && <> &middot; {att.uploader_name}</>}

@@ -524,7 +524,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
       </div>
 
       {/* Graph canvas */}
-      <div ref={containerRef} className="flex-1 relative" style={{ background: '#0d1520' }}>
+      <div ref={containerRef} className="flex-1 relative  bg-surface-sunken">
         <GraphLegend visible={showLegend && filteredGraph.nodes.length > 0} />
         {filteredGraph.nodes.length > 0 ? (
           <ForceGraph2D
@@ -885,7 +885,7 @@ export default function ForensicsPage() {
       {/* ── Content ─────────────────────────────────────────── */}
       {!graph && !loading ? (
         /* Empty state */
-        <div className="flex-1 flex items-center justify-center" style={{ background: '#0d1520' }}>
+        <div className="flex-1 flex items-center justify-center  bg-surface-sunken">
           <div className="text-center px-6">
             <Network className="w-16 h-16 mx-auto mb-4 text-rmpg-800" />
             <h2 className="text-[13px] font-bold text-rmpg-400 mb-1">Connection Analysis</h2>

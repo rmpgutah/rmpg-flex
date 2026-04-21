@@ -178,7 +178,7 @@ export default function DlSearchPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--border-default)' }}>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -264,7 +264,7 @@ export default function DlSearchPage() {
               )}
 
               {/* DL Card */}
-              <div className="panel-surface p-4">
+              <div className="panel-beveled p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-white`}>
@@ -316,7 +316,7 @@ export default function DlSearchPage() {
               </div>
 
               {/* Subject Information */}
-              <div className="panel-surface p-4">
+              <div className="panel-beveled p-4">
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                   <User className="w-3 h-3" /> Subject Information
                 </h3>
@@ -362,7 +362,7 @@ export default function DlSearchPage() {
 
               {/* Addresses */}
               {selected.addresses && selected.addresses.length > 0 && (
-                <div className="panel-surface p-4">
+                <div className="panel-beveled p-4">
                   <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                     <MapPin className="w-3 h-3" /> Addresses — {selected.addresses.length}
                   </h3>

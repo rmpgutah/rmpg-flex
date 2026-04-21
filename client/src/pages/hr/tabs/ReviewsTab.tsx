@@ -237,7 +237,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       <div className="p-4 space-y-4">
         {/* Trend indicator */}
         {trendIndicator && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-[#141e2b] border border-[#1e3048] rounded">
+          <div className="flex items-center gap-2 px-3 py-2 bg-surface-base border border-rmpg-700 rounded">
             <trendIndicator.icon size={16} className={trendIndicator.color} />
             <span className="text-xs text-rmpg-300">
               Performance trend: <span className={trendIndicator.color}>{trendIndicator.label}</span>
@@ -254,7 +254,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             {reviews.map((review) => (
               <div
                 key={review.id}
-                className="bg-[#141e2b] border border-[#1e3048] rounded p-4 space-y-3"
+                className="bg-surface-base border border-rmpg-700 rounded p-4 space-y-3"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -313,7 +313,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
                 {/* Acknowledge section */}
                 {review.status === 'submitted' && (
-                  <div className="border-t border-[#1e3048] pt-3 mt-3 space-y-2">
+                  <div className="border-t border-rmpg-700 pt-3 mt-3 space-y-2">
                     <textarea
                       value={ackComment[review.id] ?? ''}
                       onChange={(e) =>
@@ -321,7 +321,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       }
                       rows={2}
                       placeholder="Optional comments before acknowledging..."
-                      className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
+                      className="w-full bg-surface-sunken border border-rmpg-700 rounded px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
                     />
                     <button
                       onClick={() => handleAcknowledge(review.id)}
@@ -340,7 +340,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
                 {/* Officer comments (if already acknowledged) */}
                 {review.officer_comments && review.status !== 'submitted' && (
-                  <div className="border-t border-[#1e3048] pt-2 mt-2">
+                  <div className="border-t border-rmpg-700 pt-2 mt-2">
                     <span className="text-[10px] text-rmpg-500 uppercase tracking-wider flex items-center gap-1">
                       <MessageSquare size={10} /> Your Comments
                     </span>
@@ -363,21 +363,21 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       {/* Stats bar */}
       {stats && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-center gap-3">
             <Clock size={18} className="text-blue-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.upcoming}</div>
               <div className="text-[10px] text-rmpg-400">Upcoming Reviews</div>
             </div>
           </div>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.overdue}</div>
               <div className="text-[10px] text-rmpg-400">Overdue</div>
             </div>
           </div>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-center gap-3">
             <BarChart3 size={18} className="text-yellow-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.avgRating || '--'}</div>
@@ -395,7 +395,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Officers</option>
           {officers.map((o) => (
@@ -407,7 +407,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Types</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => (
@@ -419,7 +419,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Statuses</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -454,7 +454,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           {reviews.map((review) => (
             <div
               key={review.id}
-              className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-start gap-3"
+              className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-start gap-3"
             >
               {/* Avatar initial */}
               <div className="w-8 h-8 rounded bg-brand-600/30 border border-brand-500/30 flex items-center justify-center text-xs font-bold text-brand-400 shrink-0">

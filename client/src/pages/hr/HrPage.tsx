@@ -56,7 +56,7 @@ export default function HRPage() {
       <PanelTitleBar icon={UserCog} title="HR Console" />
 
       {/* Tab bar */}
-      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520] px-2">
+      <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken px-2">
         {HR_TABS.map(tab => {
           const Icon = tab.icon;
           return (

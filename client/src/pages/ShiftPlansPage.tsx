@@ -127,7 +127,7 @@ export default function ShiftPlansPage() {
       {/* ── DATE SELECTOR BAR ─────────────────────────────── */}
       <div
         className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}
+        className="bg-surface-sunken border-b border-rmpg-700"
       >
         <div className="flex items-center gap-3">
           <Calendar style={{ width: 14, height: 14, color: '#3b82f6' }} />
@@ -192,7 +192,7 @@ export default function ShiftPlansPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* ── LEFT: Plan List ── */}
         <div className={`${isMobile ? (sp.activePlanId ? 'hidden' : 'w-full') : 'w-1/3'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2" style={{ background: '#0f1a28', borderBottom: '1px solid #1e3048' }}>
+          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2 bg-[var(--grid-header-bg)] border-b border-rmpg-700">
             Plans for {formatDate(selectedDate)} ({plansForDate.length})
           </div>
 
@@ -371,7 +371,7 @@ export default function ShiftPlansPage() {
               {/* Assignments table */}
               <div className="flex-1 overflow-auto">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between"
-                  style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}
+                  className="bg-surface-sunken border-b border-rmpg-700"
                 >
                   <span>Area Assignments ({sp.activePlan.assignments.length})</span>
                   {sp.activePlan.assignments.length > 0 && (
@@ -396,7 +396,7 @@ export default function ShiftPlansPage() {
                   <div className={isMobile ? 'overflow-x-auto' : ''}>
                   <table className="w-full text-[10px]">
                     <thead>
-                      <tr style={{ background: '#0f1a28' }} className="text-rmpg-500 text-[9px] uppercase tracking-wider">
+                      <tr style={{ background: 'var(--grid-header-bg)' }} className="text-rmpg-500 text-[9px] uppercase tracking-wider">
                         <th className="text-left px-4 py-1.5 font-bold">Area</th>
                         <th className="text-left px-4 py-1.5 font-bold">Layer</th>
                         <th className="text-left px-4 py-1.5 font-bold">Officers</th>
@@ -467,22 +467,22 @@ export default function ShiftPlansPage() {
 
                 {/* Summary panel */}
                 {sp.activePlan.assignments.length > 0 && (
-                  <div className="px-4 py-3" style={{ background: '#0d1520', borderTop: '1px solid #1e3048' }}>
+                  <div className="px-4 py-3 bg-surface-sunken border-t border-rmpg-700">
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Coverage Summary</div>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
+                      <div className="p-2 bg-[var(--grid-header-bg)] border border-rmpg-700">
                         <div className="text-[18px] font-black text-blue-400">{stats.assigned}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase">Areas Covered</div>
                       </div>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
+                      <div className="p-2 bg-[var(--grid-header-bg)] border border-rmpg-700">
                         <div className="text-[18px] font-black text-green-400">{stats.officers}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase">Officers Assigned</div>
                       </div>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
+                      <div className="p-2 bg-[var(--grid-header-bg)] border border-rmpg-700">
                         <div className="text-[18px] font-black text-purple-400">{stats.units}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase">Units Deployed</div>
                       </div>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
+                      <div className="p-2 bg-[var(--grid-header-bg)] border border-rmpg-700">
                         <div className="text-[18px] font-black text-amber-400">
                           {SHIFT_TYPES[sp.activePlan.shiftType]?.defaultStart}
                         </div>
