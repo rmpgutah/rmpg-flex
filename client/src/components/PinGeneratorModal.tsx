@@ -107,7 +107,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
         className="w-full max-w-md mx-4"
         style={{
           background: '#0a0a0a',
-          border: '1px solid #222222',
+          border: '1px solid #2b2b2b',
           borderTop: '3px solid #d97706',
         }}
       >

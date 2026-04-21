@@ -1,10 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-// Lazy-imported: edge-tts-universal is optional
+
+// Lazy-imported: edge-tts-universal is optional — loaded on first request
 let Communicate: any = null;
-const edgeTtsReady = import('edge-tts-universal').then(mod => {
-  Communicate = mod.Communicate;
-}).catch(() => { /* edge-tts-universal not installed */ });
+let edgeTtsLoaded = false;
+
+async function ensureEdgeTts(): Promise<boolean> {
+  if (edgeTtsLoaded) return Communicate !== null;
+  edgeTtsLoaded = true;
+  try {
+    const mod = await (Function('return import("edge-tts-universal")')() as Promise<any>);
+    Communicate = mod.Communicate || mod.default?.Communicate;
+    console.log('[TTS] edge-tts-universal loaded successfully');
+    return true;
+  } catch (err: any) {
+    console.warn('[TTS] edge-tts-universal not available:', err?.message || 'module not found');
+    return false;
+  }
+}
 
 const router = Router();
 router.use(authenticateToken);
@@ -33,9 +46,13 @@ function cacheSet(key: string, val: Buffer): void {
 }
 
 // ─── POST /api/tts ────────────────────────────────────
+// Edge-TTS format validators (client may pre-format via getEdgeTTSPayload).
+const RATE_RE = /^[+-]\d{1,3}%$/;
+const PITCH_RE = /^[+-]\d{1,3}Hz$/;
+
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { text, urgent } = req.body;
+    const { text, urgent, voice: clientVoice, rate: clientRate, pitch: clientPitch } = req.body;
 
     if (!text || typeof text !== 'string') {
       res.status(400).json({ error: 'text is required and must be a string', code: 'TTS_MISSING_TEXT' });
@@ -47,7 +64,24 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const cacheKey = `${urgent ? 'U:' : ''}${text}`;
+    // Voice settings — honor client-provided persona if valid, else fall back
+    // to the legacy urgent-preset behavior so existing callers keep working.
+    const voice =
+      typeof clientVoice === 'string' && clientVoice.length > 0 && clientVoice.length <= 100
+        ? clientVoice
+        : 'en-US-JennyNeural';
+    const rate =
+      typeof clientRate === 'string' && RATE_RE.test(clientRate)
+        ? clientRate
+        : (urgent ? '+15%' : '+5%');
+    const pitch =
+      typeof clientPitch === 'string' && PITCH_RE.test(clientPitch)
+        ? clientPitch
+        : (urgent ? '+5Hz' : '+0Hz');
+    const volume = urgent ? '+10%' : '+0%';
+
+    // Cache key includes voice/rate/pitch so distinct personas don't collide.
+    const cacheKey = `${urgent ? 'U:' : ''}${voice}:${rate}:${pitch}:${text}`;
 
     // Check cache first
     const cached = cacheGet(cacheKey);
@@ -58,14 +92,8 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    // Voice settings
-    const voice = 'en-US-JennyNeural';
-    const rate = urgent ? '+15%' : '+5%';
-    const pitch = urgent ? '+5Hz' : '+0Hz';
-    const volume = urgent ? '+10%' : '+0%';
-
-    await edgeTtsReady;
-    if (!Communicate) {
+    const ttsAvailable = await ensureEdgeTts();
+    if (!ttsAvailable || !Communicate) {
       res.status(503).json({ error: 'TTS service not available (edge-tts-universal not installed)' });
       return;
     }

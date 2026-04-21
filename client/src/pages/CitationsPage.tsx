@@ -198,7 +198,7 @@ const CITATION_STATUSES: { value: CitationStatus; label: string }[] = [
 const STATUS_BADGE: Record<string, string> = {
   issued: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
-  payment_plan: 'bg-cyan-900/50 text-cyan-300 border-cyan-700/50',
+  payment_plan: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   warrant_issued: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -324,7 +324,7 @@ export default function CitationsPage() {
 
   // Duplicate detection
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
-  const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>();
+  const dupCheckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Data completeness
   const [completeness, setCompleteness] = useState<{ score: number; grade: string; missing_required: string[]; missing_recommended: string[] } | null>(null);
@@ -344,7 +344,7 @@ export default function CitationsPage() {
   const [personSearching, setPersonSearching] = useState(false);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const personDropdownRef = useRef<HTMLDivElement>(null);
-  const personSearchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const personSearchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -789,11 +789,11 @@ export default function CitationsPage() {
         {/* Filter row */}
         <div className={`flex items-center ${isMobile ? 'flex-col gap-1.5' : 'gap-2 flex-wrap'}`}>
           {!isMobile && <Filter size={10} className="text-rmpg-500" />}
-          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by citation type">
+          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Types</option>
             {CITATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by citation status">
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Statuses</option>
             {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
@@ -801,7 +801,7 @@ export default function CitationsPage() {
       </div>
 
       {/* List body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             <Loader2 size={20} className="animate-spin text-brand-400" role="status" aria-label="Loading" />
@@ -931,7 +931,7 @@ export default function CitationsPage() {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
           {/* Violation */}
           <section>
             <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
@@ -1104,7 +1104,7 @@ export default function CitationsPage() {
                   {(c as any).accident_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">ACCIDENT RELATED</span> : null}
                   {(c as any).dui_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">DUI RELATED</span> : null}
                   {(c as any).is_warning ? <span className="text-[8px] font-bold text-gray-400 bg-gray-900/30 px-1.5 py-0.5 border border-gray-700/30">WARNING ONLY</span> : null}
-                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-[#050505]/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
+                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-[#0c0c0c]/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
                 </div>
               </div>
             </section>
@@ -1231,7 +1231,7 @@ export default function CitationsPage() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-5">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-5">
         {saveError && (
           <div className="bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300 flex items-center gap-2">
             <AlertTriangle size={14} /> {saveError}
@@ -1355,7 +1355,7 @@ export default function CitationsPage() {
                 )}
               </div>
               {showPersonDropdown && personResults.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                   {personResults.map((p: any) => (
                     <button type="button"
                       key={p.id}
@@ -1466,7 +1466,7 @@ export default function CitationsPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -1474,7 +1474,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -1482,7 +1482,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select className="w-full bg-[#141414] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
                   {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
@@ -1608,14 +1608,6 @@ export default function CitationsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Error Banner */}
-      {error && (
-        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-3 h-3" /> {error}
-          <button type="button" onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
-        </div>
-      )}
-
       {/* Stats bar */}
       <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
         {isMobile ? (

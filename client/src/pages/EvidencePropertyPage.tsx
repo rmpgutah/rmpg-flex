@@ -14,6 +14,7 @@ import {
   Play, Shield, Camera,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
 import { apiFetch } from '../hooks/useApi';
@@ -475,7 +476,7 @@ export default function EvidencePropertyPage() {
           <div className="border-b border-rmpg-700 bg-surface-sunken px-3 py-2 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Evidence Aging Report</span>
-              <button type="button" onClick={() => setShowAgingReport(false)} className="text-rmpg-500 hover:text-white"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setShowAgingReport(false)} className="text-rmpg-500 hover:text-white" aria-label="Close aging report"><X style={{ width: 12, height: 12 }} /></IconButton>
             </div>
             {agingLoading ? (
               <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /></div>
@@ -1111,9 +1112,9 @@ export default function EvidencePropertyPage() {
                 <ArrowRightLeft className="w-4 h-4 text-brand-400" />
                 <h2 className="text-sm font-bold text-rmpg-100">Record Chain of Custody Action</h2>
               </div>
-              <button type="button" onClick={() => setChainModalOpen(false)} className="toolbar-btn p-1">
+              <IconButton onClick={() => setChainModalOpen(false)} className="toolbar-btn p-1" aria-label="Close chain of custody modal">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -1173,9 +1174,9 @@ export default function EvidencePropertyPage() {
                 <Plus className="w-4 h-4 text-brand-400" />
                 <h2 className="text-sm font-bold text-rmpg-100">New Evidence Item</h2>
               </div>
-              <button type="button" onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn p-1">
+              <IconButton onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn p-1" aria-label="Close new evidence modal">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>

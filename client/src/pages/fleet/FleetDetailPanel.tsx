@@ -19,6 +19,8 @@ import FleetTiresTab from './tabs/FleetTiresTab';
 import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
 import { formatMilitary } from './utils/fleetFormatters';
+import { generateFleetFuelReport } from './utils/fleetFuelReport';
+import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
 export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
@@ -342,7 +344,31 @@ export default function FleetDetailPanel({
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
         {activeTab === 'overview' && <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />}
-        {activeTab === 'fuel' && <FleetFuelTab fuelLogs={fuelLogs} summary={fuelSummary} onAddFuel={onLogFuel} onEditFuel={onEditFuel} onDeleteFuel={onDeleteFuel} />}
+        {activeTab === 'fuel' && (
+          <FleetFuelTab
+            fuelLogs={fuelLogs}
+            summary={fuelSummary}
+            onAddFuel={onLogFuel}
+            onEditFuel={onEditFuel}
+            onDeleteFuel={onDeleteFuel}
+            onGenerateReport={() => generateFleetFuelReport({
+              vehicle: detail,
+              fuelLogs,
+              summary: fuelSummary,
+            })}
+            onGenerateFlaggedAudit={() => generateFlaggedAuditPdf({
+              // Client-side filter to just flagged rows — avoids a server
+              // round-trip since we already have the full fuel history
+              // loaded for this vehicle.
+              logs: fuelLogs.filter((l: any) => !!l.flags),
+              scopeLabel: `#${detail.vehicle_number} ${[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}`.trim(),
+              dateRange: {
+                from: fuelLogs[fuelLogs.length - 1]?.fuel_date,
+                to:   fuelLogs[0]?.fuel_date,
+              },
+            })}
+          />
+        )}
         {activeTab === 'inspections' && <FleetInspectionsTab inspections={inspections} onNewInspection={onNewInspection} onEditInspection={onEditInspection} onDeleteInspection={onDeleteInspection} />}
         {activeTab === 'assignments' && <FleetAssignmentsTab assignments={assignments} />}
         {activeTab === 'personnel' && (

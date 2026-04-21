@@ -22,10 +22,13 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
+  formSectionPageBreak,
   sanitizePdfText,
+  finalizePoliceReport,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
+  PDF_VALUE_FONT,
   getContentWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth,
   getProportionalColumns,
@@ -213,14 +216,14 @@ function addPhotos(doc: jsPDF, photos: string[], y: number, label?: string): num
       doc.setDrawColor(...COLOR.BORDER_FIELD);
       doc.setLineWidth(BORDER.FIELD);
       doc.rect(lx, y, imgMaxW, imgMaxH);
-      doc.setFont('helvetica', 'italic');
+      doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.text('[Image unavailable]', lx + imgMaxW / 2, y + imgMaxH / 2, { align: 'center' });
     }
 
     // Caption
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text(`Photo ${i + 1}`, lx, y + imgMaxH + 3);
@@ -344,7 +347,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
 
   // ── Footer legal text ──
   y = checkPageBreak(doc, y, 10);
-  doc.setFont('helvetica', 'italic');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text(
@@ -361,6 +364,20 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     addPageFooter(doc, i, totalPages, 'serve_affidavit');
     if (i > 1) addConfidentialWatermark(doc);
   }
+
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: 'AFFIDAVIT-SERVICE',
+        caseNumber: data.caseNumber,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: data.serviceDate,
+        officer: data.serverName,
+        badge: data.serverBadge,
+      },
+    },
+  });
 
   return doc;
 }
@@ -533,7 +550,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
   // ── Footer legal text ──
   y = checkPageBreak(doc, y, 10);
-  doc.setFont('helvetica', 'italic');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text(
@@ -550,6 +567,20 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     addPageFooter(doc, i, totalPages, 'serve_non_service');
     if (i > 1) addConfidentialWatermark(doc);
   }
+
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: 'AFFIDAVIT-NON-SERVICE',
+        caseNumber: data.caseNumber,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: new Date().toISOString().slice(0, 10),
+        officer: data.serverName,
+        badge: data.serverBadge,
+      },
+    },
+  });
 
   return doc;
 }
@@ -683,6 +714,20 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     addPageFooter(doc, i, totalPages, 'service_log');
     if (i > 1) addConfidentialWatermark(doc);
   }
+
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: 'SERVICE-LOG',
+        caseNumber: `LOG-${(data.dateRange?.start || new Date().toISOString().slice(0, 10)).replace(/-/g, '')}`,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: data.dateRange?.end || new Date().toISOString().slice(0, 10),
+        officer: data.officerName,
+        badge: data.officerBadge,
+      },
+    },
+  });
 
   return doc;
 }

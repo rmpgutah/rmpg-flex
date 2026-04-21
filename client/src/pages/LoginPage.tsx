@@ -324,20 +324,20 @@ export default function LoginPage() {
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #050505' }}>
+    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0c0c0c' }}>
       <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
       <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #0a0a0a 100%)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #0b0b0b 0%, #141414 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
       {/* Animated grid background */}
       <div className="login-grid-bg" />
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div
-        className="w-full max-w-lg mb-2 sm:mb-3 px-3 sm:px-0 relative z-10"
+        className="w-full max-w-lg mb-1 sm:mb-3 px-3 sm:px-0 relative z-10"
         role="alert"
         aria-label="Security warning"
       >
@@ -364,22 +364,22 @@ export default function LoginPage() {
       {/* ── Main Content ─────────────────────────────── */}
       <div className="relative w-full max-w-lg px-2 sm:px-0 z-10">
         {/* Logo */}
-        <div className="text-center mb-2">
+        <div className="text-center mb-1 sm:mb-2">
           <div className="inline-flex items-center justify-center">
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="drop-shadow-[0_0_15px_rgba(136,136,136,0.25)]"
+              className="drop-shadow-[0_0_15px_rgba(212,160,23,0.25)]"
               style={{
-                height: 'clamp(56px, 14vw, 88px)',
-                width: 'clamp(56px, 14vw, 88px)',
+                height: 'clamp(48px, 12vw, 88px)',
+                width: 'clamp(48px, 12vw, 88px)',
                 objectFit: 'contain',
               }}
               draggable={false}
               loading="eager"
             />
           </div>
-          <div className="flex items-center justify-center gap-2 mt-1">
+          <div className="flex items-center justify-center gap-2 mt-0.5 sm:mt-1">
             <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #333333)' }} />
             <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(136, 136, 136, 0.65)' }}>
               Secure Authentication
@@ -411,8 +411,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838', borderBottom: '1px solid #181818' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838', borderBottom: '1px solid #181818' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
@@ -427,13 +427,13 @@ export default function LoginPage() {
                 </div>
               </div>
             )}
-            {/* Max session duration message */}
+            {/* Max session duration message — neutral info style (not gold/warning) */}
             {showSessionExpired && (
-              <div className="mb-3 p-2.5 bg-gray-900/25 border border-gray-700/50 flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="mb-3 p-2.5 bg-[#141414] border border-[#2e2e2e] flex items-start gap-2" role="status" aria-live="polite">
+                <Lock className="w-3.5 h-3.5 text-[#888888] flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
-                  <p className="text-[10px] text-gray-300 font-semibold">Session Duration Limit</p>
-                  <p className="text-[9px] text-gray-400/80">Your session reached the maximum duration. Please sign in again.</p>
+                  <p className="text-[10px] text-[#cccccc] font-semibold">Session Duration Limit</p>
+                  <p className="text-[9px] text-[#888888]">Your session reached the maximum duration. Please sign in again.</p>
                 </div>
               </div>
             )}
@@ -468,6 +468,11 @@ export default function LoginPage() {
                   <p className="text-xs" style={{ color: '#ef7a7a' }}>{error}</p>
                   {error.includes('attempt') && (
                     <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>Too many failed attempts will lock your account.</p>
+                  )}
+                  {(error.includes('Invalid verification') || error.includes('invalid verification')) && pending2FA && (
+                    <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>
+                      Tip: Wait for a fresh code in your authenticator app and ensure your device clock is accurate.
+                    </p>
                   )}
                 </div>
               </div>
@@ -606,7 +611,7 @@ export default function LoginPage() {
                 </label>
 
                 {/* Alternative methods */}
-                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #222222' }}>
+                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #2b2b2b' }}>
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
@@ -827,7 +832,7 @@ export default function LoginPage() {
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: '#050505', border: '1px solid #222222', color: '#e0e0e0' }}
+                      style={{ background: '#050505', border: '1px solid #2b2b2b', color: '#e0e0e0' }}
                     >
                       {manualKey}
                     </div>
@@ -958,7 +963,7 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #222222' }} aria-hidden="true" />
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #2b2b2b' }} aria-hidden="true" />
           </div>
 
           {/* Status bar */}
@@ -977,8 +982,9 @@ export default function LoginPage() {
         </div>
 
         {/* ── System Info + Device Info Panels ─────────── */}
+        {/* Hidden on phones to keep login form above fold. Uses CSS class. */}
         {isCredentialStep && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+          <div className="login-system-info grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
             {/* System Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
@@ -1032,8 +1038,8 @@ export default function LoginPage() {
           <div
             className="text-center py-1.5 px-3"
             style={{
-              background: '#060c14',
-              border: '1px solid #222222',
+              background: '#0b0b0b',
+              border: '1px solid #2b2b2b',
               borderTop: '2px solid #333333',
             }}
           >

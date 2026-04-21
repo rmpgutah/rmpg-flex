@@ -94,14 +94,16 @@ export function extractContactInfo(html: string): {
 
   // Extract social media links using cheerio
   const socialLinks: { platform: string; url: string }[] = [];
+  // Host-boundary anchors (?:[/?#]|$) prevent matches like
+  // "linkedin.com.evil.com" — without it, the host portion is unbounded.
   const socialPatterns: [string, RegExp][] = [
-    ['linkedin', /linkedin\.com/i],
-    ['twitter', /(?:twitter|x)\.com/i],
-    ['facebook', /facebook\.com/i],
-    ['instagram', /instagram\.com/i],
-    ['youtube', /youtube\.com/i],
-    ['github', /github\.com/i],
-    ['tiktok', /tiktok\.com/i],
+    ['linkedin', /^https?:\/\/(?:www\.)?linkedin\.com(?:[/?#]|$)/i],
+    ['twitter', /^https?:\/\/(?:www\.)?(?:twitter|x)\.com(?:[/?#]|$)/i],
+    ['facebook', /^https?:\/\/(?:www\.)?facebook\.com(?:[/?#]|$)/i],
+    ['instagram', /^https?:\/\/(?:www\.)?instagram\.com(?:[/?#]|$)/i],
+    ['youtube', /^https?:\/\/(?:www\.)?youtube\.com(?:[/?#]|$)/i],
+    ['github', /^https?:\/\/(?:www\.)?github\.com(?:[/?#]|$)/i],
+    ['tiktok', /^https?:\/\/(?:www\.)?tiktok\.com(?:[/?#]|$)/i],
   ];
 
   $('a[href]').each((_i, el) => {
@@ -214,13 +216,14 @@ export function extractBusinessInfo(
 }
 
 function detectSocialPlatform(url: string): string | null {
-  if (/linkedin\.com/i.test(url)) return 'linkedin';
-  if (/(?:twitter|x)\.com/i.test(url)) return 'twitter';
-  if (/facebook\.com/i.test(url)) return 'facebook';
-  if (/instagram\.com/i.test(url)) return 'instagram';
-  if (/youtube\.com/i.test(url)) return 'youtube';
-  if (/github\.com/i.test(url)) return 'github';
-  if (/tiktok\.com/i.test(url)) return 'tiktok';
+  // Host-boundary anchors (?:[/?#]|$) prevent matches like "linkedin.com.evil.com".
+  if (/^https?:\/\/(?:www\.)?linkedin\.com(?:[/?#]|$)/i.test(url)) return 'linkedin';
+  if (/^https?:\/\/(?:www\.)?(?:twitter|x)\.com(?:[/?#]|$)/i.test(url)) return 'twitter';
+  if (/^https?:\/\/(?:www\.)?facebook\.com(?:[/?#]|$)/i.test(url)) return 'facebook';
+  if (/^https?:\/\/(?:www\.)?instagram\.com(?:[/?#]|$)/i.test(url)) return 'instagram';
+  if (/^https?:\/\/(?:www\.)?youtube\.com(?:[/?#]|$)/i.test(url)) return 'youtube';
+  if (/^https?:\/\/(?:www\.)?github\.com(?:[/?#]|$)/i.test(url)) return 'github';
+  if (/^https?:\/\/(?:www\.)?tiktok\.com(?:[/?#]|$)/i.test(url)) return 'tiktok';
   return null;
 }
 

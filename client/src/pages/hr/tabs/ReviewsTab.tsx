@@ -33,7 +33,7 @@ function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: numb
 const TYPE_COLORS: Record<ReviewType, string> = {
   annual: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   probationary: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  quarterly: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  quarterly: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   improvement_plan: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 

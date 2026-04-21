@@ -93,7 +93,7 @@ export default function AlertSystemPanel({
         maxWidth: 300,
         width: 300,
         backgroundColor: '#0a0a0a',
-        borderColor: 'var(--rmpg-700, #2a3a4e)',
+        borderColor: 'var(--rmpg-700, #373737)',
       }}
       role="complementary"
       aria-label="Alert system panel"
@@ -117,7 +117,7 @@ export default function AlertSystemPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="text-rmpg-400 hover:text-white hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] p-0.5 rounded-sm"
+          className="text-rmpg-400 hover:text-white hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] p-0.5 rounded-sm"
           title="Close"
           aria-label="Close alert system panel"
         >
@@ -137,7 +137,7 @@ export default function AlertSystemPanel({
             <span className="text-[9px] font-mono text-rmpg-400">No active alerts</span>
           </div>
         ) : (
-          <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {activeAlerts.map((alert) => {
               const color = ALERT_TYPE_COLORS[alert.type] || '#666666';
               const label = ALERT_TYPE_LABELS[alert.type] || alert.type;
@@ -145,7 +145,7 @@ export default function AlertSystemPanel({
               return (
                 <div
                   key={alert.id}
-                  className={`rounded-sm hover:bg-[#141414]/50 transition-colors duration-100 ${!alert.acknowledged ? 'animate-pulse' : ''}`}
+                  className={`rounded-sm hover:bg-[#181818]/50 transition-colors duration-100 ${!alert.acknowledged ? 'animate-pulse' : ''}`}
                   style={{
                     backgroundColor: '#050505',
                     borderLeft: `3px solid ${color}`,
@@ -218,7 +218,7 @@ export default function AlertSystemPanel({
       <div className="px-2.5 py-1.5 border-t border-rmpg-700">
         <button type="button"
           onClick={() => setHistoryExpanded(!historyExpanded)}
-          className="flex items-center gap-1 w-full text-left transition-all duration-150 active:scale-[0.97] hover:bg-[#141414]/50 rounded-sm px-1 py-0.5"
+          className="flex items-center gap-1 w-full text-left transition-all duration-150 active:scale-[0.97] hover:bg-[#181818]/50 rounded-sm px-1 py-0.5"
           aria-label={historyExpanded ? 'Collapse alert history' : 'Expand alert history'}
         >
           {historyExpanded ? (
@@ -237,7 +237,7 @@ export default function AlertSystemPanel({
         </button>
 
         {historyExpanded && (
-          <div className="mt-1.5 space-y-1 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="mt-1.5 space-y-1 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {alertHistory.length === 0 ? (
               <div className="text-[9px] font-mono text-rmpg-400 text-center py-2 opacity-60">
                 No alert history

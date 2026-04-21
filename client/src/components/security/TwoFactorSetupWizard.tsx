@@ -110,8 +110,8 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {step === 'intro' && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 panel-inset" style={{ background: 'rgba(136,136,136,0.1)' }}>
-              <Shield className="w-5 h-5" style={{ color: '#888888' }} />
+            <div className="p-2 panel-inset" style={{ background: 'rgba(42,42,42,0.6)' }}>
+              <Shield className="w-5 h-5" style={{ color: '#d4a017' }} />
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e0e0e0' }}>
@@ -131,7 +131,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
                 Google Authenticator
               </li>
               <li className="flex items-center gap-2">
-                <span className="led-dot led-gray" style={{ width: 4, height: 4 }} />
+                <span className="led-dot led-blue" style={{ width: 4, height: 4 }} />
                 Microsoft Authenticator
               </li>
               <li className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           {showManual && (
             <div
               className="flex items-center gap-2 p-2 font-mono text-xs"
-              style={{ background: '#050505', border: '1px solid #222222' }}
+              style={{ background: '#050505', border: '1px solid #2b2b2b' }}
             >
               <span className="flex-1 tracking-widest text-center" style={{ color: '#e0e0e0' }}>
                 {manualKey}

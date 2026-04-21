@@ -337,7 +337,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
         )}
         {call.case_number && (
-          <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 px-1">
+          <span className="text-[9px] font-mono text-gray-300 bg-[#141414] border border-[#2e2e2e] px-1">
             {call.case_number}
           </span>
         )}
@@ -357,7 +357,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         if ((call as any).vehicle_pursuit || (call as any).foot_pursuit) flagBadges.push({ label: 'PURSUIT', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)' });
         if ((call as any).officer_safety_caution) flagBadges.push({ label: 'SAFETY', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.35)' });
         if ((call as any).felony_in_progress) flagBadges.push({ label: 'FELONY', color: '#ef4444', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.5)' });
-        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#aaaaaa', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.35)' });
+        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#aaaaaa', bg: 'rgba(136,136,136,0.15)', border: 'rgba(136,136,136,0.35)' });
         if ((call as any).injuries_reported) flagBadges.push({ label: 'INJ', color: '#fb923c', bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.35)' });
         if (flagBadges.length === 0) return null;
         return (
@@ -389,7 +389,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Feature 8: Response time for cleared calls */}
         {['cleared', 'closed', 'archived'].includes(call.status) && (() => {
           const rt = calcResponseTime(call);
-          return rt ? <span className="font-mono text-cyan-400 ml-auto">RT: {rt}</span> : null;
+          return rt ? <span className="font-mono text-gray-300 ml-auto">RT: {rt}</span> : null;
         })()}
       </div>
 

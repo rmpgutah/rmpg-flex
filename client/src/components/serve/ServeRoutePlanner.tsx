@@ -3,7 +3,8 @@ import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
   Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../../utils/googleMapsApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
 
@@ -34,8 +35,6 @@ interface StopItem {
 }
 
 const IRS_MILEAGE_RATE = 0.67; // $/mile
-
-const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // ─── Marker Colors ──────────────────────────────────────────────────────
 
@@ -267,11 +266,12 @@ export default function ServeRoutePlanner({
 
   // Initialize Google Maps
   useEffect(() => {
-    if (!isOpen || !GMAPS_API_KEY) return;
+    if (!isOpen) return;
 
     let cancelled = false;
+    let unsubOnline = () => {};
 
-    loadGoogleMaps(GMAPS_API_KEY).then(() => {
+    const initMap = () => {
       if (cancelled || !mapContainerRef.current) return;
 
       const center = currentLocation
@@ -302,12 +302,24 @@ export default function ServeRoutePlanner({
       });
 
       setMapReady(true);
-    }).catch(() => {
-      if (!cancelled) setError('Failed to load Google Maps');
-    });
+    };
+
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        await loadGoogleMaps(apiKey);
+        if (cancelled) return;
+        initMap();
+        unsubOnline = onOnlineRetryMaps(apiKey, initMap);
+      } catch {
+        if (!cancelled) setError('Failed to load Google Maps');
+      }
+    })();
 
     return () => {
       cancelled = true;
+      unsubOnline();
       setMapReady(false);
     };
   }, [isOpen]);
@@ -599,9 +611,9 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
-      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
+      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         {/* ─── Header ─────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505]">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-[#d4a017]" />
             <h2 className="text-sm font-semibold text-white tracking-wider">ROUTE PLANNER</h2>
@@ -610,12 +622,12 @@ export default function ServeRoutePlanner({
             </span>
             {/* Officer selector (Step 3.1) */}
             {officers && officers.length > 0 && (
-              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#222222]">
+              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#2b2b2b]">
                 <User size={12} className="text-rmpg-400" />
                 <select
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
-                  className="px-2 py-0.5 text-[11px] bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                   aria-label="Select officer for route"
                 >
                   {officers.map(o => (
@@ -628,13 +640,13 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(136,136,136,0.2)]"
+              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
             >
               Apply Route
             </button>
             <button type="button"
               onClick={onClose}
-              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#141414] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#181818] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               aria-label="Close route planner"
             >
               <X size={16} />
@@ -645,9 +657,9 @@ export default function ServeRoutePlanner({
         {/* ─── Body (responsive: stacked mobile, side-by-side desktop) ─── */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           {/* ─── Left Panel: Stop List ─────────────────────────────── */}
-          <div className="w-full lg:w-[380px] flex flex-col border-b lg:border-b-0 lg:border-r border-[#222222] bg-[#050505]">
+          <div className="w-full lg:w-[380px] flex flex-col border-b lg:border-b-0 lg:border-r border-[#2b2b2b] bg-[#0c0c0c]">
             {/* Controls */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#222222]">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={selectAll}
@@ -678,7 +690,7 @@ export default function ServeRoutePlanner({
 
             {/* Error */}
             {error && (
-              <div className="px-3 py-1.5 text-[11px] text-red-400 bg-red-900/20 border-b border-[#222222]">
+              <div className="px-3 py-1.5 text-[11px] text-red-400 bg-red-900/20 border-b border-[#2b2b2b]">
                 {error}
               </div>
             )}
@@ -694,7 +706,7 @@ export default function ServeRoutePlanner({
                 stops.map((stop, idx) => (
                   <div
                     key={stop.job.id}
-                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#141414]/50 hover:bg-[#141414]/60 transition-all duration-100 ${
+                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#181818]/50 hover:bg-[#181818]/60 transition-all duration-100 ${
                       !stop.selected ? 'opacity-40' : ''
                     } ${stop.job.status === 'served' ? 'bg-green-900/10' : ''}`}
                   >
@@ -756,7 +768,7 @@ export default function ServeRoutePlanner({
           <div className="flex-1 relative min-h-[300px]">
             <div ref={mapContainerRef} className="absolute inset-0" />
             {!mapReady && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#050505]">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#0c0c0c]">
                 <div className="flex items-center gap-2 text-xs text-rmpg-400">
                   <Loader2 size={14} className="animate-spin" />
                   Loading map...
@@ -767,7 +779,7 @@ export default function ServeRoutePlanner({
         </div>
 
         {/* ─── Stats Bar ──────────────────────────────────────────── */}
-        <div className="flex items-center gap-6 px-4 py-2 border-t border-[#222222] bg-[#050505] text-xs" role="status" aria-label="Route statistics">
+        <div className="flex items-center gap-6 px-4 py-2 border-t border-[#2b2b2b] bg-[#0c0c0c] text-xs" role="status" aria-label="Route statistics">
           <div className="flex items-center gap-1.5 text-rmpg-400">
             <MapPin size={12} className="text-gray-400" />
             <span>Total stops:</span>

@@ -104,7 +104,7 @@ export default function TacticalToolsPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100dvh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
+      className="panel-beveled rounded-sm absolute z-30 w-[280px] max-h-[calc(100dvh-160px)] overflow-y-auto bg-surface-base border border-rmpg-700 shadow-lg transition-all duration-200 ease-out backdrop-blur-sm scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
       style={{ top: 8, right: 8 }}
     >
       {/* Header */}
@@ -114,7 +114,7 @@ export default function TacticalToolsPanel({
         </span>
         <button type="button"
           onClick={onClose}
-          className="text-rmpg-400 hover:text-white hover:bg-[#141414] transition-colors duration-150 rounded-sm p-0.5"
+          className="text-rmpg-400 hover:text-white hover:bg-[#181818] transition-colors duration-150 rounded-sm p-0.5"
           title="Close"
           aria-label="Close tactical tools"
         >
@@ -191,7 +191,7 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* #31: Command rings section with blue accent */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #888888', background: 'rgba(59,130,246,0.03)' }}>
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #888888', background: 'rgba(136, 136, 136,0.03)' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Circle size={11} className="text-gray-400" />
           Command Rings
@@ -241,9 +241,9 @@ export default function TacticalToolsPanel({
       </div>
 
       {/* Emergency Services */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #06b6d4' }}>
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #888888' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
-          <Building2 size={11} className="text-cyan-400" />
+          <Building2 size={11} className="text-gray-400" />
           Emergency Services
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">

@@ -39,7 +39,9 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { call_sign, officer_id, status } = req.body;
+    // Audit 2026-04-11: previous handler dropped vehicle_id and capabilities
+    // on create — those could only be set via a follow-up PUT.
+    const { call_sign, officer_id, status, vehicle_id, capabilities } = req.body;
     if (!call_sign || !String(call_sign).trim()) {
       res.status(400).json({ error: 'call_sign is required', code: 'CALLSIGN_IS_REQUIRED' });
       return;
@@ -53,9 +55,17 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     }
 
     const result = db.prepare(`
-      INSERT INTO units (call_sign, officer_id, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(call_sign, officer_id || null, status || 'off_duty', localNow(), localNow());
+      INSERT INTO units (call_sign, officer_id, status, vehicle_id, capabilities, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      call_sign,
+      officer_id || null,
+      status || 'off_duty',
+      vehicle_id || null,
+      Array.isArray(capabilities) ? JSON.stringify(capabilities) : (capabilities || null),
+      localNow(),
+      localNow(),
+    );
 
     const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(Number(result.lastInsertRowid));
     if (!unit) { res.status(500).json({ error: 'Failed to retrieve created unit', code: 'FAILED_TO_RETRIEVE_CREATED' }); return; }
@@ -312,7 +322,7 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
 router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.id, 10);
+    const unitId = parseInt(req.params.id as string, 10);
     if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }); return; }
 
     const { mileage } = req.body;
@@ -326,6 +336,8 @@ router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', '
 
     db.prepare('UPDATE units SET mileage = ?, updated_at = ? WHERE id = ?')
       .run(mileageNum, localNow(), unitId);
+    const updated = db.prepare('SELECT * FROM units WHERE id = ?').get(unitId);
+    if (updated) broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
@@ -528,7 +540,7 @@ router.get('/units/stats', requireRole('admin', 'manager', 'supervisor', 'dispat
 router.get('/units/:id/history', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.id, 10);
+    const unitId = parseInt(req.params.id as string, 10);
 
     const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(unitId) as any;
     if (!unit) {

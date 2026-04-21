@@ -213,7 +213,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
         className="w-full max-w-sm mx-4"
         style={{
           background: '#0a0a0a',
-          border: '1px solid #222222',
+          border: '1px solid #2b2b2b',
           borderTop: '3px solid #d97706',
         }}
         onClick={(e) => e.stopPropagation()}

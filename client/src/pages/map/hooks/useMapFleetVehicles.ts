@@ -84,13 +84,13 @@ function createVehicleMarkerElement(vehicle: FleetVehicle): HTMLDivElement {
       position: absolute;
       top: -4px;
       left: 50%;
-      transform: translateX(-50%) rotate(${vehicle.gps_heading}deg);
+      transform: translateX(-50%) rotate(${vehicle.gps_heading || 0}deg);
+      transform-origin: center bottom;
       width: 0;
       height: 0;
       border-left: 4px solid transparent;
       border-right: 4px solid transparent;
       border-bottom: 8px solid ${color};
-      transform-origin: center bottom;
     `;
     el.appendChild(arrow);
   }
@@ -109,7 +109,7 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): HTMLDivElement {
   const color = getVehicleColor(vehicle.status, vehicle.gps_reported_at);
 
   const container = document.createElement('div');
-  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a';
+  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
 
   const heading = document.createElement('div');
   heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
@@ -123,7 +123,7 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): HTMLDivElement {
     if (value == null || value === '') return;
     const tr = document.createElement('tr');
     const tdLabel = document.createElement('td');
-    tdLabel.style.cssText = 'color:#6b7b8d;padding:1px 6px 1px 0';
+    tdLabel.style.cssText = 'color:#888888;padding:1px 6px 1px 0';
     tdLabel.textContent = lbl;
     const tdValue = document.createElement('td');
     tdValue.style.cssText = `color:${valColor || '#e0e0e0'}`;

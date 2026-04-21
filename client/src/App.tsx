@@ -14,7 +14,9 @@ import LoginPage from './pages/LoginPage';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
-import MapPage from './pages/map';
+// MapPage (Google Maps) retired 2026-04-19 — Google API keys revoked.
+// /map redirects to /map-v2 (OpenLayers). Phase 5 will delete pages/map/.
+const MapPageV2 = lazyRetry(() => import('./pages/map-v2'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
@@ -43,7 +45,6 @@ const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
-const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarrantSearchPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
 const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'));
@@ -75,10 +76,11 @@ const ArrestRecordsPage = lazyRetry(() => import('./pages/ArrestRecordsPage'));
 const EmailPage = lazyRetry(() => import('./pages/EmailPage'));
 const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
 const ServePage = lazyRetry(() => import('./pages/ServePage'));
+const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
-const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
+const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
@@ -88,11 +90,11 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
   return (
     <div className="flex items-center justify-center bg-surface-base" style={{ height: '100dvh' }}>
       <div className="flex flex-col items-center">
-        {/* Logo with blue glow — same treatment as login page */}
+        {/* Neutralized splash glow to match the darker desktop chrome */}
         <img
           src="/rmpg flex.png"
           alt="RMPG Flex"
-          className="drop-shadow-[0_0_20px_rgba(136,136,136,0.3)]"
+          className="drop-shadow-[0_0_18px_rgba(167,177,188,0.22)]"
           style={{ height: 88, width: 88, objectFit: 'contain' }}
           draggable={false}
         />
@@ -106,7 +108,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
             className="h-full"
             style={{
               width: 48,
-              background: 'linear-gradient(90deg, transparent, #888888, transparent)',
+              background: 'linear-gradient(90deg, transparent, #a7b1bc, transparent)',
               animation: 'scanLine 1.6s ease-in-out infinite',
             }}
           />
@@ -115,21 +117,21 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         {/* Status text */}
         <p
           className="text-[9px] uppercase tracking-[0.2em] font-bold"
-          style={{ color: 'rgba(138,154,170,0.7)' }}
+          style={{ color: 'rgba(198, 203, 210, 0.7)' }}
         >
           {message}
         </p>
 
         {/* Subtle system label */}
         <div className="flex items-center gap-2 mt-3">
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #222222)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b)' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
-            style={{ color: 'rgba(136,136,136,0.4)' }}
+            style={{ color: 'rgba(167, 177, 188, 0.42)' }}
           >
             CAD / RMS
           </span>
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #222222, transparent)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #2b2b2b, transparent)' }} />
         </div>
       </div>
 
@@ -209,9 +211,9 @@ function AppRoutes() {
           >
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
             <Route path="/dispatch" element={<DispatchPage />} />
-            <Route path="/map" element={<MapPage />} />
+            <Route path="/map" element={<Navigate to="/map-v2" replace />} />
+            <Route path="/map-v2" element={<RouteErrorBoundary><MapPageV2 /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
-            <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
             <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />
@@ -223,7 +225,6 @@ function AppRoutes() {
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
-            <Route path="/national-warrants" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
@@ -235,6 +236,7 @@ function AppRoutes() {
             <Route path="/evidence" element={<RouteErrorBoundary><EvidencePropertyPage /></RouteErrorBoundary>} />
             <Route path="/cases" element={<RouteErrorBoundary><CaseManagementPage /></RouteErrorBoundary>} />
             <Route path="/crime-analysis" element={<RouteErrorBoundary><CrimeAnalysisPage /></RouteErrorBoundary>} />
+            <Route path="/connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
@@ -253,6 +255,7 @@ function AppRoutes() {
             <Route path="/email" element={<RouteErrorBoundary><EmailPage /></RouteErrorBoundary>} />
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
+            <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />

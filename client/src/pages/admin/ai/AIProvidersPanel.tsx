@@ -131,7 +131,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
   return (
     <div className="space-y-4">
       {/* Active provider + fallback */}
-      <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4 space-y-3">
+      <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4 space-y-3">
         <div className="flex items-center gap-3">
           <label className="text-xs text-rmpg-400 w-32 shrink-0">Active Provider</label>
           <ProviderSelect
@@ -145,7 +145,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
             type="checkbox"
             checked={config.autoFallback}
             onChange={toggleFallback}
-            className="rounded border-[#1a1a2e] bg-[#0a0a12] text-brand-500 focus:ring-brand-500 focus:ring-offset-0"
+            className="rounded border-[#1c1c1c] bg-[#0b0b0b] text-brand-500 focus:ring-brand-500 focus:ring-offset-0"
           />
           <span className="text-xs text-rmpg-300">Enable auto-fallback to other providers if primary fails</span>
         </label>
@@ -157,7 +157,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
           <Server className="w-3.5 h-3.5 text-brand-400" />
           Fallback Priority Order
         </h3>
-        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded divide-y divide-[#1a1a2e]">
+        <div className="bg-[#121212] border border-[#1c1c1c] rounded divide-y divide-[#1c1c1c]">
           {priority.map((p, i) => {
             const info = providerStatus.find(s => s.name === p);
             return (
@@ -225,7 +225,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
               type="text" value={openaiBaseUrl}
               onChange={e => { setOpenaiBaseUrl(e.target.value); setDirty(true); }}
               placeholder="https://api.openai.com/v1"
-              className="flex-1 bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
+              className="flex-1 bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
             />
           </div>
           <ModelInput value={config.providers.openai.model || ''} onChange={v => updateModel('openai', v)} placeholder="gpt-4o-mini" />
@@ -242,7 +242,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
               type="text" value={ollamaUrl}
               onChange={e => { setOllamaUrl(e.target.value); setDirty(true); }}
               placeholder="http://localhost:11434"
-              className="flex-1 bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
+              className="flex-1 bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
             />
           </div>
           <ModelInput value={config.providers.ollama.model || ''} onChange={v => updateModel('ollama', v)} placeholder="llama3.1" />

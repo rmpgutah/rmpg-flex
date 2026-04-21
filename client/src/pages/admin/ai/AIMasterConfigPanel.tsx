@@ -100,7 +100,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
           value={masterPrompt}
           onChange={e => { setMasterPrompt(e.target.value); setDirty(true); }}
           rows={6}
-          className="w-full bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-3 py-2 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono leading-relaxed resize-y"
+          className="w-full bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-3 py-2 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono leading-relaxed resize-y"
           placeholder="Enter the master system prompt for all AI operations..."
         />
         <p className="text-[10px] text-rmpg-600 mt-1">
@@ -109,12 +109,12 @@ export default function AIMasterConfigPanel({ setError }: Props) {
       </div>
 
       {/* Chain Mode */}
-      <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4">
+      <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => { setChainMode(!chainMode); setDirty(true); }}
             className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
-              chainMode ? 'bg-brand-600' : 'bg-[#1a1a2e]'
+              chainMode ? 'bg-brand-600' : 'bg-[#1c1c1c]'
             }`}
             aria-label="Toggle chain mode"
           >
@@ -139,7 +139,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
         <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2">
           Task Routing Rules
         </h3>
-        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded divide-y divide-[#1a1a2e]">
+        <div className="bg-[#121212] border border-[#1c1c1c] rounded divide-y divide-[#1c1c1c]">
           {TASK_TYPES.map(task => {
             const current = routingRules[task.key]?.provider || 'auto';
             return (
@@ -148,7 +148,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
                 <select
                   value={current}
                   onChange={e => updateRouting(task.key, e.target.value)}
-                  className="bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none"
+                  className="bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none"
                 >
                   <option value="auto">Auto</option>
                   <option value="groq">Groq</option>
@@ -166,7 +166,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
       <div className="flex items-center justify-between">
         <button
           onClick={resetDefaults}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-rmpg-400 hover:text-white text-xs font-medium rounded border border-[#1a1a2e] hover:border-rmpg-500 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-rmpg-400 hover:text-white text-xs font-medium rounded border border-[#1c1c1c] hover:border-rmpg-500 transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           Reset to Defaults

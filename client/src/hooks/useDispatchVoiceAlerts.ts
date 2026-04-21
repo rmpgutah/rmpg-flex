@@ -51,7 +51,7 @@ function normalizeCallForVoice(raw: any): any {
     // Zone/beat — DB stores zone_beat as "Z3/B1" or separate fields
     zone: raw.zone || raw.zone_name || raw.zone_id || (raw.zone_beat ? raw.zone_beat.split('/')[0]?.replace(/^Z/i, '') : '') || '',
     beat: raw.beat || raw.beat_name || raw.beat_id || (raw.zone_beat ? raw.zone_beat.split('/')[1]?.replace(/^B/i, '') : '') || '',
-    section_name: raw.section_name || '',
+    sector_name: raw.sector_name || '',
     beat_descriptor: raw.beat_descriptor || '',
     // Narrative
     narrative: raw.narrative || raw.description || '',

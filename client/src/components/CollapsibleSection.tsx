@@ -28,13 +28,13 @@ export default function CollapsibleSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className={`border border-[#222222] ${className}`} style={{ background: '#050505' }}>
+    <div className={`border border-[#2b2b2b] ${className}`} style={{ background: '#050505' }}>
       <button type="button"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
         aria-label={`${title} section${count !== undefined ? ` (${count})` : ''}`}
         className="w-full flex items-center justify-between px-2.5 py-1.5 hover:brightness-110 transition-all"
-        style={{ background: 'linear-gradient(180deg, #222222 0%, #1a1a1a 100%)', borderBottom: isOpen ? '1px solid #050505' : 'none' }}
+        style={{ background: 'linear-gradient(180deg, #2b2b2b 0%, #262626 100%)', borderBottom: isOpen ? '1px solid #0c0c0c' : 'none' }}
       >
         <div className="flex items-center gap-2">
           <ChevronRight

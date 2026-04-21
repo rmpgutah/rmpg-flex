@@ -52,7 +52,7 @@ function todayStr() {
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   draft:     { bg: 'rgba(107,114,128,0.15)', text: '#999999', border: '#555555' },
   active:    { bg: 'rgba(34,197,94,0.15)',    text: '#22c55e', border: '#16a34a' },
-  completed: { bg: 'rgba(59,130,246,0.15)',   text: '#888888', border: '#888888' },
+  completed: { bg: 'rgba(136, 136, 136,0.15)',   text: '#888888', border: '#888888' },
   archived:  { bg: 'rgba(100,116,139,0.15)',  text: '#888888', border: '#666666' },
 };
 
@@ -106,14 +106,16 @@ export default function ShiftPlansPage() {
   const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
 
   useEffect(() => {
-    apiFetch('/api/shift-plans/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
-    apiFetch('/api/shift-plans/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
+    // Server mounts shiftPlanRoutes at /api/admin (see server/src/index.ts).
+    // Legacy paths under /api/shift-plans/* 404 because that prefix is not mounted.
+    apiFetch('/api/admin/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
+    apiFetch('/api/admin/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
   }, []);
 
   useEffect(() => {
-    apiFetch(`/api/shift-plans/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
-    apiFetch(`/api/shift-plans/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
-    apiFetch(`/api/shift-plans/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
+    apiFetch(`/api/admin/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
+    apiFetch(`/api/admin/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
+    apiFetch(`/api/admin/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
   }, [selectedDate]);
 
   // ── Computed ──
@@ -177,7 +179,7 @@ export default function ShiftPlansPage() {
       {/* ── DATE SELECTOR BAR ─────────────────────────────── */}
       <div
         className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
+        style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}
       >
         <div className="flex items-center gap-3">
           <Calendar style={{ width: 14, height: 14, color: '#888888' }} />
@@ -245,13 +247,13 @@ export default function ShiftPlansPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* ── LEFT: Plan List ── */}
         <div className={`${isMobile ? (sp.activePlanId ? 'hidden' : 'w-full') : 'w-1/3'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2" style={{ background: '#080808', borderBottom: '1px solid #222222' }}>
+          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2" style={{ background: '#080808', borderBottom: '1px solid #2b2b2b' }}>
             Plans for {formatDate(selectedDate)} ({plansForDate.length})
           </div>
 
           {/* Create form */}
           {showCreateForm && (
-            <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'rgba(59,130,246,0.06)' }}>
+            <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'rgba(136, 136, 136,0.06)' }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold text-gray-400 uppercase">New Shift Plan</span>
                 <button type="button" onClick={() => setShowCreateForm(false)} className="text-rmpg-500 hover:text-white">
@@ -320,7 +322,7 @@ export default function ShiftPlansPage() {
                     onClick={() => sp.setActivePlanId(plan.id)}
                     className="px-3 py-2.5 cursor-pointer transition-all duration-150 border-b border-rmpg-800/50 hover:brightness-110"
                     style={{
-                      background: isSelected ? 'rgba(59,130,246,0.08)' : 'transparent',
+                      background: isSelected ? 'rgba(136, 136, 136,0.08)' : 'transparent',
                       borderLeft: `3px solid ${shiftConfig?.color || '#666666'}`,
                     }}
                     role="button"
@@ -354,7 +356,7 @@ export default function ShiftPlansPage() {
               {/* Plan header with actions */}
               <div
                 className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-                style={{ background: '#080808', borderBottom: '1px solid #222222' }}
+                style={{ background: '#080808', borderBottom: '1px solid #2b2b2b' }}
               >
                 <div>
                   {isMobile && (
@@ -430,7 +432,7 @@ export default function ShiftPlansPage() {
               {/* Assignments table */}
               <div className="flex-1 overflow-auto">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between"
-                  style={{ background: '#050505', borderBottom: '1px solid #222222' }}
+                  style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}
                 >
                   <span>Area Assignments ({sp.activePlan.assignments.length})</span>
                   {sp.activePlan.assignments.length > 0 && (
@@ -528,22 +530,22 @@ export default function ShiftPlansPage() {
 
                 {/* Summary panel */}
                 {sp.activePlan.assignments.length > 0 && (
-                  <div className="px-4 py-3" style={{ background: '#050505', borderTop: '1px solid #222222' }}>
+                  <div className="px-4 py-3" style={{ background: '#050505', borderTop: '1px solid #2b2b2b' }}>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Coverage Summary</div>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
-                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #2b2b2b', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-gray-400 font-mono tabular-nums">{stats.assigned}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Areas Covered</div>
                       </div>
-                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #2b2b2b', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-green-400 font-mono tabular-nums">{stats.officers}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Officers Assigned</div>
                       </div>
-                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #2b2b2b', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-purple-400 font-mono tabular-nums">{stats.units}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Units Deployed</div>
                       </div>
-                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #222222', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background: '#080808', border: '1px solid #2b2b2b', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-amber-400 font-mono">
                           {SHIFT_TYPES[sp.activePlan.shiftType]?.defaultStart}
                         </div>

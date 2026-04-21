@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -36,7 +37,7 @@ const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   arraignment: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
-  hearing: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  hearing: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   trial: 'bg-red-900/50 text-red-400 border-red-700/50',
   sentencing: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   motion: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
@@ -65,6 +66,10 @@ const EMPTY_FORM = {
   event_date: '', event_time: '',
   court_name: '', courtroom: '', judge_name: '', court_case_number: '',
   defendant_name: '', defendant_dob: '',
+  prosecutor: '', defense_attorney: '',
+  officers_required: '' as string,
+  citation_id: '' as string, incident_id: '' as string, case_id: '' as string,
+  defendant_person_id: '' as string,
   notes: '',
 };
 
@@ -457,7 +462,7 @@ export default function CourtTrackerPage() {
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <AlertTriangle className="w-3 h-3 flex-shrink-0" /> <span>{fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+            <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
         )}
 
@@ -486,7 +491,7 @@ export default function CourtTrackerPage() {
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
               <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
             </div>
-            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none" aria-label="Filter by event type">
+            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
               <option value="">All Types</option>
               {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
@@ -495,15 +500,15 @@ export default function CourtTrackerPage() {
 
         {/* Feature 1: Calendar View */}
         {activeView === 'calendar' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-2">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-2">
             <div className="flex items-center justify-between mb-2">
-              <button type="button" onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1">
+              <IconButton onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1" aria-label="Previous month">
                 <ChevronLeft style={{ width: 14, height: 14 }} />
-              </button>
+              </IconButton>
               <span className="text-xs font-bold text-white">{monthNames[calendarMonth - 1]} {calendarYear}</span>
-              <button type="button" onClick={() => { if (calendarMonth === 12) { setCalendarMonth(1); setCalendarYear(y => y + 1); } else setCalendarMonth(m => m + 1); }} className="toolbar-btn p-1">
+              <IconButton onClick={() => { if (calendarMonth === 12) { setCalendarMonth(1); setCalendarYear(y => y + 1); } else setCalendarMonth(m => m + 1); }} className="toolbar-btn p-1" aria-label="Next month">
                 <ChevronRight style={{ width: 14, height: 14 }} />
-              </button>
+              </IconButton>
             </div>
             <div className="grid grid-cols-7 gap-px">
               {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
@@ -549,7 +554,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 10: Statistics View */}
         {activeView === 'stats' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-3 space-y-3">
             {statsLoading ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : stats ? (
@@ -613,7 +618,7 @@ export default function CourtTrackerPage() {
 
         {/* Event List (upcoming + list views) */}
         {(activeView === 'upcoming' || activeView === 'list') && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {loading && activeView === 'list' ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : displayEvents.length === 0 ? (
@@ -690,7 +695,7 @@ export default function CourtTrackerPage() {
               )}
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>
@@ -986,7 +991,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="New Court Event">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Court Event" icon={Plus}>
-              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1026,6 +1031,14 @@ export default function CourtTrackerPage() {
                   <label className="field-label">Judge</label>
                   <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
+                <div>
+                  <label className="field-label">Prosecutor</label>
+                  <input value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                </div>
+                <div>
+                  <label className="field-label">Defense Attorney</label>
+                  <input value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
@@ -1044,7 +1057,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Record Outcome">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Record Outcome" icon={CheckCircle}>
-              <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1079,7 +1092,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Log Continuance">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Log Continuance" icon={RefreshCw}>
-              <button type="button" onClick={() => setContinuanceOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setContinuanceOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1113,7 +1126,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Bail / Bond Information" icon={DollarSign}>
-              <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1153,7 +1166,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Judge Notes">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Judge Preferences / Notes" icon={BookOpen}>
-              <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <textarea value={judgeNotesText} onChange={e => setJudgeNotesText(e.target.value)} rows={6} placeholder="Judge preferences, courtroom rules, etc." className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
@@ -1174,7 +1187,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Prosecutor Contact Info" icon={User}>
-              <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setProsecutorOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Name</label>
@@ -1199,7 +1212,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Court Fee Tracking" icon={DollarSign}>
-              <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFeeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Filing Fee ($)</label>
@@ -1226,10 +1239,10 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="Witness Management" icon={Users}>
-              <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setWitnessOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-2">
+              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-2">
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
@@ -1240,7 +1253,7 @@ export default function CourtTrackerPage() {
                         <option value="confirmed">Confirmed</option>
                         <option value="unavailable">Unavailable</option>
                       </select>
-                      <button type="button" onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+                      <IconButton onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300" aria-label={`Remove witness ${i + 1}`}><X style={{ width: 12, height: 12 }} /></IconButton>
                     </div>
                     <div className="flex gap-2">
                       <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
@@ -1269,7 +1282,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Create from Citation" onClick={() => setCitationSearchOpen(false)}>
           <div className="panel-surface w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Create Court Event from Citation" icon={FileText}>
-              <button type="button" onClick={() => setCitationSearchOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setCitationSearchOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
@@ -1283,7 +1296,7 @@ export default function CourtTrackerPage() {
                 </button>
               </div>
               {citationSearchResults.length > 0 ? (
-                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
                   {citationSearchResults.map((c: any) => (
                     <div key={c.id} className="flex items-center justify-between px-3 py-2 border border-rmpg-700 bg-surface-sunken hover:bg-rmpg-800/50">
                       <div>

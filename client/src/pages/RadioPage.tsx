@@ -23,7 +23,7 @@ import { useRadio } from '../hooks/useRadio';
 import { usePrivateCall } from '../hooks/usePrivateCall';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { localToday, safeTimeStr } from '../utils/dateUtils';
@@ -193,16 +193,10 @@ export default function RadioPage() {
     }
 
     try {
-      // Fetch audio with JWT auth header (new Audio(url) can't set headers)
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/comms/radio/audio/${entryId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        console.error('[Radio Playback] HTTP error:', res.status, res.statusText);
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const blob = await res.blob();
+      // Fetch audio via apiFetchBlob (handles JWT auth + token refresh on 401)
+      const rawBlob = await apiFetchBlob(`/comms/radio/audio/${entryId}`);
+      // Ensure blob has audio MIME type for <audio> element compatibility
+      const blob = rawBlob.type.startsWith('audio/') ? rawBlob : new Blob([rawBlob], { type: 'audio/webm' });
       const blobUrl = URL.createObjectURL(blob);
       blobUrlRef.current = blobUrl;
 
@@ -313,8 +307,8 @@ export default function RadioPage() {
       <div
         className="px-3 py-2"
         style={{
-          borderBottom: '1px solid #222222',
-          background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
+          borderBottom: '1px solid #2b2b2b',
+          background: 'linear-gradient(180deg, #181818 0%, #141414 100%)',
         }}
       >
         <div className="flex items-center gap-2 mb-2">
@@ -375,8 +369,8 @@ export default function RadioPage() {
         <div
           className="px-3 py-2 flex items-center justify-between"
           style={{
-            borderBottom: '1px solid #181818',
-            background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
+            borderBottom: '1px solid #242424',
+            background: 'linear-gradient(180deg, #181818 0%, #141414 100%)',
           }}
         >
           <div className="flex items-center gap-1">
@@ -414,7 +408,7 @@ export default function RadioPage() {
 
         {/* History filters */}
         {showHistory && (
-          <div className="px-3 py-1.5 flex items-center gap-1" style={{ borderBottom: '1px solid #181818', background: '#050505' }}>
+          <div className="px-3 py-1.5 flex items-center gap-1" style={{ borderBottom: '1px solid #242424', background: '#050505' }}>
             <Search style={{ width: 9, height: 9, color: '#666666' }} />
             <input
               type="text"
@@ -427,7 +421,6 @@ export default function RadioPage() {
               value={historyChannel}
               onChange={(e) => setHistoryChannel(e.target.value)}
               className="bg-surface-base text-[8px] text-rmpg-300 border border-rmpg-700 px-1 py-0.5 font-mono"
-              aria-label="Filter by channel"
             >
               <option value="">All Channels</option>
               {RADIO_CHANNELS.map(ch => (
@@ -599,7 +592,7 @@ export default function RadioPage() {
         <div
           className="flex items-center gap-3 px-4 py-2"
           style={{
-            background: 'rgba(59, 130, 246, 0.15)',
+            background: 'rgba(136, 136, 136, 0.15)',
             borderBottom: '2px solid #888888',
             flexShrink: 0,
           }}
@@ -631,7 +624,7 @@ export default function RadioPage() {
         <div
           className="flex items-center gap-3 px-4 py-2"
           style={{
-            background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.08) 100%)',
+            background: 'linear-gradient(90deg, rgba(136, 136, 136, 0.2) 0%, rgba(136, 136, 136, 0.08) 100%)',
             borderBottom: '2px solid #888888',
             flexShrink: 0,
           }}
@@ -676,7 +669,7 @@ export default function RadioPage() {
         <div
           className="flex items-center gap-3 px-4 py-2"
           style={{
-            background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%)',
+            background: 'linear-gradient(90deg, rgba(136, 136, 136, 0.15) 0%, rgba(136, 136, 136, 0.05) 100%)',
             borderBottom: '1px solid #88888880',
             flexShrink: 0,
           }}
@@ -803,19 +796,19 @@ export default function RadioPage() {
                   disabled={!isConnected}
                   className="group flex flex-col items-center p-4 transition-all duration-150 border"
                   style={{
-                    background: 'linear-gradient(180deg, #222222 0%, #141414 100%)',
-                    border: '1px solid #2e2e2e',
+                    background: 'linear-gradient(180deg, #2b2b2b 0%, #181818 100%)',
+                    border: '1px solid #2a2a2a',
                     opacity: isConnected ? 1 : 0.4,
                   }}
                   onMouseEnter={(e) => {
                     if (isConnected) {
                       e.currentTarget.style.borderColor = '#888888';
-                      e.currentTarget.style.background = 'linear-gradient(180deg, #1e3050 0%, #1a2840 100%)';
+                      e.currentTarget.style.background = 'linear-gradient(180deg, #2e2e2e 0%, #272727 100%)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = '#2e2e2e';
-                    e.currentTarget.style.background = 'linear-gradient(180deg, #222222 0%, #141414 100%)';
+                    e.currentTarget.style.background = 'linear-gradient(180deg, #2b2b2b 0%, #181818 100%)';
                   }}
                 >
                   <span className="text-sm font-bold font-mono tracking-wider text-white">
@@ -839,8 +832,8 @@ export default function RadioPage() {
           <div
             className="flex items-center justify-between px-3 py-2"
             style={{
-              background: 'linear-gradient(180deg, #222222 0%, #141414 100%)',
-              borderBottom: '1px solid #222222',
+              background: 'linear-gradient(180deg, #2b2b2b 0%, #181818 100%)',
+              borderBottom: '1px solid #2b2b2b',
               flexShrink: 0,
             }}
           >
@@ -876,7 +869,7 @@ export default function RadioPage() {
               <button type="button"
                 onClick={leaveChannel}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-rmpg-400 hover:text-red-400 transition-colors"
-                style={{ border: '1px solid #2e2e2e' }}
+                style={{ border: '1px solid #2a2a2a' }}
               >
                 LEAVE
               </button>
@@ -914,7 +907,7 @@ export default function RadioPage() {
                 className="w-full max-w-sm mb-6 p-4 text-center"
                 style={{
                   background: '#0a0f0a',
-                  border: '2px solid #222222',
+                  border: '2px solid #2b2b2b',
                   boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.5)',
                 }}
               >
@@ -993,9 +986,9 @@ export default function RadioPage() {
                   height: isMobile ? 180 : 160,
                   borderRadius: '50%',
                   background: isInCall
-                    ? 'radial-gradient(circle, #222222 0%, #0a0a0a 70%, #050505 100%)'
+                    ? 'radial-gradient(circle, #2b2b2b 0%, #141414 70%, #0c0c0c 100%)'
                     : !micSupported
-                      ? 'radial-gradient(circle, #2e2e2e 0%, #141414 70%, #050505 100%)'
+                      ? 'radial-gradient(circle, #2a2a2a 0%, #181818 70%, #0c0c0c 100%)'
                       : isTransmitting
                         ? 'radial-gradient(circle, #dc2626 0%, #991b1b 70%, #450a0a 100%)'
                         : otherSpeaking
@@ -1004,7 +997,7 @@ export default function RadioPage() {
                   border: isInCall
                     ? '4px solid #88888880'
                     : !micSupported
-                      ? '4px solid #2e2e2e'
+                      ? '4px solid #2a2a2a'
                       : isTransmitting
                         ? '4px solid #ff4444'
                         : otherSpeaking
@@ -1116,12 +1109,12 @@ export default function RadioPage() {
                   className="absolute inset-0 z-40 flex flex-col"
                   style={{ background: '#050505' }}
                 >
-                  <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid #222222' }}>
+                  <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid #2b2b2b' }}>
                     <span className="text-[10px] font-mono font-bold text-rmpg-400 tracking-wider">CHANNEL INFO</span>
                     <button type="button"
                       onClick={() => setShowMobileSidebar(false)}
                       className="text-[10px] font-mono text-rmpg-400 hover:text-white px-2 py-1"
-                      style={{ border: '1px solid #2e2e2e' }}
+                      style={{ border: '1px solid #2a2a2a' }}
                     >
                       CLOSE
                     </button>

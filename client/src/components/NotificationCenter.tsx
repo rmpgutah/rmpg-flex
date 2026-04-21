@@ -10,6 +10,7 @@ import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin,
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import type { Notification, NotificationType } from '../types';
+import { isNotificationSoundEnabled, playNotificationTone } from '../utils/notificationTones';
 
 // ============================================================
 // Types
@@ -125,6 +126,10 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       setNotifications((prev) => [incoming, ...prev]);
       if (!incoming.is_read) {
         setUnreadCount((prev) => prev + 1);
+        // Play notification sound based on priority
+        if (isNotificationSoundEnabled()) {
+          playNotificationTone((incoming as any).priority || 'normal');
+        }
       }
     });
 

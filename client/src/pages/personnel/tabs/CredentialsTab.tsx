@@ -59,9 +59,9 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
   const SUMMARY_CARDS = [
     { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'Valid', value: stats.valid, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Expiring Soon', value: stats.expiringSoon, color: 'text-amber-400', bgClass: 'bg-[#1a1400]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
-    { label: 'Expired', value: stats.expired, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
+    { label: 'Valid', value: stats.valid, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Expiring Soon', value: stats.expiringSoon, color: 'text-amber-400', bgClass: 'bg-amber-900/20', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'Expired', value: stats.expired, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
   ];
 
   // Set document title
@@ -83,7 +83,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
       {/* Alert Banner */}
       {alertCount > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-amber-700/40 border-l-2 border-l-amber-500 bg-[#1a1400]">
+        <div className="panel-beveled p-3 flex items-center gap-3 border border-amber-700/40 border-l-2 border-l-amber-500 bg-amber-900/20">
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-xs text-amber-400 font-semibold">

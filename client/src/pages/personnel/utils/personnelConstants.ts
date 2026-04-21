@@ -3,13 +3,13 @@
 // ============================================================
 
 import {
-  Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned, BarChart3,
-  User, Activity, Video, Car, CalendarDays,
+  Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned,
+  User, Activity, Video, Car,
 } from 'lucide-react';
 import type React from 'react';
 
 // Main tabs
-export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'calendar' | 'time' | 'credentials' | 'training' | 'equipment' | 'dash_cameras' | 'deployment' | 'analytics';
+export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment';
 
 export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'dash_cameras' | 'deployment' | 'fitness';
 
@@ -35,14 +35,11 @@ export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[
   { id: 'roster', label: 'Roster', icon: Users },
   { id: 'duty_board', label: 'Duty Board', icon: Radio },
   { id: 'schedule', label: 'Schedule', icon: Calendar },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'time', label: 'Time', icon: Clock },
   { id: 'credentials', label: 'Credentials', icon: Award },
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
-  { id: 'dash_cameras', label: 'Dash Cams', icon: Car },
   { id: 'deployment', label: 'Deployment', icon: MapPinned },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 export const DETAIL_TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
@@ -96,8 +93,8 @@ export const TRAINING_CATEGORY_COLORS: Record<string, string> = {
   first_aid: 'bg-green-900/50 text-green-400 border border-green-700/50',
   legal: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   communication: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
-  driving: 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50',
-  technology: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
+  driving: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  technology: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   leadership: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
   compliance: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   other: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
@@ -159,7 +156,7 @@ export const DASHCAM_EVENT_COLORS: Record<string, string> = {
   hard_accel: 'bg-orange-900/50 text-orange-400 border border-orange-700/50',
   hard_turn: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   camera_triggered: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
-  video_recorded: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
+  video_recorded: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
 };
 
 export const CHART_TOOLTIP_STYLE = {

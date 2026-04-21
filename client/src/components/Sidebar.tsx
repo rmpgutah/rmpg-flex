@@ -150,8 +150,8 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       className="flex flex-col h-full flex-shrink-0 transition-[width] duration-200 ease-out select-none"
       style={{
         width: collapsed ? 56 : 220,
-        background: 'linear-gradient(180deg, #080808 0%, #050505 100%)',
-        borderRight: '1px solid #222222',
+        background: 'linear-gradient(180deg, #121212 0%, #0c0c0c 100%)',
+        borderRight: '1px solid #2b2b2b',
       }}
     >
       {/* Scrollable nav sections */}
@@ -170,7 +170,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
 
             {/* Collapsed: thin separator between groups */}
             {collapsed && section.id !== 'ops' && (
-              <div className="mx-3 my-1" style={{ borderTop: '1px solid #222222' }} />
+              <div className="mx-3 my-1" style={{ borderTop: '1px solid #2b2b2b' }} />
             )}
 
             {section.items.map((item) => {
@@ -183,7 +183,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                   onClick={() => navigate(item.path)}
                   onMouseEnter={() => collapsed ? setHoveredSection(item.path) : undefined}
                   onMouseLeave={() => setHoveredSection(null)}
-                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-[#141414]' : ''}`}
+                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-[#181818]' : ''}`}
                   style={{
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
@@ -217,7 +217,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       className="absolute left-full ml-2 px-2.5 py-1.5 whitespace-nowrap z-50"
                       style={{
                         background: '#141414',
-                        border: '1px solid #2e2e2e',
+                        border: '1px solid #2a2a2a',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                         top: '50%',
                         transform: 'translateY(-50%)',
@@ -239,7 +239,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
         className="flex items-center justify-center gap-2 py-2 transition-colors"
         style={{
           height: 36,
-          borderTop: '1px solid #222222',
+          borderTop: '1px solid #2b2b2b',
           background: '#050505',
           color: '#666666',
         }}

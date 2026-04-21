@@ -13,22 +13,27 @@ export type RGBColor = readonly [number, number, number];
 export const COLOR = {
   // Text hierarchy
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
-  TEXT_SECONDARY:  [74, 85, 104]    as const,  // Helvetica labels (#4a5568)
+  TEXT_SECONDARY:  [74, 85, 104]    as const,  // Helvetica labels (#545454)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
-  // Borders — thin, clean lines
-  BORDER_FIELD:    [190, 190, 190]  as const,  // Field box borders (light gray)
-  BORDER_TABLE:    [200, 200, 200]  as const,  // Row separator lines (very light)
-  BORDER_COLUMN:   [200, 200, 200]  as const,  // Vertical column separators
-  BORDER_OUTER:    [180, 180, 180]  as const,  // Table outer border
-  BORDER_SECTION:  [100, 100, 100]  as const,  // Section outline
+  // Borders — clean, professional lines
+  BORDER_FIELD:    [113, 128, 150]  as const,  // Field box borders (#718096)
+  BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
+  BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
+  BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
+  BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
 
-  // Backgrounds
-  BG_ZEBRA:        [245, 245, 245]  as const,  // Even-row shading (very light gray)
-  BG_SECTION_HDR:  [60, 60, 60]     as const,  // Section header bar (dark gray)
-  BG_TABLE_HDR:    [100, 100, 100]   as const,  // Table column header (medium gray)
+  // Backgrounds — lighter, modern government-form style
+  BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
+  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#2D3748 dark slate)
+  BG_TABLE_HDR:    [70, 75, 88]     as const,  // Dark slate (standalone tables)
+  // Nested table header — light slate for tables INSIDE a dark section
+  // header bar. Added 2026-04-17 so subsection tables visually separate
+  // from the section title bar above them. Uses dark text for contrast.
+  BG_TABLE_HDR_LIGHT: [220, 225, 234] as const,
+  TEXT_TABLE_HDR_LIGHT: [45, 55, 72]  as const,  // Dark slate text on light hdr
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -52,18 +57,80 @@ export const COLOR = {
   BG_SIDEBAR_TAB:      [25, 25, 30]     as const,  // Dark sidebar tab background
   BG_FORM_CELL_LABEL:  [240, 240, 245]  as const,  // Light gray label strip inside cell
   BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
+
+  // Police-form furniture (added 2026-04-17 for enhanced LE styling)
+  RULE_GOLD:           [212, 160, 23]   as const,  // Brand gold accent rule
+  RULE_STRONG:         [30, 30, 30]     as const,  // Heavy black rule for top/bottom
+  BATES_STAMP:         [90, 50, 50]     as const,  // Muted burgundy for Bates sequence
+  BARCODE_BAR:         [0, 0, 0]        as const,  // Code 39 black bars
+  BARCODE_BG:          [255, 255, 255]  as const,  // Code 39 white space
+  BARCODE_STRIP_BG:    [250, 250, 250]  as const,  // Light strip background for scan row
+  BARCODE_STRIP_RULE:  [180, 180, 185]  as const,
+  CERT_BG:             [248, 246, 238]  as const,  // Ivory certification paragraph bg
+  CERT_RULE:           [160, 140, 90]   as const,  // Olive rule around cert block
+  MUGSHOT_RULE:        [60, 60, 60]     as const,  // Dark frame around arrest photo
+
+  // Priority bar palette (separate from PRIORITY_COLORS in pdfGenerator.ts —
+  // these are the tokenized fills used by drawPriorityBar helper)
+  PRIO_1_BG:           [185, 25, 25]    as const,  // Emergency / Code 3
+  PRIO_2_BG:           [210, 110, 20]   as const,  // Urgent
+  PRIO_3_BG:           [200, 160, 30]   as const,  // Routine
+  PRIO_4_BG:           [60, 120, 70]    as const,  // Non-emergency
+  PRIO_FG:             [255, 255, 255]  as const,
 } as const;
 
+// ── Classification Markings (CJIS Security Policy / Traffic Light Protocol) ──
+// Top + bottom banner colors applied to every page of a generated report.
+
+export interface ClassificationSpec {
+  readonly bg: RGBColor;
+  readonly fg: RGBColor;
+  readonly label: string;
+}
+
+export const CLASSIFICATION: Record<
+  'LES' | 'CUI' | 'FOUO' | 'UNCLAS' | 'CONFIDENTIAL' | 'SEALED' | 'DRAFT',
+  ClassificationSpec
+> = {
+  LES:          { bg: [180, 30, 30],  fg: [255, 255, 255], label: 'LAW ENFORCEMENT SENSITIVE // CJIS' },
+  CUI:          { bg: [80, 50, 130],  fg: [255, 255, 255], label: 'CONTROLLED UNCLASSIFIED INFORMATION // LE' },
+  FOUO:         { bg: [200, 130, 20], fg: [0, 0, 0],       label: 'FOR OFFICIAL USE ONLY' },
+  UNCLAS:       { bg: [0, 110, 60],   fg: [255, 255, 255], label: 'UNCLASSIFIED' },
+  CONFIDENTIAL: { bg: [120, 0, 0],    fg: [255, 255, 255], label: 'CONFIDENTIAL // NOFORN' },
+  SEALED:       { bg: [30, 30, 30],   fg: [255, 215, 0],   label: 'SEALED BY COURT ORDER -- DO NOT DISSEMINATE' },
+  DRAFT:        { bg: [110, 110, 110], fg: [255, 255, 255], label: 'DRAFT -- UNOFFICIAL -- NOT FOR DISTRIBUTION' },
+} as const;
+
+export type ClassificationLevel = keyof typeof CLASSIFICATION;
+
+// ── Font Profile ─────────────────────────────────────────────
+// Switches the font used for value/body text across every PDF form.
+//
+// MODERN (default, 2026-04-17): 'helvetica' — Arial-equivalent, formal
+//   sans-serif look. Available in jsPDF's built-in font set (no custom
+//   font loading required). Applied to field values, table bodies,
+//   narrative text, and continuation headers.
+//
+// LEGACY (backup):            'courier' — typewriter police-report look.
+//   If the modern profile doesn't meet visual requirements, swap back to
+//   courier by changing this single constant:
+//     export const PDF_VALUE_FONT: jsPDF.FontName = 'courier';
+//
+// Labels (small-caps headers) remain helvetica bold in both profiles.
+// Monospace-critical contexts (Bates stamps, Code 39 barcode labels) use
+// the font passed explicitly in their renderers, not this token.
+export const PDF_VALUE_FONT: 'helvetica' | 'courier' | 'times' = 'helvetica';
+
 // ── Typography Tokens ────────────────────────────────────────
-// Values: Courier (typewriter police-report look)
+// Values: Helvetica (formal, Arial-equivalent) — see PDF_VALUE_FONT above
 // Labels: Helvetica (clean, small-caps feel)
 
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
   SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
-  SIZE_FIELD_LABEL:       5.5,   // Helvetica Bold labels above field boxes
-  SIZE_TABLE_HEADER:      8,     // Helvetica column headers (bold, readable)
+  SIZE_FIELD_LABEL:       5,     // Helvetica Bold labels above field boxes
+  SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
   SIZE_FOOTER_PRIMARY:    6,     // Footer form #, page #
   SIZE_FOOTER_SECONDARY:  5,     // Footer secondary info
@@ -84,6 +151,24 @@ export const FONT = {
   SIZE_FORM_CELL_LABEL:   6,     // Form cell label (same as field label)
   SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value (same as field value)
   SIZE_SIDEBAR_TAB:       7,     // Sidebar tab rotated text
+  SIZE_CLASSIFICATION:    8,     // Classification banner text (top/bottom)
+  SIZE_CERTIFICATION:     6.8,   // Officer certification paragraph
+  SIZE_BATES:             7.2,   // Bates stamp monospace
+  SIZE_CAUTION_CHIP:      6.8,   // Flag chips in caution strip
+  SIZE_CAUTION_LABEL:     8.5,   // "CAUTION — OFFICER SAFETY" bar label
+  SIZE_PRIORITY_BAR:      9,     // "PRIORITY 1 — EMERGENCY" bar label
+  SIZE_BARCODE_LABEL:     5.5,   // Code 39 human-readable line
+  SIZE_ORI_LINE:          6.5,   // Tri-line agency identifier (ORI/FBI/NCIC)
+  SIZE_BADGE_LABEL:       5,     // "BADGE" / "POST" mini-labels
+  SIZE_BADGE_VALUE:       7.5,   // Badge # + POST # value
+  SIZE_TIMELINE_LABEL:    5.5,   // Dispatch timeline stage label
+  SIZE_TIMELINE_VALUE:    7,     // Dispatch timeline timestamp
+  SIZE_COC_HEADER:        5.5,   // Chain of custody column header
+  SIZE_COC_VALUE:         7,     // Chain of custody value line
+  SIZE_BARCODE_STRIP:     9,     // Top-of-page barcode scan strip value
+  SIZE_MUGSHOT_LABEL:     5.5,   // Mugshot frame caption
+  SIZE_NARRATIVE_PARA:    8,     // Narrative body text
+  SIZE_PARA_MARKER:       8.5,   // ¶N bold paragraph marker
 } as const;
 
 // ── Border / Line Width Tokens ───────────────────────────────
@@ -105,6 +190,18 @@ export const BORDER = {
   FORM_CELL:        0.25,  // Form cell borders (subtle grid)
   SIDEBAR_TAB:      0.25,  // Sidebar tab border
   FORM_GRID_OUTER:  0.5,   // Bold outer border around form grid
+  CLASSIFICATION:   0,     // Classification bars are filled, no stroke
+  CLASSIFICATION_RULE: 0.5, // Gold rule under top classification bar
+  CERT_BOX:         0.6,   // Officer certification block border
+  CAUTION_STRIP:    0.8,   // Caution strip outer border
+  PRIORITY_BAR:     0.6,   // Priority bar outer border
+  TIMELINE_CELL:    0.25,  // Dispatch timeline cell dividers
+  TIMELINE_OUTER:   0.5,   // Dispatch timeline outer border
+  COC_ROW:          0.25,  // Chain of custody row divider
+  COC_OUTER:        0.5,   // Chain of custody outer border
+  BARCODE_STRIP:    0.4,   // Barcode scan strip border
+  MUGSHOT_FRAME:    0.7,   // Mugshot frame
+  NARRATIVE_RULE:   0.3,   // Left-margin vertical rule on narrative
 } as const;
 
 // ── Spacing Tokens (tighter throughout) ──────────────────────
@@ -117,10 +214,14 @@ export const SPACING = {
   XL:                 2.5,   // Generous gap
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
-  SECTION_HEADER_H:   3.8,   // Section header bar height (compact)
-  SECTION_GAP:        0.5,   // Gap between sections
-  SECTION_CONTENT_PAD: 1.5,  // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  0.3,  // Padding inside section before bottom border
+  SECTION_HEADER_H:   3.5,   // Section header bar height (compact)
+  SECTION_GAP:        1.0,   // Gap between sections (compact but visible)
+  // Breathing room between section header bar and first content row.
+  // 2mm gives the first label space to sit below the bar without hugging —
+  // e.g. "INCIDENT OVERVIEW" bar → ~2mm gap → "INCIDENT NUMBER" label.
+  // Small enough that form height doesn't balloon across multi-section forms.
+  SECTION_CONTENT_PAD: 2,
+  SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   2.8,   // Value area height (no box, just label+value)
   FIELD_ROW_ADVANCE:  2.8,   // Y-advance after field row (tight)
@@ -132,6 +233,22 @@ export const SPACING = {
   FORM_CELL_PAD:      0.5,   // Padding inside form cells (tight)
   FORM_CELL_LABEL_H:  2,     // Form cell label strip height (compact)
   FORM_CELL_H:        7,     // Form cell total height (compact)
+
+  // Police-form furniture heights
+  CLASSIFICATION_BAR_H: 4,   // Top/bottom classification banner height
+  CAUTION_STRIP_H:      6.5, // Caution / officer-safety banner height
+  PRIORITY_BAR_H:       3.8, // Priority bar height
+  TIMELINE_ROW_H:       8.5, // Dispatch timeline row (label + value stacked)
+  COC_ROW_H:            10,  // Chain of custody row (signature line height)
+  COC_HEADER_H:         4.5, // Chain of custody header strip
+  CERT_PARA_H:          12,  // Certification paragraph height
+  CERT_SIG_H:           14,  // Certification signature row height
+  BARCODE_STRIP_H:      9,   // Barcode scan strip height (top of every page)
+  BARCODE_INLINE_H:     8,   // Inline barcode under case number in header
+  BARCODE_QUIET:        1.5, // Code 39 quiet zone on each side (mm)
+  MUGSHOT_W:            28,  // Arrest photo width
+  MUGSHOT_H:            35,  // Arrest photo height (4:5)
+  MUGSHOT_CAP_H:        4,   // Caption strip under mugshot
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
@@ -202,6 +319,18 @@ export function getQuarterWidth(doc: jsPDF): number {
   return (getContentWidth(doc) - 2 * SPACING.CONTENT_INSET - 3 * SPACING.MD) / 4;
 }
 
+/** Approximate line height for a given font size (mm). PDF points: 1 pt = 0.3528 mm.
+ *  Standard line height is 1.2× font size. */
+export function getLineHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 1.2;
+}
+
+/** Approximate cap height (height of capital letters) for a given font size (mm).
+ *  Cap height is typically ~70% of font size in points, converted to mm. */
+export function getCapHeight(fontSizePt: number): number {
+  return fontSizePt * 0.3528 * 0.7;
+}
+
 /** Generate proportional column X positions from ratio array */
 export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
   if (!ratios || ratios.length === 0) return [getLeftX()];
@@ -214,16 +343,6 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
     x += (r / totalRatio) * availW;
   }
   return positions;
-}
-
-/** Get the line height for a given font size */
-export function getLineHeight(fontSize: number): number {
-  return fontSize * 0.3528 * 1.3;
-}
-
-/** Get the cap height for a given font size */
-export function getCapHeight(fontSize: number): number {
-  return fontSize * 0.3528 * 0.7;
 }
 
 // ── NIBRS Grid Layout Helpers ─────────────────────────────────

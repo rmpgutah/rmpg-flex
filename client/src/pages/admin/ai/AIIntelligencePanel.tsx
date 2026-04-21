@@ -82,11 +82,11 @@ export default function AIIntelligencePanel({ setError }: Props) {
           </button>
         </h3>
 
-        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4">
+        <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4">
           {healthReport ? (
             <div className="space-y-4">
               {healthReport.aiSummary && (
-                <div className="px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded text-xs text-rmpg-300 leading-relaxed">
+                <div className="px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded text-xs text-rmpg-300 leading-relaxed">
                   {healthReport.aiSummary}
                 </div>
               )}
@@ -142,7 +142,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
                   <div className="text-[10px] text-rmpg-500 uppercase font-medium">Record Counts</div>
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                     {Object.entries(healthReport.database.record_counts).map(([table, count]) => (
-                      <div key={table} className="text-center px-2 py-1.5 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                      <div key={table} className="text-center px-2 py-1.5 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
                         <div className="text-xs font-mono text-white">{String(count)}</div>
                         <div className="text-[9px] text-rmpg-600 mt-0.5 truncate">{table.replace(/_/g, ' ')}</div>
                       </div>
@@ -174,7 +174,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
           </button>
         </h3>
 
-        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4">
+        <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4">
           {cleanupReport ? (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
@@ -185,7 +185,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
               </div>
 
               {cleanupReport.aiSummary && (
-                <div className="px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded text-xs text-rmpg-300 leading-relaxed">
+                <div className="px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded text-xs text-rmpg-300 leading-relaxed">
                   {cleanupReport.aiSummary}
                 </div>
               )}
@@ -198,7 +198,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
                 empty={!cleanupReport.staleCalls?.count}
               >
                 {cleanupReport.staleCalls?.items?.map((item: any) => (
-                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-white font-mono">{item.call_number}</div>
                       <div className="text-[10px] text-rmpg-500">
@@ -235,7 +235,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
                 empty={!cleanupReport.orphanedUnits?.count}
               >
                 {cleanupReport.orphanedUnits?.items?.map((item: any) => (
-                  <div key={item.unit_id} className="flex items-center gap-3 px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                  <div key={item.unit_id} className="flex items-center gap-3 px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-white font-mono">{item.call_sign}</div>
                       <div className="text-[10px] text-rmpg-500">Shows "{item.status}" with no active call</div>
@@ -259,7 +259,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
                 empty={!cleanupReport.incompleteRecords?.count}
               >
                 {cleanupReport.incompleteRecords?.items?.map((item: any) => (
-                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded">
+                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-white font-mono">{item.call_number}</div>
                       <div className="text-[10px] text-rmpg-500">Missing: {item.missing_fields?.join(', ')}</div>

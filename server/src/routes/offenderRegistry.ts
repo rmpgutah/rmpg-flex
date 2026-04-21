@@ -55,9 +55,9 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { alert_type, severity, status = 'active', search, page = '1', limit = '50' } = req.query;
+    const { alert_type, severity, status = 'active', search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -103,7 +103,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/check/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.personId, 10);
+    const personId = parseInt(req.params.personId as string, 10);
     if (isNaN(personId)) { res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }); return; }
     const alerts = db.prepare(`
       SELECT * FROM offender_alerts WHERE person_id = ? AND status = 'active'
@@ -120,7 +120,7 @@ router.get('/check/:personId', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID', code: 'INVALID_ALERT_ID' }); return; }
     const row = db.prepare(`
       SELECT oa.*, p.first_name, p.last_name, p.dob, p.photo_url,
@@ -182,7 +182,7 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID', code: 'INVALID_ALERT_ID' }); return; }
     const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' }); return; }
@@ -213,7 +213,7 @@ router.put('/:id', (req: Request, res: Response) => {
 router.put('/:id/clear', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID', code: 'INVALID_ALERT_ID' }); return; }
     const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' }); return; }
@@ -258,7 +258,7 @@ router.put('/:id/proximity-alert', (req: Request, res: Response) => {
       now, req.params.id
     );
 
-    res.json({ data: { id: parseInt(req.params.id), alert_radius_ft, alert_enabled } });
+    res.json({ data: { id: parseInt(req.params.id as string), alert_radius_ft, alert_enabled } });
   } catch (error: any) {
     console.error('Set proximity alert error:', error);
     res.status(500).json({ error: 'Failed to set proximity alert', code: 'SET_PROXIMITY_ALERT_ERROR' });
@@ -282,7 +282,7 @@ router.post('/:id/schedule-check', (req: Request, res: Response) => {
 
     // Store compliance check in activity log with structured data
     const checkData = {
-      offender_alert_id: parseInt(req.params.id),
+      offender_alert_id: parseInt(req.params.id as string),
       person_id: alert.person_id,
       check_type: check_type || 'address_verification',
       scheduled_date: check_date,
@@ -339,7 +339,7 @@ router.post('/:id/contact', (req: Request, res: Response) => {
     const now = localNow();
 
     const contactData = {
-      offender_alert_id: parseInt(req.params.id),
+      offender_alert_id: parseInt(req.params.id as string),
       person_id: alert.person_id,
       contact_type: contact_type || 'field_contact',
       contact_date: contact_date || now,
@@ -539,7 +539,7 @@ router.post('/:id/schedule-verification', (req: Request, res: Response) => {
 
     const now = localNow();
     const verificationData = {
-      offender_alert_id: parseInt(req.params.id),
+      offender_alert_id: parseInt(req.params.id as string),
       person_id: alert.person_id,
       verification_type: verification_type || 'address_verification',
       scheduled_date: verification_date,
@@ -581,7 +581,7 @@ router.post('/:id/compliance-result', (req: Request, res: Response) => {
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
 
     const complianceData = {
-      offender_alert_id: parseInt(req.params.id),
+      offender_alert_id: parseInt(req.params.id as string),
       person_id: alert.person_id,
       check_type: check_type || 'address_verification',
       result,
@@ -744,7 +744,7 @@ router.get('/:id/compliance-summary', (req: Request, res: Response) => {
 
     res.json({
       data: {
-        alert_id: parseInt(req.params.id),
+        alert_id: parseInt(req.params.id as string),
         checks: parsed,
         total_checks: total,
         compliant_count: compliant,
@@ -764,7 +764,7 @@ router.get('/:id/compliance-summary', (req: Request, res: Response) => {
 router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID', code: 'INVALID_ALERT_ID' }); return; }
     const result = db.prepare('DELETE FROM offender_alerts WHERE id = ?').run(id);
     if (result.changes === 0) { res.status(404).json({ error: 'Not found', code: 'ALERT_NOT_FOUND' }); return; }

@@ -127,7 +127,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       </div>
 
       {/* Active Sessions Table */}
-      <div className="flex items-center gap-2 mb-2 border-b border-[#181818] pb-1.5">
+      <div className="flex items-center gap-2 mb-2 border-b border-[#242424] pb-1.5">
         <Shield style={{ width: 11, height: 11 }} className="text-green-400" aria-hidden="true" />
         <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Active Sessions ({activeSessions.length})</span>
         <button type="button" onClick={fetchSessions} className="ml-auto p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised/50 transition-colors" aria-label="Refresh sessions">
@@ -136,7 +136,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px] mb-6" aria-label="Active sessions">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-[#181818]" style={{ background: '#050505' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-[#242424]" style={{ background: '#050505' }}>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">User</th>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Role</th>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Device</th>
@@ -195,7 +195,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       </table>
 
       {/* Login History */}
-      <div className="flex items-center gap-2 mb-2 border-b border-[#181818] pb-1.5">
+      <div className="flex items-center gap-2 mb-2 border-b border-[#242424] pb-1.5">
         <History style={{ width: 11, height: 11 }} className="text-gray-400" aria-hidden="true" />
         <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Recent Login History</span>
       </div>

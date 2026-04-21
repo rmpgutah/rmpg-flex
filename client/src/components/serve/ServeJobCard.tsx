@@ -34,7 +34,7 @@ interface ServeJobCardProps {
 }
 
 const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
-  pending: { bg: 'bg-gray-500', glow: 'shadow-[0_0_6px_rgba(59,130,246,0.5)]' },
+  pending: { bg: 'bg-gray-500', glow: 'shadow-[0_0_6px_rgba(136, 136, 136,0.5)]' },
   in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]' },
   served: { bg: 'bg-green-500', glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]' },
   failed: { bg: 'bg-red-500', glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]' },
@@ -124,7 +124,7 @@ export default React.memo(function ServeJobCard({
       aria-label={`Serve job: ${job.recipient_name}`}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand?.(); } }}
       className={`
-        panel-beveled rounded-[2px] transition-all duration-150 hover:bg-[#1e2d3f] hover:shadow-md
+        panel-beveled rounded-[2px] transition-all duration-150 hover:bg-[#1a1a1a] hover:shadow-md
         ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
         ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
       `}
@@ -229,7 +229,7 @@ export default React.memo(function ServeJobCard({
                   <div><span className="text-rmpg-400">Requestor:</span> {linkedCall.pso_requestor_name}</div>
                 )}
                 {linkedCall.contract_id && (
-                  <div><span className="text-rmpg-400">Contract:</span> <span className="font-mono text-cyan-400">{linkedCall.contract_id}</span></div>
+                  <div><span className="text-rmpg-400">Contract:</span> <span className="font-mono text-gray-400">{linkedCall.contract_id}</span></div>
                 )}
               </div>
               {/* PSO Compliance mini-indicator */}
@@ -255,7 +255,7 @@ export default React.memo(function ServeJobCard({
               <div className="flex items-center gap-1">
                 <Briefcase className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Case:</span>
-                <span className="font-mono tabular-nums text-cyan-400">{job.case_number}</span>
+                <span className="font-mono tabular-nums text-gray-400">{job.case_number}</span>
               </div>
             )}
             {job.court_name && (
@@ -376,7 +376,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-cyan-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-gray-400 hover:bg-gray-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-gray-900/20"
           title="Skip Trace"
           aria-label={`Skip trace for ${job.recipient_name}`}
         >

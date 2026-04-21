@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { loadGoogleMaps as loadGoogleMapsShared } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 
 // ── Parsed address components returned by onSelect ───────────
 export interface ParsedAddress {
@@ -79,7 +80,7 @@ function injectAutocompleteStyles() {
   style.id = AUTOCOMPLETE_STYLE_ID;
   style.textContent = `
     .pac-container {
-      background: #0a0a0a !important;
+      background: #141414 !important;
       border: 1px solid #404040 !important;
       /* 69: Use 2px border-radius matching design system */
       border-radius: 2px !important;
@@ -89,8 +90,8 @@ function injectAutocompleteStyles() {
       margin-top: 2px !important;
     }
     .pac-item {
-      background: #0a0a0a !important;
-      border-top: 1px solid #222222 !important;
+      background: #141414 !important;
+      border-top: 1px solid #2b2b2b !important;
       color: #d1d5db !important;
       padding: 6px 10px !important;
       font-size: 11px !important;
@@ -101,7 +102,7 @@ function injectAutocompleteStyles() {
       border-top: none !important;
     }
     .pac-item:hover, .pac-item-selected {
-      background: #141414 !important;
+      background: #181818 !important;
     }
     .pac-item-query {
       color: #e5e7eb !important;
@@ -149,20 +150,25 @@ export default function AddressAutocomplete({
 
   // Load Places library on mount
   useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setLoadError(true);
-      return;
-    }
+    let cancelled = false;
+    setLoadError(false);
 
-    loadGoogleMaps(apiKey)
-      .then(() => {
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        await loadGoogleMaps(apiKey);
+        if (cancelled) return;
         setPlacesLoaded(true);
         injectAutocompleteStyles();
-      })
-      .catch(() => {
-        setLoadError(true);
-      });
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Initialize Autocomplete on the input element

@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { printWithLightMaps } from '../utils/googleMapsLoader';
+import { APP_VERSION } from '../utils/version';
 import {
   Radio,
   FileText,
@@ -87,6 +88,7 @@ import {
   Brain,
   SlidersHorizontal,
   AudioLines,
+  Network,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
 import { setVoiceChannelConfig, setVoiceChannelEnabled, isVoiceChannelEnabled, getVoiceChannelConfig } from '../utils/voiceChannel';
@@ -164,6 +166,80 @@ export default function MenuBar({
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
+
+  // ── Quick Timer state ──
+  const [timerPromptOpen, setTimerPromptOpen] = useState(false);
+  const [timerMinutesInput, setTimerMinutesInput] = useState('15');
+  const [timerEndTime, setTimerEndTime] = useState<number | null>(null);
+  const [timerRemaining, setTimerRemaining] = useState('');
+  const [timerTotalMin, setTimerTotalMin] = useState(0);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerInputRef = useRef<HTMLInputElement>(null);
+
+  // Timer tick effect
+  useEffect(() => {
+    if (!timerEndTime) return;
+    const tick = () => {
+      const ms = timerEndTime - Date.now();
+      if (ms <= 0) {
+        setTimerRemaining('00:00');
+        setTimerEndTime(null);
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+        document.title = 'TIMER DONE - RMPG Flex';
+        try {
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          for (let i = 0; i < 3; i++) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.type = 'sine'; osc.frequency.value = 800;
+            gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.3);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.3 + 0.25);
+            osc.start(ctx.currentTime + i * 0.3); osc.stop(ctx.currentTime + i * 0.3 + 0.25);
+          }
+        } catch { /* audio not available */ }
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('RMPG Flex Timer', { body: `${timerTotalMin} minute timer elapsed`, icon: '/favicon.ico' });
+        }
+        setTimeout(() => { document.title = 'RMPG Flex'; }, 5000);
+        return;
+      }
+      const totalSec = Math.ceil(ms / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      setTimerRemaining(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    };
+    tick();
+    timerIntervalRef.current = setInterval(tick, 1000);
+    return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); };
+  }, [timerEndTime, timerTotalMin]);
+
+  // Auto-focus timer input when modal opens
+  useEffect(() => {
+    if (timerPromptOpen) {
+      setTimeout(() => timerInputRef.current?.select(), 50);
+    }
+  }, [timerPromptOpen]);
+
+  const startQuickTimer = () => {
+    const minutes = parseInt(timerMinutesInput, 10);
+    if (isNaN(minutes) || minutes <= 0 || minutes > 999) return;
+    setTimerTotalMin(minutes);
+    setTimerEndTime(Date.now() + minutes * 60 * 1000);
+    setTimerPromptOpen(false);
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  };
+
+  const cancelQuickTimer = () => {
+    setTimerEndTime(null);
+    setTimerRemaining('');
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    timerIntervalRef.current = null;
+    document.title = 'RMPG Flex';
+  };
 
   // UI toggle states (persisted in localStorage)
   const [scanLinesEnabled, setScanLinesEnabled] = useState(() => {
@@ -473,7 +549,7 @@ export default function MenuBar({
         items: [
           { type: 'action', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate('/') },
           { type: 'action', label: 'Dispatch', icon: Radio, action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, action: () => navigate('/map') },
+          { type: 'action', label: 'Map', icon: Map, action: () => navigate('/map-v2') },
           { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
           { type: 'separator' },
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
@@ -501,6 +577,7 @@ export default function MenuBar({
           { type: 'action', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
           { type: 'action', label: 'Daily Activity', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
+          { type: 'action', label: 'Connections', icon: Network, action: () => navigate('/connections') },
           { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit'), adminOnly: true },
@@ -528,7 +605,7 @@ export default function MenuBar({
         items: [
           { type: 'action', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+1', action: () => navigate('/') },
           { type: 'action', label: 'Dispatch', icon: Radio, shortcut: 'Alt+2', action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, shortcut: 'Alt+3', action: () => navigate('/map') },
+          { type: 'action', label: 'Map', icon: Map, shortcut: 'Alt+3', action: () => navigate('/map-v2') },
           { type: 'action', label: 'Records', icon: Database, shortcut: 'Alt+4', action: () => navigate('/records') },
           { type: 'action', label: 'Personnel', icon: Users, shortcut: 'Alt+5', action: () => navigate('/personnel') },
           { type: 'action', label: 'Comms', icon: MessageSquare, shortcut: 'Alt+6', action: () => navigate('/communications') },
@@ -618,33 +695,8 @@ export default function MenuBar({
       { type: 'action', label: 'Global Search', icon: Search, shortcut: 'Ctrl+K', action: onSearch },
       { type: 'action', label: 'NCIC Query Terminal', icon: Terminal, action: () => navigate('/ncic') },
       { type: 'separator' },
-      { type: 'action', label: 'Quick Timer', icon: Clock, action: () => {
-        const input = prompt('Timer duration in minutes:', '15');
-        if (!input) return;
-        const minutes = parseInt(input, 10);
-        if (isNaN(minutes) || minutes <= 0 || minutes > 999) return;
-        const endTime = Date.now() + minutes * 60 * 1000;
-        const timerInterval = setInterval(() => {
-          const remaining = endTime - Date.now();
-          if (remaining <= 0) {
-            clearInterval(timerInterval);
-            document.title = 'TIMER DONE - RMPG Flex';
-            try {
-              const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-              for (let i = 0; i < 3; i++) {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.type = 'sine'; osc.frequency.value = 800;
-                gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.3);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.3 + 0.25);
-                osc.start(ctx.currentTime + i * 0.3); osc.stop(ctx.currentTime + i * 0.3 + 0.25);
-              }
-            } catch {}
-            alert(`Timer: ${minutes} minutes elapsed!`);
-            document.title = 'RMPG Flex';
-          }
-        }, 1000);
+      { type: 'action', label: timerEndTime ? `Timer: ${timerRemaining}` : 'Quick Timer', icon: Clock, action: () => {
+        if (timerEndTime) { cancelQuickTimer(); } else { setTimerPromptOpen(true); }
       }},
       { type: 'separator' },
       {
@@ -692,6 +744,7 @@ export default function MenuBar({
           { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
           { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Use of Force', icon: AlertTriangle, action: () => navigate('/use-of-force') },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'action', label: 'Serve Intake Upload', icon: Upload, action: () => navigate('/serve-intake') },
         ],
@@ -714,6 +767,7 @@ export default function MenuBar({
         icon: BarChart3,
         items: [
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
+          { type: 'action', label: 'Connections', icon: Network, action: () => navigate('/connections') },
           { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
           { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
           { type: 'action', label: 'Custom Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
@@ -734,6 +788,7 @@ export default function MenuBar({
           { type: 'action', label: 'Security Policy', icon: ShieldAlert, action: () => navigate('/admin') },
           { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin') },
           { type: 'separator' },
+          { type: 'action', label: 'Security Dashboard', icon: Shield, action: () => navigate('/security-dashboard') },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
           { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
@@ -769,6 +824,22 @@ export default function MenuBar({
           { type: 'action', label: 'Policies & Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
           { type: 'action', label: 'Training Dashboard', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Field Operations Guide', icon: Clipboard, action: () => { setShow10Codes(true); } },
+          { type: 'separator' },
+          {
+            type: 'action',
+            label: 'Dispatch Guide (PDF)',
+            icon: Download,
+            action: async () => {
+              try {
+                // Lazy-import so the jsPDF chunk only loads when a user
+                // actually downloads the guide — keeps the login bundle lean.
+                const { generateDispatchGuidePdf } = await import('../utils/dispatchGuidePdfGenerator');
+                generateDispatchGuidePdf();
+              } catch (err) {
+                console.error('[DispatchGuide] Generation failed:', err);
+              }
+            },
+          },
         ],
       },
       { type: 'separator' },
@@ -788,9 +859,9 @@ export default function MenuBar({
       },
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
-      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/') },
+      { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/help') },
       // Version string with monospace for alignment
-      { type: 'action', label: 'Version 5.3.9', icon: Shield, disabled: true, action: () => {} },
+      { type: 'action', label: `Version ${APP_VERSION}`, icon: Shield, disabled: true, action: () => {} },
     ],
   };
 
@@ -1066,6 +1137,55 @@ export default function MenuBar({
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Quick Timer Prompt Modal ── */}
+      {timerPromptOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setTimerPromptOpen(false)}>
+          <div className="panel-beveled w-[280px] animate-dropdown-appear" style={{ background: '#0a0a0a' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Clock className="w-4 h-4 text-brand-400" />Quick Timer
+              </h2>
+              <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-white text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <label className="block text-xs text-rmpg-300">Duration (minutes)</label>
+              <input
+                ref={timerInputRef}
+                type="number"
+                min="1"
+                max="999"
+                value={timerMinutesInput}
+                onChange={(e) => setTimerMinutesInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') startQuickTimer(); }}
+                className="w-full bg-surface-sunken border border-rmpg-600 text-white text-sm font-mono px-3 py-2 focus:border-brand-400 focus:outline-none"
+              />
+              <div className="flex gap-2">
+                {[5, 10, 15, 30].map((m) => (
+                  <button key={m} type="button" onClick={() => setTimerMinutesInput(String(m))}
+                    className="flex-1 text-xs py-1 border border-rmpg-600 text-rmpg-300 hover:text-white hover:border-rmpg-400 transition-colors">
+                    {m}m
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={startQuickTimer}
+                className="w-full py-2 text-xs font-bold text-white border border-brand-400 hover:bg-brand-400/10 transition-colors">
+                START TIMER
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Floating Timer Indicator ── */}
+      {timerEndTime && (
+        <div className="fixed top-[76px] right-4 z-[9990] flex items-center gap-2 px-3 py-1.5 border border-rmpg-600 animate-dropdown-appear"
+          style={{ background: '#0a0a0a', borderTop: '2px solid #d4a017' }}>
+          <Clock className="w-3.5 h-3.5 text-brand-400" />
+          <span className="font-mono text-sm text-green-400 tabular-nums">{timerRemaining}</span>
+          <button type="button" onClick={cancelQuickTimer} className="text-rmpg-400 hover:text-red-400 text-xs ml-1" title="Cancel timer">&times;</button>
         </div>
       )}
 

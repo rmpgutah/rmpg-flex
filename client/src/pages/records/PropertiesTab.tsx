@@ -15,6 +15,10 @@ import {
   RotateCcw,
   Globe,
   Users,
+  Key,
+  FileText,
+  Wrench,
+  Camera,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -46,9 +50,37 @@ export function mapDbProperty(row: Record<string, unknown>): Property {
     post_orders: row.post_orders ? String(row.post_orders) : undefined,
     hazard_notes: row.hazard_notes ? String(row.hazard_notes) : undefined,
     access_instructions: row.access_instructions ? String(row.access_instructions) : undefined,
+    notes: row.notes ? String(row.notes) : undefined,
     is_active: row.is_active !== 0 && row.is_active !== false,
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
+    // Building details
+    business_type: row.business_type ? String(row.business_type) : undefined,
+    structure_type: row.structure_type ? String(row.structure_type) : undefined,
+    occupancy_status: row.occupancy_status ? String(row.occupancy_status) : undefined,
+    year_built: row.year_built ? String(row.year_built) : undefined,
+    square_footage: row.square_footage ? String(row.square_footage) : undefined,
+    number_of_stories: row.number_of_stories ? String(row.number_of_stories) : undefined,
+    // Security
+    security_features: row.security_features ? String(row.security_features) : undefined,
+    alarm_company: row.alarm_company ? String(row.alarm_company) : undefined,
+    alarm_account: row.alarm_account ? String(row.alarm_account) : undefined,
+    camera_system: row.camera_system ? String(row.camera_system) : undefined,
+    roof_access: row.roof_access ? String(row.roof_access) : undefined,
+    // Key holder
+    key_holder_name: row.key_holder_name ? String(row.key_holder_name) : undefined,
+    key_holder_phone: row.key_holder_phone ? String(row.key_holder_phone) : undefined,
+    key_holder_relationship: row.key_holder_relationship ? String(row.key_holder_relationship) : undefined,
+    // Owner
+    owner_name: row.owner_name ? String(row.owner_name) : undefined,
+    owner_phone: row.owner_phone ? String(row.owner_phone) : undefined,
+    // Inspection
+    last_inspection_date: row.last_inspection_date ? String(row.last_inspection_date) : undefined,
+    inspection_status: row.inspection_status ? String(row.inspection_status) : undefined,
+    // Site details
+    parking_info: row.parking_info ? String(row.parking_info) : undefined,
+    utility_shutoffs: row.utility_shutoffs ? String(row.utility_shutoffs) : undefined,
+    known_hazards: row.known_hazards ? String(row.known_hazards) : undefined,
   };
 }
 
@@ -64,6 +96,11 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
       <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
+}
+
+function safeDateTimeDisplay(value?: string | null): string | null {
+  const formatted = safeDateTimeStr(value, '');
+  return formatted || null;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -408,15 +445,55 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Property Details ────────────────── */}
         <CollapsibleSection title="Property Details" icon={Building2} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Gate Code', selectedProperty.gate_code, Shield)}
-            {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
-            {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
             {renderInfoRow('Property Type', selectedProperty.property_type)}
+            {renderInfoRow('Business Type', selectedProperty.business_type)}
+            {renderInfoRow('Structure Type', selectedProperty.structure_type)}
+            {renderInfoRow('Occupancy', selectedProperty.occupancy_status)}
+            {renderInfoRow('Year Built', selectedProperty.year_built)}
+            {renderInfoRow('Sq. Footage', selectedProperty.square_footage)}
+            {renderInfoRow('Stories', selectedProperty.number_of_stories)}
             {selectedProperty.latitude != null && selectedProperty.longitude != null && (
               renderInfoRow('Coordinates', `${selectedProperty.latitude.toFixed(5)}, ${selectedProperty.longitude.toFixed(5)}`, Globe)
             )}
           </div>
         </CollapsibleSection>
+
+        {/* ── Security & Access ────────────────── */}
+        <CollapsibleSection title="Security & Access" icon={Shield} defaultOpen>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {renderInfoRow('Gate Code', selectedProperty.gate_code, Shield)}
+            {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
+            {renderInfoRow('Alarm Company', selectedProperty.alarm_company)}
+            {renderInfoRow('Alarm Account', selectedProperty.alarm_account)}
+            {renderInfoRow('Camera System', selectedProperty.camera_system, Camera)}
+            {renderInfoRow('Security Features', selectedProperty.security_features)}
+            {renderInfoRow('Roof Access', selectedProperty.roof_access)}
+            {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Key Holder & Owner (conditional) ──── */}
+        {(selectedProperty.key_holder_name || selectedProperty.owner_name) && (
+          <CollapsibleSection title="Key Holder & Owner" icon={Key}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {renderInfoRow('Key Holder', selectedProperty.key_holder_name)}
+              {renderInfoRow('KH Phone', selectedProperty.key_holder_phone, Phone)}
+              {renderInfoRow('KH Relationship', selectedProperty.key_holder_relationship)}
+              {renderInfoRow('Owner Name', selectedProperty.owner_name)}
+              {renderInfoRow('Owner Phone', selectedProperty.owner_phone, Phone)}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Inspection (conditional) ──────────── */}
+        {(selectedProperty.last_inspection_date || selectedProperty.inspection_status) && (
+          <CollapsibleSection title="Inspection" icon={Wrench}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {renderInfoRow('Last Inspection', selectedProperty.last_inspection_date, Calendar)}
+              {renderInfoRow('Status', selectedProperty.inspection_status)}
+            </div>
+          </CollapsibleSection>
+        )}
 
         {/* ── Post Orders (conditional) ────────── */}
         {selectedProperty.post_orders && (
@@ -426,9 +503,26 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         )}
 
         {/* ── Hazard Notes (conditional) ─────── */}
-        {selectedProperty.hazard_notes && (
+        {(selectedProperty.hazard_notes || selectedProperty.known_hazards) && (
           <CollapsibleSection title="Hazard Notes" icon={FileWarning}>
-            <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>
+            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>}
+            {selectedProperty.known_hazards && (
+              <div className="mt-1.5"><span className="text-[10px] text-red-400 uppercase font-semibold">Known Hazards:</span> <span className="text-xs text-red-300/80 ml-1">{selectedProperty.known_hazards}</span></div>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* ── Site Details (conditional) ─────── */}
+        {(selectedProperty.parking_info || selectedProperty.utility_shutoffs) && (
+          <CollapsibleSection title="Site Details" icon={FileText}>
+            <div className="grid grid-cols-1 gap-2">
+              {selectedProperty.parking_info && (
+                <div><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Parking:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedProperty.parking_info}</span></div>
+              )}
+              {selectedProperty.utility_shutoffs && (
+                <div><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Utility Shutoffs:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedProperty.utility_shutoffs}</span></div>
+              )}
+            </div>
           </CollapsibleSection>
         )}
 
@@ -439,11 +533,24 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           </CollapsibleSection>
         )}
 
+        {/* ── Notes (conditional) ──────────────── */}
+        {selectedProperty.notes && (
+          <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
+          </CollapsibleSection>
+        )}
+
+        {selectedProperty.notes && (
+          <CollapsibleSection title="Notes" icon={FileWarning}>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
+          </CollapsibleSection>
+        )}
+
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Created', selectedProperty.created_at ? new Date(selectedProperty.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
-            {renderInfoRow('Updated', selectedProperty.updated_at ? new Date(selectedProperty.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
+            {renderInfoRow('Created', safeDateTimeDisplay(selectedProperty.created_at), Calendar)}
+            {renderInfoRow('Updated', safeDateTimeDisplay(selectedProperty.updated_at), Calendar)}
           </div>
         </CollapsibleSection>
 
@@ -503,3 +610,4 @@ export default function PropertiesTab(props: PropertiesTabProps) {
     </>
   );
 }
+import { safeDateTimeStr } from '../../utils/dateUtils';

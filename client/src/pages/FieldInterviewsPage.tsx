@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
@@ -61,6 +62,7 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 const EMPTY_FORM = {
+  date: new Date().toISOString().slice(0, 10),
   subject_first_name: '', subject_last_name: '', subject_dob: '',
   subject_gender: '', subject_race: '', subject_height: '', subject_weight: '',
   subject_hair: '', subject_eye: '', subject_clothing: '', subject_description: '',
@@ -69,6 +71,7 @@ const EMPTY_FORM = {
   vehicle_plate: '', vehicle_description: '',
   person_id: '',
   section_id: '', zone_id: '', beat_id: '',
+  gang_affiliation: '',
 };
 
 const timeAgo = (date: string): string => {
@@ -198,6 +201,7 @@ export default function FieldInterviewsPage() {
     setEditingFi(fi);
     clearAllErrors();
     setFormData({
+      date: (fi as any).date || fi.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       subject_first_name: fi.subject_first_name || '',
       subject_last_name: fi.subject_last_name || '',
       subject_dob: fi.subject_dob || '',
@@ -220,6 +224,7 @@ export default function FieldInterviewsPage() {
       section_id: (fi as any).section_id || '',
       zone_id: (fi as any).zone_id || '',
       beat_id: (fi as any).beat_id || '',
+      gang_affiliation: (fi as any).gang_affiliation || '',
     });
     setFormOpen(true);
   };
@@ -313,7 +318,7 @@ export default function FieldInterviewsPage() {
       <PanelTitleBar icon={ClipboardList} title="FIELD INTERVIEWS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/field-interviews?per_page=9999" exportFilename="field_interviews_export.csv" />
+        <ExportButton exportUrl="/field-interviews/export/csv" exportFilename="field_interviews_export.csv" />
         <button type="button" onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New FI Card
         </button>
@@ -329,9 +334,9 @@ export default function FieldInterviewsPage() {
             style={isMobile ? { minHeight: 44 } : undefined}
           />
           {searchQuery && (
-            <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+            <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
-            </button>
+            </IconButton>
           )}
         </div>
         <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
@@ -461,9 +466,9 @@ export default function FieldInterviewsPage() {
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}
-                <button type="button" onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                <IconButton onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }} aria-label="Close details">
                   <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
-                </button>
+                </IconButton>
               </div>
             </div>
 
@@ -517,7 +522,7 @@ export default function FieldInterviewsPage() {
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-dark shadow-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
-              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {repeatWarning && (
@@ -582,7 +587,7 @@ export default function FieldInterviewsPage() {
               {/* UPGRADE 44: Gang Affiliation field */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div><label className="field-label">Gang Affiliation</label>
-                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={(formData as any).gang_affiliation || ''} onChange={e => update('gang_affiliation' as any, e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={formData.gang_affiliation} onChange={e => update('gang_affiliation', e.target.value)} /></div>
                 <div><label className="field-label">Description</label>
                   <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Physical description" value={formData.subject_description} onChange={e => update('subject_description', e.target.value)} /></div>
               </div>

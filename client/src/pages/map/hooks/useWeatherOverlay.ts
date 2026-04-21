@@ -66,7 +66,7 @@ export function useWeatherOverlay(): UseWeatherOverlayResult {
   const [data, setData] = useState<WeatherData | null>(cachedWeather);
   const [loading, setLoading] = useState(!isCacheValid());
   const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   useEffect(() => {
     let cancelled = false;

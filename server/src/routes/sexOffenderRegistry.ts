@@ -57,9 +57,9 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { search, tier, status, risk_level, page = '1', limit = '25' } = req.query;
+    const { search, tier, status, risk_level, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 25));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -247,7 +247,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 's
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'update', 'sex_offender_registry', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id, `Updated SOR record #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id as string, `Updated SOR record #${req.params.id}`);
 
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
@@ -301,7 +301,7 @@ router.put('/:id/verify', validateParamIdMiddleware, requireRole('admin', 'manag
       JSON.stringify({ status: status || 'verified', next_due: nextDueStr }), now,
     );
 
-    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id, `Verified SOR record #${req.params.id}, next due: ${nextDueStr}`);
+    auditLog(req, 'UPDATE', 'colorado_doc_offenders', req.params.id as string, `Verified SOR record #${req.params.id}, next due: ${nextDueStr}`);
 
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {

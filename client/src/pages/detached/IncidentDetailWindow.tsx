@@ -84,7 +84,7 @@ export default function IncidentDetailWindow() {
       domestic_violence: incident.domestic_violence,
       disposition: incident.disposition,
       zone_beat: incident.zone_beat,
-      section_id: incident.section_id,
+      sector_id: incident.sector_id,
       zone_id: incident.zone_id,
       beat_id: incident.beat_id,
       dispatch_code: incident.dispatch_code,
@@ -234,7 +234,7 @@ export default function IncidentDetailWindow() {
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Section / Zone / Beat</label>
-            <p className="text-rmpg-200">{[incident.section_id, incident.zone_id, incident.beat_id].filter(Boolean).join(' / ') || 'N/A'}</p>
+            <p className="text-rmpg-200">{[incident.sector_id, incident.zone_id, incident.beat_id].filter(Boolean).join(' / ') || 'N/A'}</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Disposition</label>

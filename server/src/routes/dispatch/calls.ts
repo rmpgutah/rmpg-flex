@@ -10,6 +10,7 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
+import { computeRiskScore } from '../../utils/riskScoring';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -183,7 +184,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM calls_for_service c ${whereClause}`).get(...params) as any;
@@ -243,7 +244,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       incident_type, priority, caller_name, caller_phone, caller_relationship, caller_address,
       location_address, property_id, latitude, longitude, description, notes, source,
       cross_street, location_building, location_floor, location_room, zone_beat,
-      section_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
+      sector_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
       weapons_involved, injuries_reported, num_subjects, num_victims,
       subject_description, vehicle_description, direction_of_travel,
       scene_safety, weather_conditions, lighting_conditions,
@@ -396,7 +397,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier dispatch districts ──
     let autoZoneBeat = zone_beat || null;
-    let autoSectionId = section_id || null;
+    let autoSectionId = sector_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
     let autoDispatchCode: string | null = requestDispatchCode || null;
@@ -410,44 +411,56 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         if (beat) {
           if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
 
-          // Look up 3-tier dispatch district for richer naming
-          const district = db.prepare(
-            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-          ).get(beat.city_code, beat.district_letter) as any;
+          // Look up 3-tier geography for richer naming
+          const district = db.prepare(`
+            SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                   dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+            FROM dispatch_beats db2
+            JOIN dispatch_zones dz ON dz.id = db2.zone_id
+            JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+            WHERE db2.beat_code = ? LIMIT 1
+          `).get(beat.beat_code) as any;
 
           if (district) {
-            if (!autoSectionId) autoSectionId = district.section_id;
-            if (!autoZoneId) autoZoneId = district.zone_id;
-            if (!autoBeatId) autoBeatId = district.beat_id;
-            autoDispatchCode = district.dispatch_code;
-            autoSectionName = district.section_name;
+            if (!autoSectionId) autoSectionId = district.sector_code;
+            if (!autoZoneId) autoZoneId = district.zone_code;
+            if (!autoBeatId) autoBeatId = district.beat_code;
+            autoDispatchCode = district.beat_code;
+            autoSectionName = district.sector_name;
             autoZoneName = district.zone_name;
             autoBeatName = district.beat_name;
             autoBeatDescriptor = district.beat_descriptor;
           } else {
             // Fallback to raw geofence data
-            if (!autoBeatId) autoBeatId = beat.beat_id;
-            if (!autoZoneId) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+            if (!autoBeatId) autoBeatId = beat.beat_code;
+            if (!autoZoneId) autoZoneId = beat.city_code;
             if (!autoSectionId) autoSectionId = beat.district_letter;
           }
         }
       } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
     }
 
-    // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up district table
+    // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up geography tables
     if (autoSectionId && autoZoneId && autoBeatId && !autoDispatchCode) {
-      const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
-      ).get(autoSectionId, autoZoneId, autoBeatId) as any;
-      if (districtMatch) {
-        autoDispatchCode = districtMatch.dispatch_code;
-        if (!autoSectionName) autoSectionName = districtMatch.section_name;
-        if (!autoZoneName) autoZoneName = districtMatch.zone_name;
-        if (!autoBeatName) autoBeatName = districtMatch.beat_name;
-        if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
-      } else {
-        autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
-      }
+      try {
+        const districtMatch = db.prepare(`
+          SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
+                 dz.zone_code, dz.name as zone_name, ds.sector_code, ds.name as sector_name
+          FROM dispatch_beats db2
+          JOIN dispatch_zones dz ON dz.id = db2.zone_id
+          JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+          WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
+        `).get(autoSectionId, autoZoneId, autoBeatId) as any;
+        if (districtMatch) {
+          autoDispatchCode = districtMatch.beat_code;
+          if (!autoSectionName) autoSectionName = districtMatch.sector_name;
+          if (!autoZoneName) autoZoneName = districtMatch.zone_name;
+          if (!autoBeatName) autoBeatName = districtMatch.beat_name;
+          if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
+        } else {
+          autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
+        }
+      } catch { autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`; }
     }
 
     // Auto-generate dispatch code if not provided and section/zone/beat are available
@@ -512,11 +525,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         location_floor: location_floor || null,
         location_room: location_room || null,
         zone_beat: autoZoneBeat,
-        section_id: autoSectionId,
+        sector_id: autoSectionId,
         zone_id: autoZoneId,
         beat_id: autoBeatId,
         dispatch_code: autoDispatchCode,
-        section_name: autoSectionName,
+        sector_name: autoSectionName,
         zone_name: autoZoneName,
         beat_name: autoBeatName,
         beat_descriptor: autoBeatDescriptor,
@@ -648,7 +661,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           threatContext: {
             threatLevel: ctx.threatLevel,
             briefingSummary: ctx.briefingSummary,
-            premiseHistoryCount: ctx.premiseHistory.length,
+            premiseHistoryCount: ctx.premiseHistory.totalCalls,
             activeWarrantCount: ctx.activeWarrants.length,
           },
           nearestUnits,
@@ -855,7 +868,7 @@ router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'offic
 
 // GET /api/dispatch/calls/:id - Get single call with details
 // NOTE: \\d+ constraint ensures this doesn't shadow named routes like /calls/search, /calls/active, /calls/stats/*
-router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -936,7 +949,7 @@ router.get('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -952,7 +965,7 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
       weapons_involved, injuries_reported, num_subjects,
       subject_description, vehicle_description, direction_of_travel,
       case_number, case_id,
-      source, caller_address, zone_beat, section_id, zone_id, beat_id, responding_officer, secondary_type,
+      source, caller_address, zone_beat, sector_id, zone_id, beat_id, responding_officer, secondary_type,
       contact_method, scene_safety, weather_conditions, lighting_conditions,
       num_victims, alcohol_involved, drugs_involved, domestic_violence,
       supervisor_notified, le_notified, le_agency, le_case_number,
@@ -983,7 +996,7 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
 
     // ── Auto-fill Beat / Zone / Sector when coords change + 3-Tier lookup ──
     let autoZoneBeat = zone_beat;
-    let autoSectionId = section_id;
+    let autoSectionId = sector_id;
     let autoZoneId = zone_id;
     let autoBeatId = beat_id;
     const effectiveLat = latitude !== undefined ? latitude : call.latitude;
@@ -994,37 +1007,37 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
         if (beat) {
           if (autoZoneBeat === undefined && !call.zone_beat) autoZoneBeat = beat.beat_code;
 
-          // Look up 3-tier dispatch district for richer naming
-          const district = db.prepare(
-            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-          ).get(beat.city_code, beat.district_letter) as any;
+          // Look up 3-tier geography for richer naming
+          const district = db.prepare(`
+            SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                   dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+            FROM dispatch_beats db2
+            JOIN dispatch_zones dz ON dz.id = db2.zone_id
+            JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+            WHERE db2.beat_code = ? LIMIT 1
+          `).get(beat.beat_code) as any;
 
           if (district) {
-            if (autoBeatId === undefined && !call.beat_id) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
-            if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_name;
-            if (autoSectionId === undefined && !call.section_id) autoSectionId = district.section_id;
+            if (autoBeatId === undefined && !call.beat_id) autoBeatId = district.beat_code;
+            if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_code;
+            if (autoSectionId === undefined && !call.sector_id) autoSectionId = district.sector_code;
           } else {
-            if (autoBeatId === undefined && !call.beat_id) autoBeatId = beat.beat_id;
-            if (autoZoneId === undefined && !call.zone_id) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
-            if (autoSectionId === undefined && !call.section_id) autoSectionId = beat.district_letter;
+            if (autoBeatId === undefined && !call.beat_id) autoBeatId = beat.beat_code;
+            if (autoZoneId === undefined && !call.zone_id) autoZoneId = beat.city_code;
+            if (autoSectionId === undefined && !call.sector_id) autoSectionId = beat.district_letter;
           }
 
           // If coords explicitly changed, always update beat data
           if (latitude !== undefined) {
             if (autoZoneBeat === undefined) autoZoneBeat = beat.beat_code;
-
-            const districtForce = db.prepare(
-              'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-            ).get(beat.city_code, beat.district_letter) as any;
-
-            if (districtForce) {
-              autoBeatId = autoBeatId !== undefined ? autoBeatId : `${districtForce.beat_name} — ${districtForce.beat_descriptor}`;
-              autoZoneId = autoZoneId !== undefined ? autoZoneId : districtForce.zone_name;
-              autoSectionId = autoSectionId !== undefined ? autoSectionId : districtForce.section_id;
-            } else {
-              autoBeatId = autoBeatId !== undefined ? autoBeatId : beat.beat_id;
-              autoZoneId = autoZoneId !== undefined ? autoZoneId : `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+            if (!district) {
+              autoBeatId = autoBeatId !== undefined ? autoBeatId : beat.beat_code;
+              autoZoneId = autoZoneId !== undefined ? autoZoneId : beat.city_code;
               autoSectionId = autoSectionId !== undefined ? autoSectionId : beat.district_letter;
+            } else {
+              autoBeatId = autoBeatId !== undefined ? autoBeatId : district.beat_code;
+              autoZoneId = autoZoneId !== undefined ? autoZoneId : district.zone_code;
+              autoSectionId = autoSectionId !== undefined ? autoSectionId : district.sector_code;
             }
           }
         }
@@ -1122,26 +1135,34 @@ router.put('/calls/:id(\\d+)', validateParamIdMiddleware, requireRole('admin', '
     addField('source', source);
     addField('caller_address', caller_address);
     addField('zone_beat', autoZoneBeat);
-    addField('section_id', autoSectionId);
+    addField('sector_id', autoSectionId);
     addField('zone_id', autoZoneId);
     addField('beat_id', autoBeatId);
 
     // Auto-resolve dispatch_code + district names from S/Z/B IDs
-    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.section_id;
+    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.sector_id;
     const finalZoneId = autoZoneId !== undefined ? autoZoneId : call.zone_id;
     const finalBeatId = autoBeatId !== undefined ? autoBeatId : call.beat_id;
     if (finalSectionId && finalZoneId && finalBeatId) {
-      const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
-      ).get(finalSectionId, finalZoneId, finalBeatId) as any;
-      if (districtMatch) {
-        addField('dispatch_code', districtMatch.dispatch_code);
-        addField('section_name', districtMatch.section_name);
-        addField('zone_name', districtMatch.zone_name);
-        addField('beat_name', districtMatch.beat_name);
-        addField('beat_descriptor', districtMatch.beat_descriptor);
-      } else {
-        // Build dispatch_code from IDs even without a district record
+      try {
+        const districtMatch = db.prepare(`
+          SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
+                 dz.zone_code, dz.name as zone_name, ds.sector_code, ds.name as sector_name
+          FROM dispatch_beats db2
+          JOIN dispatch_zones dz ON dz.id = db2.zone_id
+          JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+          WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
+        `).get(finalSectionId, finalZoneId, finalBeatId) as any;
+        if (districtMatch) {
+          addField('dispatch_code', districtMatch.beat_code);
+          addField('sector_name', districtMatch.sector_name);
+          addField('zone_name', districtMatch.zone_name);
+          addField('beat_name', districtMatch.beat_name);
+          addField('beat_descriptor', districtMatch.beat_descriptor);
+        } else {
+          addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
+        }
+      } catch {
         addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
       }
     } else if ((finalSectionId || finalZoneId) && !call.dispatch_code) {
@@ -1442,7 +1463,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
         pso_service_type, pso_billing_code, pso_authorization,
         pso_service_windows,
         process_service_type, process_served_to, process_served_address,
-        dispatch_code, section_id, section_name, zone_id, zone_name,
+        dispatch_code, sector_id, sector_name, zone_id, zone_name,
         beat_id, beat_name, beat_descriptor, contract_id,
         num_subjects, num_victims, direction_of_travel,
         subject_description, vehicle_description,
@@ -1487,7 +1508,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
       parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
       parentCall.pso_service_windows,
       parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
-      parentCall.dispatch_code, parentCall.section_id, parentCall.section_name, parentCall.zone_id, parentCall.zone_name,
+      parentCall.dispatch_code, parentCall.sector_id, parentCall.sector_name, parentCall.zone_id, parentCall.zone_name,
       parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
       parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
       parentCall.subject_description, parentCall.vehicle_description,
@@ -1899,7 +1920,7 @@ router.get('/calls/search', requireRole('admin', 'manager', 'supervisor', 'offic
       return;
     }
 
-    const searchLimit = Math.min(100, Math.max(1, parseInt(limitStr as string, 10) || 25));
+    const searchLimit = Math.min(100000, Math.max(1, (parseInt(limitStr as string, 10)) || 100000));
     const term = `%${escapeLike(String(q).trim())}%`;
 
     // Upgrade 24: Search across call_number, location_address, narrative/notes, caller info, description, disposition
@@ -2206,6 +2227,23 @@ router.get('/calls/:id/notes-analysis', validateParamIdMiddleware, requireRole('
   } catch (error: any) {
     console.error('Notes analysis error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to analyze notes', code: 'NOTES_ANALYSIS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/risk-score - Recalculate risk score for a call
+router.get('/calls/:id/risk-score', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const riskScore = computeRiskScore(call.id);
+    db.prepare('UPDATE calls_for_service SET risk_score = ? WHERE id = ?').run(riskScore, call.id);
+
+    res.json({ call_id: call.id, risk_score: riskScore });
+  } catch (error: any) {
+    console.error('[Calls] Risk score error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to compute risk score', code: 'RISK_SCORE_ERROR' });
   }
 });
 

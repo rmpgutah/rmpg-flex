@@ -19,14 +19,14 @@ import {
   Archive,
   RotateCcw,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
+import ConnectionsGraphPanel from '../../components/ConnectionsGraphPanel';
 import CriminalHistorySection from '../../components/CriminalHistorySection';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
 import PersonHistoryPanel from '../../components/PersonHistoryPanel';
@@ -50,6 +50,14 @@ function parseFlags(raw: unknown): string[] {
     }
   }
   return [];
+}
+
+/** Safely format a date string as MM/DD/YYYY, returning '—' for empty/invalid */
+function safeDateDisplay(d?: string | null): string {
+  if (!d) return '—';
+  const parsed = new Date(d.includes('T') ? d : d + 'T00:00:00');
+  if (isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: '2-digit', day: '2-digit', year: 'numeric' });
 }
 
 function mapDbPerson(row: Record<string, unknown>): Person {
@@ -95,7 +103,7 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     occupation: row.occupation ? String(row.occupation) : undefined,
     emergency_contact_name: row.emergency_contact_name ? String(row.emergency_contact_name) : undefined,
     emergency_contact_phone: row.emergency_contact_phone ? String(row.emergency_contact_phone) : undefined,
-    gang_affiliation: row.gang_affiliation ? String(row.gang_affiliation) : undefined,
+    gang_affiliation: row.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(String(row.gang_affiliation).toLowerCase().trim()) ? String(row.gang_affiliation) : undefined,
     is_sex_offender: row.is_sex_offender === 1 || row.is_sex_offender === true,
     is_veteran: row.is_veteran === 1 || row.is_veteran === true,
     language: row.language ? String(row.language) : undefined,
@@ -201,10 +209,6 @@ export interface PersonsTabState {
   closeModal: () => void;
   // Alerts
   personAlerts: RecordAlert[];
-  // Warrant count
-  warrantCount: number;
-  // Navigation
-  navigate: ReturnType<typeof useNavigate>;
   // SSN
   ssnRevealed: boolean;
   setSSNRevealed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -220,6 +224,10 @@ export interface PersonsTabState {
   setDeleteTarget: PersonsTabProps['setDeleteTarget'];
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
+  // Duplicate detection
+  duplicateWarning: any[] | null;
+  handleForceCreate: () => void;
+  handleCancelDuplicate: () => void;
 }
 
 // ════════════════════════════════════════════════════
@@ -247,12 +255,6 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
   // Alerts for selected person
   const [personAlerts, setPersonAlerts] = useState<RecordAlert[]>([]);
 
-  // Warrant count for selected person
-  const [warrantCount, setWarrantCount] = useState(0);
-
-  // Navigation
-  const navigate = useNavigate();
-
   // SSN reveal state
   const [ssnRevealed, setSSNRevealed] = useState(false);
 
@@ -270,11 +272,9 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     if (!id) { lastFetchedPersonId.current = null; return; }
     if (lastFetchedPersonId.current === id) return;
     lastFetchedPersonId.current = id;
-    let cancelled = false;
     apiFetch<Record<string, unknown>>(`/records/persons/${id}`)
-      .then(full => { if (!cancelled) setSelectedPerson(mapDbPerson(full as Record<string, unknown>)); })
+      .then(full => setSelectedPerson(mapDbPerson(full as Record<string, unknown>)))
       .catch(() => { /* keep list-level data as fallback */ });
-    return () => { cancelled = true; };
   }, [selectedPerson?.id]);
 
   // Clear selection if the person was removed from the list
@@ -315,15 +315,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     setPersonAlerts(alerts);
   }, [selectedPerson]);
 
-  // Fetch warrant count for selected person
-  useEffect(() => {
-    if (!selectedPerson?.id) { setWarrantCount(0); return; }
-    apiFetch<{ has_warrants: boolean; count: number }>(`/warrants/check/${selectedPerson.id}`)
-      .then(res => setWarrantCount(res?.count ?? 0))
-      .catch(() => setWarrantCount(0));
-  }, [selectedPerson?.id]);
-
   // ── Person CRUD ──────────────────────────────────
+
+  // Duplicate detection state for new person creation
+  const [duplicateWarning, setDuplicateWarning] = useState<any[] | null>(null);
+  const [pendingCreateData, setPendingCreateData] = useState<PersonFormData | null>(null);
 
   const handlePersonSubmit = async (data: PersonFormData) => {
     setPersonSubmitting(true);
@@ -331,14 +327,28 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     try {
       const savedId = editingPerson?.id;
       if (editingPerson) {
+        // Edit — no duplicate check needed
         await apiFetch(`/records/persons/${editingPerson.id}`, { method: 'PUT', body: JSON.stringify(data) });
       } else {
+        // New person — check for duplicates first
+        try {
+          const res = await apiFetch<{ matches: any[] }>('/records/persons/check-duplicates', {
+            method: 'POST',
+            body: JSON.stringify({ first_name: data.first_name, last_name: data.last_name, dob: data.dob || undefined }),
+          });
+          if (res.matches && res.matches.length > 0) {
+            // Show warning — pause creation
+            setDuplicateWarning(res.matches);
+            setPendingCreateData(data);
+            setPersonSubmitting(false);
+            return;
+          }
+        } catch { /* duplicate check failed — proceed with creation anyway */ }
         await apiFetch('/records/persons', { method: 'POST', body: JSON.stringify(data) });
       }
       setPersonModalOpen(false);
       setEditingPerson(undefined);
       await fetchPersons();
-      // Refresh the detail panel so it shows updated data after save
       if (savedId) {
         lastFetchedPersonId.current = null;
         try {
@@ -354,6 +364,31 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     } finally {
       setPersonSubmitting(false);
     }
+  };
+
+  // Force-create person after user dismissed duplicate warning
+  const handleForceCreate = async () => {
+    if (!pendingCreateData) return;
+    setPersonSubmitting(true);
+    setDuplicateWarning(null);
+    try {
+      await apiFetch('/records/persons', { method: 'POST', body: JSON.stringify(pendingCreateData) });
+      setPendingCreateData(null);
+      setPersonModalOpen(false);
+      setEditingPerson(undefined);
+      await fetchPersons();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save person';
+      setPersonSubmitError(msg);
+      setError(msg);
+    } finally {
+      setPersonSubmitting(false);
+    }
+  };
+
+  const handleCancelDuplicate = () => {
+    setDuplicateWarning(null);
+    setPendingCreateData(null);
   };
 
   const openEditPerson = async (person: Person) => {
@@ -401,10 +436,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     selectedPerson, setSelectedPerson,
     personModalOpen, editingPerson, personSubmitting, personSubmitError,
     openNewPerson, openEditPerson, handlePersonSubmit, closeModal,
-    personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
+    personAlerts, ssnRevealed, setSSNRevealed,
     filteredPersons, handleArchive, handleUnarchive,
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
+    duplicateWarning, handleForceCreate, handleCancelDuplicate,
   };
 }
 
@@ -419,6 +455,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     searchQuery, setSearchQuery, showArchived,
     openEditPerson, setDeleteTarget, handleArchive, handleUnarchive,
     personModalOpen, editingPerson, personSubmitting, personSubmitError, handlePersonSubmit, closeModal,
+    duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
 
   return (
@@ -488,9 +525,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           >
             <div className="flex items-center gap-3">
               {person.id_image_url ? (
-                <img src={(person as any).photo || person.photo_url || person.id_image_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+                <img src={authedImageUrl((person as any).photo || person.photo_url || person.id_image_url)} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
               ) : (person as any).photo || person.photo_url ? (
-                <img src={(person as any).photo || person.photo_url} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
+                <img src={authedImageUrl((person as any).photo || person.photo_url)} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
               ) : (
                 <div
                   className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white select-none"
@@ -518,7 +555,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   <WarrantBadge flags={person.flags} size="sm" />
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {person.date_of_birth && <span>DOB: {person.date_of_birth}{(() => { const b = new Date(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+                  {person.date_of_birth && <span>DOB: {safeDateDisplay(person.date_of_birth)}{(() => { const b = new Date(person.date_of_birth.includes('T') ? person.date_of_birth : person.date_of_birth + 'T00:00:00'); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
                   {person.gender && <span>{humanizeGender(person.gender)}</span>}
                   {person.race && <span>{humanizeRace(person.race)}</span>}
                   {person.phone && (
@@ -610,6 +647,42 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         editingPerson={editingPerson}
         submitError={personSubmitError}
       />
+
+      {/* Duplicate Warning Dialog */}
+      {duplicateWarning && duplicateWarning.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={handleCancelDuplicate}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)' }}>
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Possible Duplicates Found</h2>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-300">The following existing records match the person you're creating:</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {duplicateWarning.map((m: any) => (
+                  <div key={m.id} className="flex items-center gap-3 p-2 border border-rmpg-700 bg-surface-sunken text-xs">
+                    <div className="w-2 h-2 bg-amber-400" style={{ borderRadius: '1px' }} />
+                    <div className="flex-1">
+                      <div className="font-bold text-white">{m.first_name} {m.last_name}</div>
+                      <div className="text-rmpg-400">
+                        {m.dob && <span>DOB: {m.dob}</span>}
+                        {m.address && <span className="ml-2">• {m.address}</span>}
+                        {m.dl_number && <span className="ml-2">• DL: {m.dl_number}</span>}
+                      </div>
+                    </div>
+                    <span className="text-rmpg-500 text-[9px]">#{m.id}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-rmpg-700">
+                <button type="button" onClick={handleCancelDuplicate} className="toolbar-btn" style={{ padding: '4px 12px' }}>Cancel</button>
+                <button type="button" onClick={handleForceCreate} className="toolbar-btn text-amber-400 border-amber-700 hover:bg-amber-900/30" style={{ padding: '4px 12px' }}>Create Anyway</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -620,8 +693,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 
 export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
-    selectedPerson, personAlerts, warrantCount, navigate, ssnRevealed, setSSNRevealed,
+    selectedPerson, personAlerts, ssnRevealed, setSSNRevealed,
     linkRefreshKey, openLinkModal,
+    duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
 
   if (!selectedPerson) return null;
@@ -632,7 +706,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />
         {/* Special Flags */}
-        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None') || warrantCount > 0) && (
+        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
           <div className="flex flex-wrap gap-2 mt-1">
             {selectedPerson.flags.map((flag, i) => {
               const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
@@ -647,16 +721,11 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
             {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
             {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
-            {warrantCount > 0 && (
-              <button type="button" onClick={() => navigate(`/warrants?personId=${selectedPerson.id}`)} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 hover:bg-red-800/50 cursor-pointer transition-colors animate-pulse">
-                <AlertTriangle className="w-3 h-3" /> {warrantCount} ACTIVE WARRANT{warrantCount > 1 ? 'S' : ''}
-              </button>
-            )}
           </div>
         )}
         {/* Compact person ID line */}
         <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-          {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}{(() => { const b = new Date(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+          {selectedPerson.date_of_birth && <span>DOB: {safeDateDisplay(selectedPerson.date_of_birth)}{(() => { const b = new Date(selectedPerson.date_of_birth.includes('T') ? selectedPerson.date_of_birth : selectedPerson.date_of_birth + 'T00:00:00'); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
           {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
           {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
         </div>
@@ -717,10 +786,10 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               {selectedPerson.id_image_url ? (
                 <div className="flex-shrink-0">
                   <div className="w-24 h-32 border border-rmpg-500 bg-rmpg-900 overflow-hidden cursor-pointer group relative"
-                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank', 'noopener,noreferrer')}
+                    onClick={() => window.open(authedImageUrl(selectedPerson.id_image_url!), '_blank', 'noopener,noreferrer')}
                     title="Click to enlarge"
                   >
-                    <img src={selectedPerson.id_image_url} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={authedImageUrl(selectedPerson.id_image_url)} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Eye className="w-4 h-4 text-white" />
                     </div>
@@ -743,7 +812,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     <div><span className="text-rmpg-400">DL:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.dl_number}</span></div>
                     {selectedPerson.dl_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.dl_state}</span></div>}
                     {selectedPerson.dl_class && <div><span className="text-rmpg-400">Class:</span> <span className="text-rmpg-200">{selectedPerson.dl_class}</span></div>}
-                    {selectedPerson.dl_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.dl_expiry}</span></div>}
+                    {selectedPerson.dl_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{safeDateDisplay(selectedPerson.dl_expiry)}</span></div>}
                   </div>
                 )}
                 {selectedPerson.id_number && (
@@ -753,7 +822,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                       <span className="text-rmpg-200 font-mono">{selectedPerson.id_number}</span>
                     </div>
                     {selectedPerson.id_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.id_state}</span></div>}
-                    {selectedPerson.id_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.id_expiry}</span></div>}
+                    {selectedPerson.id_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{safeDateDisplay(selectedPerson.id_expiry)}</span></div>}
                   </div>
                 )}
                 {/* SSN Section */}
@@ -842,6 +911,12 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Client Links (standalone component) ──── */}
         <PersonClientLinks
+          personId={selectedPerson.id}
+          personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
+        />
+
+        {/* ── Connections Graph (visual node map) ──── */}
+        <ConnectionsGraphPanel
           personId={selectedPerson.id}
           personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
         />

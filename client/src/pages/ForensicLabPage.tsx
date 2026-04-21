@@ -15,6 +15,7 @@ import {
   Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp, X,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import FormModal from '../components/FormModal';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -48,7 +49,7 @@ const PRIORITIES = [
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
   submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-gray-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: '#a78bfa', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
-  assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-sky-900/20', nextAction: 'Examiner is preparing to begin analysis' },
+  assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-gray-900/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: '#fbbf24', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
   analysis_complete: { label: 'Analysis Complete', color: '#34d399', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: '#a3e635', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
@@ -154,12 +155,12 @@ interface ForensicCase {
   case_type: string;
   status: string;
   priority: string;
-  incident_id: number | null;
+  linked_incident_id: number | null;
   requesting_officer_id: number | null;
   requesting_officer_name: string | null;
   assigned_examiner_id: number | null;
   assigned_examiner_name: string | null;
-  synopsis: string | null;
+  description: string | null;
   findings: string | null;
   conclusion: string | null;
   methodology: string | null;
@@ -183,7 +184,7 @@ interface ForensicExhibit {
   forensic_case_id: number;
   exhibit_number: string;
   description: string;
-  item_type: string;
+  exhibit_type: string;
   condition_received: string;
   examination_requested: string;
   examination_performed: string | null;
@@ -235,7 +236,7 @@ interface WizardData {
   synopsis: string;
   incident_id: string;
   notes: string;
-  exhibits: { description: string; item_type: string; condition_received: string; examination_requested: string }[];
+  exhibits: { description: string; exhibit_type: string; condition_received: string; examination_requested: string }[];
 }
 
 const EMPTY_WIZARD: WizardData = {
@@ -284,13 +285,13 @@ export default function ForensicLabPage() {
   const [showFilters, setShowFilters] = useState(false);
   // Analysis modal
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
   // Exhibit modal
   const [showExhibitModal, setShowExhibitModal] = useState(false);
-  const [exhibitForm, setExhibitForm] = useState({ description: '', item_type: '', condition_received: '', examination_requested: '' });
+  const [exhibitForm, setExhibitForm] = useState({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
   // Edit case modal
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ synopsis: '', findings: '', conclusion: '', notes: '', due_date: '' });
+  const [editForm, setEditForm] = useState({ description: '', findings: '', conclusion: '', notes: '', due_date: '' });
   // Timeline note
   const [timelineNote, setTimelineNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
@@ -456,8 +457,8 @@ export default function ForensicLabPage() {
           title: wizardData.title,
           case_type: wizardData.case_type,
           priority: wizardData.priority,
-          synopsis: wizardData.synopsis,
-          incident_id: wizardData.incident_id ? Number(wizardData.incident_id) : null,
+          description: wizardData.synopsis,
+          linked_incident_id: wizardData.incident_id ? Number(wizardData.incident_id) : null,
           notes: wizardData.notes,
         }),
       });
@@ -497,7 +498,7 @@ export default function ForensicLabPage() {
         body: JSON.stringify(analysisForm),
       });
       setShowAnalysisModal(false);
-      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
       console.error('Add analysis error:', err);
@@ -516,7 +517,7 @@ export default function ForensicLabPage() {
         body: JSON.stringify(exhibitForm),
       });
       setShowExhibitModal(false);
-      setExhibitForm({ description: '', item_type: '', condition_received: '', examination_requested: '' });
+      setExhibitForm({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
       console.error('Add exhibit error:', err);
@@ -547,7 +548,7 @@ export default function ForensicLabPage() {
   const openEditModal = () => {
     if (!selectedCase) return;
     setEditForm({
-      synopsis: selectedCase.synopsis || '',
+      description: selectedCase.description || '',
       findings: selectedCase.findings || '',
       conclusion: selectedCase.conclusion || '',
       notes: selectedCase.notes || '',
@@ -790,9 +791,9 @@ export default function ForensicLabPage() {
       <div className="flex flex-col h-full bg-surface-base">
         {/* Detail Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
-          <button type="button" onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors">
+          <IconButton onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors" aria-label="Back to case list">
             <ChevronLeft size={16} />
-          </button>
+          </IconButton>
           <Microscope size={16} className="text-brand-400" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -898,10 +899,10 @@ export default function ForensicLabPage() {
                     <div className="flex justify-between"><span className="text-rmpg-400">Examiner</span><span className="text-rmpg-200">{selectedCase.assigned_examiner_name || 'Unassigned'}</span></div>
                     <div className="flex justify-between"><span className="text-rmpg-400">Received</span><span className="text-rmpg-200 font-mono">{formatDate(selectedCase.received_date)}</span></div>
                     <div className="flex justify-between"><span className="text-rmpg-400">Due Date</span><span className={`font-mono ${overdue ? 'text-red-400 font-bold' : 'text-rmpg-200'}`}>{formatDate(selectedCase.due_date)}</span></div>
-                    {selectedCase.incident_id && (
+                    {selectedCase.linked_incident_id && (
                       <div className="flex justify-between">
                         <span className="text-rmpg-400">Linked Incident</span>
-                        <button type="button" onClick={() => navigate(`/incidents?id=${selectedCase.incident_id}`)} className="text-brand-400 hover:underline">#{selectedCase.incident_id}</button>
+                        <button type="button" onClick={() => navigate(`/incidents?id=${selectedCase.linked_incident_id}`)} className="text-brand-400 hover:underline">#{selectedCase.linked_incident_id}</button>
                       </div>
                     )}
                   </div>
@@ -922,16 +923,16 @@ export default function ForensicLabPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase">Links</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xl font-bold font-mono text-cyan-400">{hashes.length}</div>
+                      <div className="text-xl font-bold font-mono text-gray-400">{hashes.length}</div>
                       <div className="text-[9px] text-rmpg-500 uppercase">Hashes</div>
                     </div>
                   </div>
                 </div>
               </div>
-              {selectedCase.synopsis && (
+              {selectedCase.description && (
                 <div className="panel-beveled bg-surface-sunken p-3">
                   <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Synopsis</div>
-                  <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedCase.synopsis}</p>
+                  <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedCase.description}</p>
                 </div>
               )}
               {selectedCase.findings && (
@@ -955,7 +956,7 @@ export default function ForensicLabPage() {
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
                     <div className="flex items-center gap-2">
-                      <Cpu size={14} className="text-cyan-400" />
+                      <Cpu size={14} className="text-gray-400" />
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Device Analysis</div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1213,7 +1214,7 @@ export default function ForensicLabPage() {
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-semibold text-rmpg-200">{ex.description}</div>
                             <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-                              {ex.item_type && <span>Type: {ex.item_type}</span>}
+                              {ex.exhibit_type && <span>Type: {ex.exhibit_type}</span>}
                               {ex.condition_received && <span>Condition: {ex.condition_received}</span>}
                               <span className="font-bold uppercase" style={{ color: exStatus.color }}>{(ex.status || '').replace(/_/g, ' ')}</span>
                             </div>
@@ -1591,7 +1592,7 @@ export default function ForensicLabPage() {
                   <div className="mt-2 space-y-1 max-h-[200px] overflow-y-auto">
                     {linkSearchResults.map((r: any, i: number) => (
                       <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded-sm border border-rmpg-700 hover:border-brand-500/50 transition-colors">
-                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{r.type}</span>
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{String(r.type).replace(/_/g, ' ')}</span>
                         <span className="text-xs text-rmpg-200 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
                         <button type="button" onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                           <Link2 size={10} className="inline mr-1" />Link
@@ -1616,9 +1617,9 @@ export default function ForensicLabPage() {
                       <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-purple-900/20 text-purple-400">{link.entity_type}</span>
                       <span className="text-xs text-rmpg-200 flex-1">{link.entity_label || `${link.entity_type} #${link.entity_id}`}</span>
                       <span className="text-[9px] text-rmpg-500">{link.relationship}</span>
-                      <button type="button" onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link">
+                      <IconButton onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link" aria-label="Remove link">
                         <Unlink size={12} />
-                      </button>
+                      </IconButton>
                     </div>
                   ))}
                 </div>
@@ -1659,6 +1660,16 @@ export default function ForensicLabPage() {
                   onChange={e => setAnalysisForm(f => ({ ...f, methodology: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Describe the examination method..."
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Equipment Used</label>
+                <input
+                  type="text"
+                  value={analysisForm.equipment_used}
+                  onChange={e => setAnalysisForm(f => ({ ...f, equipment_used: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="e.g. Cellebrite UFED, FTK Imager, GC-MS"
                 />
               </div>
               <div>
@@ -1706,8 +1717,8 @@ export default function ForensicLabPage() {
                   <label className="block text-[11px] text-rmpg-400 mb-1">Item Type</label>
                   <input
                     type="text"
-                    value={exhibitForm.item_type}
-                    onChange={e => setExhibitForm(f => ({ ...f, item_type: e.target.value }))}
+                    value={exhibitForm.exhibit_type}
+                    onChange={e => setExhibitForm(f => ({ ...f, exhibit_type: e.target.value }))}
                     className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
                     placeholder="e.g. Cell phone"
                   />
@@ -1756,8 +1767,8 @@ export default function ForensicLabPage() {
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
                 <textarea
-                  value={editForm.synopsis}
-                  onChange={e => setEditForm(f => ({ ...f, synopsis: e.target.value }))}
+                  value={editForm.description}
+                  onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
                   placeholder="Case synopsis..."
                 />
@@ -1881,7 +1892,7 @@ export default function ForensicLabPage() {
       {fetchError && (
         <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3" /> {fetchError}
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+          <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></IconButton>
         </div>
       )}
       {/* Header */}
@@ -2273,10 +2284,10 @@ export default function ForensicLabPage() {
                     <div className="grid grid-cols-3 gap-2">
                       <input
                         type="text"
-                        value={ex.item_type}
+                        value={ex.exhibit_type}
                         onChange={e => {
                           const exhibits = [...wizardData.exhibits];
-                          exhibits[i] = { ...exhibits[i], item_type: e.target.value };
+                          exhibits[i] = { ...exhibits[i], exhibit_type: e.target.value };
                           setWizardData(d => ({ ...d, exhibits }));
                         }}
                         className="px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
@@ -2314,7 +2325,7 @@ export default function ForensicLabPage() {
                 <button type="button"
                   onClick={() => setWizardData(d => ({
                     ...d,
-                    exhibits: [...d.exhibits, { description: '', item_type: '', condition_received: '', examination_requested: '' }],
+                    exhibits: [...d.exhibits, { description: '', exhibit_type: '', condition_received: '', examination_requested: '' }],
                   }))}
                   className="toolbar-btn text-xs w-full justify-center py-2"
                 >

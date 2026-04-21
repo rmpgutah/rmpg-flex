@@ -5,6 +5,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { encryptApiKey, decryptApiKey } from '../utils/serveManagerClient';
+import { hashApiKey } from '../utils/apiKeyHash';
 
 const router = Router();
 router.use(authenticateToken);
@@ -91,6 +92,18 @@ function getStats(db: any, queries: { [key: string]: string }): Record<string, n
   return stats;
 }
 
+function getIntegrationConfigValue(db: any, key: string): string | null {
+  const row = db.prepare(
+    "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
+  ).get(key) as { config_value?: string } | undefined;
+  if (!row?.config_value) return null;
+  try {
+    return decryptApiKey(row.config_value);
+  } catch {
+    return row.config_value;
+  }
+}
+
 function getHealth(db: any, integrationId: string, configured: boolean): {
   health: string; lastHealthCheck: string | null; lastError: string | null;
   uptimePercent: number | null; connected: boolean;
@@ -160,6 +173,35 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
   }
 });
 
+// GET /api/integrations/google-maps/client-key
+// Exposes the browser-safe Maps JS key to authenticated app users so
+// live production maps do not depend on a build-time Vite env var.
+router.get('/google-maps/client-key', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const envKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
+    const storedKey =
+      getIntegrationConfigValue(db, 'google_maps_api_key')
+      || getIntegrationConfigValue(db, 'google_maps_browser_key')
+      || null;
+
+    const apiKey = envKey || storedKey || '';
+
+    res.json({
+      configured: apiKey.length > 0,
+      apiKey: apiKey || undefined,
+      source: envKey ? 'env' : storedKey ? 'system_config' : 'missing',
+    });
+  } catch (error: any) {
+    console.error('Google Maps key fetch error:', error);
+    res.status(500).json({
+      configured: false,
+      error: 'Failed to fetch Google Maps key',
+      code: 'FAILED_TO_FETCH_GOOGLE_MAPS_KEY',
+    });
+  }
+});
+
 // GET /api/integrations/health-log/:id
 router.get('/health-log/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
@@ -219,10 +261,12 @@ router.post('/keys', requireRole('admin'), (req: Request, res: Response) => {
     const rawKey = crypto.randomBytes(32).toString('hex');
     const fullKey = `rmpg_ps_${rawKey}`;
     const keyPrefix = `rmpg_ps_${rawKey.slice(0, 8)}...`;
-    const keyHash = crypto.createHash('sha256').update(fullKey).digest('hex');
+    const keyHash = hashApiKey(fullKey);
 
     const scopeList = Array.isArray(scopes) ? JSON.stringify(scopes) : '["service_request"]';
-    const userId = (req as any).user?.id || null;
+    // Audit 2026-04-11: JWT middleware sets req.user.userId, NOT .id —
+    // every API key was being created with created_by = NULL.
+    const userId = (req as any).user?.userId || (req as any).user?.id || null;
     const now = localNow();
 
     const result = db.prepare(`

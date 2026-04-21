@@ -48,12 +48,11 @@ import {
   Mail,
   GraduationCap,
   Microscope,
-  Globe,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
-import { apiFetch, OfflineUnauthorizedError } from '../hooks/useApi';
+import { apiFetch, OfflineUnauthorizedError, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
@@ -64,6 +63,7 @@ import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
+import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import OfflineStatusBar from './OfflineStatusBar';
 import PinEntryModal from './PinEntryModal';
@@ -81,6 +81,8 @@ import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { useVoiceChannel } from '../hooks/useVoiceChannel';
 import VoiceChannelIndicator from './VoiceChannelIndicator';
+import { applyThemePreference } from '../utils/theme';
+import RadioConsole from './radio/RadioConsole';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -95,7 +97,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
-  '/national-warrants': 'National Warrant Search',
   '/citations': 'Citations',
   '/field-interviews': 'Field Interviews',
   '/trespass-orders': 'Trespass Orders',
@@ -160,7 +161,6 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
-    { path: '/national-warrants', icon: Globe, label: 'National Warrant Search' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
@@ -398,6 +398,13 @@ export default function Layout() {
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
   const [callsByPriority, setCallsByPriority] = useState<{priority: string; count: number}[]>([]);
+
+  // Phase 5: warrant scraper health — polls /api/warrants/scrapers/health every 30s.
+  // The badge is visible ONLY when any source is degraded/failed/broken — alert
+  // fatigue is real, so when everything's healthy the badge disappears entirely.
+  const [scraperHealth, setScraperHealth] = useState<{
+    healthy: number; degraded: number; failed: number; circuit_broken: number;
+  } | null>(null);
   const [activeBOLOs, setActiveBOLOs] = useState(0);
   const [emailUnreadCount, setEmailUnreadCount] = useState(0);
 
@@ -609,6 +616,11 @@ export default function Layout() {
       const email = await apiFetch<{ count: number }>('/email/unread-count');
       setEmailUnreadCount(email.count || 0);
     } catch { /* silent — email may not be configured */ }
+    try {
+      // Phase 5: cheap scraper health for the conditional header badge
+      const health = await apiFetch<{ healthy: number; degraded: number; failed: number; circuit_broken: number }>('/warrants/scrapers/health');
+      setScraperHealth(health);
+    } catch { /* silent — scraper may not be enabled */ }
   }, []);
 
   // Fetch on mount and every 30 seconds
@@ -733,7 +745,7 @@ export default function Layout() {
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
               background: '#0a0a0a',
-              border: '1px solid #222222',
+              border: '1px solid #2b2b2b',
               borderTop: '3px solid #888888',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
               WebkitAppRegion: 'no-drag',
@@ -839,14 +851,21 @@ export default function Layout() {
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
             paddingRight: '12px',
-            background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
-            borderBottom: '1px solid #222222',
+            background: 'linear-gradient(180deg, var(--desktop-shell-start) 0%, var(--desktop-shell-end) 100%)',
+            borderBottom: '1px solid var(--desktop-shell-border)',
             flexShrink: 0,
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
           {/* 1: Blue accent line with subtle glow at top of brand bar */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)', zIndex: 1, boxShadow: '0 1px 4px rgba(136,136,136,0.25)' }} />
+          <div
+            className="absolute top-0 left-0 right-0 h-[2px]"
+            style={{
+              background: 'linear-gradient(90deg, transparent, var(--desktop-shell-accent), transparent)',
+              zIndex: 1,
+              boxShadow: '0 1px 4px var(--desktop-shell-accent-shadow)',
+            }}
+          />
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -855,12 +874,12 @@ export default function Layout() {
               {/* 2: Tighter line-height on app name for compact branding */}
               <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
                 <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
-                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#aaaaaa' }}>FLEX</span>
+                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
               </div>
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#2e2e2e' }} />
+              <div className="w-px h-6" style={{ background: 'var(--desktop-shell-border)' }} />
               {/* 3: Page title with subtle letter-spacing and smoother color */}
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-300" style={{ letterSpacing: '0.08em' }}>
                 {pageTitle.toUpperCase()}
@@ -874,7 +893,7 @@ export default function Layout() {
                   aria-label="Open current page in new window"
                   style={{ padding: '2px 4px' }}
                 >
-                  <ExternalLink className="w-3 h-3" style={{ color: '#666666' }} />
+                  <ExternalLink className="w-3 h-3" style={{ color: 'var(--desktop-shell-icon)' }} />
                 </button>
               )}
             </div>
@@ -927,6 +946,29 @@ export default function Layout() {
                 <span className="text-[9px] font-mono font-bold text-rmpg-300 tabular-nums">{presence.count}</span>
               </div>
 
+              {/* 7: Warrant scraper health — invisible when all healthy (alert fatigue) */}
+              {scraperHealth && (scraperHealth.degraded + scraperHealth.failed + scraperHealth.circuit_broken) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/warrants?tab=scrapers')}
+                  className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken hover:bg-surface-raised transition-colors"
+                  title={`Warrant scrapers: ${scraperHealth.healthy} healthy, ${scraperHealth.degraded} degraded, ${scraperHealth.failed} failed, ${scraperHealth.circuit_broken} broken`}
+                >
+                  {scraperHealth.healthy > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-green-400 tabular-nums">●{scraperHealth.healthy}</span>
+                  )}
+                  {scraperHealth.degraded > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-amber-400 tabular-nums">◐{scraperHealth.degraded}</span>
+                  )}
+                  {scraperHealth.failed > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-red-400 tabular-nums">○{scraperHealth.failed}</span>
+                  )}
+                  {scraperHealth.circuit_broken > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-red-600 tabular-nums">✕{scraperHealth.circuit_broken}</span>
+                  )}
+                </button>
+              )}
+
               {/* Notifications */}
               <NotificationCenter />
 
@@ -935,8 +977,7 @@ export default function Layout() {
                 onClick={() => {
                   const html = document.documentElement;
                   const isLight = html.classList.contains('theme-light');
-                  html.classList.remove('theme-dark', 'theme-light');
-                  html.classList.add(isLight ? 'theme-dark' : 'theme-light');
+                  applyThemePreference(isLight ? 'dark' : 'light');
                   // Persist via API
                   try { apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }); } catch {}
                 }}
@@ -989,10 +1030,10 @@ export default function Layout() {
                 {/* 7: Avatar with smooth ring transition on hover */}
                 {user?.profile_image ? (
                   <img
-                    src={user.profile_image}
+                    src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #383838', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none' }}
+                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1002,7 +1043,7 @@ export default function Layout() {
                       color: '#fff',
                       border: '2px solid #aaaaaa',
                       borderRadius: '50%',
-                      boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none',
+                      boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
                     }}
                   >
                     {initials}
@@ -1088,7 +1129,7 @@ export default function Layout() {
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #0a0a0a, #1e1e1e, #0a0a0a)',
+            background: 'linear-gradient(90deg, #141414, #1e2a1e, #141414)',
             borderBottom: '1px solid #2a3a2a',
             flexShrink: 0,
           }}
@@ -1105,15 +1146,15 @@ export default function Layout() {
       {/* ============================================================ */}
       {/* TOOLBAR ROW 1 — Menu Bar (Spillman Flex style) HIDDEN ON MOBILE */}
       {/* ============================================================ */}
-      <div
-        className="hidden md:flex items-center justify-between px-2"
-        style={{
-          height: '22px',
-          background: 'linear-gradient(180deg, #222222 0%, #141414 100%)',
-          borderBottom: '1px solid #0a0a0a',
-          flexShrink: 0,
-        }}
-      >
+        <div
+          className="hidden md:flex items-center justify-between px-2"
+          style={{
+            height: '22px',
+            background: 'linear-gradient(180deg, var(--desktop-shell-raised-start) 0%, var(--desktop-shell-start) 100%)',
+            borderBottom: '1px solid var(--desktop-shell-border)',
+            flexShrink: 0,
+          }}
+        >
         {/* Menu Bar — File | View | Tools | Help */}
         <MenuBar
           isAdmin={isAdmin}
@@ -1143,8 +1184,8 @@ export default function Layout() {
         aria-label="Module navigation"
         style={{
           height: 46,
-          background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)',
-          borderBottom: '1px solid #222222',
+          background: 'linear-gradient(180deg, var(--desktop-shell-start) 0%, var(--desktop-shell-end) 100%)',
+          borderBottom: '1px solid var(--desktop-shell-border)',
           flexShrink: 0,
         }}
         data-nav-dropdown
@@ -1247,11 +1288,11 @@ export default function Layout() {
                       height: 42,
                       padding: '2px 4px',
                       background: isActive
-                        ? 'linear-gradient(180deg, rgba(136,136,136,0.45) 0%, rgba(136,136,136,0.20) 100%)'
+                        ? 'linear-gradient(180deg, rgba(42,42,42,0.75) 0%, rgba(30,30,30,0.75) 100%)'
                         : isDropdownOpen
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
-                      borderBottom: isActive ? '2px solid #5aa8e8' : '2px solid transparent',
+                      borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
                       color: isActive ? '#ffffff' : '#888888',
                       cursor: 'pointer',
                     }}
@@ -1287,7 +1328,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #0a0a0a',
+                          borderRadius: 7, border: '1px solid #141414',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
@@ -1339,7 +1380,7 @@ export default function Layout() {
                       style={{
                         minWidth: 210,
                         background: '#141414',
-                        border: '1px solid #2e2e2e',
+                        border: '1px solid #2a2a2a',
                         borderTop: '2px solid #888888',
                         boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
                       }}
@@ -1367,11 +1408,11 @@ export default function Layout() {
                             role="menuitem"
                             style={{
                               color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(136,136,136,0.15)' : 'transparent',
+                              background: childActive ? 'rgba(42,42,42,0.60)' : 'transparent',
                             }}
                             onMouseEnter={(e) => {
                               if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(136,136,136,0.2) 0%, rgba(136,136,136,0.1) 100%)';
+                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(42,42,42,0.70) 0%, rgba(30,30,30,0.55) 100%)';
                                 (e.currentTarget as HTMLElement).style.color = '#ffffff';
                               }
                             }}
@@ -1411,6 +1452,9 @@ export default function Layout() {
       {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Radio Console — Desktop sidebar (left of main content) */}
+        {!isMobile && <RadioConsole />}
+
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
@@ -1459,6 +1503,9 @@ export default function Layout() {
         />
       )}
 
+      {/* Dispatcher Transcript Drawer — toggles with 'T' key */}
+      <DispatcherTranscript />
+
       {/* Profile Modal */}
       <UserProfileModal
         isOpen={profileModalOpen}
@@ -1501,8 +1548,8 @@ export default function Layout() {
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
           {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505]">
+          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
               <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
@@ -1512,11 +1559,11 @@ export default function Layout() {
                 {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
                   <div key={item.shortcut} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{item.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#050505] border border-[#2e2e2e] text-brand-400 rounded-sm">{item.shortcut}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{item.shortcut}</kbd>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-[#222222] pt-3 space-y-1.5">
+              <div className="border-t border-[#2b2b2b] pt-3 space-y-1.5">
                 <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
                 {[
                   { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
@@ -1528,7 +1575,7 @@ export default function Layout() {
                 ].map(s => (
                   <div key={s.label} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{s.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#050505] border border-[#2e2e2e] text-brand-400 rounded-sm">{s.keys}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{s.keys}</kbd>
                   </div>
                 ))}
               </div>
@@ -1541,8 +1588,8 @@ export default function Layout() {
       {showCommandPalette && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
           {/* 15: Command palette with top accent and deeper shadow */}
-          <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#222222]">
+          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
               <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
               <input
                 ref={paletteInputRef}
@@ -1559,7 +1606,7 @@ export default function Layout() {
                 placeholder="Search pages, modules..."
                 className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
               />
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#050505] border border-[#2e2e2e] text-rmpg-500 rounded-sm">ESC</kbd>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-rmpg-500 rounded-sm">ESC</kbd>
             </div>
             <div className="max-h-80 overflow-y-auto scrollbar-dark">
               {paletteQuery.trim() === '' ? (
@@ -1573,7 +1620,7 @@ export default function Layout() {
                     <button type="button"
                       key={`${result.path}-${idx}`}
                       onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#222222]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#2b2b2b]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
                     >
                       {/* 17: Command palette results with matched text style */}
                       <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />

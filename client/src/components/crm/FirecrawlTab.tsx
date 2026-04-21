@@ -3369,7 +3369,7 @@ function PdfInspectPanel() {
       case 'date': return 'bg-amber-500/10 border-amber-500/30 text-amber-400';
       case 'amount': case 'money': return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
       case 'location': case 'address': return 'bg-purple-500/10 border-purple-500/30 text-purple-400';
-      case 'email': return 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400';
+      case 'email': return 'bg-[#1f1f1f] border-[#2e2e2e] text-gray-300';
       default: return 'bg-rmpg-700/50 border-rmpg-600 text-rmpg-300';
     }
   };
@@ -4581,7 +4581,7 @@ function GenUiPanel() {
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tailwind Classes</div>
               <div className="flex flex-wrap gap-1">
                 {safeArr(result.tailwind_classes).map((cls, i) => (
-                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-[#1f1f1f] border border-[#2e2e2e] text-gray-300">
                     {cls}
                   </span>
                 ))}
@@ -5958,12 +5958,12 @@ function ExamplesPanel() {
   };
 
   const categoryColors: Record<string, string> = {
-    scraping: 'bg-gray-500/10 border-gray-500/30 text-gray-400',
+    scraping: 'bg-[#1f1f1f] border-[#2e2e2e] text-gray-300',
     search: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
     extraction: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     monitoring: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
     enrichment: 'bg-pink-500/10 border-pink-500/30 text-pink-400',
-    research: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+    research: 'bg-[#1f1f1f] border-[#2e2e2e] text-gray-300',
   };
 
   if (loading) {
@@ -6645,7 +6645,7 @@ function NewsPanel() {
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-white flex-1">{article.title}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-gray-500/10 border border-gray-500/30 text-gray-400 shrink-0">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-[#1f1f1f] border border-[#2e2e2e] text-gray-300 shrink-0">
                   {article.source}
                 </span>
               </div>
@@ -9209,8 +9209,8 @@ function CodeAnalyzePanel() {
   const viewHistoryItem = (item: CodeAnalyzeResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   const langColors: Record<string, string> = {
-    TypeScript: 'bg-gray-400', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
-    Go: 'bg-cyan-400', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
+    TypeScript: 'bg-[#888888]', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
+    Go: 'bg-[#aaaaaa]', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
   };
 
   return (
@@ -9476,7 +9476,7 @@ function SkillGenPanel() {
 function SdksPanel() {
   const sdks = [
     { name: 'Python', pkg: 'firecrawl-py', version: '1.5.0', stars: 79, repo: 'https://github.com/mendableai/firecrawl-py', color: 'bg-green-400' },
-    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-cyan-400' },
+    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-[#aaaaaa]' },
     { name: 'Java', pkg: 'java-sdk', version: '0.9.0', stars: 16, repo: 'https://github.com/mendableai/firecrawl-java-sdk', color: 'bg-red-400' },
     { name: 'JavaScript', pkg: 'firecrawl-js', version: '1.5.0', stars: 100, repo: 'https://github.com/mendableai/firecrawl-js', color: 'bg-yellow-400' },
     { name: 'CLI', pkg: 'firecrawl-cli', version: '1.3.0', stars: 231, repo: 'https://github.com/mendableai/firecrawl-cli', color: 'bg-purple-400' },
@@ -10271,7 +10271,7 @@ function LeadGenPanel() {
       <div className="flex items-center gap-2 mb-3">
         <Users size={16} className="text-[#888888]" />
         <h3 className="text-sm font-bold text-white uppercase tracking-wider">Lead Generation</h3>
-        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#999999] font-bold uppercase">Firecrawl</span>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#a0a0a0] font-bold uppercase">Firecrawl</span>
       </div>
 
       {configured === false && (
@@ -10284,7 +10284,7 @@ function LeadGenPanel() {
         <select
           value={searchType}
           onChange={e => setSearchType(e.target.value as any)}
-          className="px-2 py-2 bg-[#050505] border border-[#1e2d40] rounded-sm text-[11px] text-white"
+          className="px-2 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white"
         >
           <option value="company">Company</option>
           <option value="person">Person</option>
@@ -10297,13 +10297,13 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-[#050505] border border-[#1e2d40] rounded-sm text-[11px] text-white placeholder-[#445566] font-mono focus:outline-none focus:border-[#888888]"
+          className="flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-white placeholder-[#525252] font-mono focus:outline-none focus:border-[#888888]"
         />
         <button
           type="button"
           onClick={handleSearch}
           disabled={loading || !query.trim()}
-          className="px-4 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
+          className="px-4 py-2 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors flex items-center gap-1.5"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
           Search
@@ -10311,14 +10311,14 @@ function LeadGenPanel() {
       </div>
 
       {results && (
-        <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
-          <div className="px-3 py-2 bg-[#141414] border-b border-[#1e2d40] flex items-center justify-between">
+        <div className="border border-[#1a1a1a] rounded-sm overflow-hidden">
+          <div className="px-3 py-2 bg-[#181818] border-b border-[#1a1a1a] flex items-center justify-between">
             <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
             <span className="text-[9px] text-[#556677] font-mono">
               {Array.isArray(results.results) ? results.results.length : (results.results && typeof results.results === 'object') ? Object.keys(results.results).length : '—'} entries
             </span>
           </div>
-          <div className="p-3 bg-[#050505] max-h-[500px] overflow-y-auto">
+          <div className="p-3 bg-[#0c0c0c] max-h-[500px] overflow-y-auto">
             <pre className="text-[10px] text-[#8899aa] font-mono whitespace-pre-wrap break-words">
               {JSON.stringify(results.results, null, 2)}
             </pre>
@@ -10529,7 +10529,7 @@ function SupportBotPanel() {
 
   return (
     <div className="space-y-3">
-      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-gray-400" />
+      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-[#888888]" />
 
       {/* Create Form */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
@@ -10553,7 +10553,7 @@ function SupportBotPanel() {
           {bots.map(bot => (
             <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
               <StatusLed status={bot.status || 'active'} />
-              <Bot className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <Bot className="w-3.5 h-3.5 text-gray-300 shrink-0" />
               <span className="text-xs font-medium text-white flex-1 truncate">{bot.name}</span>
               <span className="text-[10px] text-rmpg-500">{bot.total_conversations || 0} chats</span>
               <SmallBtn onClick={() => setActiveBotId(activeBotId === bot.id ? null : bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'}>

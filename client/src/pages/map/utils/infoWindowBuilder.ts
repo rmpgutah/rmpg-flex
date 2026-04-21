@@ -438,7 +438,7 @@ export function buildPropertyInfoWindow(
         ${sectionHeader("Today's Officers")}
         ${schedules.map(s => `
           <div style="font-size:9px;color:${C_TEXT_DIM};padding:1px 0;">
-            <span style="color:#22d3ee;">&#9679;</span> ${escapeHtml(s.officer_name || 'Unassigned')}
+            <span style="color:#a8a8a8;">&#9679;</span> ${escapeHtml(s.officer_name || 'Unassigned')}
             ${s.shift_type ? `<span style="color:${C_TEXT_MUTED};margin-left:4px;">${escapeHtml(s.shift_type)}</span>` : ''}
           </div>
         `).join('')}
@@ -456,7 +456,7 @@ export function buildPropertyInfoWindow(
         const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#cccccc' : C_BLUE;
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
           <div style="overflow:hidden;flex:1;">
-            <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
+            <span style="color:#a0a0a0;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
             <span style="color:${C_TEXT_MUTED};font-size:8px;margin-left:4px;">${escapeHtml((c.incident_type || '').replace(/_/g, ' '))}</span>
           </div>
           <div style="text-align:right;flex-shrink:0;margin-left:6px;">
@@ -478,7 +478,7 @@ export function buildPropertyInfoWindow(
     contactsTab += `
       ${sectionHeader('Client Contact', '#a78bfa')}
       ${details.client_contact ? `<div style="font-size:9px;color:${C_TEXT_DIM};">${escapeHtml(details.client_contact)}</div>` : ''}
-      ${details.client_phone ? `<div style="font-size:9px;color:#93c5fd;">${escapeHtml(details.client_phone)}</div>` : ''}
+      ${details.client_phone ? `<div style="font-size:9px;color:#a0a0a0;">${escapeHtml(details.client_phone)}</div>` : ''}
     `;
   }
 

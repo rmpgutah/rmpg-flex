@@ -31,6 +31,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
@@ -50,6 +51,7 @@ import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '.
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================
 // Types
@@ -88,6 +90,7 @@ interface Warrant {
   notes: string | null;
   archived_at: string | null;
   source?: string | null;
+  service_attempt_count: number;
   created_at: string;
   updated_at: string;
   activity?: ActivityEntry[];
@@ -329,7 +332,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'search-all' | 'watch' | 'sources';
+type TabId = 'dashboard' | 'warrants' | 'search-all' | 'watch' | 'sources' | 'scrapers';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
@@ -337,6 +340,7 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
   { id: 'search-all', label: 'SEARCH ALL', icon: Globe },
   { id: 'watch', label: 'WATCH LIST', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
+  { id: 'scrapers', label: 'SCRAPERS', icon: Zap, roleGated: true },
 ];
 
 const FEED_RANGES = ['1H', '8H', '24H', '7D'] as const;
@@ -475,6 +479,7 @@ export default function WarrantsPage() {
   const [priorityWarrants, setPriorityWarrants] = useState<PriorityWarrant[]>([]);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [dashSearch, setDashSearch] = useState('');
+  const [expiringCount, setExpiringCount] = useState<number | null>(null);
   const [summaryReportOpen, setSummaryReportOpen] = useState(false);
   const [summaryFrom, setSummaryFrom] = useState('');
   const [summaryTo, setSummaryTo] = useState('');
@@ -490,6 +495,7 @@ export default function WarrantsPage() {
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [filterSource, setFilterSource] = useState<string>('');
+  const [filterCourt, setFilterCourt] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -662,6 +668,7 @@ export default function WarrantsPage() {
     if (activeTab !== 'dashboard') return;
     fetchDashStats();
     fetchPriority();
+    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => setExpiringCount(r.count)).catch(() => {});
     const interval = setInterval(fetchDashStats, 30_000);
     return () => clearInterval(interval);
   }, [activeTab, fetchDashStats, fetchPriority]);
@@ -683,6 +690,7 @@ export default function WarrantsPage() {
       if (filterStatus) params.set('status', filterStatus);
       if (filterType) params.set('type', filterType);
       if (filterSource) params.set('source', filterSource);
+      if (filterCourt) params.set('court', filterCourt);
       if (filterSeverity) params.set('severity', filterSeverity);
       if (filterPersonId) params.set('person_id', filterPersonId);
       if (searchQuery) params.set('subject_name', searchQuery);
@@ -701,7 +709,7 @@ export default function WarrantsPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
@@ -808,6 +816,7 @@ export default function WarrantsPage() {
       uniSearchCharge, uniSearchDateFrom, uniSearchDateTo]);
 
   // ── Typeahead for unified search name fields ──
+  const [nameFieldFocused, setNameFieldFocused] = useState(false);
   useEffect(() => {
     if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
     const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
@@ -815,8 +824,8 @@ export default function WarrantsPage() {
     typeaheadTimer.current = setTimeout(async () => {
       setNameTypeaheadLoading(true);
       try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(query)}&limit=8`);
-        setNameTypeahead(res.data || []);
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
+        setNameTypeahead(Array.isArray(res) ? res.slice(0, 8) : []);
       } finally { setNameTypeaheadLoading(false); }
     }, 300);
     return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
@@ -1303,9 +1312,9 @@ export default function WarrantsPage() {
                 }}
               />
               {dashSearch && (
-                <button type="button" onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                <IconButton onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear dash search">
                   <X className="w-3.5 h-3.5" />
-                </button>
+                </IconButton>
               )}
             </div>
 
@@ -1400,6 +1409,13 @@ export default function WarrantsPage() {
                   {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
+              </div>
+              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors" onClick={() => { setActiveTab('warrants'); }}>
+                <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
+                  {expiringCount ?? '\u2014'}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Expiring Soon</div>
+                <div className="text-[9px] text-rmpg-500 mt-0.5">within 30 days</div>
               </div>
             </div>
 
@@ -1562,9 +1578,9 @@ export default function WarrantsPage() {
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
                 {searchQuery && (
-                  <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+                  <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
                     <X className="w-3.5 h-3.5" />
-                  </button>
+                  </IconButton>
                 )}
               </div>
               <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
@@ -1601,6 +1617,27 @@ export default function WarrantsPage() {
                     <option key={l.value} value={l.value}>{l.label}</option>
                   ))}
                 </select>
+                {/* Court filter */}
+                <input
+                  type="text"
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                  placeholder="Court..."
+                  value={filterCourt}
+                  onChange={(e) => { setFilterCourt(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                />
+                {/* Source filter */}
+                <select
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                  value={filterSource}
+                  onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                >
+                  <option value="">All Sources</option>
+                  <option value="manual">Local</option>
+                  <option value="utah_api">Utah API</option>
+                  <option value="scraper">Scraped</option>
+                </select>
               </div>
             </div>
 
@@ -1617,7 +1654,7 @@ export default function WarrantsPage() {
             {error && (
               <div className="px-3 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-3 h-3" /> {error}
-                <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                <IconButton onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></IconButton>
               </div>
             )}
 
@@ -1705,6 +1742,7 @@ export default function WarrantsPage() {
                       <th style={{ width: 80 }}>Severity</th>
                       <th style={{ width: 90 }}>Court</th>
                       <th style={{ width: 80 }}>Bail</th>
+                      <th style={{ width: 60 }}>Attempts</th>
                       <th style={{ width: 95 }}>Date</th>
                     </tr>
                   </thead>
@@ -1724,6 +1762,12 @@ export default function WarrantsPage() {
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
                           </span>
+                          {w.expires_at && w.status === 'active' && (() => {
+                            const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            if (daysLeft < 0) return <span className="ml-1 text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1 py-0.5 rounded-sm font-bold">EXPIRED</span>;
+                            if (daysLeft <= 7) return <span className="ml-1 text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1 py-0.5 rounded-sm font-bold">{daysLeft}d</span>;
+                            return null;
+                          })()}
                         </td>
                         <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
                         <td className="text-xs">
@@ -1758,6 +1802,13 @@ export default function WarrantsPage() {
                         </td>
                         <td className="text-[10px] text-rmpg-400 truncate">{w.issuing_court || '-'}</td>
                         <td className="text-xs text-rmpg-400 font-mono">{w.bail_amount ? formatCurrency(w.bail_amount) : '-'}</td>
+                        <td className="text-center">
+                          {w.service_attempt_count > 0 ? (
+                            <span className="text-amber-400 font-mono">{w.service_attempt_count}</span>
+                          ) : (
+                            <span className="text-rmpg-500">&mdash;</span>
+                          )}
+                        </td>
                         <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
                       </tr>
                     ))}
@@ -2063,6 +2114,9 @@ export default function WarrantsPage() {
                       placeholder="First name..."
                       value={uniSearchFirst}
                       onChange={(e) => setUniSearchFirst(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
+                      autoComplete="off"
                       autoFocus
                     />
                   </div>
@@ -2074,6 +2128,9 @@ export default function WarrantsPage() {
                       placeholder="Last name..."
                       value={uniSearchLast}
                       onChange={(e) => setUniSearchLast(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
+                      autoComplete="off"
                     />
                   </div>
                   <div className="w-[140px]">
@@ -2085,9 +2142,9 @@ export default function WarrantsPage() {
                       onChange={(e) => setUniSearchDob(e.target.value)}
                     />
                   </div>
-                  {/* Typeahead dropdown */}
-                  {nameTypeahead.length > 0 && (
-                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-surface-border shadow-lg max-h-48 overflow-auto">
+                  {/* Typeahead dropdown — only visible when name fields are focused */}
+                  {nameTypeahead.length > 0 && nameFieldFocused && (
+                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-[var(--border-strong)] shadow-lg max-h-48 overflow-auto">
                       {nameTypeaheadLoading && (
                         <div className="p-2 text-[10px] text-rmpg-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
                       )}
@@ -3077,6 +3134,13 @@ export default function WarrantsPage() {
       )}
 
       {/* ================================================================
+          TAB 4: SCRAPERS — admin/manager only, phase 5 dashboard
+         ================================================================ */}
+      {activeTab === 'scrapers' && (isGodMode || isAdminOrManager) && (
+        <ScrapersTab />
+      )}
+
+      {/* ================================================================
           PERSON PROFILE SLIDE-OUT
          ================================================================ */}
       {personProfileOpen && (
@@ -3090,9 +3154,9 @@ export default function WarrantsPage() {
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <User className="w-4 h-4 text-brand-400" /> Person Warrant Profile
               </h2>
-              <button type="button" onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
+              <IconButton onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close person profile">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
 
             {personProfileLoading ? (
@@ -3241,7 +3305,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X className="w-4 h-4" /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Type + Offense Level */}
@@ -3402,7 +3466,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
-              <button type="button" onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close serve modal"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-4">
               <p className="text-xs text-rmpg-300">
@@ -3432,9 +3496,9 @@ export default function WarrantsPage() {
 
       {/* MOBILE FAB */}
       {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && (
-        <button type="button" onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
+        <IconButton onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
-        </button>
+        </IconButton>
       )}
 
       {/* DELETE CONFIRM */}
@@ -3472,9 +3536,9 @@ export default function WarrantsPage() {
                   {utahDetailWarrant._source === 'utah' ? 'UTAH STATE' : utahDetailWarrant._source === 'local' ? 'LOCAL' : 'SCRAPED'}
                 </span>
               </div>
-              <button type="button" onClick={() => setUtahDetailWarrant(null)} className="text-rmpg-400 hover:text-white p-1">
+              <IconButton onClick={() => setUtahDetailWarrant(null)} className="text-rmpg-400 hover:text-white p-1" aria-label="Close warrant detail">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
 
             <div className="p-4 space-y-4">

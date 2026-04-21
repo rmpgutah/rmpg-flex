@@ -240,26 +240,6 @@ export default function PersonnelPage() {
         .catch(() => addToast('Failed to load equipment data', 'error'))
         .finally(() => setEquipmentLoading(false));
     }
-    if (activeTab === 'dash_cameras' && dashcamEvents.length === 0 && !dashcamLoading) {
-      setDashcamLoading(true);
-      Promise.all([
-        apiFetch<any[]>('/clearpathgps/dashcam-events'),
-        apiFetch<any[]>('/clearpathgps/mappings'),
-      ])
-        .then(([events, mappings]) => {
-          setDashcamEvents(Array.isArray(events) ? events : []);
-          setDeviceMappings(Array.isArray(mappings) ? mappings : []);
-        })
-        .catch(() => addToast('Failed to load dash camera data', 'error'))
-        .finally(() => setDashcamLoading(false));
-    }
-    if (activeTab === 'analytics' && !analytics && !analyticsLoading) {
-      setAnalyticsLoading(true);
-      apiFetch<PersonnelAnalytics>('/personnel/analytics')
-        .then(setAnalytics)
-        .catch(() => addToast('Failed to load analytics', 'error'))
-        .finally(() => setAnalyticsLoading(false));
-    }
   }, [activeTab]);
 
   // Lazy-load detail tab data
@@ -921,15 +901,21 @@ export default function PersonnelPage() {
           const officerCreds = credentials.filter(c => c.officer_id === officer.id);
           const hasExpired = officerCreds.some(c => c.status === 'expired');
           const hasExpiring = officerCreds.some(c => c.status === 'expiring_soon');
+          const validCreds = officerCreds.filter(c => c.status === 'valid').length;
+          const compliancePct = officerCreds.length > 0 ? Math.round((validCreds / officerCreds.length) * 100) : 100;
           const isSelected = selectedOfficer?.id === officer.id;
+          const yrsOfService = officer.hire_date
+            ? Math.max(0, Math.floor((Date.now() - new Date(officer.hire_date).getTime()) / (365.25 * 86400000)))
+            : null;
+
           return (
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
-              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-200 border-l-2 focus-visible:ring-1 focus-visible:ring-brand-500/50 focus-visible:outline-none ${
+              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-200 border-l-3 focus-visible:ring-1 focus-visible:ring-brand-500/50 focus-visible:outline-none ${
                 isSelected
-                  ? 'bg-brand-900/15 border-l-brand-500 shadow-sm'
-                  : 'bg-surface-base hover:brightness-110 hover:shadow-sm hover:border-rmpg-500 border-l-transparent'
+                  ? 'bg-brand-900/20 border-l-brand-500 shadow-md shadow-brand-900/20'
+                  : 'bg-surface-base hover:bg-surface-raised hover:shadow-sm border-l-transparent'
               }`}
               role="option"
               tabIndex={0}
@@ -937,52 +923,58 @@ export default function PersonnelPage() {
               aria-label={`${officer.first_name} ${officer.last_name}, ${officer.role}, ${officer.status === 'on_duty' ? 'on duty' : 'off duty'}`}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedOfficer(officer); setDetailTab('profile'); } }}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 <OfficerAvatar officer={officer} size="md" />
                 <div className="flex-1 min-w-0">
+                  {/* Line 1: Name + role badge */}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-rmpg-100 truncate">
+                    <span className="text-[13px] font-bold text-white truncate">
                       {officer.last_name}, {officer.first_name}
+                      {officer.middle_name ? ` ${officer.middle_name[0]}.` : ''}
                     </span>
-                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[8px] font-bold uppercase flex-shrink-0 ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
                       {toDisplayLabel(officer.role)}
                     </span>
-                    {hasExpired && <span className="led-dot led-red" />}
-                    {!hasExpired && hasExpiring && <span className="led-dot led-amber" />}
                   </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
+                  {/* Line 2: Rank + Badge */}
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-rmpg-300">
                     {officer.rank && <span>{officer.rank}</span>}
-                    {officer.department && <span>{officer.department}</span>}
-                    {officer.badge_number && <span className="font-mono text-[10px]">#{officer.badge_number}</span>}
-                    {officer.hire_date && (() => {
-                      const yrs = Math.floor((Date.now() - new Date(officer.hire_date).getTime()) / (365.25 * 86400000));
-                      return yrs >= 0 ? <span className="text-[9px] text-cyan-400 font-mono">{yrs}yr</span> : null;
-                    })()}
-                    {officerCreds.length > 0 && (
-                      <span className="text-[9px] text-green-400 font-mono">{officerCreds.length} cert{officerCreds.length !== 1 ? 's' : ''}</span>
-                    )}
-                    {officer.date_of_birth && (() => {
-                      const today = new Date();
-                      const bday = new Date(officer.date_of_birth + 'T00:00:00');
-                      bday.setFullYear(today.getFullYear());
-                      const diff = Math.floor((bday.getTime() - today.getTime()) / 86400000);
-                      return (diff >= 0 && diff <= 7) ? <span title="Birthday soon!" className="text-[10px]">&#127874;</span> : null;
-                    })()}
+                    {officer.rank && officer.badge_number && <span className="text-rmpg-600">&middot;</span>}
+                    {officer.badge_number && <span className="font-mono">Badge #{officer.badge_number}</span>}
                   </div>
+                  {/* Line 3: Division */}
+                  {officer.department && (
+                    <div className="text-[10px] text-rmpg-400 mt-0.5 truncate">{officer.department}</div>
+                  )}
+                  {/* Line 4: Compliance row */}
+                  <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
+                    {yrsOfService !== null && <span className="font-mono text-gray-400">{yrsOfService} yr{yrsOfService !== 1 ? 's' : ''}</span>}
+                    {officerCreds.length > 0 && (
+                      <>
+                        <span className="text-rmpg-600">&middot;</span>
+                        <span className={`font-mono ${hasExpired ? 'text-red-400' : hasExpiring ? 'text-amber-400' : 'text-green-400'}`}>
+                          {validCreds}/{officerCreds.length} creds
+                        </span>
+                        {hasExpired && <span className="led-dot led-red" />}
+                        {!hasExpired && hasExpiring && <span className="led-dot led-amber" />}
+                      </>
+                    )}
+                  </div>
+                  {/* Credential compliance bar */}
                   <CredentialProgressBar credentials={officerCreds} />
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="flex items-center gap-1.5 justify-end">
-                    <span className={officer.status === 'on_duty' ? 'led-dot led-green' : officer.status === 'on_leave' ? 'led-dot led-amber' : 'led-dot led-off'} />
-                    <span className={`text-[10px] font-bold uppercase ${
-                      officer.status === 'on_duty' ? 'text-green-400' : officer.status === 'on_leave' ? 'text-amber-400' : 'text-rmpg-500'
-                    }`}>
-                      {officer.status === 'on_duty' ? 'ON DUTY' : officer.status === 'on_leave' ? 'ON LEAVE' : 'OFF DUTY'}
-                    </span>
-                  </div>
-                  {officer.shift_preference && (
-                    <div className="text-[9px] text-rmpg-500 mt-0.5">{officer.shift_preference}</div>
-                  )}
+                {/* Status indicator — right side */}
+                <div className="flex-shrink-0 flex flex-col items-end gap-0.5 pt-0.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${
+                    officer.status === 'on_duty' ? 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]'
+                    : officer.status === 'on_leave' ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.4)]'
+                    : 'bg-rmpg-600'
+                  }`} />
+                  <span className={`text-[9px] font-bold uppercase ${
+                    officer.status === 'on_duty' ? 'text-green-400' : officer.status === 'on_leave' ? 'text-amber-400' : 'text-rmpg-500'
+                  }`}>
+                    {officer.status === 'on_duty' ? 'ON' : officer.status === 'on_leave' ? 'LEAVE' : 'OFF'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1090,37 +1082,39 @@ export default function PersonnelPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* Stats Bar — compact stat cards */}
-      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`} role="group" aria-label="Personnel statistics">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-green-700/40">
-          <span className="led-dot led-green" aria-hidden="true" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Active</span>
-          <span className="text-green-400 font-bold text-base ml-0.5">{onDutyCount}</span>
+      {/* Command Status Strip — two-row layout */}
+      <div className="border-b border-rmpg-700" role="group" aria-label="Personnel statistics">
+        {/* Row 1: Operational stats */}
+        <div className={`panel-inset ${isMobile ? 'grid grid-cols-2 gap-px' : 'flex items-stretch'}`}>
+          <div className="flex items-center gap-2 px-4 py-1.5 border-r border-rmpg-700">
+            <span className="led-dot led-green" aria-hidden="true" />
+            <span className="text-green-400 font-bold text-base font-mono">{onDutyCount}</span>
+            <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Active</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-1.5 border-r border-rmpg-700">
+            <span className="led-dot led-off" aria-hidden="true" />
+            <span className="text-rmpg-200 font-bold text-base font-mono">{offDutyCount}</span>
+            <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Off Duty</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-1.5 border-r border-rmpg-700">
+            <Clock className="w-3 h-3 text-brand-400" aria-hidden="true" />
+            <span className="text-brand-400 font-bold text-base font-mono">{clockedInCount}</span>
+            <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Clocked In</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-1.5 border-r border-rmpg-700">
+            <span className="text-white font-bold text-base font-mono">{totalHoursThisPeriod.toFixed(1)}</span>
+            <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Period Hours</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-1.5">
+            <span className="text-white font-bold text-base font-mono">{officers.length}</span>
+            <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Total Staff</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
-          <span className="led-dot led-off" aria-hidden="true" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Off Duty</span>
-          <span className="text-rmpg-200 font-bold text-base ml-0.5">{offDutyCount}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-brand-600/40">
-          <Clock className="w-3 h-3 text-brand-400" aria-hidden="true" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Clocked In</span>
-          <span className="text-brand-400 font-bold text-base ml-0.5">{clockedInCount}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
-          <BarChart3 className="w-3 h-3 text-rmpg-300" aria-hidden="true" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Hours</span>
-          <span className="text-white font-bold text-base ml-0.5">{totalHoursThisPeriod.toFixed(1)}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
-          <Users className="w-3 h-3 text-rmpg-300" aria-hidden="true" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Total</span>
-          <span className="text-white font-bold text-base ml-0.5">{officers.length}</span>
-        </div>
+        {/* Row 2: Alert bar (conditional) */}
         {expiringCreds > 0 && (
-          <div className="flex items-center gap-1.5 ml-auto px-2.5 py-1 panel-beveled border-l-2 border-l-amber-500 text-[10px]" role="alert">
-            <span className="led-dot led-amber" aria-hidden="true" />
-            <span className="text-amber-400 font-bold font-mono">{expiringCreds} credential alert{expiringCreds !== 1 ? 's' : ''}</span>
+          <div className="flex items-center gap-2 px-4 py-1 border-t border-rmpg-700 border-l-2 border-l-amber-500 bg-amber-900/10" role="alert">
+            <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
+            <span className="text-[10px] text-amber-400 font-bold font-mono">{expiringCreds} CREDENTIAL ALERT{expiringCreds !== 1 ? 'S' : ''}</span>
           </div>
         )}
       </div>
@@ -1160,7 +1154,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark flex">
+      <div className="flex-1 min-h-0 overflow-hidden flex">
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center flex-1">
@@ -1212,10 +1206,6 @@ export default function PersonnelPage() {
           />
         )}
 
-        {!loading && !error && activeTab === 'calendar' && (
-          <CalendarTab />
-        )}
-
         {!loading && !error && activeTab === 'time' && (
           <TimeAttendanceTab timeEntries={timeEntries} officers={officers} onEditTimeEntry={openEditTimeEntry} onDeleteTimeEntry={handleDeleteTimeEntry} />
         )}
@@ -1248,19 +1238,6 @@ export default function PersonnelPage() {
           />
         )}
 
-        {!loading && !error && activeTab === 'dash_cameras' && (
-          <DashCameraTab
-            dashcamEvents={dashcamEvents}
-            deviceMappings={deviceMappings}
-            loading={dashcamLoading}
-            onSelectOfficer={officerId => {
-              const officer = officers.find(o => o.id === officerId);
-              if (officer) { setActiveTab('roster'); setSelectedOfficer(officer); setDetailTab('dash_cameras'); }
-            }}
-            onRefresh={refreshDashcamData}
-          />
-        )}
-
         {!loading && !error && activeTab === 'deployment' && (
           <DeploymentTab
             deployments={deployments}
@@ -1271,9 +1248,7 @@ export default function PersonnelPage() {
           />
         )}
 
-        {!loading && !error && activeTab === 'analytics' && (
-          <AnalyticsTab analytics={analytics} loading={analyticsLoading} />
-        )}
+        {/* Analytics removed as standalone tab — shows in roster right panel when no officer selected */}
       </div>
 
       {/* Modals */}

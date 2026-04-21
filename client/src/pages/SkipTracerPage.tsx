@@ -413,7 +413,7 @@ export default function SkipTracerPage() {
                     onClick={() => setSelected(person)}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
-                        ? 'bg-gray-900/20 border-l-2 border-l-blue-500'
+                        ? 'bg-gray-900/20 border-l-2 border-l-gray-500'
                         : 'hover:bg-surface-base border-l-2 border-l-transparent'
                     }`}
                   >
@@ -457,7 +457,7 @@ export default function SkipTracerPage() {
               {/* Person Header */}
               <div className="panel-beveled bg-surface-base p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
+                  <div className="p-2.5 rounded-sm" style={{ background: 'rgba(136, 136, 136, 0.15)' }}>
                     <User className="w-5 h-5 text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0">

@@ -103,11 +103,11 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
 
       {/* Panel */}
       <div
-        className="absolute bottom-full mb-1 z-[9999] bg-[#0a0a0a] border border-[#222222] rounded-sm shadow-lg"
+        className="absolute bottom-full mb-1 z-[9999] bg-[#141414] border border-[#2b2b2b] rounded-sm shadow-lg"
         style={{ width: 340, maxHeight: 300, left: 0 }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[#222222]">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
           <span className="text-[11px] font-semibold tracking-wider text-[#8ba2b8] uppercase">
             Sync Queue
           </span>
@@ -123,7 +123,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
             <button type="button"
               onClick={handleSyncNow}
               disabled={syncing || items.length === 0}
-              className="px-2 py-0.5 text-[10px] font-medium bg-[#0d2847] text-[#4a9eed] border border-[#888888] rounded-sm hover:bg-[#133660] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-2 py-0.5 text-[10px] font-medium bg-[#232323] text-[#4a9eed] border border-[#888888] rounded-sm hover:bg-[#303030] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {syncing ? 'SYNCING...' : 'SYNC NOW'}
             </button>
@@ -137,7 +137,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
               No pending sync items
             </div>
           ) : (
-            <div className="divide-y divide-[#222222]">
+            <div className="divide-y divide-[#2b2b2b]">
               {[...pendingItems, ...failedItems].map((item) => {
                 const typeInfo = TYPE_LABELS[item.type] || { label: (item.type || 'unknown').toUpperCase(), color: '#999999' };
                 const isFailed = item.status === 'failed';

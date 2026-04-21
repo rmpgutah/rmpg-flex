@@ -15,6 +15,7 @@ import {
   Warehouse,
   DollarSign,
   X,
+  Users,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -28,6 +29,7 @@ import PrintButton from '../components/PrintButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ExportButton from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
+import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
 import { useToast } from '../components/ToastProvider';
 
@@ -68,6 +70,7 @@ export default function RecordsPage() {
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
 
   // Handle cross-module navigation params (?tab=persons&personId=X)
   useEffect(() => {
@@ -119,7 +122,7 @@ export default function RecordsPage() {
   const fetchPersons = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingPersons(true); setError(null); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100&archived=${showArchived}`);
+      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100000&archived=${showArchived}`);
       setPersons((Array.isArray(res?.data) ? res.data : []).map(mapDbPerson));
     } catch (err) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load persons');
@@ -131,7 +134,7 @@ export default function RecordsPage() {
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingVehicles(true); setError(null); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100&archived=${showArchived}`);
+      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100000&archived=${showArchived}`);
       setVehicles((Array.isArray(res?.data) ? res.data : []).map(mapDbVehicle));
     } catch (err) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load vehicles');
@@ -155,7 +158,7 @@ export default function RecordsPage() {
   const fetchEvidence = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoadingEvidence(true);
     try {
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=200&archived=${showArchived}`);
+      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=100000&archived=${showArchived}`);
       setEvidence(res?.data || []);
     } catch {
       setEvidence([]);
@@ -378,6 +381,10 @@ export default function RecordsPage() {
         {activeTab === 'persons' && (
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
+            <button type="button" className="toolbar-btn print:hidden text-amber-400" onClick={() => setShowDuplicatesModal(true)}>
+              <Users className="w-3.5 h-3.5" />
+              Duplicates
+            </button>
             {!showArchived && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
@@ -490,8 +497,8 @@ export default function RecordsPage() {
           <>
             <div className="w-px h-2.5 bg-rmpg-600" />
             <div className="flex items-center gap-1">
-              <Warehouse className="w-2.5 h-2.5 text-cyan-400" />
-              <span className="text-cyan-400 font-bold">{evidenceInStorage}</span>
+              <Warehouse className="w-2.5 h-2.5 text-gray-400" />
+              <span className="text-gray-400 font-bold">{evidenceInStorage}</span>
             </div>
             <div className="flex items-center gap-1">
               <FlaskConical className="w-2.5 h-2.5 text-purple-400" />
@@ -640,6 +647,12 @@ export default function RecordsPage() {
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      <PersonDuplicatesModal
+        isOpen={showDuplicatesModal}
+        onClose={() => setShowDuplicatesModal(false)}
+        onMergeComplete={() => fetchPersons({ silent: true })}
       />
     </div>
   );

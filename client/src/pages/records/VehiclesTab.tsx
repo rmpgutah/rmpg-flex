@@ -20,6 +20,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
+import { safeDateStr } from '../../utils/dateUtils';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import StatusBadge from '../../components/StatusBadge';
@@ -118,6 +119,11 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
       <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
+}
+
+function safeVehicleDate(value?: string | null): string | null {
+  const formatted = safeDateStr(value, '');
+  return formatted || null;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -409,7 +415,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[8px] px-1 py-0.5 bg-[#141414] text-rmpg-400 rounded-sm">{v.source}</span>
+                      <span className="text-[8px] px-1 py-0.5 bg-[#181818] text-rmpg-400 rounded-sm">{v.source}</span>
                       {onAutoFill && (
                         <button
                           type="button"
@@ -744,7 +750,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Registration & Insurance ────────── */}
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Reg. Expiry', selectedVehicle.registration_expiry, Calendar)}
+            {renderInfoRow('Reg. Expiry', safeVehicleDate(selectedVehicle.registration_expiry), Calendar)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
@@ -758,11 +764,11 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle}>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {renderInfoRow('Stolen Status', selectedVehicle.stolen_status)}
-              {renderInfoRow('Stolen Date', selectedVehicle.stolen_date, Calendar)}
-              {renderInfoRow('Recovery Date', selectedVehicle.recovery_date, Calendar)}
+              {renderInfoRow('Stolen Date', safeVehicleDate(selectedVehicle.stolen_date), Calendar)}
+              {renderInfoRow('Recovery Date', safeVehicleDate(selectedVehicle.recovery_date), Calendar)}
               {renderInfoRow('Tow Status', selectedVehicle.tow_status)}
               {renderInfoRow('Tow Company', selectedVehicle.tow_company)}
-              {renderInfoRow('Tow Date', selectedVehicle.tow_date, Calendar)}
+              {renderInfoRow('Tow Date', safeVehicleDate(selectedVehicle.tow_date), Calendar)}
             </div>
           </CollapsibleSection>
         )}
@@ -806,7 +812,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
                   </span>
                   <span className="text-rmpg-300">{humanizeType(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
-                  <span className="text-rmpg-400 ml-auto">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</span>
+                  <span className="text-rmpg-400 ml-auto">{safeDateStr(inc.created_at, '')}</span>
                 </div>
               ))}
             </div>

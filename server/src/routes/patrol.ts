@@ -36,7 +36,7 @@ router.get('/checkpoints', (req: Request, res: Response) => {
 router.get('/checkpoints/property/:propertyId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const propertyId = parseInt(req.params.propertyId, 10);
+    const propertyId = parseInt(req.params.propertyId as string, 10);
     if (isNaN(propertyId)) {
       res.status(400).json({ error: 'Invalid property ID', code: 'INVALID_PROPERTY_ID' });
       return;
@@ -165,7 +165,7 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
       WHERE pc.id = ?
     `).get(id);
 
-    broadcastPatrolUpdate({ type: 'checkpoint_updated', id: parseInt(id) });
+    broadcastPatrolUpdate({ type: 'checkpoint_updated', id: parseInt(id as string) });
     res.json({ data: updated });
   } catch (error) {
     console.error('Error updating checkpoint:', error);
@@ -381,7 +381,7 @@ router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req:
 // GET /api/patrol/scans - List recent scans
 router.get('/scans', (req: Request, res: Response) => {
   try {
-    const { checkpointId, officerId, startDate, endDate, limit = '100' } = req.query;
+    const { checkpointId, officerId, startDate, endDate, limit = '100000' } = req.query;
 
     const db = getDb();
     const conditions: string[] = [];

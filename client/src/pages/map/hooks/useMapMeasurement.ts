@@ -60,16 +60,8 @@ function computeSphericalArea(path: google.maps.LatLngLiteral[]): number {
   // Filter out non-finite coordinates
   const validPath = path.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   if (validPath.length < 3) return 0;
-  // Try the Google geometry library first
-  if (
-    typeof google !== 'undefined' &&
-    google.maps?.geometry?.spherical?.computeArea
-  ) {
-    const latLngs = validPath.map((p) => new google.maps.LatLng(p.lat, p.lng));
-    return google.maps.geometry.spherical.computeArea(latLngs);
-  }
 
-  // Fallback: spherical excess formula
+  // Spherical excess formula
   const R = 6371000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -97,8 +89,8 @@ function formatDistance(meters: number): { value: number; unit: string; display:
 }
 
 function formatDistanceMetric(meters: number): string {
-  if (meters < 1609) return `${Math.round(meters)} m`;
-  return `${(meters / 1609.34).toFixed(2)} mi`;
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(2)} km`;
 }
 
 function formatAreaMetric(sqMeters: number): string {
@@ -187,7 +179,7 @@ export function useMapMeasurement(): MeasurementState {
       const midLng = (p1.lng + p2.lng) / 2;
 
       const iw = new google.maps.InfoWindow({
-        content: `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#d4a017;background:#050505;padding:2px 6px;border:1px solid #d4a01740;border-radius:2px;white-space:nowrap;">${seg.displayFt} / ${seg.displayM}</div>`,
+        content: `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#d4a017;background:#0c0c0c;padding:2px 6px;border:1px solid #d4a01740;border-radius:2px;white-space:nowrap;">${seg.displayFt} / ${seg.displayM}</div>`,
         position: { lat: midLat, lng: midLng },
         disableAutoPan: true,
       });

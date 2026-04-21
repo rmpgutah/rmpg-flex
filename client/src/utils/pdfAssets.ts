@@ -139,20 +139,31 @@ export const FORM_NUMBERS: Record<string, string> = {
   use_of_force: 'FORM PS-105',
   daily_activity: 'FORM PS-106',
   arrest: 'FORM PS-107',
+  process_service: 'FORM PS-108',
   // Record reports (PS-2xx)
   call: 'FORM PS-201',
   person: 'FORM PS-202',
   vehicle: 'FORM PS-203',
   warrant: 'FORM PS-204',
+  warrant_summary: 'FORM PS-204S',
   evidence: 'FORM PS-205',
   fleet: 'FORM PS-206',
   personnel: 'FORM PS-207',
   property: 'FORM PS-208',
   citation: 'FORM PS-209',
+  // Fleet operational forms (PS-206-*)
+  'FORM PS-206-PTI': 'FORM PS-206-PTI',  // Pre-Trip Inspection
+  'FORM PS-206-CKO': 'FORM PS-206-CKO',  // Vehicle Check-Out
+  'FORM PS-206-DMG': 'FORM PS-206-DMG',  // Damage Report
   // Tracking & Analytics (PS-2xx cont.)
   patrol_tracking: 'FORM PS-210',
-  // Financial (PS-3xx)
+  // Serve / Process Service (PS-3xx)
+  serve_affidavit:   'FORM PS-311',
+  serve_non_service: 'FORM PS-312',
+  service_log:       'FORM PS-313',
+  // Financial (PS-3xx cont.)
   invoice: 'FORM PS-301',
+  proposal: 'FORM PS-302',
 };
 
 export const FORM_REVISION = 'Rev. 2026-03';

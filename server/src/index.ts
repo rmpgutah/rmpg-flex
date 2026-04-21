@@ -22,7 +22,10 @@ import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
+import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
+import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
+import { logger, httpLogger } from './utils/logger';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,6 +83,7 @@ import clearpathgpsRoutes from './routes/clearpathgps';
 import integrationsRoutes from './routes/integrations';
 import intakeRoutes from './routes/intake';
 import emailRoutes from './routes/email';
+import emailRulesRoutes from './routes/emailRules';
 import skiptracerRoutes from './routes/skiptracer';
 import arrestRoutes from './routes/arrests';
 import connectionsRoutes from './routes/connections';
@@ -102,9 +106,11 @@ import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
 import voiceRoutes from './routes/voice';
+import voicePersonaRoutes from './routes/voicePersona';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
+import geocodeRoutes from './routes/geocode';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
@@ -135,13 +141,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
-// Fix 73: Add request ID for tracing
-app.use((_req, _res, next) => {
-  const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  _req.headers['x-request-id'] = _req.headers['x-request-id'] || requestId;
-  _res.setHeader('X-Request-ID', _req.headers['x-request-id'] as string);
-  next();
-});
+// Structured logging + per-request X-Request-Id tracing via pino-http.
+// Replaces the prior timestamp+random-suffix scheme with crypto.randomUUID().
+// Attaches req.log (child logger carrying request ID) for downstream handlers.
+app.use(httpLogger);
 
 // Fix 72: Add response compression for large GeoJSON payloads
 // Using built-in compression by setting headers — actual compression handled by reverse proxy in production
@@ -325,6 +328,16 @@ app.get('/api/system-status', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
+// ─── OwnTracks/Traccar GPS webhook — own auth (shared secret), no JWT ───
+// NOTE: Do NOT mount this router at '/api/dispatch/gps' — that prefix shadows
+// the authenticated GPS endpoint in dispatchRoutes (POST /api/dispatch/gps),
+// causing Express to match the webhook's '/' handler first and reject every
+// JWT-authenticated request with 403 "Invalid webhook token".
+// The '/owntracks' mount below is the supported path for the OwnTracks app;
+// internal subpaths like '/owntracks/:user/:device' remain available there.
+import { owntracksWebhookRouter } from './routes/dispatch/gps';
+app.use('/owntracks', owntracksWebhookRouter);
+
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
@@ -366,6 +379,7 @@ app.use('/api/forensics', forensicsRoutes);
 app.use('/api/iped', ipedRoutes);
 app.use('/api/clearpathgps', clearpathgpsRoutes);
 app.use('/api/integrations', integrationsRoutes);
+app.use('/api/email/rules', emailRulesRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/skiptracer', skiptracerRoutes);
 app.use('/api/arrests', arrestRoutes);
@@ -389,9 +403,11 @@ app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/voice-persona', voicePersonaRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
+app.use('/api/geocode', geocodeRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
@@ -432,8 +448,29 @@ app.use(express.static(clientDistPath, {
   maxAge: '5m',
 }));
 
-// SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('*', (req, res) => {
+// Force-refresh page — clears SW cache and reloads the app
+app.get('/force-refresh', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.send(`<!DOCTYPE html><html><head><title>RMPG Flex — Refreshing...</title>
+<style>body{background:#0a0a0a;color:#d4a017;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column}
+h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head><body>
+<h1>Clearing cache...</h1><p>Please wait — the app will reload automatically.</p>
+<script>
+(async()=>{
+  if('serviceWorker' in navigator){
+    const regs=await navigator.serviceWorker.getRegistrations();
+    for(const r of regs) await r.unregister();
+  }
+  const keys=await caches.keys();
+  for(const k of keys) await caches.delete(k);
+  setTimeout(()=>{ window.location.href='/'; },1500);
+})();
+</script></body></html>`);
+});
+
+// SPA fallback: serve index.html for non-API, non-download routes (always fresh).
+// Express 5 + path-to-regexp v8 require named wildcards — bare '*' throws at boot.
+app.get('/*splat', apiRateLimit, (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {
@@ -454,9 +491,9 @@ app.get('*', (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  // Log with request context for debugging
-  const requestId = req.headers['x-request-id'] || 'unknown';
-  console.error(`Unhandled Express error [${requestId}] ${req.method} ${req.path}:`, err?.message || err, err?.stack || '');
+  // req.log is the pino child logger attached by httpLogger; it already
+  // carries the request ID, method, and url, so just pass the error.
+  (req as any).log?.error({ err }, 'unhandled express error') ?? logger.error({ err, method: req.method, path: req.path }, 'unhandled express error');
   if (!res.headersSent) {
     const status = err?.status || err?.statusCode || 500;
     res.status(status).json({ error: err?.message || 'Internal server error' });
@@ -467,18 +504,18 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
 try {
   // Initialize database
   initDatabase();
-  console.log('Database initialized');
+  logger.info('database initialized');
 
-  // Fix 78: Set SQLite query timeout for long-running queries (30 seconds)
+  // Set SQLite query timeout for long-running queries (30 seconds)
   try {
     const db = getDb();
     db.pragma('busy_timeout = 30000');
-    console.log('SQLite busy_timeout set to 30000ms');
+    logger.info('SQLite busy_timeout set to 30000ms');
   } catch (e: any) {
-    console.warn('Could not set SQLite busy_timeout:', e?.message);
+    logger.warn({ err: e }, 'could not set SQLite busy_timeout');
   }
 
-  // Fix 80: Database migration versioning check on startup
+  // Database migration versioning check on startup
   try {
     const db = getDb();
     // Ensure migration_version table exists
@@ -490,12 +527,12 @@ try {
     const versionRow = db.prepare('SELECT version FROM migration_version WHERE id = 1').get() as any;
     if (!versionRow) {
       db.prepare("INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime('now','localtime'))").run();
-      console.log('Database migration version initialized: v1');
+      logger.info('database migration version initialized: v1');
     } else {
-      console.log(`Database migration version: v${versionRow.version}`);
+      logger.info({ version: versionRow.version }, 'database migration version loaded');
     }
   } catch (e: any) {
-    console.warn('Migration version check skipped:', e?.message);
+    logger.warn({ err: e }, 'migration version check skipped');
   }
 
   // Determine server type based on SSL availability
@@ -526,7 +563,7 @@ try {
       });
       const redirectServer = http.createServer(redirectApp);
       redirectServer.listen(config.ssl.httpRedirectPort, () => {
-        console.log(`HTTP→HTTPS redirect active on port ${config.ssl.httpRedirectPort}`);
+        logger.info({ port: config.ssl.httpRedirectPort }, 'HTTP→HTTPS redirect active');
       });
     }
   } else {
@@ -536,7 +573,7 @@ try {
 
   // Initialize WebSocket on the primary server
   initWebSocket(primaryServer);
-  console.log('WebSocket server initialized');
+  logger.info('WebSocket server initialized');
 
   // Start listening
   const listenPort = config.ssl.enabled ? config.httpsPort : config.port;
@@ -552,6 +589,19 @@ try {
   primaryServer.keepAliveTimeout = 120000; // 2 min keepalive
 
   primaryServer.listen(listenPort, listenHost, () => {
+    // Structured one-liner for log aggregation (prod journalctl / search tools).
+    logger.info(
+      {
+        version: SERVER_VERSION,
+        env: config.nodeEnv,
+        domain: config.primaryDomain,
+        protocol,
+        port: listenPort,
+        ssl: config.ssl.enabled,
+      },
+      'server listening'
+    );
+    // Decorative ASCII banner stays on console (human-read, one-shot at boot).
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
     console.log(`║         RMPG Flex CAD/RMS Server v${SERVER_VERSION.padEnd(14)}║`);
@@ -586,42 +636,78 @@ try {
     console.log('');
 
     // Start patrol monitor for missed scan alerts
-    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    try {
+      startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'patrol-monitor' }, 'failed to start scheduler');
+    }
 
     // Start midnight daily patrol report scheduler
-    startDailyReportScheduler();
+    try {
+      startDailyReportScheduler();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'daily-report' }, 'failed to start scheduler');
+    }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
-    scheduleOfacSync();
+    try {
+      scheduleOfacSync();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'ofac-sync' }, 'failed to start scheduler');
+    }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
-    startHealthChecker();
+    try {
+      startHealthChecker();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'health-checker' }, 'failed to start scheduler');
+    }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {
       scheduleUtahWarrantSync();
     } catch (err: any) {
-      console.warn('[Utah Warrants] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'utah-warrants' }, 'failed to start scheduler');
     }
 
     // Start arrest records auto-sync (JailBase API, hourly with exponential backoff)
     try {
       scheduleArrestSync();
-      console.log('[Arrests] Auto-sync scheduler started');
+      logger.info({ scheduler: 'arrests' }, 'auto-sync scheduler started');
     } catch (err: any) {
-      console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'arrests' }, 'failed to start sync scheduler');
+    }
+
+    // Start multi-state warrant scraper (polls configured sources on schedule)
+    try {
+      scheduleWarrantScraper();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'warrant-scraper' }, 'failed to start scheduler');
+    }
+
+    // Nightly warrant scraper maintenance
+    try {
+      // First run 6h after boot (lets scheduler settle)
+      const nightlyInitial = setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+      if (nightlyInitial.unref) nightlyInitial.unref();
+
+      // Then every 24h
+      const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
+      if (nightlyInterval.unref) nightlyInterval.unref();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'scraper-nightly' }, 'failed to schedule');
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
     setInterval(() => {
       try { checkWelfareWatches(); } catch (err: any) {
-        console.error('[WELFARE] Timer error:', err?.message);
+        logger.error({ err, source: 'welfare-timer' }, 'timer error');
       }
     }, 30_000);
 
     setInterval(() => {
       try { generatePursuitUpdates(); } catch (err: any) {
-        console.error('[PURSUIT] Timer error:', err?.message);
+        logger.error({ err, source: 'pursuit-timer' }, 'timer error');
       }
     }, 30_000);
 
@@ -635,7 +721,7 @@ try {
         ).all() as { id: number; first_name: string; last_name: string }[];
 
         if (unchecked.length > 0) {
-          console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
+          logger.info({ source: 'ofac-backfill', count: unchecked.length }, 'screening unchecked person records');
           let matches = 0;
           const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
           for (const p of unchecked) {
@@ -655,40 +741,36 @@ try {
               }
             } catch { /* skip individual failures */ }
           }
-          console.log(`[OFAC Backfill] Complete — ${unchecked.length} screened, ${matches} match(es) found`);
+          logger.info({ source: 'ofac-backfill', screened: unchecked.length, matches }, 'backfill complete');
         } else {
-          console.log('[OFAC Backfill] All person records already screened');
+          logger.info({ source: 'ofac-backfill' }, 'all person records already screened');
         }
       } catch (err) {
-        console.warn('[OFAC Backfill] Failed:', (err as Error).message);
+        logger.warn({ err, source: 'ofac-backfill' }, 'backfill failed');
       }
     }, 60_000); // 60s delay — after OFAC sync (15s) has time to complete
   });
 } catch (error) {
-  console.error('Failed to start server:', error);
+  logger.fatal({ err: error }, 'failed to start server');
   process.exit(1);
 }
 
 // ─── Process-level crash protection ──────────────────────────
 // Log unhandled errors instead of dying silently.
 process.on('uncaughtException', (err) => {
-  console.error('═══ UNCAUGHT EXCEPTION ═══');
-  console.error(err);
-  console.error('Server will continue running. Please investigate the above error.');
+  logger.fatal({ err }, 'uncaught exception — server continuing, investigate immediately');
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('═══ UNHANDLED PROMISE REJECTION ═══');
-  console.error('Reason:', reason);
-  console.error('Server will continue running. Please investigate the above error.');
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ err: reason }, 'unhandled promise rejection — server continuing, investigate immediately');
 });
 
 // ─── Graceful Shutdown ────────────────────────────────
 // Close server and database connections cleanly on SIGTERM/SIGINT
 function gracefulShutdown(signal: string) {
-  console.log(`\n[${signal}] Graceful shutdown initiated...`);
+  logger.info({ signal }, 'graceful shutdown initiated');
   const shutdownTimeout = setTimeout(() => {
-    console.error('Shutdown timed out after 15s — forcing exit');
+    logger.error('shutdown timed out after 15s — forcing exit');
     process.exit(1);
   }, 15000);
 
@@ -698,14 +780,14 @@ function gracefulShutdown(signal: string) {
     const db = getDb();
     if (db) {
       db.close();
-      console.log('Database connection closed');
+      logger.info('database connection closed');
     }
   } catch (e: any) {
-    console.warn('Shutdown cleanup error:', e?.message);
+    logger.warn({ err: e }, 'shutdown cleanup error');
   }
 
   clearTimeout(shutdownTimeout);
-  console.log('Shutdown complete');
+  logger.info('shutdown complete');
   process.exit(0);
 }
 

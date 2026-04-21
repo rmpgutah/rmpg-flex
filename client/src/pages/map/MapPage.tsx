@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage } from '../../utils/googleMapsLoader';
+import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../../utils/googleMapsApiKey';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -70,6 +71,7 @@ import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
+import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
@@ -127,6 +129,9 @@ import AdvancedHeatmapPanel from './components/AdvancedHeatmapPanel';
 import WeatherPanel from './components/WeatherPanel';
 import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
 import { useAnalysisSummary } from './hooks/useAnalysisSummary';
+import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
+import SpeedGraphOverlay from './components/SpeedGraphOverlay';
+import CoverageTimeline from './components/CoverageTimeline';
 
 // ============================================================
 // Constants
@@ -147,7 +152,7 @@ const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
   red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
   amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
   blue: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
-  gray: { active: 'bg-[#050505]/40 text-gray-400 border border-gray-700/40' },
+  gray: { active: 'bg-[#0c0c0c]/40 text-gray-400 border border-gray-700/40' },
 };
 
 // Default map center (Salt Lake City)
@@ -181,6 +186,18 @@ const speedToColor = (mps: number | null): string => {
   if (mph < 35) return '#eab308';   // City — yellow
   if (mph < 55) return '#f97316';   // Arterial — orange
   return '#ef4444';                 // Highway/pursuit — red
+};
+
+// Acceleration-to-color mapping for breadcrumb accel mode (m/s² → hex)
+const accelToColor = (accelMps2: number | null): string => {
+  if (accelMps2 == null) return '#666666';
+  if (accelMps2 < -4) return '#dc2626';   // hard brake
+  if (accelMps2 < -2) return '#f97316';   // decel
+  if (accelMps2 < -0.5) return '#eab308'; // mild decel
+  if (accelMps2 < 0.5) return '#22c55e';  // steady
+  if (accelMps2 < 2) return '#84cc16';    // mild accel
+  if (accelMps2 < 3) return '#f97316';    // accel
+  return '#fbbf24';                         // rapid accel
 };
 
 // Unit status to color for breadcrumb status mode
@@ -220,10 +237,13 @@ export default function MapPage() {
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  // Determine if the error is an API key/auth issue vs a connectivity issue.
-  // Auth errors → show config dialog.  Connectivity errors → show Leaflet fallback.
-  const isAuthError = mapError != null && (mapError.includes('API key') || mapError.includes('authentication') || mapError.includes('not configured'));
-  const showOfflineFallback = mapError != null && !isAuthError;
+  // All map errors route to the Leaflet fallback — no blocking config dialog.
+  // "No API key configured" is a normal operating mode for deployments without
+  // Google Maps billing enabled. gm_authFailure and network errors likewise
+  // degrade gracefully to Leaflet + CartoDB tiles. The config dialog was a
+  // holdover from an earlier era when Google Maps was mandatory.
+  const isAuthError = false;
+  const showOfflineFallback = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
@@ -311,8 +331,12 @@ export default function MapPage() {
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status'>('unit');
+  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
+  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
+
+  // Speed analytics integration
+  const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
   const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
@@ -322,6 +346,7 @@ export default function MapPage() {
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
   const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
+  const playbackSpeedLabelRef = useRef<google.maps.InfoWindow | null>(null);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -389,22 +414,23 @@ export default function MapPage() {
   useEffect(() => {
     let cancelled = false;
     apiFetch<any[]>('/dispatch/districts').then((districts) => {
-      if (cancelled || !districts) return;
+      if (cancelled || !Array.isArray(districts) || districts.length === 0) return;
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
       for (const d of districts) {
+        if (!d.zone_id || !d.beat_id) continue;
         if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
         map.get(d.zone_id)!.set(d.beat_id, {
-          sectionId: d.section_id,
-          sectionName: d.section_name,
+          sectionId: d.sector_id || '',
+          sectionName: d.sector_name || '',
           zoneId: d.zone_id,
-          zoneName: d.zone_name,
+          zoneName: d.zone_name || '',
           beatId: d.beat_id,
-          beatName: d.beat_name,
+          beatName: d.beat_name || '',
           beatDescriptor: d.beat_descriptor || '',
-          dispatchCode: d.dispatch_code,
+          dispatchCode: d.dispatch_code || '',
         });
-        sectionSet.set(d.section_id, d.section_name);
+        if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');
       }
       setBeatDistrictMap(map);
       setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
@@ -750,17 +776,13 @@ export default function MapPage() {
     // Clear any previous error when retrying
     setMapError(null);
 
+    let cancelled = false;
+    let unsubOnline = () => {};
+
     // If a map instance already exists (e.g. from a previous successful init
     // before React StrictMode's second mount), just flag it loaded and bail.
     if (mapInstanceRef.current) {
       setMapLoaded(true);
-      return;
-    }
-
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
-      setMapLoaded(false);
       return;
     }
 
@@ -791,13 +813,12 @@ export default function MapPage() {
     // Load Google Maps via direct script tag (more reliable than js-api-loader).
     // Auto-retry with exponential backoff if the script fails to load
     // (e.g. server restart, brief network blip, slow vehicle WiFi).
-    let cancelled = false;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
     let dismissObserver: MutationObserver | null = null;
     let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function initMap() {
+    function initMap(apiKey: string) {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
@@ -875,12 +896,28 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
+      // ── CartoDB dark_matter tile overlay ──────────────────────
+      // Overlays free CartoDB tiles on top of Google's base map.
+      // Covers the "For development purposes only" watermark when
+      // Google billing is not active, while keeping all Google Maps
+      // API features (markers, GeoJSON, info windows) working.
+      // Tiles are also cached by the service worker for offline use.
+      const cartoTileLayer = new google.maps.ImageMapType({
+        getTileUrl: (coord, zoom) =>
+          `https://basemaps.cartocdn.com/dark_all/${zoom}/${coord.x}/${coord.y}@2x.png`,
+        tileSize: new google.maps.Size(256, 256),
+        name: 'CartoDB Dark',
+        maxZoom: 20,
+        opacity: 1.0,
+      });
+      map.overlayMapTypes.push(cartoTileLayer);
+
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
       // Without mapId, markers are created but silently never render.
       // Since we use a raster styled map (no mapId), always use the
       // OverlayView-based fallback which works reliably on all map types.
       useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using OverlayView markers (no mapId configured)');
+      devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
@@ -901,7 +938,7 @@ export default function MapPage() {
       if (!authFailed) setMapLoaded(true);
     }
 
-    function attemptLoad(attempt: number) {
+    function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled) return;
 
       // If device is offline, pause retries and wait for connectivity
@@ -911,7 +948,7 @@ export default function MapPage() {
           window.removeEventListener('online', onBack);
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
-            attemptLoad(attempt); // resume at same attempt count (don't penalize for offline time)
+            attemptLoad(apiKey, attempt); // resume at same attempt count (don't penalize for offline time)
           }
         };
         window.addEventListener('online', onBack);
@@ -919,7 +956,7 @@ export default function MapPage() {
       }
 
       loadGoogleMaps(apiKey)
-        .then(() => initMap())
+        .then(() => initMap(apiKey))
         .catch((err: any) => {
           if (cancelled) return;
           const errMsg = err?.message || String(err);
@@ -928,7 +965,7 @@ export default function MapPage() {
           if (attempt < MAX_RETRIES) {
             const delay = RETRY_DELAYS[attempt] || 30000;
             devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
-            setTimeout(() => attemptLoad(attempt + 1), delay);
+            setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
           } else {
             console.error('[MapPage] Google Maps load failed after all retries');
             setMapError(
@@ -941,17 +978,31 @@ export default function MapPage() {
         });
     }
 
-    attemptLoad(0);
-
-    // Auto-retry when device comes back online (covers the case where all retries
-    // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) {
-        devLog('[MapPage] Online auto-retry triggered — reinitializing map');
-        setMapError(null);
-        initMap();
+    (async () => {
+      let apiKey = '';
+      try {
+        apiKey = await getGoogleMapsApiKey();
+      } catch {
+        // No Google API key — trigger the OfflineMapFallback (Leaflet)
+        if (!cancelled) {
+          setMapError('offline');
+        }
+        return;
       }
-    });
+
+      if (cancelled) return;
+      attemptLoad(apiKey, 0);
+
+      // Auto-retry when device comes back online (covers the case where all retries
+      // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
+      unsubOnline = onOnlineRetryMaps(apiKey, () => {
+        if (!cancelled && !mapInstanceRef.current) {
+          devLog('[MapPage] Online auto-retry triggered — reinitializing map');
+          setMapError(null);
+          initMap(apiKey);
+        }
+      });
+    })();
 
     return () => {
       cancelled = true; // Stop any pending retries
@@ -1081,14 +1132,22 @@ export default function MapPage() {
                 ? `<button type="button" data-route-unit="${escapeHtml(unit.call_sign)}" data-route-call="${escapeHtml(assignedCall.call_number)}"
                      data-route-ulat="${unit.latitude}" data-route-ulng="${unit.longitude}"
                      data-route-clat="${assignedCall.latitude}" data-route-clng="${assignedCall.longitude}"
-                     style="margin-top:6px;width:100%;padding:3px 0;background:#88888820;border:1px solid #88888850;color:#999999;font-size:9px;font-weight:900;font-family:monospace;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;">
+                     style="margin-top:6px;width:100%;padding:3px 0;background:#88888820;border:1px solid #88888850;color:#a0a0a0;font-size:9px;font-weight:900;font-family:monospace;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;">
                      ▶ Route to ${escapeHtml(assignedCall.call_number)}
+                   </button>`
+                : '';
+              const omBtnLabel = isAndroidNative() ? 'Navigate (Organic Maps)' : 'Open Directions';
+              const omBtnHtml = (assignedCall && assignedCall.latitude != null && assignedCall.longitude != null)
+                ? `<button type="button" data-om-lat="${assignedCall.latitude}" data-om-lng="${assignedCall.longitude}"
+                     data-om-label="${escapeHtml(assignedCall.call_number)}"
+                     style="margin-top:4px;width:100%;padding:3px 0;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:9px;font-weight:900;font-family:monospace;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;">
+                     \u{1F9ED} ${omBtnLabel}
                    </button>`
                 : '';
 
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #222222;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #2b2b2b;">
                     <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};box-shadow:0 0 8px ${statusColor}80;"></div>
                     <span style="font-weight:900;font-size:15px;color:${statusColor};letter-spacing:-0.5px;">${escapeHtml(unit.call_sign)}</span>
                     <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace(/_/g, ' '))}</span>
@@ -1096,13 +1155,14 @@ export default function MapPage() {
                   <div style="font-size:11px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(unit.officer_name)}</div>
                   ${unit.vehicle ? `<div style="font-size:10px;color:#5a6e80;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
                   ${unit.call_number ? `
-                    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #222222;">
-                      <div style="font-size:10px;color:#999999;font-weight:bold;">${escapeHtml(unit.call_number)}</div>
+                    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
+                      <div style="font-size:10px;color:#a0a0a0;font-weight:bold;">${escapeHtml(unit.call_number)}</div>
                       ${unit.current_call_type ? `<div style="font-size:10px;color:#d1d5db;">${escapeHtml(formatIncidentType(unit.current_call_type))}</div>` : ''}
                       <div style="font-size:9px;color:#5a6e80;margin-top:2px;">${escapeHtml(location)}</div>
                     </div>
                   ` : `<div style="font-size:9px;color:#5a6e80;margin-top:4px;">${escapeHtml(location)}</div>`}
                   ${routeBtnHtml}
+                  ${omBtnHtml}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
@@ -1133,7 +1193,7 @@ export default function MapPage() {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #222222;">
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
                   <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
                   ${assignedUnits.map(u => {
                     const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
@@ -1141,8 +1201,16 @@ export default function MapPage() {
                       ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
                            data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
                            data-route-clat="${call.latitude}" data-route-clng="${call.longitude}"
-                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#999999;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#a0a0a0;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
                            ▶ ROUTE
+                         </button>`
+                      : '';
+                    const omBtn = (call.latitude != null && call.longitude != null)
+                      ? `<button type="button" data-om-lat="${call.latitude}" data-om-lng="${call.longitude}"
+                           data-om-label="${escapeHtml(call.call_number)}"
+                           title="${isAndroidNative() ? 'Open in Organic Maps' : 'Open Google Maps directions'}"
+                           style="padding:1px 5px;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           \u{1F9ED} NAV
                          </button>`
                       : '';
                     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
@@ -1150,20 +1218,21 @@ export default function MapPage() {
                       <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
                       <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name)}</span>
                       ${routeBtn}
+                      ${omBtn}
                     </div>`;
                   }).join('')}
                 </div>`;
               } else {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #222222;font-size:9px;color:#5a6e80;">No units assigned</div>`;
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#5a6e80;">No units assigned</div>`;
               }
 
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
                     <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
                   </div>
-                  <div style="font-size:12px;color:#999999;font-weight:bold;">${escapeHtml(call.call_number)}</div>
+                  <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(call.call_number)}</div>
                   <div style="font-size:10px;margin-top:4px;color:#d1d5db;">${escapeHtml(call.location_address)}</div>
                   ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
                   <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
@@ -1199,8 +1268,8 @@ export default function MapPage() {
             onClick: async () => {
               // Show loading state immediately
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#050505;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
-                  <div style="font-weight:900;font-size:13px;color:#999999;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
+                <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
+                  <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                   <div style="font-size:10px;color:#9ca3af;">Loading details...</div>
                 </div>
               `);
@@ -1226,7 +1295,7 @@ export default function MapPage() {
                   const rel = escapeHtml((p.relationship || '').replace(/_/g, ' '));
                   const flagsArr = (() => { try { return JSON.parse(p.flags || '[]'); } catch { return []; } })();
                   const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';
-                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #22222220;">
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2b2b2b20;">
                     <div style="display:flex;align-items:center;gap:4px;">
                       ${hasWarning ? '<span style="color:#ef4444;font-size:8px;">⚠</span>' : ''}
                       <span style="color:#e0e8f0;font-size:9px;font-weight:700;">${name}</span>
@@ -1241,9 +1310,9 @@ export default function MapPage() {
                   const date = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
                   const time = c.created_at ? new Date(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
                   const statusColor = c.status === 'cleared' || c.status === 'closed' ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : '#aaaaaa';
-                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #22222220;">
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2b2b2b20;">
                     <div>
-                      <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
+                      <span style="color:#bfbfbf;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
                       <span style="color:#6b7280;font-size:8px;margin-left:4px;">${escapeHtml(c.incident_type?.replace(/_/g, ' ') || '')}</span>
                     </div>
                     <div style="text-align:right;">
@@ -1256,14 +1325,14 @@ export default function MapPage() {
                 // Build schedule/officer rows
                 const scheduleRows = schedules.map((s: any) =>
                   `<div style="font-size:8px;color:#d1d5db;padding:2px 0;">
-                    <span style="color:#22d3ee;">⦿</span> ${escapeHtml(s.officer_name || 'Unassigned')}
+                    <span style="color:#a8a8a8;">⦿</span> ${escapeHtml(s.officer_name || 'Unassigned')}
                     <span style="color:#6b7280;margin-left:4px;">${escapeHtml(s.shift_type || '')}</span>
                   </div>`
                 ).join('');
 
                 infoWindowRef.current?.setContent(`
-                  <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#050505;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
-                    <div style="font-weight:900;font-size:13px;color:#999999;margin-bottom:2px;">${escapeHtml(prop.name)}</div>
+                  <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
+                    <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:2px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(prop.address)}</div>
                     ${prop.client_name ? `<div style="font-size:9px;color:#d4a017;font-weight:600;margin-bottom:6px;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
 
@@ -1273,14 +1342,14 @@ export default function MapPage() {
                     ${details.access_instructions ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:6px;">Access: ${escapeHtml(details.access_instructions)}</div>` : ''}
 
                     ${schedules.length > 0 ? `
-                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:4px;">
-                        <div style="font-size:9px;color:#22d3ee;font-weight:700;margin-bottom:3px;">TODAY'S OFFICERS</div>
+                      <div style="border-top:1px solid #2b2b2b;padding-top:6px;margin-top:4px;">
+                        <div style="font-size:9px;color:#a8a8a8;font-weight:700;margin-bottom:3px;">TODAY'S OFFICERS</div>
                         ${scheduleRows}
                       </div>
                     ` : ''}
 
                     ${linkedPersons.length > 0 ? `
-                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b2b2b;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#e879f9;font-weight:700;margin-bottom:3px;">LINKED PERSONS (${linkedPersons.length})</div>
                         ${personRows}
                         ${linkedPersons.length > 8 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${linkedPersons.length - 8} more</div>` : ''}
@@ -1288,22 +1357,22 @@ export default function MapPage() {
                     ` : ''}
 
                     ${recentCalls.length > 0 ? `
-                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b2b2b;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#f59e0b;font-weight:700;margin-bottom:3px;">CALL HISTORY (${recentCalls.length})</div>
                         ${callRows}
                         ${recentCalls.length > 5 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${recentCalls.length - 5} more</div>` : ''}
                       </div>
                     ` : `
-                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b2b2b;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#6b7280;">No recent calls</div>
                       </div>
                     `}
 
                     ${details.client_contact ? `
-                      <div style="border-top:1px solid #222222;padding-top:6px;margin-top:6px;">
+                      <div style="border-top:1px solid #2b2b2b;padding-top:6px;margin-top:6px;">
                         <div style="font-size:9px;color:#a78bfa;font-weight:700;margin-bottom:3px;">CLIENT CONTACT</div>
                         <div style="font-size:9px;color:#d1d5db;">${escapeHtml(details.client_contact)}</div>
-                        ${details.client_phone ? `<div style="font-size:9px;color:#93c5fd;">${escapeHtml(details.client_phone)}</div>` : ''}
+                        ${details.client_phone ? `<div style="font-size:9px;color:#bfbfbf;">${escapeHtml(details.client_phone)}</div>` : ''}
                       </div>
                     ` : ''}
 
@@ -1316,8 +1385,8 @@ export default function MapPage() {
                 console.error('[MapPage] Failed to fetch property details:', err);
                 // If fetch fails, show basic info
                 infoWindowRef.current?.setContent(`
-                  <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#050505;color:#e5e7eb;padding:10px;border:1px solid #88888850;border-radius:4px;">
-                    <div style="font-weight:900;font-size:13px;color:#999999;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
+                  <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid #88888850;border-radius:4px;">
+                    <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
                     ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#d4a017;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
                   </div>
@@ -1354,6 +1423,26 @@ export default function MapPage() {
     document.addEventListener('click', handleRouteClick);
     return () => document.removeEventListener('click', handleRouteClick);
   }, [showRoute]);
+
+  // Delegated handler for "Navigate with Organic Maps" buttons rendered inside
+  // info-window HTML. Android-native only; TS wrapper no-ops on other platforms.
+  useEffect(() => {
+    function handleOmClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest('[data-om-lat]') as HTMLElement | null;
+      if (!btn) return;
+      const lat = parseFloat(btn.getAttribute('data-om-lat') || '');
+      const lng = parseFloat(btn.getAttribute('data-om-lng') || '');
+      const label = btn.getAttribute('data-om-label') || '';
+      if (isNaN(lat) || isNaN(lng)) return;
+      navigateTo(lat, lng, label).then((res) => {
+        if (!res.ok) devWarn('[Nav] launch failed:', res.reason);
+        else devLog('[Nav] launched via', res.mode);
+      });
+      infoWindowRef.current?.close();
+    }
+    document.addEventListener('click', handleOmClick);
+    return () => document.removeEventListener('click', handleOmClick);
+  }, []);
 
   // ============================================================
   // Update Route When Routed Unit GPS Changes
@@ -1523,6 +1612,8 @@ export default function MapPage() {
     breadcrumbMarkersRef.current = [];
     breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
     breadcrumbArrowsRef.current = [];
+    speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+    speedAlertMarkersRef.current = [];
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
@@ -1564,6 +1655,8 @@ export default function MapPage() {
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current = [];
 
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
@@ -1587,6 +1680,15 @@ export default function MapPage() {
               segColor = speedToColor(p1.speed);
             } else if (breadcrumbColorMode === 'status') {
               segColor = statusToColor(p1.status);
+            } else if (breadcrumbColorMode === 'accel') {
+              // Compute inline acceleration between consecutive points
+              const dt = (new Date(p2.time).getTime() - new Date(p1.time).getTime()) / 1000;
+              if (dt > 0 && p1.speed != null && p2.speed != null) {
+                const accel = (p2.speed - p1.speed) / dt;
+                segColor = accelToColor(accel);
+              } else {
+                segColor = accelToColor(null);
+              }
             } else {
               segColor = unitColor;
             }
@@ -1613,7 +1715,7 @@ export default function MapPage() {
                 path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                 scale: 2.5,
                 rotation: pt.heading,
-                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : unitColor,
+                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor,
                 fillOpacity: 0.3 + freshness * 0.5,
                 strokeColor: '#fff',
                 strokeWeight: 0.5,
@@ -1631,7 +1733,16 @@ export default function MapPage() {
             let dotColor: string;
             if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
             else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
-            else dotColor = unitColor;
+            else if (breadcrumbColorMode === 'accel') {
+              // Compute accel from prev point
+              if (ptIdx > 0) {
+                const prev = trail.points[ptIdx - 1];
+                const dt = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+                if (dt > 0 && pt.speed != null && prev.speed != null) {
+                  dotColor = accelToColor((pt.speed - prev.speed) / dt);
+                } else { dotColor = accelToColor(null); }
+              } else { dotColor = accelToColor(null); }
+            } else dotColor = unitColor;
 
             const dot = new google.maps.Circle({
               center: { lat: pt.lat, lng: pt.lng },
@@ -1651,23 +1762,89 @@ export default function MapPage() {
               const locationRow = pt.road_name
                 ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
                 : '';
+
+              // Compute acceleration and distance from previous point
+              let accelHtml = '';
+              let distHtml = '';
+              if (ptIdx > 0) {
+                const prev = trail.points[ptIdx - 1];
+                const dtSec = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+                // Distance (Haversine approx)
+                const dLat = (pt.lat - prev.lat) * Math.PI / 180;
+                const dLng = (pt.lng - prev.lng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(pt.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+                const distM = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                distHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Distance</td><td style="color:#e0e0e0">${Math.round(distM)}m from last ping (${dtSec.toFixed(1)}s)</td></tr>`;
+                // Acceleration
+                if (dtSec > 0 && pt.speed != null && prev.speed != null) {
+                  const accelVal = (pt.speed - prev.speed) / dtSec;
+                  const accelColor = accelToColor(accelVal);
+                  const arrow = accelVal >= 0 ? '\u2191' : '\u2193';
+                  const sign = accelVal >= 0 ? '+' : '';
+                  accelHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accel</td><td style="color:${accelColor};font-weight:bold">${arrow} ${sign}${accelVal.toFixed(1)} m/s\u00B2</td></tr>`;
+                }
+              }
+
+              // GPS quality badge
+              const acc = pt.accuracy;
+              let gpsLabel = 'N/A'; let gpsColor = '#666666';
+              if (acc != null) {
+                if (acc < 10) { gpsLabel = 'GPS'; gpsColor = '#22c55e'; }
+                else if (acc < 30) { gpsLabel = 'GOOD'; gpsColor = '#84cc16'; }
+                else if (acc < 100) { gpsLabel = 'FAIR'; gpsColor = '#eab308'; }
+                else { gpsLabel = 'POOR'; gpsColor = '#ef4444'; }
+              }
+              const gpsRow = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">GPS</td><td><span style="font-size:9px;font-weight:bold;color:${gpsColor};padding:0 4px;border:1px solid ${gpsColor}40;border-radius:2px">${gpsLabel}</span> ${acc != null ? `\u00B1${Math.round(acc)}m` : ''}</td></tr>`;
+
+              // Heading compass
+              const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+              const headingDir = pt.heading != null ? dirs[Math.round(pt.heading / 45) % 8] : '';
+              const headingCompass = pt.heading != null
+                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0"><span style="display:inline-block;transform:rotate(${Math.round(pt.heading)}deg);font-size:13px">\u2191</span> ${headingDir} (${Math.round(pt.heading)}\u00B0)</td></tr>`
+                : `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">\u2014</td></tr>`;
+
+              // Mini speed sparkline SVG (surrounding ~20 points)
+              const sparkStart = Math.max(0, ptIdx - 10);
+              const sparkEnd = Math.min(trail.points.length, ptIdx + 10);
+              const sparkPoints = trail.points.slice(sparkStart, sparkEnd);
+              let sparkSvg = '';
+              if (sparkPoints.length > 2) {
+                const maxSpd = Math.max(...sparkPoints.map(p => (p.speed ?? 0) * 2.237), 10);
+                const svgW = 180; const svgH = 36;
+                const coords = sparkPoints.map((p, i) => {
+                  const x = (i / (sparkPoints.length - 1)) * svgW;
+                  const y = svgH - ((p.speed ?? 0) * 2.237 / maxSpd) * (svgH - 4) - 2;
+                  return `${x.toFixed(1)},${y.toFixed(1)}`;
+                });
+                const highlightIdx = ptIdx - sparkStart;
+                const hx = sparkPoints.length > 1 ? (highlightIdx / (sparkPoints.length - 1)) * svgW : svgW / 2;
+                const hy = svgH - (((sparkPoints[highlightIdx]?.speed ?? 0) * 2.237) / maxSpd) * (svgH - 4) - 2;
+                sparkSvg = `<svg width="${svgW}" height="${svgH}" style="display:block;margin:4px 0">` +
+                  `<polyline points="${coords.join(' ')}" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>` +
+                  `<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="3" fill="#fbbf24" stroke="#fff" stroke-width="1"/>` +
+                  `</svg>`;
+              }
+
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:240px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
                   <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
-                    ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
+                    ${escapeHtml(trail.call_sign)} \u2014 ${escapeHtml(trail.officer_name || 'Unknown')}
                   </div>
                   <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
-                  ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #1e2a3a">${escapeHtml(pt.road_name)}</div>` : ''}
+                  ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
                   <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
+                  ${sparkSvg}
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMph(pt.speed)}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeadingDir(pt.heading)}</td></tr>
+                    ${accelHtml}
+                    ${headingCompass}
                     ${locationRow}
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
+                    ${distHtml}
+                    ${gpsRow}
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} — ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
+                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} \u2014 ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
                   </table>
                 </div>
               `;
@@ -1677,6 +1854,33 @@ export default function MapPage() {
             });
 
             breadcrumbMarkersRef.current.push(dot);
+          });
+        });
+
+        // Speed alert triangle markers (>= 80 mph)
+        speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+        speedAlertMarkersRef.current = [];
+        trails.forEach((trail) => {
+          trail.points.forEach((pt) => {
+            const mph = pt.speed != null ? pt.speed * 2.237 : 0;
+            if (mph >= 80) {
+              const marker = new google.maps.Marker({
+                position: { lat: pt.lat, lng: pt.lng },
+                map,
+                icon: {
+                  path: 'M 0,-8 L 7,5 L -7,5 Z',
+                  scale: 1.4,
+                  fillColor: '#dc2626',
+                  fillOpacity: 0.9,
+                  strokeColor: '#fbbf24',
+                  strokeWeight: 1.5,
+                },
+                label: { text: '!', color: '#fff', fontSize: '9px', fontWeight: 'bold' },
+                title: `Speed alert: ${Math.round(mph)} mph — ${trail.call_sign}`,
+                zIndex: 5000,
+              });
+              speedAlertMarkersRef.current.push(marker);
+            }
           });
         });
       } catch {
@@ -1696,6 +1900,8 @@ export default function MapPage() {
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current = [];
     };
   }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
 
@@ -1720,14 +1926,19 @@ export default function MapPage() {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 5,
           rotation: pt.heading || 0,
-          fillColor: '#00ff88',
+          fillColor: speedToColor(pt.speed),
           fillOpacity: 1,
           strokeColor: '#fff',
           strokeWeight: 2,
         },
         zIndex: 9999,
-        title: `${trail.call_sign} — Playback`,
+        title: `${trail.call_sign} \u2014 Playback`,
       });
+    }
+
+    // Create speed label InfoWindow
+    if (!playbackSpeedLabelRef.current) {
+      playbackSpeedLabelRef.current = new google.maps.InfoWindow({ disableAutoPan: true });
     }
 
     let currentIdx = playbackIdx;
@@ -1735,6 +1946,7 @@ export default function MapPage() {
       if (currentIdx >= trail.points.length) {
         setIsPlaying(false);
         setPlaybackIdx(trail.points.length - 1);
+        if (playbackSpeedLabelRef.current) playbackSpeedLabelRef.current.close();
         return;
       }
 
@@ -1745,18 +1957,30 @@ export default function MapPage() {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 5,
           rotation: pt.heading || 0,
-          fillColor: '#00ff88',
+          fillColor: speedToColor(pt.speed),
           fillOpacity: 1,
           strokeColor: '#fff',
           strokeWeight: 2,
         });
       }
 
+      // Floating speed readout above playback marker
+      if (playbackSpeedLabelRef.current) {
+        const mphStr = pt.speed != null ? `${(pt.speed * 2.237).toFixed(0)} mph` : '\u2014';
+        playbackSpeedLabelRef.current.setContent(
+          `<div style="font-family:monospace;font-size:12px;font-weight:900;color:${speedToColor(pt.speed)};background:#0d0d0d;padding:2px 6px;border-radius:3px;border:1px solid #282828;white-space:nowrap">${mphStr}</div>`
+        );
+        playbackSpeedLabelRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+        playbackSpeedLabelRef.current.open(map);
+      }
+
       setPlaybackIdx(currentIdx);
       currentIdx++;
 
-      // Speed: base 200ms per point, divided by playback speed multiplier
-      const delay = 200 / playbackSpeed;
+      // Speed-proportional playback: faster vehicle = faster animation
+      const ptSpeed = pt.speed != null ? pt.speed * 2.237 : 10;
+      const speedFactor = Math.max(ptSpeed / 30, 0.2);
+      const delay = (200 / playbackSpeed) / speedFactor;
       playbackAnimRef.current = window.setTimeout(step, delay) as unknown as number;
     };
 
@@ -1770,15 +1994,193 @@ export default function MapPage() {
     };
   }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
 
-  // Cleanup playback marker when playback unit changes or stops
+  // Cleanup playback marker and speed label when playback unit changes or stops
   useEffect(() => {
     if (playbackUnit == null) {
       if (playbackMarkerRef.current) {
         playbackMarkerRef.current.setMap(null);
         playbackMarkerRef.current = null;
       }
+      if (playbackSpeedLabelRef.current) {
+        playbackSpeedLabelRef.current.close();
+        playbackSpeedLabelRef.current = null;
+      }
     }
   }, [playbackUnit]);
+
+  // ============================================================
+  // Speed Heatmap Layer (grid rectangles)
+  // ============================================================
+
+  const heatmapRectsRef = useRef<google.maps.Rectangle[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    heatmapRectsRef.current.forEach((r) => r.setMap(null));
+    heatmapRectsRef.current = [];
+
+    if (!speedAnalytics.showSpeedHeatmap || speedAnalytics.heatmapCells.length === 0) return;
+
+    const GRID_SIZE = 0.002; // ~200m grid cells
+    speedAnalytics.heatmapCells.forEach((cell) => {
+      const rect = new google.maps.Rectangle({
+        bounds: {
+          north: cell.grid_lat + GRID_SIZE,
+          south: cell.grid_lat,
+          east: cell.grid_lng + GRID_SIZE,
+          west: cell.grid_lng,
+        },
+        fillColor: speedToColor(cell.avg_speed / 2.237), // convert mph to m/s for speedToColor
+        fillOpacity: Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5),
+        strokeColor: speedToColor(cell.avg_speed / 2.237),
+        strokeWeight: 0.5,
+        strokeOpacity: 0.3,
+        map,
+        clickable: false,
+        zIndex: 50,
+      });
+      heatmapRectsRef.current.push(rect);
+    });
+
+    return () => {
+      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current = [];
+    };
+  }, [speedAnalytics.showSpeedHeatmap, speedAnalytics.heatmapCells, mapLoaded]);
+
+  // ============================================================
+  // Pursuit Corridor Polylines
+  // ============================================================
+
+  const pursuitLinesRef = useRef<google.maps.Polyline[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    pursuitLinesRef.current.forEach((l) => l.setMap(null));
+    pursuitLinesRef.current = [];
+
+    if (speedAnalytics.pursuitSegments.length === 0) return;
+
+    speedAnalytics.pursuitSegments.forEach((seg) => {
+      if (seg.points.length < 2) return;
+      const line = new google.maps.Polyline({
+        path: seg.points.map((p) => ({ lat: p.lat, lng: p.lng })),
+        geodesic: true,
+        strokeColor: '#dc2626',
+        strokeOpacity: 0.8,
+        strokeWeight: 6,
+        map,
+        zIndex: 100,
+      });
+      pursuitLinesRef.current.push(line);
+    });
+
+    return () => {
+      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current = [];
+    };
+  }, [speedAnalytics.pursuitSegments, mapLoaded]);
+
+  // ============================================================
+  // Speed Zone Polygons
+  // ============================================================
+
+  const speedZonePolysRef = useRef<google.maps.Polygon[]>([]);
+  const speedZoneLabelsRef = useRef<google.maps.Marker[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current = [];
+      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    speedZonePolysRef.current.forEach((p) => p.setMap(null));
+    speedZonePolysRef.current = [];
+    speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+    speedZoneLabelsRef.current = [];
+
+    if (speedAnalytics.speedZones.length === 0) return;
+
+    const ZONE_TYPE_COLORS: Record<string, string> = {
+      school: '#eab308',
+      residential: '#22c55e',
+      highway: '#f97316',
+      construction: '#ef4444',
+      parking: '#6b7280',
+    };
+
+    speedAnalytics.speedZones.forEach((zone) => {
+      if (!zone.is_active || !zone.polygon_coords) return;
+      try {
+        const coords: { lat: number; lng: number }[] = JSON.parse(zone.polygon_coords);
+        if (coords.length < 3) return;
+
+        const zoneColor = ZONE_TYPE_COLORS[zone.zone_type] || '#888888';
+        const poly = new google.maps.Polygon({
+          paths: coords,
+          fillColor: zoneColor,
+          fillOpacity: 0.15,
+          strokeColor: zoneColor,
+          strokeWeight: 2,
+          strokeOpacity: 0.6,
+          map,
+          zIndex: 60,
+          clickable: false,
+        });
+        speedZonePolysRef.current.push(poly);
+
+        // Centroid label
+        const cLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
+        const cLng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
+        const label = new google.maps.Marker({
+          position: { lat: cLat, lng: cLng },
+          map,
+          icon: {
+            path: 'M 0,0',
+            scale: 0,
+          },
+          label: {
+            text: `${zone.speed_limit_mph} mph`,
+            color: zoneColor,
+            fontSize: '9px',
+            fontWeight: 'bold',
+            className: 'speed-zone-label',
+          },
+          clickable: false,
+          zIndex: 61,
+        });
+        speedZoneLabelsRef.current.push(label);
+      } catch {
+        // Invalid polygon_coords JSON
+      }
+    });
+
+    return () => {
+      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current = [];
+      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current = [];
+    };
+  }, [speedAnalytics.speedZones, mapLoaded]);
 
   // ============================================================
   // GPS Self-Position Marker
@@ -2187,7 +2589,7 @@ export default function MapPage() {
                   4. Go to <span className="text-gray-400">Billing</span> → ensure billing is active<br/>
                   5. Go to <span className="text-gray-400">Credentials</span> → check key restrictions<br/>
                   6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
-                  <span className="text-green-400 ml-2">VITE_GOOGLE_MAPS_API_KEY=your_key</span><br/>
+                  <span className="text-green-400 ml-2">GOOGLE_MAPS_API_KEY=your_key</span><br/>
                   7. Restart the dev server
                 </p>
               </div>
@@ -2481,7 +2883,7 @@ export default function MapPage() {
                     >
                       <SlidersHorizontal className="w-2.5 h-2.5" />
                       <span className="flex-1 text-left">Advanced Mode</span>
-                      {advancedHeatmapEnabled && <span className="led-dot led-gray" style={{ width: 5, height: 5 }} />}
+                      {advancedHeatmapEnabled && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
                     </button>
                   </div>
 
@@ -2674,7 +3076,7 @@ export default function MapPage() {
                           {([
                             ['heat', ['#888888', '#00c864', '#c8c800', '#ff8c00', '#ff3200']],
                             ['risk', ['#4caf50', '#ffeb3b', '#ff9800', '#f44336', '#b71c1c']],
-                            ['blue', ['#cccccc', '#999999', '#888888', '#666666', '#444444']],
+                            ['gold', ['#fde047', '#facc15', '#d4a017', '#b48206', '#854d0e']],
                             ['green', ['#90ee90', '#3cb371', '#228b22', '#006400', '#003c00']],
                             ['purple', ['#d8bfd8', '#ba55d3', '#9467bd', '#6a0dad', '#4b0082']],
                           ] as [HeatmapColorScheme, string[]][]).map(([scheme, colors]) => (
@@ -2952,8 +3354,8 @@ export default function MapPage() {
                   showBreadcrumbs ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                 }`}
               >
-                {showBreadcrumbs ? <Eye className="w-3 h-3 text-cyan-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                <Route className="w-3 h-3 text-cyan-400" />
+                {showBreadcrumbs ? <Eye className="w-3 h-3 text-gray-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                <Route className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-200 flex-1">Breadcrumbs</span>
               </button>
               {showBreadcrumbs && (
@@ -2966,7 +3368,7 @@ export default function MapPage() {
                         onClick={() => setBreadcrumbHours(h)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbHours === h
-                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -2995,13 +3397,13 @@ export default function MapPage() {
                   {/* Color mode selector */}
                   <div className="flex items-center gap-1">
                     <Palette className="w-2.5 h-2.5 text-rmpg-400" />
-                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status'], ['accel', 'Accel']] as const).map(([mode, label]) => (
                       <button
                         key={mode}
                         onClick={() => setBreadcrumbColorMode(mode)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbColorMode === mode
-                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -3009,16 +3411,40 @@ export default function MapPage() {
                       </button>
                     ))}
                   </div>
-                  {/* Speed color legend */}
+                  {/* Speed color legend — interactive 8-band with toggles */}
                   {breadcrumbColorMode === 'speed' && (
+                    <div className="flex flex-wrap items-center gap-1 pl-1">
+                      {[
+                        { color: '#666666', label: '0', key: 'stationary' },
+                        { color: '#999999', label: '<3', key: 'walking' },
+                        { color: '#22c55e', label: '3-25', key: 'residential' },
+                        { color: '#84cc16', label: '25-35', key: 'city' },
+                        { color: '#eab308', label: '35-45', key: 'arterial' },
+                        { color: '#f97316', label: '45-55', key: 'highway' },
+                        { color: '#ef4444', label: '55-75', key: 'freeway' },
+                        { color: '#dc2626', label: '75+', key: 'pursuit' },
+                      ].map((band) => (
+                        <button key={band.key}
+                          onClick={() => speedAnalytics.setSpeedBandToggles(prev => ({ ...prev, [band.key]: !(prev[band.key] ?? true) }))}
+                          className="flex items-center gap-0.5 cursor-pointer"
+                          style={{ opacity: (speedAnalytics.speedBandToggles[band.key] ?? true) ? 1 : 0.3 }}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ background: band.color }} />
+                          <span className="text-[7px] text-rmpg-400 font-mono">{band.label}</span>
+                        </button>
+                      ))}
+                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
+                    </div>
+                  )}
+                  {/* Accel color legend */}
+                  {breadcrumbColorMode === 'accel' && (
                     <div className="flex items-center gap-1.5 pl-1">
-                      {[['#22c55e', '<15'], ['#eab308', '15-35'], ['#f97316', '35-55'], ['#ef4444', '55+']].map(([color, label]) => (
+                      {[['#dc2626', 'Brake'], ['#eab308', 'Decel'], ['#22c55e', 'Steady'], ['#84cc16', 'Accel'], ['#fbbf24', 'Hard']].map(([color, label]) => (
                         <span key={label} className="flex items-center gap-0.5">
                           <span className="w-2 h-2 rounded-full" style={{ background: color }} />
                           <span className="text-[7px] text-rmpg-400 font-mono">{label}</span>
                         </span>
                       ))}
-                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
                     </div>
                   )}
                   {/* Playback controls */}
@@ -3034,7 +3460,7 @@ export default function MapPage() {
                             setPlaybackIdx(0);
                             setIsPlaying(false);
                           }}
-                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-cyan-600"
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-gray-600"
                           style={{ borderRadius: 2 }}
                         >
                           <option value="">Replay trail...</option>
@@ -3062,7 +3488,7 @@ export default function MapPage() {
                                     setIsPlaying(true);
                                   }
                                 }}
-                                className="p-0.5 rounded-sm hover:bg-cyan-900/40 transition-colors"
+                                className="p-0.5 rounded-sm hover:bg-gray-900/40 transition-colors"
                                 title={isPlaying ? 'Pause' : 'Play'}
                               >
                                 {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
@@ -3082,7 +3508,7 @@ export default function MapPage() {
                                     playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
                                   }
                                 }}
-                                className="flex-1 h-1 accent-cyan-400"
+                                className="flex-1 h-1 accent-gray-400"
                                 aria-label="Playback position"
                               />
                               <span className="text-[8px] font-mono text-rmpg-400 w-12 text-right">
@@ -3097,7 +3523,7 @@ export default function MapPage() {
                                   onClick={() => setPlaybackSpeed(spd)}
                                   className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                                     playbackSpeed === spd
-                                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                                       : 'text-rmpg-500 hover:text-rmpg-300'
                                   }`}
                                 >
@@ -3119,6 +3545,85 @@ export default function MapPage() {
               )}
             </div>
 
+            {/* ── Speed Analytics ── */}
+            {showBreadcrumbs && (
+              <div className="border-t border-rmpg-700 p-1.5">
+                <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Speed Analytics</div>
+
+                {/* Violations badge */}
+                {speedAnalytics.unacknowledgedCount > 0 && (
+                  <div className="flex items-center gap-2 px-2 py-1 mb-1 bg-red-900/20 border border-red-800/30 rounded-sm">
+                    <AlertTriangle className="w-3 h-3 text-red-400" />
+                    <span className="text-[9px] text-red-400 font-mono font-bold flex-1">
+                      {speedAnalytics.unacknowledgedCount} speed violation{speedAnalytics.unacknowledgedCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* Speed Heatmap toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowSpeedHeatmap(!speedAnalytics.showSpeedHeatmap)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showSpeedHeatmap ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showSpeedHeatmap ? <Eye className="w-3 h-3 text-orange-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <Gauge className="w-3 h-3" />
+                  <span className="flex-1 text-left">Speed Heatmap</span>
+                </button>
+
+                {/* Zone Stats toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowZoneStats(!speedAnalytics.showZoneStats)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showZoneStats ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showZoneStats ? <Eye className="w-3 h-3 text-gray-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <BarChart3 className="w-3 h-3" />
+                  <span className="flex-1 text-left">Zone Speed Stats</span>
+                </button>
+
+                {/* Zone Stats collapsible table */}
+                {speedAnalytics.showZoneStats && speedAnalytics.zoneSpeedStats.length > 0 && (
+                  <div className="ml-2 mt-1 max-h-32 overflow-y-auto">
+                    <table className="w-full text-[8px] font-mono">
+                      <thead>
+                        <tr className="text-rmpg-500">
+                          <th className="text-left px-1 py-0.5">Zone</th>
+                          <th className="text-right px-1 py-0.5">Avg</th>
+                          <th className="text-right px-1 py-0.5">Max</th>
+                          <th className="text-right px-1 py-0.5">P95</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {speedAnalytics.zoneSpeedStats.slice(0, 15).map((z) => (
+                          <tr key={z.beat_id} className="text-rmpg-300 hover:bg-surface-raised">
+                            <td className="px-1 py-0.5 truncate max-w-[80px]" title={z.beat_name}>{z.beat_code}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.avg_speed_mph / 2.237) }}>{z.avg_speed_mph.toFixed(0)}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.max_speed_mph / 2.237) }}>{z.max_speed_mph.toFixed(0)}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.p95_speed_mph / 2.237) }}>{z.p95_speed_mph.toFixed(0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Coverage Timeline toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showCoverageTimeline ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showCoverageTimeline ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <Clock className="w-3 h-3" />
+                  <span className="flex-1 text-left">Coverage Timeline</span>
+                </button>
+              </div>
+            )}
+
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
               <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
@@ -3132,7 +3637,7 @@ export default function MapPage() {
                   key={key}
                   onClick={() => toggleIntelLayer(key)}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-[#050505]/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
+                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-[#0c0c0c]/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
                   }`}
                 >
                   <Shield className="w-3 h-3" />
@@ -3152,7 +3657,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowCallHistory(!showCallHistory)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showCallHistory ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showCallHistory ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Clock className="w-3 h-3" />
@@ -3177,7 +3682,7 @@ export default function MapPage() {
                         onClick={() => setCallHistoryDays(d)}
                         className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                           callHistoryDays === d
-                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -3197,7 +3702,7 @@ export default function MapPage() {
                         )}
                         className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
                           callHistoryStatuses.includes(s)
-                            ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/40'
+                            ? 'bg-gray-900/40 text-gray-300 border border-gray-700/40'
                             : 'text-rmpg-600 hover:text-rmpg-400'
                         }`}
                       >
@@ -3219,7 +3724,7 @@ export default function MapPage() {
                           )}
                           className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                             callHistoryPriorities.includes(p)
-                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-[#050505]/40 text-gray-400 border border-gray-700/40')
+                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-[#0c0c0c]/40 text-gray-400 border border-gray-700/40')
                               : 'text-rmpg-600 hover:text-rmpg-400'
                           }`}
                         >
@@ -3317,7 +3822,7 @@ export default function MapPage() {
                 <button
                   onClick={() => setShowGeofences(!showGeofences)}
                   className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    showGeofences ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                    showGeofences ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                   }`}
                 >
                   <Radar className="w-3 h-3" />
@@ -3330,7 +3835,7 @@ export default function MapPage() {
                   <button
                     onClick={() => geofences.setDrawingMode(!geofences.drawingMode)}
                     className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
-                      geofences.drawingMode ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                      geofences.drawingMode ? 'bg-gray-900/50 text-gray-300 border border-gray-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
                     }`}
                   >
                     Draw
@@ -3426,7 +3931,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowResponseRadius(!showResponseRadius)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showResponseRadius ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Target className="w-3 h-3" />
@@ -3519,7 +4024,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowFleetVehicles(!showFleetVehicles)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showFleetVehicles ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Car className="w-3 h-3" />
@@ -3613,7 +4118,7 @@ export default function MapPage() {
               >
                 <CircleDot className="w-3 h-3" />
                 <span className="flex-1 text-left">Cluster Calls</span>
-                {clusteringEnabled && clustering.clustered && <span className="led-dot led-gray" style={{ width: 5, height: 5 }} />}
+                {clusteringEnabled && clustering.clustered && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
               </button>
 
               {/* Daylight Overlay */}
@@ -3687,7 +4192,7 @@ export default function MapPage() {
                 onClick={() => setShowGeoPanel(!showGeoPanel)}
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
               >
-                <Globe2 className="w-3 h-3 text-cyan-400" />
+                <Globe2 className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
                 <span className="text-[9px] text-rmpg-500">
                   {Object.values(geoLayerStates).filter((s) => s.visible).length}/{geoConfigs.length}
@@ -3985,7 +4490,7 @@ export default function MapPage() {
                                                 setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                               }
                                             }}
-                                            className="w-2.5 h-2.5 accent-blue-500"
+                                            className="w-2.5 h-2.5 accent-gray-500"
                                           />
                                           <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                           {unit.officer_name && (
@@ -4341,7 +4846,7 @@ export default function MapPage() {
                 <Radar className="w-3 h-3" /> Perimeter Tools
               </button>
 
-              <button type="button" onClick={() => setShowCorridorAnalysis(!showCorridorAnalysis)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showCorridorAnalysis ? 'bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+              <button type="button" onClick={() => setShowCorridorAnalysis(!showCorridorAnalysis)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showCorridorAnalysis ? 'bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
                 <Route className="w-3 h-3" /> Corridor Analysis
               </button>
 
@@ -4438,6 +4943,26 @@ export default function MapPage() {
             onBroadcast={(type, lat, lng, details, radius) => alerts.broadcastAlert(type as SafetyAlertType, lat, lng, details, radius)}
             defaultLat={mapInstanceRef.current?.getCenter()?.lat() ?? DEFAULT_CENTER.lat}
             defaultLng={mapInstanceRef.current?.getCenter()?.lng() ?? DEFAULT_CENTER.lng}
+          />
+        )}
+
+        {/* Speed Graph Overlay */}
+        {speedAnalytics.speedGraphUnit != null && (
+          <SpeedGraphOverlay
+            unitId={speedAnalytics.speedGraphUnit}
+            callSign={playbackTrails.find(t => t.unit_id === speedAnalytics.speedGraphUnit)?.call_sign || ''}
+            hours={breadcrumbHours}
+            onClose={() => speedAnalytics.setSpeedGraphUnit(null)}
+            playbackIdx={playbackUnit === speedAnalytics.speedGraphUnit ? playbackIdx : undefined}
+          />
+        )}
+
+        {/* Coverage Timeline */}
+        {speedAnalytics.showCoverageTimeline && (
+          <CoverageTimeline
+            data={speedAnalytics.coverageTimeline.length > 0 ? { intervals: speedAnalytics.coverageTimeline, total_beats: 719 } : null}
+            expanded={speedAnalytics.showCoverageTimeline}
+            onToggle={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
           />
         )}
 
@@ -4809,7 +5334,7 @@ export default function MapPage() {
           >
             <div className="flex items-center gap-0.5 px-1.5 py-1">
               {/* Live indicator */}
-              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b2b2b' }}>
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                 <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
                   {isConnected ? 'LIVE' : 'DISC'}
@@ -4817,7 +5342,7 @@ export default function MapPage() {
               </div>
 
               {/* Calls */}
-              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b2b2b' }}>
                 <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
                 <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
                 {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
@@ -4839,8 +5364,8 @@ export default function MapPage() {
 
               {showTrackingLines && trackingLineCount > 0 && (
                 <div className="flex items-center gap-1 px-1.5">
-                  <Navigation2 className="w-2.5 h-2.5 text-cyan-400" />
-                  <span className="text-cyan-400 text-[8px] font-mono font-bold">{trackingLineCount}</span>
+                  <Navigation2 className="w-2.5 h-2.5 text-gray-400" />
+                  <span className="text-gray-400 text-[8px] font-mono font-bold">{trackingLineCount}</span>
                 </div>
               )}
 
@@ -4867,7 +5392,7 @@ export default function MapPage() {
                 ? { top: 56, left: 8, right: 8 }
                 : { bottom: 48, left: 16, minWidth: 200 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
-              border: isLightMapStyle(mapStyle) ? '1px solid rgba(59,130,246,0.3)' : '1px solid #88888850',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
               fontFamily: "'JetBrains Mono', 'Courier New', monospace",
               borderRadius: 2,
@@ -4887,7 +5412,7 @@ export default function MapPage() {
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
               <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
             </div>
             {routeLoading && (
@@ -4911,7 +5436,7 @@ export default function MapPage() {
               style={{
                 borderRadius: 2,
                 background: 'rgba(13, 21, 32, 0.9)',
-                border: '1px solid #222222',
+                border: '1px solid #2b2b2b',
               }}
             >
               <button
@@ -4920,7 +5445,7 @@ export default function MapPage() {
                   if (map) map.setZoom((map.getZoom() ?? 12) + 1);
                 }}
                 className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
-                style={{ width: 48, height: 48, borderBottom: '1px solid #222222' }}
+                style={{ width: 48, height: 48, borderBottom: '1px solid #2b2b2b' }}
                 title="Zoom in"
                 aria-label="Zoom in"
               >
@@ -4971,7 +5496,7 @@ export default function MapPage() {
             }}
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
-                ? 'bg-white/90 border border-gray-300 hover:bg-[#141414]'
+                ? 'bg-white/90 border border-gray-300 hover:bg-[#181818]'
                 : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
             }`}
             style={isMobile
@@ -5038,7 +5563,7 @@ export default function MapPage() {
         className="flex flex-col panel-beveled transition-all"
         style={{
           width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-          background: '#060c14',
+          background: '#0b0b0b',
           flexShrink: 0,
         }}
       >
@@ -5243,7 +5768,7 @@ export default function MapPage() {
               alignItems: 'center',
               justifyContent: 'center',
               background: 'rgba(13, 21, 32, 0.9)',
-              border: '1px solid #222222',
+              border: '1px solid #2b2b2b',
               borderRadius: 2,
             }}
             onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
@@ -5295,7 +5820,7 @@ export default function MapPage() {
                     className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                     style={{
                       background: layers[key] ? 'rgba(34,197,94,0.08)' : '#0a0a0a',
-                      border: '1px solid #222222',
+                      border: '1px solid #2b2b2b',
                       minHeight: 44,
                     }}
                   >
@@ -5310,7 +5835,7 @@ export default function MapPage() {
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
                     background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#0a0a0a',
-                    border: '1px solid #222222',
+                    border: '1px solid #2b2b2b',
                     minHeight: 44,
                   }}
                 >
@@ -5325,18 +5850,18 @@ export default function MapPage() {
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
                     background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#0a0a0a',
-                    border: '1px solid #222222',
+                    border: '1px solid #2b2b2b',
                     minHeight: 44,
                   }}
                 >
-                  {showBreadcrumbs ? <Eye className="w-4 h-4 text-cyan-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-                  <Route style={{ width: 16, height: 16 }} className="text-cyan-400" />
+                  {showBreadcrumbs ? <Eye className="w-4 h-4 text-gray-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                  <Route style={{ width: 16, height: 16 }} className="text-gray-400" />
                   <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
                 </button>
 
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
-                  <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #222222' }}>
+                  <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                     <div className="flex gap-1">
                       {[2, 4, 8, 12, 24].map((h) => (
                         <button
@@ -5344,7 +5869,7 @@ export default function MapPage() {
                           onClick={() => setBreadcrumbHours(h)}
                           className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
-                              ? 'bg-cyan-600 text-white'
+                              ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
@@ -5353,13 +5878,13 @@ export default function MapPage() {
                       ))}
                     </div>
                     <div className="flex gap-1">
-                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status'], ['accel', 'Accel']] as const).map(([mode, label]) => (
                         <button
                           key={mode}
                           onClick={() => setBreadcrumbColorMode(mode)}
                           className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
                             breadcrumbColorMode === mode
-                              ? 'bg-cyan-600 text-white'
+                              ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
@@ -5371,7 +5896,7 @@ export default function MapPage() {
                 )}
 
                 {/* Map Style Selector (mobile) */}
-                <div className="px-3 py-2 space-y-1.5" style={{ background: '#050505', border: '1px solid #222222' }}>
+                <div className="px-3 py-2 space-y-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                   <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
@@ -5404,7 +5929,7 @@ export default function MapPage() {
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
                     background: '#0a0a0a',
-                    border: '1px solid #222222',
+                    border: '1px solid #2b2b2b',
                     minHeight: 44,
                   }}
                 >

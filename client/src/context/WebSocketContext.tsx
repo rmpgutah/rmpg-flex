@@ -2,6 +2,26 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
+import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import { registerRules } from '../utils/dispatcherRules/registry';
+import { EVENT_RULES } from '../utils/dispatcherRules/events';
+import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
+
+// Register the Dispatcher Brain rule catalog once at module load.
+// - EVENT_RULES: Phase 2 event fan-in (citations, incidents, warrants,
+//   evidence, arrests, HR).
+// - COACHING_RULES: Phase 3 proactive guidance (DV approach, felony
+//   backup, MH protocol, geofence breach, overdue-status timer).
+// Registry is a module-level array that only grows at boot; duplicates
+// from hot-reload are harmless because ruleId+entityKey cooldown in
+// speakQueue dedupes them.
+registerRules(EVENT_RULES);
+registerRules(COACHING_RULES);
+
+// Start the Dispatcher Brain 30s tick so timer-triggered rules
+// (e.g. overdue-status-check) have a pulse. tickTimers() is itself
+// flag-gated so this is a no-op for users who haven't opted in.
+startBrainTimer();
 
 type MessageHandler = (message: WSMessage) => void;
 
@@ -64,7 +84,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
-      const ws = new WebSocket(`${protocol}//${host}/ws?token=${token}`);
+      // Message-based auth: connect without URL token, then send authenticate
+      // frame on open. URL-token auth was deprecated 2026-04-15 to prevent JWT
+      // leakage via server logs, browser history, and referrer headers.
+      const ws = new WebSocket(`${protocol}//${host}/ws`);
 
       // Connection timeout — if the socket hasn't opened in 10s, kill it and retry.
       // Without this, a stalled TCP handshake can hang the socket indefinitely.
@@ -93,6 +116,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         setConnectionLost(false);
         reconnectDelayRef.current = WS_RECONNECT_DELAY;
         retryCountRef.current = 0; // reset on successful connection
+
+        // Message-based authentication: send the JWT as the first frame.
+        // Server expects { type: 'authenticate', token } and will close the
+        // socket after a short timeout if this doesn't arrive.
+        try {
+          ws.send(JSON.stringify({ type: 'authenticate', token }));
+        } catch (err) {
+          devWarn('[WS] Failed to send auth frame:', err);
+        }
 
         // Start heartbeat ping/pong
         if (heartbeatRef.current) clearInterval(heartbeatRef.current);
@@ -165,6 +197,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                   osc2.stop(ctx.currentTime + 0.6);
                 }
               } catch { /* Audio not available */ }
+            }
+          }
+
+          // Dispatcher Brain fan-in: any dispatch_update carries an
+          // action discriminator the brain uses to match rules. No-op
+          // when the per-user brain flag is off, so this is safe to
+          // wire unconditionally.
+          if ((message.type as string) === 'dispatch_update') {
+            const data = (message as any).data;
+            if (data && typeof data.action === 'string') {
+              try {
+                handleDispatchEvent(data.action, data);
+              } catch (err) {
+                console.error('[Brain] handleDispatchEvent error:', err);
+              }
             }
           }
 

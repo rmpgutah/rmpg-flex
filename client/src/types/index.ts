@@ -172,9 +172,32 @@ export interface Property {
   post_orders?: string;
   hazard_notes?: string;
   access_instructions?: string;
+  notes?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  business_type?: string;
+  structure_type?: string;
+  occupancy_status?: string;
+  year_built?: string;
+  square_footage?: string;
+  number_of_stories?: string;
+  security_features?: string;
+  key_holder_name?: string;
+  key_holder_phone?: string;
+  key_holder_relationship?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  last_inspection_date?: string;
+  inspection_status?: string;
+  alarm_company?: string;
+  alarm_account?: string;
+  camera_system?: string;
+  parking_info?: string;
+  roof_access?: string;
+  utility_shutoffs?: string;
+  known_hazards?: string;
+  previous_incidents_count?: number;
 }
 
 // --- CAD / Dispatch ---
@@ -243,12 +266,12 @@ export interface CallForService {
   location_floor?: string;
   location_room?: string;
   zone_beat?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   // Dispatch district data (from geofence auto-fill)
   dispatch_code?: string;
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
@@ -331,9 +354,10 @@ export interface CallForService {
   closed_at?: string;
   archived_at?: string;
   previous_status?: CallStatus;
-  risk_score?: number | null;
   created_by: string;
   updated_at: string;
+  // Risk assessment
+  risk_score?: number;
   // Visit history (PSO calls)
   visit_history?: VisitHistory[];
 }
@@ -470,8 +494,6 @@ export interface Person {
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;
-  photo_url?: string;
-  photo?: string;
   id_type?: string;
   id_number?: string;
   id_state?: string;
@@ -500,8 +522,30 @@ export interface Person {
   known_associates?: string;
   emergency_contact_relationship?: string;
   caution_flags?: string;
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
+  disability_flags?: string;
+  mental_health_flags?: string;
+  substance_abuse?: string;
+  medication_notes?: string;
+  education_level?: string;
+  military_branch?: string;
+  military_status?: string;
+  tribal_affiliation?: string;
+  identifying_marks_location?: string;
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  distinguishing_features?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
+  photo_url?: string;
+  photo?: string;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
@@ -546,6 +590,15 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
+  title_status?: string;
+  exterior_condition?: string;
+  interior_condition?: string;
+  estimated_value?: string;
+  window_tint?: string;
+  modifications?: string;
+  equipment_notes?: string;
+  registered_owner?: string;
+  registration_state?: string;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
@@ -583,6 +636,11 @@ export interface Evidence {
   estimated_value?: number;
   category?: string;
   notes?: string;
+  condition?: string;
+  quantity?: number;
+  is_biological?: boolean;
+  narcotics_flag?: boolean;
+  temperature_sensitive?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -596,7 +654,7 @@ export interface CustodyEntry {
   timestamp: string;
 }
 
-export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident';
+export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident' | 'warrant';
 
 export interface RecordLink {
   id: string;
@@ -839,10 +897,10 @@ export interface BodyCamera {
 export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
 
 export type BwcInteractionType =
-  | 'traffic_stop' | 'arrest' | 'use_of_force' | 'search_warrant'
-  | 'domestic_violence' | 'welfare_check' | 'community_contact'
-  | 'foot_pursuit' | 'vehicle_pursuit' | 'interview'
-  | 'evidence_collection' | 'field_training' | 'other';
+  | 'routine' | 'enforcement' | 'use_of_force' | 'critical_incident' | 'complaint'
+  | 'traffic_stop' | 'arrest' | 'search_warrant' | 'domestic_violence'
+  | 'welfare_check' | 'community_contact' | 'foot_pursuit' | 'vehicle_pursuit'
+  | 'interview' | 'evidence_collection' | 'field_training' | 'other';
 
 export interface BodyCamVideo {
   id: number;
@@ -855,11 +913,11 @@ export interface BodyCamVideo {
   mime_type: string;
   recorded_at: string;
   case_number?: string;
-  interaction_type?: BwcInteractionType | null;
   classification: VideoClassification;
   retention_status: VideoRetention;
   overlay_status?: OverlayStatus;
   overlay_error?: string | null;
+  interaction_type?: string;
   notes?: string;
   uploaded_by: string;
   created_at: string;
@@ -870,6 +928,27 @@ export interface BodyCamVideo {
 
 // --- Dash Cam Videos ---
 
+export type DashCameraStatus = 'installed' | 'available' | 'maintenance' | 'damaged' | 'lost';
+
+export interface DashCamera {
+  id: number;
+  vehicle_id?: number;
+  vehicle_number?: string;
+  camera_id: string;
+  make?: string;
+  model?: string;
+  firmware_version?: string;
+  storage_capacity_gb?: number;
+  channel_count?: number;
+  status: DashCameraStatus;
+  condition?: string;
+  installed_at?: string;
+  removed_at?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashCamVideo {
   id: number;
   vehicle_id?: number;
@@ -878,6 +957,11 @@ export interface DashCamVideo {
   vehicle_model?: string;
   vehicle_year?: number;
   unit_call_sign?: string;
+  officer_name?: string;
+  call_sign?: string;
+  device_name?: string;
+  heading?: number;
+  camera_serial?: string;
   title: string;
   file_path: string;
   file_size: number;
@@ -910,12 +994,6 @@ export interface DashCamVideo {
   burn_progress?: number;
   burn_error?: string;
   thumbnail_path?: string;
-  camera_serial?: string;
-  camera_id?: number;
-  officer_name?: string;
-  call_sign?: string;
-  device_name?: string;
-  heading?: number | null;
 }
 
 // --- Equipment ---
@@ -1342,6 +1420,9 @@ export interface FleetFuelLog {
   calc_distance?: number | null;
   cost_per_mile?: number | null;
   running_avg_mpg?: number | null;
+  // Optional backend-attached fields (not always present on every log row)
+  flags?: string;              // JSON-encoded flag array, e.g. '["outlier:mpg"]'
+  driver_officer_id?: string;  // officer who filled the tank (if tracked)
 }
 
 export interface FleetFuelSummary {
@@ -1355,6 +1436,88 @@ export interface FleetFuelSummary {
   total_distance?: number | null;
   cost_per_mile?: number | null;
   fuel_cost_per_day?: number | null;
+}
+
+// --- Fuel Analytics + Budget + Cost types (deploy-unblock placeholders) ---
+//
+// These exports exist to satisfy imports in fleet analytics pages/PDFs that
+// were merged to main without accompanying type definitions. The shapes
+// below mirror actual usage but are intentionally permissive (`[key: string]:
+// any`) so future refinement can tighten fields without a breaking migration.
+// TODO: replace with precise interfaces derived from the backend response
+// schemas once the analytics API contracts stabilize.
+
+export interface FuelAnalyticsOverview {
+  vehicles?: Array<Record<string, any>>;
+  top_stations?: Array<Record<string, any>>;
+  flagged_leaderboard?: Array<Record<string, any>>;
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByOfficer {
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByCard {
+  [key: string]: any;
+}
+
+export interface FleetFuelBudget {
+  id?: string;
+  // vehicle_id is numeric per the FuelBudgetModal signature (number | null).
+  // Keep this typed precisely — callers pass it to onSave which declares
+  // number | null, so widening to string | number causes assignability errors.
+  vehicle_id?: number | null;
+  period?: string;
+  budget_amount?: number;
+  [key: string]: any;
+}
+
+export type FuelBudgetPeriod = 'weekly' | 'monthly' | 'quarterly' | 'yearly' | string;
+
+export interface FleetFuelBudgetSummary {
+  total_budget?: number;
+  total_spent?: number;
+  variance?: number;
+  [key: string]: any;
+}
+
+export interface FleetLoan {
+  id?: string;
+  vehicle_id?: string;
+  lender?: string;
+  monthly_payment?: number;
+  [key: string]: any;
+}
+
+export interface FleetInsurancePolicy {
+  id?: string;
+  vehicle_id?: string;
+  carrier?: string;
+  policy_number?: string;
+  premium?: number;
+  [key: string]: any;
+}
+
+export interface FleetAccessory {
+  id?: string;
+  vehicle_id?: string;
+  name?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetUtilityCost {
+  id?: string;
+  vehicle_id?: string;
+  kind?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetCostSummary {
+  total?: number;
+  [key: string]: any;
 }
 
 // --- Fleet Inspections ---
@@ -1614,6 +1777,11 @@ export type WSMessageType =
   | 'panic_alert'
   | 'panic_audio'
   | 'panic_audio_response'
+  | 'panic_acknowledged'
+  | 'panic_resolved'
+  | 'panic_cancelled'
+  | 'panic_false_alarm'
+  | 'panic_escalated'
   | 'dispatch_update'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
@@ -1677,6 +1845,7 @@ export type WSMessageType =
   | 'warrants_updated'
   | 'warrant_served'
   | 'warrant_recalled'
+  | 'scraper_event'
   // Trespass orders
   | 'trespass_order_violated'
   | 'trespass_order_created'
@@ -1697,8 +1866,16 @@ export type WSMessageType =
   | 'serve_attempt'
   | 'serve_created'
   // Radio events (for cross-integration)
+  | 'radio_check'
+  | 'radio_check_ack'
+  | 'radio_transmission'
+  | 'emergency_talkgroup_active'
+  | 'emergency_talkgroup_ended'
   // Security
-  | 'security:updated';
+  | 'security:updated'
+  // Speed tracking
+  | 'speed:alert'
+  | 'geofence:alert';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -2024,7 +2201,7 @@ export interface TrespassOrder {
   linked_person_last?: string;
   linked_property_name?: string;
   notes?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
@@ -2448,7 +2625,7 @@ export interface OffenderAlert {
   person_name?: string; // joined from persons
   dob?: string; // joined from persons
   is_sex_offender?: boolean; // joined from persons
-  gang_affiliation?: string; // joined from persons
+  gang_affiliation?: string; // joined from related records (not a Person interface field)
   alert_type: OffenderAlertType;
   status: OffenderAlertStatus;
   description: string;
@@ -2935,8 +3112,8 @@ export interface DispatchArea {
 
 export interface DispatchSection {
   id: number;
-  section_code: string;
-  section_name: string;
+  sector_code: string;
+  sector_name: string;
   area_id?: number;
   area_code?: string;
   area_name?: string;
@@ -2954,9 +3131,9 @@ export interface DispatchZone {
   id: number;
   zone_code: string;
   zone_name: string;
-  section_id?: number;
-  section_code?: string;
-  section_name?: string;
+  sector_id?: number;
+  sector_code?: string;
+  sector_name?: string;
   color?: string;
   description?: string;
   primary_unit?: string;
@@ -2980,8 +3157,8 @@ export interface DispatchBeat {
   zone_id?: number;
   zone_code?: string;
   zone_name?: string;
-  section_code?: string;
-  section_name?: string;
+  sector_code?: string;
+  sector_name?: string;
   dispatch_code?: string;
   color?: string;
   assigned_unit?: string;
@@ -3091,9 +3268,11 @@ export interface MniPersonResult {
   id: number;
   first_name: string;
   last_name: string;
+  dob?: string;
   date_of_birth?: string;
   gender?: string;
   race?: string;
+  dl_number?: string;
   drivers_license_number?: string;
   phone?: string;
   address?: string;
@@ -3119,16 +3298,56 @@ export interface GeographyTree {
   unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
 }
 
-// ── Integration Hub ──
-export type IntegrationId = 'clearpathgps' | 'servemanager' | 'microbilt' | 'iped';
-export type IntegrationHealth = 'healthy' | 'degraded' | 'error' | 'unconfigured';
-export interface IntegrationStatus { id: IntegrationId; name: string; description: string; configured: boolean; connected: boolean; lastSync: string | null; lastError: string | null; lastHealthCheck: string | null; health: IntegrationHealth; syncing: boolean; syncProgress: number | null; uptimePercent: number | null; stats: Record<string, number>; }
+// --- Integration Hub ---
 
-// ── ClearPathGPS ──
-export interface CpgpsVehicle { id: number; cpgps_id: string; vehicle_id: number | null; name: string; vin: string; make: string; model: string; year: number; license_plate: string; device_serial: string; last_lat: number | null; last_lon: number | null; last_speed: number | null; last_heading: number | null; last_reported_at: string; odometer: number | null; engine_hours: number | null; synced_at: string; created_at: string; fleet_vehicle_number?: string; fleet_make?: string; fleet_model?: string; fleet_year?: number; }
-export interface CpgpsTrip { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; trip_start: string; trip_end: string; start_lat: number | null; start_lon: number | null; end_lat: number | null; end_lon: number | null; start_address: string; end_address: string; distance_miles: number | null; max_speed: number | null; avg_speed: number | null; idle_duration_seconds: number | null; drive_duration_seconds: number | null; synced_at: string; created_at: string; }
-export interface CpgpsAlert { id: number; cpgps_vehicle_id: string; vehicle_id: number | null; alert_type: string; severity: string; message: string; triggered_at: string; lat: number | null; lon: number | null; synced_at: string; created_at: string; }
+export interface IntegrationStatus {
+  id: string;
+  name: string;
+  description?: string;
+  health: 'healthy' | 'degraded' | 'error' | 'unconfigured';
+  configured: boolean;
+  lastSync: string | null;
+  lastError?: string;
+  stats: Record<string, number>;
+  uptimePercent: number | null;
+}
 
-// ── Dash Camera (fleet) ──
-export type DashCameraStatus = 'available' | 'installed' | 'maintenance' | 'damaged' | 'lost';
-export interface DashCamera { id: number; vehicle_id: number; camera_id: string; make: string; model: string; firmware_version: string; storage_capacity_gb: number; channel_count: number; status: DashCameraStatus; condition: string; installed_at: string; removed_at: string; notes: string; created_by: string; created_at: string; updated_at: string; vehicle_number?: string; vehicle_make?: string; vehicle_model?: string; vehicle_year?: number; }
+// --- ClearPathGPS (Fleet GPS) ---
+
+export interface CpgpsVehicle {
+  id: number;
+  vehicle_id?: number;
+  name?: string;
+  device_serial?: string;
+  vin?: string;
+  odometer?: number;
+  engine_hours?: number;
+  last_lat?: number;
+  last_lon?: number;
+  last_speed?: number;
+  last_heading?: number;
+  last_reported_at?: string;
+  synced_at?: string;
+}
+
+export interface CpgpsTrip {
+  id: number;
+  trip_start?: string;
+  trip_end?: string;
+  distance_miles?: number;
+  drive_duration_seconds?: number;
+  idle_duration_seconds?: number;
+  max_speed?: number;
+  start_address?: string;
+  end_address?: string;
+}
+
+export interface CpgpsAlert {
+  id: number;
+  alert_type?: string;
+  severity?: 'critical' | 'high' | 'medium' | 'low';
+  message?: string;
+  triggered_at?: string;
+  lat?: number;
+  lon?: number;
+}

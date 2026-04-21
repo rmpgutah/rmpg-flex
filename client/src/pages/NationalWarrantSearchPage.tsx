@@ -154,21 +154,21 @@ function coverageFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#166534'; // green-800
     case 'pending': return '#78350f'; // amber-900
-    default: return '#1f2937'; // gray-800
+    default: return '#282828'; // gray-800
   }
 }
 function coverageStroke(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#22c55e';
     case 'pending': return '#f59e0b';
-    default: return '#4b5563';
+    default: return '#545454';
   }
 }
 function coverageHoverFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#15803d';
     case 'pending': return '#92400e';
-    default: return '#374151';
+    default: return '#404040';
   }
 }
 
@@ -180,7 +180,7 @@ function severityBadge(level: string) {
     case 'misdemeanor':
       return 'bg-amber-900/50 text-amber-400 border border-amber-700/50';
     case 'infraction':
-      return 'bg-blue-900/50 text-blue-400 border border-blue-700/50';
+      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
     default:
       return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
   }
@@ -234,7 +234,7 @@ export default function NationalWarrantSearchPage() {
     setCoverageLoading(true);
     apiFetch<any>('/api/warrants/national-coverage')
       .then(data => setCoverage(data))
-      .catch(() => setCoverage(getMockCoverage()))
+      .catch(() => setCoverage(null))
       .finally(() => setCoverageLoading(false));
   }, []);
 
@@ -261,8 +261,7 @@ export default function NationalWarrantSearchPage() {
       });
       setResults(data);
     } catch {
-      // Show mock results for development when API not yet available
-      setResults(getMockResults(firstName, lastName, stateFilter));
+      setResults({ total: 0, search_time_ms: 0, by_state: {}, local: [], error: 'Search failed — check server connection' });
     } finally {
       setSearching(false);
     }
@@ -436,7 +435,7 @@ export default function NationalWarrantSearchPage() {
                 <span className="text-rmpg-400">Pending</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#1f2937', border: '1px solid #4b5563' }} />
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#282828', border: '1px solid #545454' }} />
                 <span className="text-rmpg-400">No Source</span>
               </span>
             </div>
@@ -484,7 +483,7 @@ export default function NationalWarrantSearchPage() {
                         height={cellH}
                         rx={2}
                         fill={isHovered ? coverageHoverFill(status) : coverageFill(status)}
-                        stroke={isSelected ? '#60a5fa' : coverageStroke(status)}
+                        stroke={isSelected ? '#a0a0a0' : coverageStroke(status)}
                         strokeWidth={isSelected ? 2 : 1}
                         opacity={isHovered ? 1 : 0.85}
                       />
@@ -498,7 +497,7 @@ export default function NationalWarrantSearchPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           fontFamily: 'JetBrains Mono, monospace',
-                          fill: isSelected ? '#60a5fa' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : '#9ca3af',
+                          fill: isSelected ? '#a0a0a0' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : '#9ca3af',
                         }}
                       >
                         {st.label}
@@ -568,7 +567,7 @@ export default function NationalWarrantSearchPage() {
                 in <span className="text-brand-400">{searchTime}ms</span>
               </span>
               {stateFilter && (
-                <span className="ml-auto text-[10px] bg-blue-900/50 text-blue-400 border border-blue-700/50 px-1.5 py-0.5 rounded">
+                <span className="ml-auto text-[10px] bg-gray-900/50 text-gray-400 border border-gray-700/50 px-1.5 py-0.5 rounded">
                   Filtered: {US_STATES.find(s => s.code === stateFilter)?.label}
                 </span>
               )}
@@ -706,12 +705,12 @@ function WarrantRow({ warrant }: { warrant: any }) {
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           {warrant.offense_level && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${severityBadge(warrant.offense_level)}`}>
-              {warrant.offense_level}
+              {warrant.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
             </span>
           )}
           {warrant.warrant_type && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeBadge(warrant.warrant_type)}`}>
-              {warrant.warrant_type}
+              {warrant.warrant_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
             </span>
           )}
           {warrant.court && (
@@ -752,99 +751,4 @@ function WarrantRow({ warrant }: { warrant: any }) {
 }
 
 // ── Mock Data for Development ───────────────────────────────
-function getMockCoverage() {
-  const stateStatus: Record<string, CoverageStatus> = {};
-  const stateSources: Record<string, number> = {};
-  const stateWarrants: Record<string, number> = {};
-
-  // Active states (have data sources)
-  const activeStates = ['UT', 'CO', 'NV', 'AZ', 'CA', 'TX', 'FL', 'NY', 'IL', 'OH', 'PA', 'GA', 'NC', 'VA', 'WA', 'OR', 'ID', 'MT', 'WY', 'NM'];
-  // Pending states (source exists but data not yet flowing)
-  const pendingStates = ['MN', 'WI', 'MI', 'IN', 'MO', 'KS', 'NE', 'OK', 'AR', 'LA', 'TN', 'KY', 'SC', 'AL', 'MS'];
-
-  activeStates.forEach(s => {
-    stateStatus[s] = 'active';
-    stateSources[s] = Math.floor(Math.random() * 5) + 1;
-    stateWarrants[s] = Math.floor(Math.random() * 50000) + 1000;
-  });
-  pendingStates.forEach(s => {
-    stateStatus[s] = 'pending';
-    stateSources[s] = 1;
-    stateWarrants[s] = 0;
-  });
-
-  return {
-    sources: 50,
-    states_covered: activeStates.length,
-    active_warrants: Object.values(stateWarrants).reduce((a, b) => a + b, 0),
-    state_status: stateStatus,
-    state_sources: stateSources,
-    state_warrants: stateWarrants,
-  };
-}
-
-function getMockResults(firstName: string, lastName: string, state: string) {
-  const mockWarrants = [
-    {
-      first_name: firstName || 'John',
-      last_name: lastName || 'Doe',
-      dob: '1985-03-15',
-      age: 41,
-      charges: 'Failure to Appear - DUI 3rd Offense',
-      offense_level: 'Felony',
-      warrant_type: 'Bench Warrant',
-      court: '3rd District Court, Salt Lake City',
-      source: 'Utah Courts',
-      status: 'active',
-      issued_date: '2025-11-20',
-      bond_amount: 25000,
-      state: 'UT',
-    },
-    {
-      first_name: firstName || 'John',
-      last_name: lastName || 'Doe',
-      dob: '1985-03-15',
-      age: 41,
-      charges: 'Aggravated Assault',
-      offense_level: 'Felony',
-      warrant_type: 'Arrest Warrant',
-      court: 'Denver County Court',
-      source: 'Colorado Bureau of Investigation',
-      status: 'active',
-      issued_date: '2026-01-08',
-      bond_amount: 50000,
-      state: 'CO',
-    },
-    {
-      first_name: firstName || 'John',
-      last_name: lastName || 'Doe',
-      dob: '1985-03-17',
-      age: 41,
-      charges: 'Theft of Property > $1000',
-      offense_level: 'Misdemeanor',
-      warrant_type: 'Arrest Warrant',
-      court: 'Clark County Justice Court',
-      source: 'Nevada DPS',
-      status: 'active',
-      issued_date: '2025-08-02',
-      bond_amount: 5000,
-      state: 'NV',
-    },
-  ];
-
-  const filtered = state ? mockWarrants.filter(w => w.state === state) : mockWarrants;
-
-  // Group by state
-  const byState: Record<string, any[]> = {};
-  filtered.forEach(w => {
-    if (!byState[w.state]) byState[w.state] = [];
-    byState[w.state].push(w);
-  });
-
-  return {
-    total: filtered.length,
-    search_time_ms: Math.floor(Math.random() * 800) + 200,
-    by_state: byState,
-    local: state === 'UT' || !state ? [mockWarrants[0]] : [],
-  };
-}
+// Mock data functions removed — only real API data is displayed

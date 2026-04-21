@@ -56,7 +56,7 @@ export default function MapMobileSheet({
           background: 'rgba(13, 21, 32, 0.9)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid #222222',
+          border: '1px solid #2b2b2b',
           borderRadius: 2,
         }}
         onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
@@ -112,10 +112,10 @@ export default function MapMobileSheet({
                 aria-label={`Toggle ${label} layer`}
                 role="switch"
                 aria-checked={layers[key]}
-                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
+                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
                 style={{
                   background: layers[key] ? 'rgba(34,197,94,0.08)' : '#0a0a0a',
-                  border: '1px solid #222222',
+                  border: '1px solid #2b2b2b',
                   minHeight: 44,
                   borderRadius: 2,
                 }}
@@ -133,10 +133,10 @@ export default function MapMobileSheet({
               role="switch"
               aria-checked={showHeatmap}
               aria-label="Toggle heat map"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
               style={{
                 background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#0a0a0a',
-                border: '1px solid #222222',
+                border: '1px solid #2b2b2b',
                 minHeight: 44,
                 borderRadius: 2,
               }}
@@ -152,22 +152,22 @@ export default function MapMobileSheet({
               role="switch"
               aria-checked={showBreadcrumbs}
               aria-label="Toggle breadcrumbs"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
               style={{
                 background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#0a0a0a',
-                border: '1px solid #222222',
+                border: '1px solid #2b2b2b',
                 minHeight: 44,
                 borderRadius: 2,
               }}
             >
-              {showBreadcrumbs ? <Eye className="w-4 h-4 text-cyan-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-              <Route style={{ width: 16, height: 16 }} className="text-cyan-400" />
+              {showBreadcrumbs ? <Eye className="w-4 h-4 text-gray-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+              <Route style={{ width: 16, height: 16 }} className="text-gray-400" />
               <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
-              {showBreadcrumbs && <div className="w-2 h-2 rounded-full bg-cyan-400" style={{ boxShadow: '0 0 6px rgba(34,211,238,0.8)' }} />}
+              {showBreadcrumbs && <div className="w-2 h-2 rounded-full bg-gray-400" style={{ boxShadow: '0 0 6px rgba(34,211,238,0.8)' }} />}
             </button>
 
             {showBreadcrumbs && (
-              <div className="px-4 py-3 space-y-2" style={{ background: '#050505', border: '1px solid #222222', borderRadius: 2 }}>
+              <div className="px-4 py-3 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b', borderRadius: 2 }}>
                 <div className="flex gap-1">
                   {[2, 4, 8, 12, 24].map((h) => (
                     <button type="button"
@@ -175,7 +175,7 @@ export default function MapMobileSheet({
                       onClick={() => setBreadcrumbHours(h)}
                       className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                         breadcrumbHours === h
-                          ? 'bg-cyan-600 text-white'
+                          ? 'bg-gray-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
                       style={{ minHeight: 44 }}
@@ -191,7 +191,7 @@ export default function MapMobileSheet({
                       onClick={() => setBreadcrumbColorMode(mode)}
                       className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
                         breadcrumbColorMode === mode
-                          ? 'bg-cyan-600 text-white'
+                          ? 'bg-gray-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
                       style={{ minHeight: 44 }}
@@ -204,7 +204,7 @@ export default function MapMobileSheet({
             )}
 
             {/* Map Style Selector (mobile) */}
-            <div className="px-4 py-3 space-y-1.5" style={{ background: '#050505', border: '1px solid #222222', borderRadius: 2 }}>
+            <div className="px-4 py-3 space-y-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b', borderRadius: 2 }}>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
               <div className="grid grid-cols-3 gap-1.5">
                 {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
@@ -237,10 +237,10 @@ export default function MapMobileSheet({
               }}
               disabled={!gps?.latitude}
               aria-label="Center on my location"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#141414]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
               style={{
                 background: '#0a0a0a',
-                border: '1px solid #222222',
+                border: '1px solid #2b2b2b',
                 minHeight: 44,
                 opacity: !gps?.latitude ? 0.5 : 1,
                 borderRadius: 2,

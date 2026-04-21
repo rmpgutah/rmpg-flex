@@ -14,11 +14,11 @@ import { identifyBeat, findNearestBeat, BeatMatch } from './geofence';
 import { getDb } from '../models/database';
 
 export interface DistrictResult {
-  section_id: string;
+  sector_id: string;
   zone_id: string;
   beat_id: string;
   zone_beat: string;
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
@@ -43,24 +43,25 @@ export function resolveDistrict(lat: number, lng: number): DistrictResult | null
 
     const db = getDb();
 
-    // Try matching by dispatch_code first, then fall back to zone_id + beat_id
-    let district = db.prepare(
-      'SELECT * FROM dispatch_districts WHERE dispatch_code = ?'
-    ).get(beat.beat_code) as any;
-
-    if (!district) {
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-      ).get(beat.city_code, beat.district_letter) as any;
-    }
+    // Resolve from new geography tables (dispatch_beats → dispatch_zones → dispatch_sectors)
+    const district = db.prepare(`
+      SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+             dz.zone_code, dz.zone_name,
+             ds.sector_code, ds.sector_name
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      WHERE db2.beat_code = ?
+      LIMIT 1
+    `).get(beat.beat_code) as any;
 
     if (district) {
       return {
-        section_id: district.section_id,
-        zone_id: district.zone_name,
-        beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
+        sector_id: district.sector_code,
+        zone_id: district.zone_code,
+        beat_id: district.beat_code,
         zone_beat: beat.beat_code,
-        section_name: district.section_name,
+        sector_name: district.sector_name,
         zone_name: district.zone_name,
         beat_name: district.beat_name,
         beat_descriptor: district.beat_descriptor,
@@ -68,12 +69,11 @@ export function resolveDistrict(lat: number, lng: number): DistrictResult | null
       };
     }
 
-    // No dispatch_districts row — log warning and return raw geofence data
-    console.warn(`[districtResolver] No dispatch_districts row for beat_code=${beat.beat_code} (zone=${beat.city_code}, beat=${beat.district_letter})`);
+    // No geography row — return raw geofence data
     return {
-      section_id: beat.district_letter,
-      zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
-      beat_id: beat.beat_id,
+      sector_id: beat.district_letter,
+      zone_id: beat.city_code,
+      beat_id: beat.beat_code,
       zone_beat: beat.beat_code,
       exact,
     };
@@ -97,11 +97,11 @@ export function autoFillDistrict(record: Record<string, any>): boolean {
   if (!district) return false;
 
   // Only fill if not already provided
-  if (!record.section_id) record.section_id = district.section_id;
+  if (!record.sector_id) record.sector_id = district.sector_id;
   if (!record.zone_id) record.zone_id = district.zone_id;
   if (!record.beat_id) record.beat_id = district.beat_id;
   if (!record.zone_beat) record.zone_beat = district.zone_beat;
-  if (!record.section_name && district.section_name) record.section_name = district.section_name;
+  if (!record.sector_name && district.sector_name) record.sector_name = district.sector_name;
   if (!record.zone_name && district.zone_name) record.zone_name = district.zone_name;
   if (!record.beat_name && district.beat_name) record.beat_name = district.beat_name;
   if (!record.beat_descriptor && district.beat_descriptor) record.beat_descriptor = district.beat_descriptor;

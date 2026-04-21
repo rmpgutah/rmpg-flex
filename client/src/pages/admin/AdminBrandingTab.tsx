@@ -197,7 +197,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
               role="switch"
               aria-checked={config.show_classification_bar === '1'}
               className={`flex items-center gap-2 w-full p-2.5 border transition-all duration-150 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
-                config.show_classification_bar === '1' ? 'bg-green-900/15 border-green-700/40' : 'bg-[#050505] border-[#141414]'
+                config.show_classification_bar === '1' ? 'bg-green-900/15 border-green-700/40' : 'bg-[#0c0c0c] border-[#181818]'
               }`}
             >
               {config.show_classification_bar === '1' ? <Eye className="w-4 h-4 text-green-400" aria-hidden="true" /> : <Eye className="w-4 h-4 text-rmpg-600" aria-hidden="true" />}
@@ -227,7 +227,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
             role="switch"
             aria-checked={config.show_confidential_watermark === '1'}
             className={`flex items-center gap-2 w-full p-2.5 border transition-all duration-150 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
-              config.show_confidential_watermark === '1' ? 'bg-amber-900/15 border-amber-700/40' : 'bg-[#050505] border-[#141414]'
+              config.show_confidential_watermark === '1' ? 'bg-amber-900/15 border-amber-700/40' : 'bg-[#0c0c0c] border-[#181818]'
             }`}
           >
             {config.show_confidential_watermark === '1' ? <Eye className="w-4 h-4 text-amber-400" aria-hidden="true" /> : <Eye className="w-4 h-4 text-rmpg-600" aria-hidden="true" />}

@@ -24,6 +24,7 @@ import {
   Search,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import IconButton from '../../components/IconButton';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } from '../../utils/caseNumbers';
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
@@ -130,7 +131,7 @@ const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
   { type: 'k9', label: 'K9', color: '#8b5cf6' },
   { type: 'medical', label: 'Medical', color: '#ef4444' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
-  { type: 'foot', label: 'Foot Patrol', color: '#6366f1' },
+  { type: 'foot', label: 'Foot Patrol', color: '#888888' },
   { type: 'vehicle', label: 'Vehicle', color: '#666666' },
 ];
 
@@ -155,7 +156,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
   accent_color: '#d4a017',
-  header_bg_color: '#1a1a2e',
+  header_bg_color: '#1c1c1c',
 };
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -1509,12 +1510,12 @@ export default function AdminSystemTab({
                             onKeyDown={(e) => { if (e.key === 'Enter') saveEditCallSource(); if (e.key === 'Escape') cancelEditCallSource(); }}
                             autoFocus
                           />
-                          <button type="button" onClick={saveEditCallSource} className="p-0.5 text-green-400 hover:text-green-300" title="Save">
+                          <IconButton onClick={saveEditCallSource} className="p-0.5 text-green-400 hover:text-green-300" title="Save" aria-label="Save call source">
                             <CheckCircle className="w-3.5 h-3.5" />
-                          </button>
-                          <button type="button" onClick={cancelEditCallSource} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
+                          </IconButton>
+                          <IconButton onClick={cancelEditCallSource} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel" aria-label="Cancel edit">
                             <XCircle className="w-3.5 h-3.5" />
-                          </button>
+                          </IconButton>
                         </>
                       ) : (
                         <>
@@ -1600,12 +1601,12 @@ export default function AdminSystemTab({
                             <div className="text-[10px] text-rmpg-500 font-mono mt-0.5">{ut.type}</div>
                           </div>
                           <div className="flex flex-col gap-0.5 flex-shrink-0">
-                            <button type="button" onClick={saveEditUnitType} className="p-0.5 text-green-400 hover:text-green-300" title="Save">
+                            <IconButton onClick={saveEditUnitType} className="p-0.5 text-green-400 hover:text-green-300" title="Save" aria-label="Save unit type">
                               <CheckCircle className="w-3 h-3" />
-                            </button>
-                            <button type="button" onClick={cancelEditUnitType} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
+                            </IconButton>
+                            <IconButton onClick={cancelEditUnitType} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel" aria-label="Cancel edit">
                               <XCircle className="w-3 h-3" />
-                            </button>
+                            </IconButton>
                           </div>
                         </>
                       ) : (
@@ -1713,9 +1714,9 @@ export default function AdminSystemTab({
                                       <button type="button" onClick={handleUpdateUnit} disabled={unitSaving} className="toolbar-btn toolbar-btn-primary text-[10px]" title="Save">
                                         {unitSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                                       </button>
-                                      <button type="button" onClick={cancelEditUnit} className="toolbar-btn text-[10px]" title="Cancel">
+                                      <IconButton onClick={cancelEditUnit} className="toolbar-btn text-[10px]" title="Cancel" aria-label="Cancel edit unit">
                                         <XCircle className="w-3 h-3" />
-                                      </button>
+                                      </IconButton>
                                     </div>
                                   </td>
                                 </>
@@ -1814,8 +1815,8 @@ export default function AdminSystemTab({
                               </td>
                               <td>
                                 <div className="flex items-center gap-1">
-                                  <button type="button" onClick={saveEditZone} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
-                                  <button type="button" onClick={cancelEditZone} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
+                                  <IconButton onClick={saveEditZone} className="p-1 text-green-400 hover:text-green-300" title="Save" aria-label="Save zone"><CheckCircle className="w-3 h-3" /></IconButton>
+                                  <IconButton onClick={cancelEditZone} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel" aria-label="Cancel edit zone"><XCircle className="w-3 h-3" /></IconButton>
                                 </div>
                               </td>
                             </>
@@ -1867,8 +1868,8 @@ export default function AdminSystemTab({
                       {editingEvidenceIdx === i ? (
                         <>
                           <input type="text" className="input-dark text-xs w-36 min-h-[36px]" value={editEvidenceVal} onChange={(e) => setEditEvidenceVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditEvidence(); if (e.key === 'Escape') cancelEditEvidence(); }} autoFocus />
-                          <button type="button" onClick={saveEditEvidence} className="p-0.5 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
-                          <button type="button" onClick={cancelEditEvidence} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
+                          <IconButton onClick={saveEditEvidence} className="p-0.5 text-green-400 hover:text-green-300" title="Save" aria-label="Save evidence type"><CheckCircle className="w-3 h-3" /></IconButton>
+                          <IconButton onClick={cancelEditEvidence} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel" aria-label="Cancel edit"><XCircle className="w-3 h-3" /></IconButton>
                         </>
                       ) : (
                         <>
@@ -1945,8 +1946,8 @@ export default function AdminSystemTab({
                                   </td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button type="button" onClick={saveEditTemplate} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
-                                      <button type="button" onClick={cancelEditTemplate} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
+                                      <IconButton onClick={saveEditTemplate} className="p-1 text-green-400 hover:text-green-300" title="Save" aria-label="Save template"><CheckCircle className="w-3 h-3" /></IconButton>
+                                      <IconButton onClick={cancelEditTemplate} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel" aria-label="Cancel edit template"><XCircle className="w-3 h-3" /></IconButton>
                                     </div>
                                   </td>
                                 </>

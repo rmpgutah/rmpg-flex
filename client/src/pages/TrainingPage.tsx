@@ -12,6 +12,7 @@ import {
   ChevronRight, RefreshCw, Filter,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { formatDateTime, formatDate, parseTimestamp } from '../utils/dateUtils';
@@ -29,8 +30,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   first_aid: 'bg-green-900/40 text-green-400 border-green-700/50',
   legal: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
   communication: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  driving: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
-  technology: 'bg-indigo-900/40 text-indigo-400 border-indigo-700/50',
+  driving: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  technology: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   leadership: 'bg-brand-900/40 text-brand-400 border-brand-700/50',
   compliance: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -249,9 +250,9 @@ export default function TrainingPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh">
+          <IconButton onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh" aria-label="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          </IconButton>
           {isAdmin && (
             <>
               <button type="button"
@@ -356,9 +357,9 @@ export default function TrainingPage() {
               <h2 className="text-sm font-bold text-rmpg-100 uppercase flex items-center gap-2">
                 <Users className="w-4 h-4 text-brand-400" /> Bulk Training Assignment
               </h2>
-              <button type="button" onClick={() => setShowBulkAssign(false)} className="text-rmpg-500 hover:text-rmpg-300">
+              <IconButton onClick={() => setShowBulkAssign(false)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close bulk assign">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="space-y-2">
               <div>
@@ -634,7 +635,7 @@ function DashboardTab({ records, requirements, officers }: {
                   <span className="text-rmpg-500">—</span>
                   <span className="text-rmpg-300">{r.course_name}</span>
                   <span className={`ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 ${STATUS_COLORS[r.status].bg} ${STATUS_COLORS[r.status].text} border ${STATUS_COLORS[r.status].border}`}>
-                    {r.status}
+                    {String(r.status).replace(/_/g, ' ')}
                   </span>
                 </div>
               ))}
@@ -873,9 +874,9 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
             className={`input-dark text-[11px] pl-6 ${search ? 'pr-7' : 'pr-2'} py-1 w-40 min-h-[36px]`}
           />
           {search && (
-            <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+            <IconButton onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
               <X className="w-3 h-3" />
-            </button>
+            </IconButton>
           )}
         </div>
         <select
@@ -974,12 +975,12 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                   {isAdmin && (
                     <td className="py-1.5 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button type="button" onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit">
+                        <IconButton onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit training record ${record.id}`}>
                           <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button type="button" onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
+                        </IconButton>
+                        <IconButton onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete" aria-label={`Delete training record ${record.id}`}>
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </IconButton>
                       </div>
                     </td>
                   )}
@@ -1049,12 +1050,12 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit">
+                      <IconButton onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit requirement ${req.id}`}>
                         <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button type="button" onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete">
+                      </IconButton>
+                      <IconButton onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete" aria-label={`Delete requirement ${req.id}`}>
                         <Trash2 className="w-3 h-3" />
-                      </button>
+                      </IconButton>
                     </div>
                   )}
                 </div>
@@ -1316,7 +1317,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Training Record' : 'Add Training Record'}
           </h2>
-          <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="p-4 space-y-3">
@@ -1527,7 +1528,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Requirement' : 'Add Training Requirement'}
           </h2>
-          <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="p-4 space-y-3">

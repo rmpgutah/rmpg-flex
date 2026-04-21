@@ -269,7 +269,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
         <button type="button"
           onClick={() => setLayersPanelOpen(false)}
-          className="toolbar-btn hover:bg-[#141414] transition-colors duration-150"
+          className="toolbar-btn hover:bg-[#181818] transition-colors duration-150"
           style={{ padding: '0 2px' }}
           title="Hide layers"
         >
@@ -279,7 +279,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
       <div className="p-1.5 space-y-0.5">
         {/* Fix 93: Core layers group with All On/Off */}
-        <div className="flex items-center justify-between mb-0.5 px-1 pb-1 border-b border-[#222222]/50">
+        <div className="flex items-center justify-between mb-0.5 px-1 pb-1 border-b border-[#2b2b2b]/50">
           <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Core</span>
           <div className="flex gap-1">
             <button type="button"
@@ -302,7 +302,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           <button type="button"
             key={key}
             onClick={() => toggleLayer(key)}
-            className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#141414]/50 ${
+            className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#181818]/50 ${
               layers[key] ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70'
             }`}
             role="switch"
@@ -321,7 +321,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         {/* Live Tracking group header */}
         <button type="button"
           onClick={() => toggleGroup('tracking')}
-          className="flex items-center justify-between w-full px-1 py-0.5 mt-1 border-t border-[#222222]/50"
+          className="flex items-center justify-between w-full px-1 py-0.5 mt-1 border-t border-[#2b2b2b]/50"
         >
           <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Live Tracking</span>
           {collapsedGroups.tracking ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" />}
@@ -331,7 +331,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         {/* Heat Map */}
         <button type="button"
           onClick={() => setShowHeatmap(!showHeatmap)}
-          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#141414]/50 ${
+          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#181818]/50 ${
             showHeatmap ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70'
           }`}
           role="switch"
@@ -451,7 +451,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         {/* Traffic Layer */}
         <button type="button"
           onClick={() => onToggleTraffic?.()}
-          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#141414]/50 ${
+          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#181818]/50 ${
             showTraffic ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70'
           }`}
           role="switch"
@@ -466,7 +466,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         {/* Tracking Lines */}
         <button type="button"
           onClick={() => setShowTrackingLines(!showTrackingLines)}
-          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#141414]/50 ${
+          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#181818]/50 ${
             showTrackingLines ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70'
           }`}
           role="switch"
@@ -481,15 +481,15 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         {/* Breadcrumbs */}
         <button type="button"
           onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
-          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#141414]/50 ${
+          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-all duration-200 hover:bg-[#181818]/50 ${
             showBreadcrumbs ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70'
           }`}
           role="switch"
           aria-checked={showBreadcrumbs}
           aria-label="Toggle Breadcrumbs layer"
         >
-          {showBreadcrumbs ? <Eye className="w-3 h-3 text-cyan-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-          <Route className="w-3 h-3 text-cyan-400" />
+          {showBreadcrumbs ? <Eye className="w-3 h-3 text-gray-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+          <Route className="w-3 h-3 text-gray-400" />
           <span className="text-[10px] text-rmpg-200 flex-1">Breadcrumbs</span>
         </button>
         {showBreadcrumbs && (
@@ -501,7 +501,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   onClick={() => setBreadcrumbHours(h)}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     breadcrumbHours === h
-                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                       : 'text-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
@@ -535,7 +535,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   onClick={() => setBreadcrumbColorMode(mode)}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     breadcrumbColorMode === mode
-                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                       : 'text-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
@@ -566,7 +566,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       setPlaybackIdx(0);
                       setIsPlaying(false);
                     }}
-                    className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-cyan-600"
+                    className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-gray-600"
                     style={{ borderRadius: 2 }}
                   >
                     <option value="">Replay trail...</option>
@@ -594,7 +594,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                               setIsPlaying(true);
                             }
                           }}
-                          className="p-0.5 rounded-sm hover:bg-cyan-900/40 transition-colors"
+                          className="p-0.5 rounded-sm hover:bg-gray-900/40 transition-colors"
                           title={isPlaying ? 'Pause' : 'Play'}
                         >
                           {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
@@ -614,7 +614,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                               playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
                             }
                           }}
-                          className="flex-1 h-1 accent-cyan-400"
+                          className="flex-1 h-1 accent-gray-400"
                         />
                         <span className="text-[8px] font-mono text-rmpg-400 w-12 text-right">
                           {playbackIdx + 1}/{totalPts}
@@ -628,7 +628,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                             onClick={() => setPlaybackSpeed(spd)}
                             className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                               playbackSpeed === spd
-                                ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                                ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                                 : 'text-rmpg-500 hover:text-rmpg-300'
                             }`}
                           >
@@ -653,7 +653,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
       {/* Measurement Tools */}
       <div className="border-t border-rmpg-700 p-1.5">
-        <div className="flex items-center gap-1 px-2 py-1 border-b border-[#222222]/50 pb-1 mb-0.5">
+        <div className="flex items-center gap-1 px-2 py-1 border-b border-[#2b2b2b]/50 pb-1 mb-0.5">
           <Ruler className="w-3 h-3" style={{ color: '#d4a017' }} />
           <span className="text-[10px] text-rmpg-300 flex-1">Measure</span>
         </div>
@@ -738,7 +738,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           onClick={() => setShowGeoPanel(!showGeoPanel)}
           className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
         >
-          <Globe2 className="w-3 h-3 text-cyan-400" />
+          <Globe2 className="w-3 h-3 text-gray-400" />
           <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
           <span className="text-[9px] text-rmpg-500">
             {Object.values(geoLayerStates).filter((s: any) => s.visible).length}/{geoConfigs.length}
@@ -753,7 +753,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button type="button"
                   key={cfg.id}
                   onClick={() => toggleGeoLayer(cfg.id)}
-                  className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors duration-100 hover:bg-[#141414]/50 ${
+                  className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors duration-100 hover:bg-[#181818]/50 ${
                     state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70'
                   }`}
                   role="switch"
@@ -788,7 +788,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             {showDistrictLegend ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
           </button>
           {showDistrictLegend && (
-            <div className="mt-1 space-y-0.5 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222]">
+            <div className="mt-1 space-y-0.5 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b]">
               {districtSections.map((sec) => (
                 <div key={sec.id} className="flex items-center gap-2 px-2 py-0.5">
                   <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: getSectionColor(sec.id), opacity: 0.8 }} />
@@ -826,7 +826,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         {showShiftPanel && (
           <div className="mt-1 space-y-1">
             {shiftPlanning.plans.length > 0 && (
-              <div className="space-y-0.5 max-h-[100px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222]">
+              <div className="space-y-0.5 max-h-[100px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b]">
                 {shiftPlanning.plans.map((plan: any) => {
                   const shiftInfo = SHIFT_TYPES[plan.shiftType as ShiftType] || SHIFT_TYPES.custom;
                   return (
@@ -1032,7 +1032,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                                           setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                         }
                                       }}
-                                      className="w-2.5 h-2.5 accent-blue-500"
+                                      className="w-2.5 h-2.5 accent-gray-500"
                                     />
                                     <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                     {unit.officer_name && (
@@ -1459,7 +1459,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               <button type="button"
                 onClick={() => setShowGeofences(!showGeofences)}
                 className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showGeofences ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showGeofences ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Radar className="w-3 h-3" />
@@ -1472,7 +1472,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button type="button"
                   onClick={onToggleGeofenceDraw}
                   className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
-                    geofenceDrawingMode ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                    geofenceDrawingMode ? 'bg-gray-900/50 text-gray-300 border border-gray-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
                   Draw
@@ -1568,7 +1568,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             <button type="button"
               onClick={() => setShowResponseRadius(!showResponseRadius)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                showResponseRadius ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
               }`}
             >
               <Target className="w-3 h-3" />
@@ -1671,7 +1671,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             <button type="button"
               onClick={() => setShowFleetVehicles(!showFleetVehicles)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                showFleetVehicles ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
               }`}
             >
               <Car className="w-3 h-3" />

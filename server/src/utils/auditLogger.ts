@@ -218,17 +218,53 @@ export type AuditEntityType =
 // [FIX 48] Max detail string length to prevent oversized audit entries
 const MAX_DETAILS_LENGTH = 4000;
 
+function stringifyAuditDetails(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown serialization error';
+    return `[unserializable audit details: ${message}]`;
+  }
+}
+
+function buildAuditDetails(detailsOrBefore: unknown, afterOrDetails?: unknown): string {
+  if (afterOrDetails === undefined) {
+    return stringifyAuditDetails(detailsOrBefore);
+  }
+
+  if (typeof afterOrDetails === 'string') {
+    return afterOrDetails;
+  }
+
+  if (detailsOrBefore == null && afterOrDetails == null) {
+    return '';
+  }
+
+  return stringifyAuditDetails({
+    before: detailsOrBefore ?? null,
+    after: afterOrDetails ?? null,
+  });
+}
+
 export function auditLog(
   req: Request,
   action: AuditAction,
   entityType: AuditEntityType,
   entityId: string | number,
-  details: string,
+  detailsOrBefore?: unknown,
+  afterOrDetails?: unknown,
 ): void {
   try {
     const db = getDb();
     const userId = req.user?.userId ?? null;
     const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const details = buildAuditDetails(detailsOrBefore, afterOrDetails);
 
     // [FIX 49] Truncate details to prevent oversized DB rows
     const truncatedDetails = details && details.length > MAX_DETAILS_LENGTH

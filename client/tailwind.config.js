@@ -49,31 +49,27 @@ export default {
       colors: {
         // ── Surface tokens (CSS variable backed) ──────────
         surface: {
-          base:    'var(--surface-base)',     // #141e2b
-          raised:  'var(--surface-raised)',   // #1a2636
-          sunken:  'var(--surface-sunken)',   // #0d1520
-          overlay: 'var(--surface-overlay)',  // #0a1018
-          deep:    'var(--surface-deep)',     // #060c14
+          base:    'var(--surface-base)',
+          raised:  'var(--surface-raised)',
+          sunken:  'var(--surface-sunken)',
+          overlay: 'var(--surface-overlay)',
+          deep:    'var(--surface-deep)',
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Spillman Flex / Motorola Solutions blue theme
-        //   Primary blue (toolbar / accents):   #1a5a9e
-        //   Logo charcoal (body / base):        #303030
-        //   Logo gold (field labels / accents):  #d4a017
-        //   Logo light grey (text):              #d0d0d0
+        // Pure black shell with neutral metallic accents
 
         brand: {
-          50:  '#f5f5f5',
-          100: '#e0e0e0',
-          200: '#c0c0c0',
-          300: '#aaaaaa',
-          400: '#999999',    // Lighter accent
-          500: '#888888',    // Primary — neutral gray
-          600: '#666666',
-          700: '#444444',
-          800: '#333333',
-          900: '#222222',
+          50:  '#f2f2f2',
+          100: '#dddddd',
+          200: '#bfbfbf',
+          300: '#9e9e9e',
+          400: '#7f7f7f',
+          500: '#666666',
+          600: '#4c4c4c',
+          700: '#343434',
+          800: '#1f1f1f',
+          900: '#0e0e0e',
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -85,26 +81,40 @@ export default {
           700: '#936c0a',
         },
 
-        // Neutral steel-blue greys — Spillman Flex dark theme
+        // Keep the "blue" token name for existing utility usage, but render it as neutral gray
+        blue: {
+          50:  '#f1f1f1',
+          100: '#d9d9d9',
+          200: '#bdbdbd',
+          300: '#a1a1a1',
+          400: '#c8c8c8',
+          500: '#9a9a9a',
+          600: '#737373',
+          700: '#4f4f4f',
+          800: '#2e2e2e',
+          900: '#141414',
+        },
+
+        // Neutral graphite greys — no blue cast
         rmpg: {
-          50:  '#e0e0e0',
-          100: '#cccccc',
-          200: '#aaaaaa',
-          300: '#888888',
-          400: '#666666',
-          500: '#444444',
-          600: '#333333',
-          700: '#222222',
-          800: '#181818',
-          900: '#0e0e0e',
-          950: '#050505',
+          50:  '#ededed',
+          100: '#d6d6d6',
+          200: '#b8b8b8',
+          300: '#969696',
+          400: '#757575',
+          500: '#5a5a5a',
+          600: '#434343',
+          700: '#2d2d2d',
+          800: '#1b1b1b',
+          900: '#0d0d0d',
+          950: '#030303',
         },
 
         dispatch: {
-          emergency: '#dc2626',
-          urgent:    '#d4a017',
-          routine:   '#888888',
-          scheduled: '#666666',
+          emergency: '#dc2626',    // Safety red (not brand)
+          urgent:    '#d4a017',    // Brand gold
+          routine:   '#a7b1bc',
+          scheduled: '#6b7280',
         },
         success: {
           400: '#34d399',
@@ -116,25 +126,11 @@ export default {
         },
         status: {
           available:  '#22c55e',
-          dispatched: '#d4a017',
-          enroute:    '#888888',
+          dispatched: '#d4a017',   // Brand gold
+          enroute:    '#d5dde6',
           onscene:    '#a855f7',
-          busy:       '#dc2626',
-          offduty:    '#666666',
-        },
-        // Override Tailwind default blue to gray (kills ALL text-blue-*, bg-blue-*, border-blue-*)
-        blue: {
-          50:  '#f5f5f5',
-          100: '#e0e0e0',
-          200: '#c0c0c0',
-          300: '#aaaaaa',
-          400: '#999999',
-          500: '#888888',
-          600: '#666666',
-          700: '#444444',
-          800: '#333333',
-          900: '#222222',
-          950: '#111111',
+          busy:       '#dc2626',   // Safety red
+          offduty:    '#6b7280',
         },
       },
     },

@@ -187,9 +187,9 @@ router.get('/vehicles/:id/trips', (req: Request, res: Response) => {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
     if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
-    const { page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
     const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 50;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
     const total = (db.prepare('SELECT COUNT(*) as c FROM cpgps_trips WHERE cpgps_vehicle_id = ?').get(cpgpsVehicle.cpgps_id) as any)?.c || 0;
     const trips = db.prepare(
@@ -208,7 +208,7 @@ router.get('/vehicles/:id/locations', (req: Request, res: Response) => {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
     if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
-    const { limit = '200' } = req.query;
+    const { limit = '100000' } = req.query;
     const locations = db.prepare(
       'SELECT * FROM cpgps_locations WHERE cpgps_vehicle_id = ? ORDER BY reported_at DESC LIMIT ?'
     ).all(cpgpsVehicle.cpgps_id, parseInt(limit as string, 10) || 200);
@@ -225,7 +225,7 @@ router.get('/vehicles/:id/alerts', (req: Request, res: Response) => {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
     if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
-    const { limit = '100' } = req.query;
+    const { limit = '100000' } = req.query;
     const alerts = db.prepare(
       'SELECT * FROM cpgps_alerts WHERE cpgps_vehicle_id = ? ORDER BY triggered_at DESC LIMIT ?'
     ).all(cpgpsVehicle.cpgps_id, parseInt(limit as string, 10) || 100);
@@ -704,19 +704,39 @@ router.get('/mappings', (req: Request, res: Response) => {
 });
 
 // POST /api/clearpathgps/mappings — Create officer-vehicle mapping
+//
+// Backward-compat: accept either canonical (officer_id, cpgps_vehicle_id)
+// or legacy client field names (unit_id → resolved to officer_id via the
+// units table; cpg_device_id → cpgps_vehicle_id; cpg_display_name →
+// call_sign). Closes the field-name drift that was 400-ing the Admin →
+// ClearPathGPS Integration "Save mapping" action.
 router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { officer_id, cpgps_vehicle_id, call_sign } = req.body;
+    const body = req.body || {};
+    let officer_id = body.officer_id;
+    const cpgps_vehicle_id = body.cpgps_vehicle_id || body.cpg_device_id;
+    const call_sign = body.call_sign || body.cpg_display_name || null;
+
+    if (!officer_id && body.unit_id) {
+      const unit = db.prepare('SELECT officer_id FROM units WHERE id = ?')
+        .get(Number(body.unit_id)) as { officer_id?: number } | undefined;
+      if (unit?.officer_id) officer_id = unit.officer_id;
+    }
+
     if (!officer_id || !cpgps_vehicle_id) {
-      res.status(400).json({ error: 'officer_id and cpgps_vehicle_id required', code: 'OFFICERID_AND_CPGPSVEHICLEID_REQUIRED' });
+      res.status(400).json({
+        error: 'officer_id (or unit_id) and cpgps_vehicle_id (or cpg_device_id) required',
+        code: 'OFFICERID_AND_CPGPSVEHICLEID_REQUIRED',
+        hint: 'Provide officer_id directly or unit_id (will be resolved to officer_id), plus cpgps_vehicle_id or cpg_device_id.',
+      });
       return;
     }
     db.prepare(`
       INSERT OR REPLACE INTO cpgps_officer_mappings (officer_id, cpgps_vehicle_id, call_sign, active)
       VALUES (?, ?, ?, 1)
-    `).run(officer_id, cpgps_vehicle_id, call_sign || null);
-    res.json({ success: true });
+    `).run(officer_id, cpgps_vehicle_id, call_sign);
+    res.json({ success: true, officer_id, cpgps_vehicle_id });
   } catch (error: any) {
     console.error('ClearPathGPS create mapping error:', error);
     res.status(500).json({ error: 'Failed to clearpathgps create mapping', code: 'CLEARPATHGPS_CREATE_MAPPING_ERROR' });
@@ -763,7 +783,7 @@ router.post('/settings', requireRole('admin'), (req: Request, res: Response) => 
 router.get('/dashcam-events', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
     const offset = parseInt(req.query.offset as string, 10) || 0;
 
     const events = db.prepare(`

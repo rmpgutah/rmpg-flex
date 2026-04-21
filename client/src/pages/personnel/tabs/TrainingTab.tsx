@@ -99,19 +99,19 @@ export default function TrainingTab({ training, requirements, officers, loading,
           <p className="text-lg font-bold font-mono text-rmpg-100">{training.length}</p>
           <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Records</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a1a0a] border-t-2 border-t-green-500 transition-colors duration-200 hover:brightness-110">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-green-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500 transition-colors duration-200 hover:brightness-110">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-gray-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-gray-400">{inProgress}</p>
           <p className="text-[8px] uppercase text-gray-400/70 font-bold tracking-wider">In Progress</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500 transition-colors duration-200 hover:brightness-110">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-amber-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-amber-400">{scheduled}</p>
           <p className="text-[8px] uppercase text-amber-400/70 font-bold tracking-wider">Scheduled</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a0a0a] border-t-2 border-t-red-500 transition-colors duration-200 hover:brightness-110">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-red-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-red-400">{overdue}</p>
           <p className="text-[8px] uppercase text-red-400/70 font-bold tracking-wider">Overdue</p>
         </div>

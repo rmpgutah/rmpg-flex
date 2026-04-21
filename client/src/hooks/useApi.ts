@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { isOfflineDbReady } from '../services/offlineDb';
 import { handle as browserOfflineHandle, isOfflineCapableEndpoint } from '../services/offlineRouter';
 import { hasActiveSession } from '../services/offlinePin';
+import { isLikelyOnline } from '../services/connectivityMonitor';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 
@@ -33,6 +34,27 @@ function isOfflineCapable(method: string, path: string): boolean {
 
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
+
+// ─── Image URL helper (adds auth token for <img src=> loads) ────
+/**
+ * Wraps an image URL so it authenticates against /api/uploads endpoints.
+ * - data: URLs and full http(s):// URLs are returned unchanged
+ * - /api/uploads paths get ?token=<jwt> appended (server accepts via authenticateTokenOrQuery)
+ * - Already-signed URLs (containing ?sig=) are returned unchanged
+ */
+export function authedImageUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  if (url.includes('?sig=') || url.includes('&sig=')) return url;
+  // Only append token for API paths that require auth
+  if (url.includes('/api/uploads') || url.startsWith('/api/')) {
+    const token = localStorage.getItem('rmpg_token');
+    if (!token) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}token=${encodeURIComponent(token)}`;
+  }
+  return url;
+}
 
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
@@ -253,8 +275,12 @@ async function tryRefreshToken(): Promise<string | null> {
       }
 
       // Refresh failed — clear tokens and redirect to login
-      // (but NOT if we're offline — stay on current page)
-      if (!navigator.onLine) return null; // Don't redirect when offline (browser or Electron)
+      // (but NOT if we're offline — stay on current page).
+      // Uses the connectivity monitor's authoritative state (falls back to
+      // navigator.onLine pre-bootstrap) so we don't wrongly redirect during
+      // a false-offline window, and don't wrongly suppress the redirect
+      // when navigator.onLine lies `false` while the server is reachable.
+      if (!isLikelyOnline()) return null;
       if (electron?.getOfflineState) {
         try {
           const state = await electron.getOfflineState();
@@ -316,7 +342,12 @@ export async function apiFetch<T>(
   }
 
   // ─── Browser offline interception ──────────────────────
-  if (!navigator.onLine && isOfflineDbReady() && isOfflineCapableEndpoint(method, url)) {
+  // Use the connectivity monitor's authoritative state instead of
+  // `navigator.onLine` directly. Past bug: if navigator lied `false` while
+  // the server was actually reachable, every write was routed to the
+  // IndexedDB offline router (surfacing as OfflineUnauthorizedError →
+  // unexpected PIN modal) until navigator happened to flip itself true.
+  if (!isLikelyOnline() && isOfflineDbReady() && isOfflineCapableEndpoint(method, url)) {
     try {
       const session = await hasActiveSession();
       // Write operations require PIN authorization (admin always authorized)
@@ -336,7 +367,7 @@ export async function apiFetch<T>(
       if (err instanceof OfflineUnauthorizedError) throw err;
       // If truly offline and offline router failed, surface the error
       // rather than silently falling through to a guaranteed network failure
-      if (!navigator.onLine) {
+      if (!isLikelyOnline()) {
         console.warn('[OFFLINE] Browser offline router failed:', err);
         throw new Error('Offline data unavailable for this request');
       }
@@ -381,6 +412,28 @@ export async function apiFetch<T>(
   }
 
   return res.json();
+}
+
+/** Fetch binary data (audio, images) with auth + token refresh. Returns a Blob. */
+export async function apiFetchBlob(endpoint: string): Promise<Blob> {
+  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const token = localStorage.getItem('rmpg_token');
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res = await fetchWithRetry(url, { headers });
+
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers['Authorization'] = `Bearer ${newToken}`;
+      res = await fetchWithRetry(url, { headers });
+    }
+    if (!res.ok) throw new Error('Session expired. Please log in again.');
+  }
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.blob();
 }
 
 // Upload files via FormData (multipart)

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import IconButton from '../../components/IconButton';
 import type { User } from '../../types';
 
 // ============================================================
@@ -251,21 +252,22 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button type="button"
+                  <IconButton
                     onClick={() => testRule(r.id)}
                     disabled={testing === r.id}
                     className="toolbar-btn p-1"
                     title="Send test notification"
+                    aria-label="Send test notification"
                   >
                     {testing === r.id ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Play className="w-3 h-3" />}
-                  </button>
+                  </IconButton>
                   <button type="button" onClick={() => toggleActive(r)} className="toolbar-btn p-1" title={r.is_active ? 'Disable' : 'Enable'}>
                     <span className={`text-[9px] font-bold ${r.is_active ? 'text-green-400' : 'text-rmpg-500'}`}>
                       {r.is_active ? 'ON' : 'OFF'}
                     </span>
                   </button>
-                  <button type="button" onClick={() => openEdit(r)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
-                  <button type="button" onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                  <IconButton onClick={() => openEdit(r)} className="toolbar-btn p-1" aria-label={`Edit ${r.name}`}><Edit2 className="w-3 h-3" /></IconButton>
+                  <IconButton onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" aria-label={`Delete ${r.name}`}><Trash2 className="w-3 h-3" /></IconButton>
                 </div>
               </div>
             </div>
@@ -281,7 +283,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Notification Rule' : 'New Notification Rule'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>

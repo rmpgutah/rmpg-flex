@@ -104,24 +104,24 @@ export default function CallHistoryPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #1e2a3a' }}
+        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
-          <Clock size={13} className="text-cyan-400" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+          <Clock size={13} className="text-gray-400" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
             Call History
           </span>
           {/* #40: Call count badge with border */}
           <span
             className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm tabular-nums"
-            style={{ background: '#444444', color: '#22c55e', border: '1px solid #0e7490' }}
+            style={{ background: '#444444', color: '#22c55e', border: '1px solid #4a4a4a' }}
           >
             {loading ? '...' : stats.total}
           </span>
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1 hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="toolbar-btn p-1 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close call history panel"
           title="Close"
         >
@@ -132,7 +132,7 @@ export default function CallHistoryPanel({
       {/* Loading state */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-8 text-rmpg-500 gap-2">
-          <div className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-[9px] font-mono animate-pulse">Loading {days}d history...</span>
           <div className="space-y-1.5 w-full px-3">
             {[1, 2, 3].map((i) => (
@@ -147,17 +147,17 @@ export default function CallHistoryPanel({
           {/* Summary stats row */}
           <div
             className="rounded-sm p-2 flex items-center gap-3"
-            style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+            style={{ background: '#050505', border: '1px solid #282828' }}
           >
             <div className="flex items-center gap-1">
-              <Phone size={10} className="text-cyan-400" />
+              <Phone size={10} className="text-gray-400" />
               <span className="text-[9px] font-mono text-rmpg-300">
                 {stats.total} calls
               </span>
             </div>
             {stats.avgResponse != null && (
               <div className="flex items-center gap-1">
-                <TrendingUp size={10} className="text-cyan-400" />
+                <TrendingUp size={10} className="text-gray-400" />
                 <span className="text-[9px] font-mono text-rmpg-300">
                   Avg {formatMinutes(stats.avgResponse)}
                 </span>
@@ -168,7 +168,7 @@ export default function CallHistoryPanel({
           {/* Priority breakdown */}
           <div
             className="rounded-sm p-2"
-            style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+            style={{ background: '#050505', border: '1px solid #282828' }}
           >
             <div className="text-[10px] uppercase tracking-wider text-rmpg-500 mb-1.5">
               Priority
@@ -194,7 +194,7 @@ export default function CallHistoryPanel({
           {stats.topTypes.length > 0 && (
             <div
               className="rounded-sm p-2"
-              style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+              style={{ background: '#050505', border: '1px solid #282828' }}
             >
               <div className="text-[10px] uppercase tracking-wider text-rmpg-500 mb-1.5">
                 Top Types
@@ -226,13 +226,13 @@ export default function CallHistoryPanel({
           {stats.recent.length > 0 && (
             <div
               className="rounded-sm"
-              style={{ background: '#050505', border: '1px solid #1e2a3a' }}
+              style={{ background: '#050505', border: '1px solid #282828' }}
             >
               <div className="text-[10px] uppercase tracking-wider text-rmpg-500 px-2 pt-2 pb-1">
                 Recent Calls
               </div>
               <div
-                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent"
+                className="max-h-48 overflow-y-auto space-y-px px-1 pb-1 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
               >
                 {stats.recent.map((call) => {
                   const pColor =
@@ -241,11 +241,11 @@ export default function CallHistoryPanel({
                   return (
                     <div
                       key={call.id}
-                      className="rounded-sm px-2 py-1.5 hover:bg-[#141414]/50 transition-colors duration-100"
+                      className="rounded-sm px-2 py-1.5 hover:bg-[#181818]/50 transition-colors duration-100"
                       style={{ borderLeft: `2px solid ${pColor}` }}
                     >
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[9px] font-mono font-bold text-cyan-300">
+                        <span className="text-[9px] font-mono font-bold text-gray-300">
                           {call.call_number}
                         </span>
                         <div className="flex items-center gap-1.5">

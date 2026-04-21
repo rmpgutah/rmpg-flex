@@ -61,9 +61,9 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/violations', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, violation_type, severity, search, page = '1', limit = '50' } = req.query;
+    const { status, violation_type, severity, search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -88,7 +88,7 @@ router.get('/violations', (req: Request, res: Response) => {
 router.get('/violations/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid violation ID', code: 'INVALID_VIOLATION_ID' }); return; }
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
@@ -152,9 +152,9 @@ router.put('/violations/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'code_violation', req.params.id, `Updated code violation #${req.params.id}`);
-    broadcastRecordUpdate({ type: 'violation_updated', id: parseInt(req.params.id) });
-    res.json({ data: { id: parseInt(req.params.id) } });
+    auditLog(req, 'UPDATE', 'code_violation', req.params.id as string, `Updated code violation #${req.params.id}`);
+    broadcastRecordUpdate({ type: 'violation_updated', id: parseInt(req.params.id as string) });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { console.error('Update violation error:', error); res.status(500).json({ error: 'Internal server error', code: 'UPDATE_VIOLATION_ERROR' }); }
 });
 
@@ -166,7 +166,7 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
     const valid = ['open', 'notice_sent', 'reinspection', 'resolved', 'referred', 'voided'];
     if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status', code: 'INVALID_STATUS' });
 
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid violation ID', code: 'INVALID_ID' });
 
     const updates: any = { status, updated_at: now };
@@ -191,9 +191,9 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
 router.get('/tows', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, search, page = '1', limit = '50' } = req.query;
+    const { status, search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -213,7 +213,7 @@ router.get('/tows', (req: Request, res: Response) => {
 router.get('/tows/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid tow ID', code: 'INVALID_TOW_ID' }); return; }
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Tow not found', code: 'TOW_NOT_FOUND' });
@@ -285,9 +285,9 @@ router.put('/tows/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'vehicle_tow', req.params.id, `Updated tow #${req.params.id}`);
-    broadcastRecordUpdate({ type: 'tow_updated', id: parseInt(req.params.id) });
-    res.json({ data: { id: parseInt(req.params.id) } });
+    auditLog(req, 'UPDATE', 'vehicle_tow', req.params.id as string, `Updated tow #${req.params.id}`);
+    broadcastRecordUpdate({ type: 'tow_updated', id: parseInt(req.params.id as string) });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { console.error('Update tow error:', error); res.status(500).json({ error: 'Internal server error', code: 'UPDATE_TOW_ERROR' }); }
 });
 
@@ -310,7 +310,7 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), status } });
+    res.json({ data: { id: parseInt(req.params.id as string), status } });
   } catch (error: any) { console.error('Update tow status error:', error); res.status(500).json({ error: 'Failed to update tow status', code: 'TOW_STATUS_ERROR' }); }
 });
 
@@ -667,8 +667,8 @@ router.post('/violations/:id/escalate', (req: Request, res: Response) => {
       VALUES (?, 'escalation', 'code_violation', ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ escalation_type, notes }), now);
 
-    broadcastRecordUpdate({ type: 'violation_escalated', id: parseInt(req.params.id), escalation_type });
-    res.json({ data: { id: parseInt(req.params.id), status: newStatus, escalation_level: escalation_type } });
+    broadcastRecordUpdate({ type: 'violation_escalated', id: parseInt(req.params.id as string), escalation_type });
+    res.json({ data: { id: parseInt(req.params.id as string), status: newStatus, escalation_level: escalation_type } });
   } catch (error: any) {
     console.error('Violation escalation error:', error);
     res.status(500).json({ error: 'Failed to escalate violation', code: 'VIOLATION_ESCALATION_ERROR' });
@@ -805,7 +805,7 @@ router.post('/violations/:id/schedule-inspection', (req: Request, res: Response)
     if (!violation) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
 
     const inspectionData = {
-      violation_id: parseInt(req.params.id),
+      violation_id: parseInt(req.params.id as string),
       inspection_type: inspection_type || 'reinspection',
       scheduled_date: inspection_date,
       assigned_officer_id: assigned_officer_id || req.user!.userId,
@@ -866,7 +866,7 @@ router.post('/violations/:id/payment', (req: Request, res: Response) => {
       VALUES (?, 'payment_received', 'code_violation', ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ amount: parseFloat(amount), payment_method }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), total_paid: totalPaid, balance_due: balance } });
+    res.json({ data: { id: parseInt(req.params.id as string), total_paid: totalPaid, balance_due: balance } });
   } catch (error: any) {
     console.error('Payment recording error:', error);
     res.status(500).json({ error: 'Failed to record payment', code: 'PAYMENT_ERROR' });

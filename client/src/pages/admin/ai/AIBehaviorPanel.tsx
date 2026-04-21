@@ -80,7 +80,7 @@ export default function AIBehaviorPanel() {
         {/* Left Column — AI Personality */}
         <div className="space-y-5">
           {/* Response Style */}
-          <div className="bg-[#0a0a0a] border border-[#1a3550] rounded p-4 space-y-3">
+          <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-3">
             <h3 className="text-sm font-semibold text-white">Response Style</h3>
             <div className="space-y-2">
               <RadioOption
@@ -111,7 +111,7 @@ export default function AIBehaviorPanel() {
           </div>
 
           {/* Tone */}
-          <div className="bg-[#0a0a0a] border border-[#1a3550] rounded p-4 space-y-3">
+          <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-3">
             <h3 className="text-sm font-semibold text-white">Tone</h3>
             <div className="space-y-2">
               <RadioOption
@@ -142,7 +142,7 @@ export default function AIBehaviorPanel() {
           </div>
 
           {/* Safety Filter */}
-          <div className="bg-[#0a0a0a] border border-[#1a3550] rounded p-4 space-y-3">
+          <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-3">
             <h3 className="text-sm font-semibold text-white">Safety Filter</h3>
             <div className="space-y-2">
               <RadioOption
@@ -175,7 +175,7 @@ export default function AIBehaviorPanel() {
 
         {/* Right Column — Performance */}
         <div className="space-y-5">
-          <div className="bg-[#0a0a0a] border border-[#1a3550] rounded p-4 space-y-4">
+          <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
             <h3 className="text-sm font-semibold text-white">Performance</h3>
 
             {/* Rate Limit */}
@@ -185,7 +185,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={1} max={100}
                 value={config.rateLimit}
                 onChange={e => update('rateLimit', Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-[#050505] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-gray-600">Maximum requests per minute (1-100)</p>
             </div>
@@ -197,7 +197,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={1} max={10}
                 value={config.maxConcurrent}
                 onChange={e => update('maxConcurrent', Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-[#050505] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-gray-600">Maximum simultaneous AI requests (1-10)</p>
             </div>
@@ -209,7 +209,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={10} max={300}
                 value={config.requestTimeout}
                 onChange={e => update('requestTimeout', Math.min(300, Math.max(10, parseInt(e.target.value) || 10)))}
-                className="w-full px-3 py-1.5 bg-[#050505] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-gray-600">Time before request is aborted (10-300s)</p>
             </div>
@@ -224,7 +224,7 @@ export default function AIBehaviorPanel() {
                 <button
                   onClick={() => update('autoRetry', !config.autoRetry)}
                   className={`relative w-10 h-5 rounded-full transition-colors ${
-                    config.autoRetry ? 'bg-gray-600' : 'bg-[#1a3550]'
+                    config.autoRetry ? 'bg-gray-600' : 'bg-[#303030]'
                   }`}
                 >
                   <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
@@ -234,13 +234,13 @@ export default function AIBehaviorPanel() {
               </div>
 
               {config.autoRetry && (
-                <div className="space-y-1 pl-4 border-l-2 border-[#1a3550]">
+                <div className="space-y-1 pl-4 border-l-2 border-[#303030]">
                   <label className="text-xs text-gray-300">Retry Count</label>
                   <input
                     type="number" min={1} max={5}
                     value={config.retryCount}
                     onChange={e => update('retryCount', Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-full px-3 py-1.5 bg-[#050505] border border-[#1a3550] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
                   />
                   <p className="text-[10px] text-gray-600">Number of retry attempts (1-5)</p>
                 </div>
@@ -271,7 +271,7 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
 }) {
   return (
     <label className={`flex items-start gap-3 p-3 rounded border cursor-pointer transition-colors ${
-      selected === value ? 'border-gray-500 bg-gray-500/10' : 'border-[#1a3550] hover:border-[#2a4560]'
+      selected === value ? 'border-gray-500 bg-gray-500/10' : 'border-[#303030] hover:border-[#404040]'
     }`}>
       <input
         type="radio"
@@ -279,7 +279,7 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
         value={value}
         checked={selected === value}
         onChange={onChange}
-        className="mt-1 accent-blue-500"
+        className="mt-1 accent-gray-500"
       />
       <div>
         <p className="text-sm text-white font-medium">{label}</p>

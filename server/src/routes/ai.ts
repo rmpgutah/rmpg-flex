@@ -61,7 +61,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
 // ─── GET /test/:provider — test a specific provider connection ───
 router.get('/test/:provider', requireRole('admin'), async (req: Request, res: Response) => {
   try {
-    const result = await aiManager.testProvider(req.params.provider);
+    const result = await aiManager.testProvider(req.params.provider as string);
     res.json(result);
   } catch (err: any) {
     console.error('[AI] /test error:', err?.message || err);
@@ -134,7 +134,7 @@ router.post('/suggest-units', requireRole('admin', 'manager', 'supervisor', 'dis
 
 // ─── GET /activity — recent AI activity log (admin only) ───
 router.get('/activity', requireRole('admin'), (req: Request, res: Response) => {
-  const limit = parseInt(req.query.limit as string) || 50;
+  const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string)) || 100000));
   res.json(aiManager.getActivityLog(limit));
 });
 
@@ -398,7 +398,7 @@ router.put('/behavior', requireRole('admin'), (req: Request, res: Response) => {
 // ─── Enhanced Activity Log (from DB) ───
 router.get('/activity-log', requireRole('admin'), (req: Request, res: Response) => {
   const database = getDb();
-  const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+  const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string)) || 100000));
   const offset = parseInt(req.query.offset as string) || 0;
   const taskType = req.query.taskType as string;
   const from = req.query.from as string;

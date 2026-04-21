@@ -58,5 +58,21 @@ firebase-debug.log
 # ─── TypeScript Cache ─────────────────────────────
 *.tsbuildinfo
 .claude/
-.github/
+.github/*
+!.github/dependabot.yml
+!.github/labeler.yml
+!.github/SECURITY.md
+!.github/CODEOWNERS
+!.github/PULL_REQUEST_TEMPLATE.md
+!.github/ISSUE_TEMPLATE/
+!.github/workflows/
 .firecrawl/
+
+# ─── Visual Studio IDE state (should never be committed) ─────
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+RMPG Flare/
+

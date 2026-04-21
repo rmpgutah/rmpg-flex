@@ -13,6 +13,7 @@ import {
   sleep, upsertLead, registerScraper,
   getSourceConfig, type ScrapeResult,
 } from './leadScraperBase';
+import { resolveGoogleMapsApiKey } from './configEncryption';
 
 const SOURCE_KEY = 'google_places';
 const REQUEST_DELAY_MS = 1_000;
@@ -85,7 +86,7 @@ export async function scrapeGooglePlaces(): Promise<ScrapeResult> {
   let lastError: string | undefined;
   const seen = new Set<string>(); // track place_ids across queries
 
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = resolveGoogleMapsApiKey();
   if (!apiKey) {
     return {
       source_key: SOURCE_KEY,
@@ -93,7 +94,7 @@ export async function scrapeGooglePlaces(): Promise<ScrapeResult> {
       records_found: 0,
       records_imported: 0,
       records_skipped: 0,
-      error_message: 'GOOGLE_MAPS_API_KEY not configured',
+      error_message: 'Google Maps API key not configured (set via Admin → Integrations or GOOGLE_MAPS_API_KEY env var)',
       duration_ms: Date.now() - startTime,
     };
   }

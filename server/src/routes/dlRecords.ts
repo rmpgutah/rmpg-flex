@@ -35,7 +35,7 @@ const dlUpload = multer({
       cb(null, `dl-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024, files: 2, fields: 10, parts: 15, fieldSize: 1024 * 1024 }, // 10MB
   fileFilter: (_req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'];
     const ext = path.extname(file.originalname).toLowerCase();
@@ -116,7 +116,9 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     let ocrData: any = {};
 
     // Try Google Vision TEXT_DETECTION first (uses same Maps API key)
-    const visionKey = process.env.GOOGLE_MAPS_API_KEY;
+    // Prefer admin-configured key from system_config, fall back to env var
+    const { resolveGoogleMapsApiKey: resolveKey } = await import('../utils/configEncryption');
+    const visionKey = resolveKey();
     if (visionKey) {
       try {
         const visionRes = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`, {
@@ -187,7 +189,7 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
             // Also try "LAST, FIRST" format
             const commaName = lines.find((l: string) => /^[A-Z][A-Z'-]+,\s*[A-Z]/.test(l.toUpperCase()));
             if (commaName && !finalFirst) {
-              const [last, rest] = commaName.split(',').map(s => s.trim());
+              const [last, rest] = commaName.split(',').map((s: string) => s.trim());
               finalLast = last;
               const restParts = (rest || '').split(/\s+/);
               finalFirst = restParts[0] || '';
@@ -861,7 +863,7 @@ router.get('/', requireRole('admin', 'manager', 'officer', 'dispatcher'), (req: 
   try {
     const db = getDb();
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string, 10) || 25));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(req.query.per_page as string, 10)) || 100000));
     const search = (req.query.search as string || '').trim();
 
     let where = '1=1';

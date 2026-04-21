@@ -42,6 +42,26 @@ function calculateResponseTimeSeconds(createdAt: string | null, onsceneAt: strin
   } catch { return null; }
 }
 
+const NON_WARNING_PLACEHOLDERS = new Set([
+  '',
+  '0',
+  'none',
+  'n/a',
+  'na',
+  'null',
+  'false',
+  'unknown',
+  'unspecified',
+]);
+
+function getMeaningfulWarningValue(value: unknown): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  if (NON_WARNING_PLACEHOLDERS.has(normalized.toLowerCase())) return null;
+  return normalized;
+}
+
 // POST /api/dispatch/calls/archive-bulk - Archive multiple cleared/closed/cancelled calls at once
 // NOTE: This route MUST come before /calls/:id/archive to avoid Express matching "archive-bulk" as :id
 router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
@@ -346,7 +366,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
         officer_safety_caution, k9_requested, ems_requested, fire_requested,
         hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
         trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
-        section_id, zone_id, beat_id, disposition)
+        sector_id, zone_id, beat_id, disposition)
       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
@@ -384,7 +404,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
       call.vehicle_pursuit ? 1 : 0, call.foot_pursuit ? 1 : 0,
       call.le_notified ? 1 : 0, call.supervisor_notified ? 1 : 0,
       // District from dispatch call
-      call.section_id || null, call.zone_id || null, call.beat_id || null,
+      call.sector_id || null, call.zone_id || null, call.beat_id || null,
       call.disposition || null
     );
 
@@ -458,7 +478,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
 router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const entryId = parseInt(req.params.entryId, 10);
+    const entryId = parseInt(req.params.entryId as string, 10);
     if (isNaN(entryId) || entryId < 1) {
       res.status(400).json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' });
       return;
@@ -505,7 +525,7 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
 router.delete('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const delEntryId = parseInt(req.params.entryId, 10);
+    const delEntryId = parseInt(req.params.entryId as string, 10);
     if (isNaN(delEntryId) || delEntryId < 1) {
       res.status(400).json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' });
       return;
@@ -590,9 +610,10 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
     }
 
     const warnings: Array<{ type: string; label: string; severity: 'critical' | 'high' | 'medium'; source: string }> = [];
+    const weaponsValue = getMeaningfulWarningValue(call.weapons_involved);
 
     // Check call flags
-    if (call.weapons_involved && call.weapons_involved !== 'None') {
+    if (weaponsValue) {
       warnings.push({ type: 'ARMED', label: 'ARMED / WEAPONS', severity: 'critical', source: 'call' });
     }
     if (call.domestic_violence) {
@@ -622,6 +643,9 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
+        const gangAffiliation = getMeaningfulWarningValue(person.gang_affiliation);
+        const probationParole = getMeaningfulWarningValue(person.probation_parole);
+
         if (person.caution_flags) {
           const flags = person.caution_flags.split(',').map((f: string) => f.trim()).filter(Boolean);
           for (const flag of flags) {
@@ -636,14 +660,14 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
         if (person.is_sex_offender) {
           warnings.push({ type: 'SEX_OFFENDER', label: 'SEX OFFENDER', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
         }
-        if (person.gang_affiliation) {
+        if (gangAffiliation) {
           warnings.push({ type: 'GANG', label: 'GANG AFFILIATED', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
         }
-        if (person.probation_parole) {
+        if (probationParole) {
           warnings.push({ type: 'PROBATION', label: 'ON PROBATION/PAROLE', severity: 'high', source: `${person.first_name} ${person.last_name}` });
         }
         // Pre-Trial Supervision
-        if (person.probation_parole && person.probation_parole.toLowerCase().includes('pre-trial')) {
+        if (probationParole?.toLowerCase().includes('pre-trial')) {
           warnings.push({ type: 'PTS', label: 'PRE-TRIAL SUPERVISION', severity: 'high', source: `${person.first_name} ${person.last_name}` });
         }
       }

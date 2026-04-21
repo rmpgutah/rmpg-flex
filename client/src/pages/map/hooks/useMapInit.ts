@@ -10,6 +10,7 @@ import {
   onOnlineRetryMaps,
   monitorTileLoading,
 } from '../../../utils/googleMapsLoader';
+import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../../../utils/googleMapsApiKey';
 import { devLog, devWarn } from '../../../utils/devLog';
 import { injectKeyframes, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { MapStyleId } from '../utils/mapConstants';
@@ -58,13 +59,6 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
 
     if (mapInstanceRef.current) {
       setMapLoaded(true);
-      return;
-    }
-
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
-      setMapLoaded(false);
       return;
     }
 
@@ -172,7 +166,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (!authFailed) setMapLoaded(true);
     }
 
-    function attemptLoad(attempt: number) {
+    function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled) return;
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -182,7 +176,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
           pendingOnlineListener = null;
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
-            attemptLoad(attempt);
+            attemptLoad(apiKey, attempt);
           }
         };
         pendingOnlineListener = onBack;
@@ -200,7 +194,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
           if (attempt < MAX_RETRIES) {
             const delay = RETRY_DELAYS[attempt] || 30000;
             devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
-            setTimeout(() => attemptLoad(attempt + 1), delay);
+            setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
           } else {
             console.error('[MapPage] Google Maps load failed after all retries');
             setMapError(
@@ -213,15 +207,27 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         });
     }
 
-    attemptLoad(0);
+    let unsubOnline = () => {};
 
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) {
-        devLog('[MapPage] Online auto-retry triggered — reinitializing map');
-        setMapError(null);
-        initMap();
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        attemptLoad(apiKey, 0);
+        unsubOnline = onOnlineRetryMaps(apiKey, () => {
+          if (!cancelled && !mapInstanceRef.current) {
+            devLog('[MapPage] Online auto-retry triggered — reinitializing map');
+            setMapError(null);
+            initMap();
+          }
+        });
+      } catch (err: any) {
+        if (!cancelled) {
+          setMapError(err?.message || getGoogleMapsApiKeyErrorMessage());
+          setMapLoaded(false);
+        }
       }
-    });
+    })();
 
     return () => {
       cancelled = true;

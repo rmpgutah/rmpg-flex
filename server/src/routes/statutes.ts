@@ -20,8 +20,8 @@ router.use(authenticateToken);
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { q, category, title, offense_level, subcategory, limit = '50', offset = '0' } = req.query;
-    const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 50), 200);
+    const { q, category, title, offense_level, subcategory, limit = '100000', offset = '0' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offsetNum = Math.min(50000, Math.max(0, parseInt(offset as string, 10) || 0));
 
     let where = 'WHERE is_active = 1';
@@ -84,8 +84,8 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { q, category, limit = '20' } = req.query;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 20, 50);
+    const { q, category, limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     if (!q || (q as string).length < 2) {
       res.json({ data: [] });
@@ -283,7 +283,7 @@ router.delete('/entity/:id', (req: Request, res: Response) => {
 router.get('/penalty/:citation', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const citation = decodeURIComponent(req.params.citation);
+    const citation = decodeURIComponent(req.params.citation as string);
 
     const statute = db.prepare(`
       SELECT id, citation, short_title, description, offense_level, category,
@@ -332,9 +332,9 @@ router.get('/penalty/:citation', (req: Request, res: Response) => {
 router.get('/analytics/top-charged', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { days = '365', limit = '20' } = req.query;
+    const { days = '365', limit = '100000' } = req.query;
     const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
-    const limitNum = Math.min(50, parseInt(limit as string, 10) || 20);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     // From citations
     const topFromCitations = db.prepare(`
@@ -400,7 +400,7 @@ router.post('/:id/amendment', requireRole('admin', 'manager'), (req: Request, re
 
     // Store amendment in activity_log with structured data
     const amendmentData = {
-      statute_id: parseInt(req.params.id),
+      statute_id: parseInt(req.params.id as string),
       citation: statute.citation,
       amendment_type: amendment_type, // 'amended', 'repealed', 'enacted', 'renumbered'
       description,

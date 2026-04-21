@@ -24,7 +24,7 @@ import { validateParamId, validateParamIdMiddleware } from '../middleware/saniti
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate } from '../utils/websocket';
-import { rateLimit } from '../middleware/rateLimiter';
+import { ipKeyGenerator, rateLimit } from '../middleware/rateLimiter';
 import config from '../config';
 
 const router = Router();
@@ -33,9 +33,15 @@ router.use(authenticateToken);
 // Rate limit all skip tracer searches: 20 searches per 5-minute window per user
 const skipSearchRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
-  maxRequests: 20,
-  keyGenerator: (req) => `skiptracer:${req.user?.userId || req.ip}`,
-  message: 'Skip tracer search rate limit exceeded. Please wait before searching again.',
+  limit: 20,
+  keyGenerator: (req) =>
+    req.user?.userId
+      ? `skiptracer:user:${req.user.userId}`
+      : `skiptracer:ip:${ipKeyGenerator(req.ip || req.socket.remoteAddress || '')}`,
+  message: { error: 'Skip tracer search rate limit exceeded. Please wait before searching again.' },
+  // Disable IPv6 key-gen validation: this route is behind authenticateToken, so
+  // req.user.userId is always present and req.ip is never actually used as the key.
+  validate: { keyGeneratorIpFallback: false },
 });
 
 // ============================================================
@@ -449,7 +455,7 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
-    const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
+    const limit = Math.min(100000, Math.max(1, (Number(req.query.limit)) || 100000));
     const rawOffset = Number(req.query.offset) || 0;
     const offset = Math.max(0, Math.min(rawOffset, 100000));
 

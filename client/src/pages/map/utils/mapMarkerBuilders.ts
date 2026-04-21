@@ -142,22 +142,22 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   const dot = document.createElement('div');
   dot.style.cssText =
     'width:12px;height:12px;border-radius:50%;' +
-    'background:radial-gradient(circle at 30% 30%, #93c5fd, #222222);' +
+    'background:radial-gradient(circle at 30% 30%, #bfbfbf, #363636);' +
     'border:2px solid rgba(255,255,255,0.95);' +
-    'box-shadow:0 0 8px rgba(59,130,246,0.7), 0 1px 4px rgba(0,0,0,0.5);' +
+    'box-shadow:0 0 8px rgba(136, 136, 136,0.7), 0 1px 4px rgba(0,0,0,0.5);' +
     'transition:transform 0.2s ease, box-shadow 0.2s ease;will-change:transform, box-shadow;';
 
   // Hover tooltip — shows name, address, client on mouseover
   const tooltip = document.createElement('div');
   tooltip.style.cssText =
     'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);' +
-    "background:#050505;color:#e5e7eb;padding:8px 12px;border:1px solid #88888850;border-radius:2px;" +
+    "background:#0c0c0c;color:#e5e7eb;padding:8px 12px;border:1px solid #88888850;border-radius:2px;" +
     "font-family:'JetBrains Mono',monospace;white-space:nowrap;pointer-events:none;" +
     'opacity:0;transition:opacity 0.15s ease;z-index:9999;min-width:120px;max-width:220px;' +
     'box-shadow:0 4px 12px rgba(0,0,0,0.5);backdrop-filter:blur(8px);';
 
   const nameEl = document.createElement('div');
-  nameEl.style.cssText = 'font-size:10px;font-weight:900;color:#999999;margin-bottom:2px;text-overflow:ellipsis;overflow:hidden;';
+  nameEl.style.cssText = 'font-size:10px;font-weight:900;color:#a0a0a0;margin-bottom:2px;text-overflow:ellipsis;overflow:hidden;';
   nameEl.textContent = name;
   tooltip.appendChild(nameEl);
 
@@ -179,18 +179,18 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   const tooltipCaret = document.createElement('div');
   tooltipCaret.style.cssText =
     'position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);' +
-    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:5px solid #050505;';
+    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:5px solid #0c0c0c;';
   tooltip.appendChild(tooltipCaret);
 
   // Hover events — enlarge dot + show tooltip
   wrapper.addEventListener('mouseenter', () => {
     dot.style.transform = 'scale(1.5)';
-    dot.style.boxShadow = '0 0 12px rgba(59,130,246,0.8), 0 1px 3px rgba(0,0,0,0.4)';
+    dot.style.boxShadow = '0 0 12px rgba(136, 136, 136,0.8), 0 1px 3px rgba(0,0,0,0.4)';
     tooltip.style.opacity = '1';
   });
   wrapper.addEventListener('mouseleave', () => {
     dot.style.transform = 'scale(1)';
-    dot.style.boxShadow = '0 0 6px rgba(59,130,246,0.6), 0 1px 3px rgba(0,0,0,0.4)';
+    dot.style.boxShadow = '0 0 6px rgba(136, 136, 136,0.6), 0 1px 3px rgba(0,0,0,0.4)';
     tooltip.style.opacity = '0';
   });
 
@@ -223,7 +223,7 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
   const badge = document.createElement('div');
   badge.style.cssText =
     'position:absolute;top:-6px;right:-6px;width:12px;height:12px;border-radius:2px;' +
-    'background:#050505;border:1px solid ' + color + ';display:flex;align-items:center;justify-content:center;' +
+    'background:#0c0c0c;border:1px solid ' + color + ';display:flex;align-items:center;justify-content:center;' +
     'font-size:7px;color:' + color + ';font-weight:900;line-height:1;backdrop-filter:blur(4px);';
   badge.textContent = '\u23F1';
   tag.appendChild(badge);
@@ -294,18 +294,18 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
 
   // Accuracy ring
   const ring = document.createElement('div');
-  ring.style.cssText = `width:${acc}px;height:${acc}px;border-radius:50%;background:radial-gradient(circle, rgba(59,130,246,0.2), rgba(59,130,246,0.05));border:2px solid rgba(59,130,246,0.4);position:absolute;animation:pulse-gps 2s ease-in-out infinite;will-change:transform;`;
+  ring.style.cssText = `width:${acc}px;height:${acc}px;border-radius:50%;background:radial-gradient(circle, rgba(136, 136, 136,0.2), rgba(136, 136, 136,0.05));border:2px solid rgba(136, 136, 136,0.4);position:absolute;animation:pulse-gps 2s ease-in-out infinite;will-change:transform;`;
   el.appendChild(ring);
 
   // Center dot
   const dot = document.createElement('div');
-  dot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #93c5fd, #1e40af);border:3px solid #fff;box-shadow:0 0 10px rgba(59,130,246,0.8),0 0 20px rgba(59,130,246,0.3),0 0 30px rgba(59,130,246,0.2);z-index:1;';
+  dot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #bfbfbf, #3a3a3a);border:3px solid #fff;box-shadow:0 0 10px rgba(136, 136, 136,0.8),0 0 20px rgba(136, 136, 136,0.3),0 0 30px rgba(136, 136, 136,0.2);z-index:1;';
   el.appendChild(dot);
 
   // Heading arrow
   if (heading != null) {
     const arrow = document.createElement('div');
-    arrow.style.cssText = `position:absolute;top:-10px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #888888;transform:rotate(${heading}deg);transform-origin:center 17px;filter:drop-shadow(0 0 3px rgba(59,130,246,0.6));z-index:2;transition:transform 0.3s ease;will-change:transform;`;
+    arrow.style.cssText = `position:absolute;top:-10px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #888888;transform:rotate(${heading}deg);transform-origin:center 17px;filter:drop-shadow(0 0 3px rgba(136, 136, 136,0.6));z-index:2;transition:transform 0.3s ease;will-change:transform;`;
     el.appendChild(arrow);
   }
 
@@ -425,19 +425,19 @@ export function injectKeyframes() {
     @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(3.0); opacity:0; } }
     @keyframes marker-enter { from { opacity:0; transform:scale(0.5) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
     @keyframes marker-exit { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(0.8); } }
-    @keyframes marker-selected { 0%,100% { box-shadow:0 0 0 0 rgba(96,165,250,0.4); } 50% { box-shadow:0 0 0 8px rgba(96,165,250,0); } }
+    @keyframes marker-selected { 0%,100% { box-shadow:0 0 0 0 rgba(160, 160, 160,0.4); } 50% { box-shadow:0 0 0 8px rgba(160, 160, 160,0); } }
     @keyframes marker-bounce { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-4px); } }
     @keyframes glow-breathe { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.15); } }
     .rmpg-marker-hover { transform:scale(1.08); transition:transform 0.2s ease; }
     .rmpg-marker-selected { animation:marker-selected 1.5s ease-in-out infinite; }
     .rmpg-marker-enter { animation:marker-enter 0.3s ease-out forwards; }
-    .gm-style-iw { background:#050505 !important; border:1px solid #222222 !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; }
-    .gm-style-iw-d { overflow:auto !important; scrollbar-width:thin; scrollbar-color:#222222 transparent; }
+    .gm-style-iw { background:#0c0c0c !important; border:1px solid #2b2b2b !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; }
+    .gm-style-iw-d { overflow:auto !important; scrollbar-width:thin; scrollbar-color:#2b2b2b transparent; }
     .gm-style-iw-d::-webkit-scrollbar { width:4px; }
-    .gm-style-iw-d::-webkit-scrollbar-thumb { background:#222222; border-radius:2px; }
+    .gm-style-iw-d::-webkit-scrollbar-thumb { background:#2b2b2b; border-radius:2px; }
     .gm-style-iw-d::-webkit-scrollbar-track { background:transparent; }
     .gm-style-iw button[aria-label="Close"] { filter: invert(1) !important; }
-    .gm-style .gm-style-iw-tc::after { background:#050505 !important; }
+    .gm-style .gm-style-iw-tc::after { background:#0c0c0c !important; }
     @media (prefers-reduced-motion: reduce) { .rmpg-marker-enter, .rmpg-marker-selected, [style*=animation] { animation:none !important; } }
   `;
   document.head.appendChild(style);

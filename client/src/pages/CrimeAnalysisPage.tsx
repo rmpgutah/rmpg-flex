@@ -27,7 +27,7 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   if (!active || !payload?.length) return null;
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
-    <div style={{ background: '#050505', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
+    <div style={{ background: '#050505', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
       <div style={{ color: '#aaaaaa', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
       <div style={{ color: '#e0e0e0', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
@@ -35,7 +35,7 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
 };
 
 /* ── Shared axis / grid props ───────────────────────────────── */
-const AXIS_STYLE = { fill: '#6b7b8d', fontSize: 9, fontFamily: 'monospace' };
+const AXIS_STYLE = { fill: '#888888', fontSize: 9, fontFamily: 'monospace' };
 const GRID_PROPS = { stroke: '#1e1e1e', strokeDasharray: '3 3' } as const;
 
 export default function CrimeAnalysisPage() {
@@ -270,7 +270,7 @@ export default function CrimeAnalysisPage() {
                       <defs>
                         <linearGradient id="todGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.5} />
-                          <stop offset="50%" stopColor="#2563eb" stopOpacity={0.3} />
+                          <stop offset="50%" stopColor="#888888" stopOpacity={0.3} />
                           <stop offset="100%" stopColor="#888888" stopOpacity={0.05} />
                         </linearGradient>
                       </defs>

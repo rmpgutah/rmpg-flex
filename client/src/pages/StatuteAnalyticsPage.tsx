@@ -196,7 +196,7 @@ export default function StatuteAnalyticsPage() {
 
       {/* Mobile: day selector */}
       {isMobile && (
-        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#080808', borderBottom: '1px solid #222222' }}>
+        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#080808', borderBottom: '1px solid #2b2b2b' }}>
           {[30, 60, 90, 180, 365].map(d => (
             <button type="button"
               key={d}
@@ -348,7 +348,7 @@ export default function StatuteAnalyticsPage() {
           {topStatutes.length > 1 && (
             <div className="panel-surface p-3">
               <div className="flex items-center gap-2 mb-3">
-                <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                <BarChart3 className="w-3.5 h-3.5 text-gray-400" />
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Commonly Paired Statutes</h3>
               </div>
               <div className="space-y-1.5 max-h-48 overflow-auto">
@@ -369,10 +369,10 @@ export default function StatuteAnalyticsPage() {
                     }
                   }
                   return pairs.sort((x, y) => y.score - x.score).slice(0, 8).map((p, i) => (
-                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#222222]/50 last:border-0">
-                      <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.a}</span>
+                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#2b2b2b]/50 last:border-0">
+                      <span className="text-[9px] font-mono text-gray-400 w-20 shrink-0 truncate">{p.a}</span>
                       <span className="text-[9px] text-rmpg-500">frequently occurs with</span>
-                      <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.b}</span>
+                      <span className="text-[9px] font-mono text-gray-400 w-20 shrink-0 truncate">{p.b}</span>
                       <span className="text-[9px] font-mono text-rmpg-400 ml-auto">({p.score}x)</span>
                     </div>
                   ));

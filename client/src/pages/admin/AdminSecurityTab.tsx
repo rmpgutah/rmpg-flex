@@ -159,7 +159,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       className={`flex items-center gap-3 w-full p-3 border transition-all duration-150 text-left hover:brightness-110 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
         config[toggleKey] === '1'
           ? 'bg-green-900/15 border-green-700/40'
-          : 'bg-[#050505] border-[#141414]'
+          : 'bg-[#0c0c0c] border-[#181818]'
       }`}
     >
       {config[toggleKey] === '1' ? (
@@ -225,7 +225,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           </div>
         </div>
 
-        <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-[#181818] pb-1.5 mt-4 tracking-wider">Complexity Requirements</div>
+        <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-[#242424] pb-1.5 mt-4 tracking-wider">Complexity Requirements</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <ToggleButton toggleKey="require_uppercase" label="Require Uppercase" description="At least one uppercase letter" />
           <ToggleButton toggleKey="require_numbers" label="Require Numbers" description="At least one numeric digit" />
@@ -270,7 +270,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       {/* IP Session Binding */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <MapPin className="w-4 h-4 text-cyan-400" />
+          <MapPin className="w-4 h-4 text-gray-400" />
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">IP Session Binding</h3>
         </div>
 
@@ -404,7 +404,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
       {/* Save footer */}
       {dirty && (
-        <div className="sticky bottom-0 bg-[#050505]/95 backdrop-blur-sm border-t border-amber-700/30 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status" aria-live="polite" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="sticky bottom-0 bg-[#0c0c0c]/95 backdrop-blur-sm border-t border-amber-700/30 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status" aria-live="polite" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <span className="text-[10px] text-amber-400 flex items-center gap-1.5 font-medium">
             <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
             You have unsaved changes

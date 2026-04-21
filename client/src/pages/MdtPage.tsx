@@ -724,7 +724,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#141414]"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#181818]"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -761,7 +761,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#141414]"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#181818]"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -944,7 +944,7 @@ export default function MdtPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Subject Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'person', query: selectedCall.subject_description || '' }); setActiveTab('ncic'); }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
                         title="Run NCIC person query"
                       >
                         NCIC QH
@@ -959,7 +959,7 @@ export default function MdtPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Vehicle Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'vehicle', query: selectedCall.vehicle_description || '' }); setActiveTab('ncic'); }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
                         title="Run NCIC vehicle query"
                       >
                         NCIC QV

@@ -31,7 +31,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const borderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-l-green-500';
-      case 'in_progress': return 'border-l-blue-500';
+      case 'in_progress': return 'border-l-gray-500';
       case 'scheduled': return 'border-l-amber-500';
       case 'overdue':
       case 'expired': return 'border-l-red-500';
@@ -42,7 +42,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-t-green-500';
-      case 'in_progress': return 'border-t-blue-500';
+      case 'in_progress': return 'border-t-gray-500';
       case 'scheduled': return 'border-t-amber-500';
       case 'overdue':
       case 'expired': return 'border-t-red-500';
@@ -124,7 +124,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="field-label text-green-400/70">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-blue-500" style={{ background: '#0a0f1a' }}>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-gray-500" style={{ background: '#0a0a0a' }}>
           <p className="text-lg font-bold font-mono text-gray-400">{inProgress}</p>
           <p className="field-label text-gray-400/70">In Progress</p>
         </div>
