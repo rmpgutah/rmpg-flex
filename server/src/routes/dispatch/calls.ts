@@ -949,25 +949,41 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LIMIT 1000
     `).all(call.id);
 
-    // Attach visit history for PSO calls — traverse parent_call_id chain upward
-    // so a 2nd/3rd/Nth attempt shows all prior attempts in its Visit History section,
-    // not just its own recorded visit. For the root call, this returns just its own
-    // history (if any).
+    // Attach visit history for PSO calls — trace to the root of the re-dispatch
+    // chain, then collect visit rows for every call in the subtree (root + all
+    // descendants) so any attempt shows the complete sequence of prior visits,
+    // including siblings (e.g. 3rd attempt shows both 1st and 2nd).
     let visit_history: any[] = [];
     if (call.incident_type === 'pso_client_request') {
-      // Walk up the chain collecting call IDs
-      const chain: number[] = [call.id];
+      // Walk up to find the root
+      let rootId: number = call.id;
       let cursorId: number | null = (call as any).parent_call_id || null;
-      while (cursorId && chain.length < 20) {
-        chain.push(cursorId);
+      let depth = 0;
+      while (cursorId && depth < 20) {
+        rootId = cursorId;
         const parent = db.prepare('SELECT parent_call_id FROM calls_for_service WHERE id = ?').get(cursorId) as any;
         cursorId = parent?.parent_call_id || null;
+        depth++;
       }
-      const placeholders = chain.map(() => '?').join(',');
+      // Collect all descendants of the root (BFS)
+      const subtree: number[] = [rootId];
+      let frontier: number[] = [rootId];
+      while (frontier.length > 0) {
+        const placeholders = frontier.map(() => '?').join(',');
+        const children = db.prepare(
+          `SELECT id FROM calls_for_service WHERE parent_call_id IN (${placeholders})`
+        ).all(...frontier) as any[];
+        const childIds = children.map(c => c.id);
+        for (const cid of childIds) if (!subtree.includes(cid)) subtree.push(cid);
+        frontier = childIds;
+        if (subtree.length > 100) break; // safety
+      }
+      // Pull all visits for the subtree, exclude the current call's own rows
+      const placeholders = subtree.map(() => '?').join(',');
       visit_history = db.prepare(
         `SELECT * FROM call_visit_history WHERE call_id IN (${placeholders}) AND call_id != ? ORDER BY visit_number ASC`
-      ).all(...chain, call.id) as any[];
-      // Dedupe by (call_id, visit_number) — some rows are duplicated in the table
+      ).all(...subtree, call.id) as any[];
+      // Dedupe by (call_id, visit_number) — some legacy rows are duplicated
       const seen = new Set<string>();
       visit_history = visit_history.filter((v: any) => {
         const k = `${v.call_id}|${v.visit_number}`;
