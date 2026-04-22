@@ -15,6 +15,7 @@ import { localNow } from '../utils/timeUtils';
 import { broadcastDispatchUpdate } from '../utils/websocket';
 import { geocodeAddress } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
+import { checkBankruptcy } from '../utils/bankruptcyCheck';
 import {
   parseAllDocuments,
   buildNotesNarrative,
@@ -259,6 +260,23 @@ async function doIntake(
     }
     if (!vendorClient) {
       warnings.push(`Vendor fingerprint "${parsed.vendorFingerprint}" not found in clients; using client_id=1 fallback`);
+    }
+
+    // ── Bankruptcy pre-check (CourtListener) ────────────────────
+    // Inert unless courtlistener_api_token is set in system_config.
+    // Per ICU rules, an open BK case means the officer must NOT serve if
+    // the subject presents a BK case number at the door — we warn only.
+    try {
+      const bk = await checkBankruptcy(parsed.defendant.first, parsed.defendant.last);
+      if (bk.found && bk.cases.length > 0) {
+        const caseList = bk.cases.map(c => `${c.caseNumber || '?'} (${c.filed || '?'}, ${c.court || '?'})`).join('; ');
+        warnings.push(
+          `POSSIBLE BK: ${parsed.defendant.last}, ${parsed.defendant.first} has ${bk.cases.length} BK case(s) on record: ${caseList}. ` +
+          `Per ICU rules, DO NOT serve if subject presents BK case #. Officer must verify at the door.`,
+        );
+      }
+    } catch (err: any) {
+      log.warn({ err }, 'bankruptcy check failed (non-fatal)');
     }
     const clientId: number = vendorClient?.id ?? 1;
     const callerName: string = vendorClient?.name || 'Process Service Client';
