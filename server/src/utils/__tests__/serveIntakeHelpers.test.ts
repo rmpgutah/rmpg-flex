@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -68,5 +68,40 @@ describe('extractAttorneyBlock', () => {
     const r = extractAttorneyBlock('unrelated pdf text with no bar number');
     expect(r.barNumber).toBe('');
     expect(r.name).toBe('');
+  });
+});
+
+describe('parseInfoSheetLabels', () => {
+  const infoSheet = `
+    Court Case
+    Case                [not provided]
+    Plaintiff           Capital One, N.A., successor by merger to
+                        Discover Bank
+    Defendant           Abbey Armstrong
+    Filed               —
+    Court Date          —
+    Court               THIRD JUDICIAL DISTRICT COURT, STATE
+                        OF UTAH - MATHESON
+    Address             450 S STATE ST PO BOX 1860
+                        SALT LAKE CITY, UT 84114
+    County              SALT LAKE
+
+    Job Created         Apr 1, 2026
+    Created By          ICU Investigations, LLC
+  `;
+
+  it('parses labelled fields including multi-line values', () => {
+    const r = parseInfoSheetLabels(infoSheet);
+    expect(r.plaintiff).toBe('Capital One, N.A., successor by merger to Discover Bank');
+    expect(r.defendant).toBe('Abbey Armstrong');
+    expect(r.court).toBe('THIRD JUDICIAL DISTRICT COURT, STATE OF UTAH - MATHESON');
+    expect(r.courtAddress).toBe('450 S STATE ST PO BOX 1860 SALT LAKE CITY, UT 84114');
+    expect(r.county).toBe('SALT LAKE');
+    expect(r.createdBy).toBe('ICU Investigations, LLC');
+  });
+
+  it('returns empty strings when sheet is blank', () => {
+    const r = parseInfoSheetLabels('');
+    expect(r.plaintiff).toBe('');
   });
 });

@@ -72,6 +72,71 @@ export function extractAttorneyBlock(text: string): AttorneyBlock {
   return { name, barNumber, firm, addressLine1, addressLine2, tel, fax, email };
 }
 
+export interface InfoSheetLabels {
+  case: string;
+  plaintiff: string;
+  defendant: string;
+  filed: string;
+  courtDate: string;
+  court: string;
+  courtAddress: string;
+  county: string;
+  jobCreated: string;
+  createdBy: string;
+}
+
+export function parseInfoSheetLabels(text: string): InfoSheetLabels {
+  const empty: InfoSheetLabels = {
+    case: '', plaintiff: '', defendant: '', filed: '', courtDate: '',
+    court: '', courtAddress: '', county: '', jobCreated: '', createdBy: '',
+  };
+  if (!text) return empty;
+
+  const labels: { key: keyof InfoSheetLabels; label: string }[] = [
+    { key: 'case', label: 'Case' },
+    { key: 'plaintiff', label: 'Plaintiff' },
+    { key: 'defendant', label: 'Defendant' },
+    { key: 'filed', label: 'Filed' },
+    { key: 'courtDate', label: 'Court Date' },
+    { key: 'court', label: 'Court' },
+    { key: 'courtAddress', label: 'Address' },
+    { key: 'county', label: 'County' },
+    { key: 'jobCreated', label: 'Job Created' },
+    { key: 'createdBy', label: 'Created By' },
+  ];
+
+  // Slice from "Court Case" section start if present
+  const startIdx = text.search(/Court Case/i);
+  const body = startIdx >= 0 ? text.slice(startIdx) : text;
+
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Find each label's char offset (first occurrence after previous label position)
+  const positions: { key: keyof InfoSheetLabels; contentStart: number; labelStart: number }[] = [];
+  let cursor = 0;
+  for (const { key, label } of labels) {
+    const re = new RegExp(`(^|\\n)\\s*${escapeRe(label)}\\s{2,}`, 'g');
+    re.lastIndex = cursor;
+    const m = re.exec(body);
+    if (m) {
+      const labelStart = m.index + (m[1] ? m[1].length : 0);
+      const contentStart = m.index + m[0].length;
+      positions.push({ key, contentStart, labelStart });
+      cursor = contentStart;
+    }
+  }
+
+  const out: InfoSheetLabels = { ...empty };
+  for (let i = 0; i < positions.length; i++) {
+    const end = i + 1 < positions.length ? positions[i + 1].labelStart : body.length;
+    const raw = body.slice(positions[i].contentStart, end);
+    const collapsed = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean).join(' ').trim();
+    out[positions[i].key] = collapsed;
+  }
+
+  return out;
+}
+
 export function parseAddressParts(address: string): AddressParts {
   const empty: AddressParts = { building: '', floor: '', suite: '', street: '', city: '', state: '', zip: '' };
   if (!address) return empty;
