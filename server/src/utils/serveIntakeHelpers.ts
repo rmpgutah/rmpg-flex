@@ -115,11 +115,15 @@ export function parseInfoSheetLabels(text: string): InfoSheetLabels {
   const positions: { key: keyof InfoSheetLabels; contentStart: number; labelStart: number }[] = [];
   let cursor = 0;
   for (const { key, label } of labels) {
-    const re = new RegExp(`(^|\\n)\\s*${escapeRe(label)}\\s{2,}`, 'g');
+    // Match LABEL surrounded by column gaps (2+ spaces) OR at line start.
+    // pdftotext -layout places label+value panels side-by-side with other content,
+    // so labels often appear mid-line after wide whitespace gaps.
+    const re = new RegExp(`(^|\\n|\\s{2,})${escapeRe(label)}\\s{2,}`, 'g');
     re.lastIndex = cursor;
     const m = re.exec(body);
     if (m) {
-      const labelStart = m.index + (m[1] ? m[1].length : 0);
+      const prefix = m[1] || '';
+      const labelStart = m.index + (prefix === '\n' ? 1 : 0);
       const contentStart = m.index + m[0].length;
       positions.push({ key, contentStart, labelStart });
       cursor = contentStart;
@@ -131,7 +135,19 @@ export function parseInfoSheetLabels(text: string): InfoSheetLabels {
     const end = i + 1 < positions.length ? positions[i + 1].labelStart : body.length;
     const raw = body.slice(positions[i].contentStart, end);
     const collapsed = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean).join(' ').trim();
-    out[positions[i].key] = collapsed;
+    // Strip trailing job-activity-stream bleed: date/time entries like "4/13/26, 2:10 pm ..."
+    // and JSON-import CSV leakage like `"rush": null,...`
+    let cleaned = collapsed
+      // Remove JSON-import CSV fragments inline (keep surrounding column content): `"key": value,` or `"key": value,...`
+      .replace(/"[a-z_]+"\s*:\s*(?:"[^"]*"|null|true|false|\d+|\.\.\.)\s*,?/gi, ' ')
+      .replace(/^\s*\{\s*/, '')
+      .replace(/\s+\.{3,}/g, '')
+      .replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4},\s*\d{1,2}:\d{2}\s*(?:am|pm)\b.*$/i, '')
+      .replace(/\s+Show More\b.*$/, '')
+      .replace(/\s+Job Activity\b.*$/, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    out[positions[i].key] = cleaned;
   }
 
   return out;
@@ -373,6 +389,133 @@ export function classifyEntityType(name: string): 'individual' | 'organization' 
     if (re.test(name)) return 'organization';
   }
   return 'individual';
+}
+
+export interface ParseInput { fieldSheet: string; infoSheet: string; courtDocket: string; }
+export interface ParseOutput {
+  defendant: { first: string; middle: string; last: string; dob: string };
+  address: string;
+  addressParts: AddressParts;
+  plaintiff: string;
+  court: string;
+  courtAddress: string;
+  county: string;
+  attorney: AttorneyBlock;
+  documents: string;
+  primaryDoc: string;
+  serviceType: string;
+  instructions: string;
+  jobNumber: string;
+  clientJobNumber: string;
+  dueDate: string;
+  signedDate: string;
+  responseDeadlineDays: number;
+  clerkPhone: string;
+  documentPages: number;
+  bilingual: boolean;
+  orderingClientRule: string;
+  serviceWindows: string;
+  serviceRulesSummary: string;
+  jobActivity: JobActivityEntry[];
+  courtCaseNumber: string;
+  vendorFingerprint: string;
+}
+
+export function parseAllDocuments(src: ParseInput): ParseOutput {
+  const { fieldSheet, infoSheet, courtDocket } = src;
+  const allText = [fieldSheet, infoSheet, courtDocket].filter(Boolean).join('\n\n');
+
+  const info = parseInfoSheetLabels(infoSheet);
+  const attorney = extractAttorneyBlock(courtDocket);
+
+  // Defendant — Field Sheet "Party to Serve:" (preserves layout whitespace via \s+)
+  const ptsMatch = fieldSheet.match(/Party to Serve[:\s]+([^\n]+)/i) || infoSheet.match(/Recipient[:\s]+([^\n]+)/i);
+  const rawPartyName = (ptsMatch?.[1] || info.defendant || '').replace(/,\s*an\s+individual.*$/i, '').trim();
+  const nameParts = rawPartyName.split(/\s+/);
+  let dob = '';
+  const dobMatch = fieldSheet.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i) || infoSheet.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+  if (dobMatch) {
+    const [m, d, y] = dobMatch[1].split('/');
+    dob = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const defendant = {
+    first: nameParts[0] || '',
+    middle: nameParts.length >= 3 ? nameParts.slice(1, -1).join(' ') : '',
+    last: nameParts[nameParts.length - 1] || '',
+    dob,
+  };
+
+  // Address — Field Sheet block
+  const addrMatch = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/);
+  const address = addrMatch ? addrMatch[1].trim() : '';
+  const addressParts = parseAddressParts(address);
+
+  // Plaintiff — info sheet first, then docket caption
+  let plaintiff = info.plaintiff;
+  if (!plaintiff) {
+    const m = courtDocket.match(/([A-Z][^\n]{5,200}?),\s*\n\s*Plaintiff,/);
+    if (m) plaintiff = m[1].replace(/\s+/g, ' ').trim();
+  }
+
+  // Court / clerk / court address
+  const court = info.court || (courtDocket.match(/(THIRD|FIRST|SECOND|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^,\n]*/i)?.[0].trim() || '');
+  const courtAddress = info.courtAddress || (courtDocket.match(/(\d+\s+South\s+State\s+St[^,\n]*,\s*[^,\n]*\d{5}(?:-\d{4})?)/i)?.[1] || '');
+  const clerkMatch = courtDocket.match(/call\s+the\s+clerk[\s\S]*?at\s*\((\d{3})\)\s*(\d{3})[-.\s]?(\d{4})/i);
+  const clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
+
+  // Documents list
+  const documents = (fieldSheet.match(/Documents[:\s]+([^\n]+)/i)?.[1] || '').trim();
+  const primaryDoc = primaryDocToken(documents);
+  const serviceType = deriveServiceType(primaryDoc);
+  const bilingual = /bilingual/i.test(documents);
+  const documentPages = parseInt((infoSheet.match(/(\d+)\s*pages/i)?.[1] || '0'), 10);
+
+  // Instructions verbatim
+  const instrMatch = fieldSheet.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n|$)/i);
+  const instructions = instrMatch ? instrMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  const orderingClientRule = instructions.split('.')[0].trim() + (instructions ? '.' : '');
+
+  // Job numbers (ICU Job + client subordinate job# in parens)
+  const jobMatch = fieldSheet.match(/Job[:\s]+(\d+)\s*\((\d+)\)/i) || fieldSheet.match(/(\d{7,})\s*\((\d{5,})\)/);
+  const jobNumber = jobMatch?.[1] || '';
+  const clientJobNumber = jobMatch?.[2] || (courtDocket.match(/\*S\d+(\d{6})\*/)?.[1] || '');
+
+  const dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1] || '');
+
+  // Signed + response deadline from docket URCP 4 text
+  const signedDate = (courtDocket.match(/DATED\s+([A-Z][a-z]+\s+\d{1,2},\s*\d{4})/)?.[1] || '').replace(/,\s*$/, '');
+  const responseDeadlineDays = parseInt((courtDocket.match(/[Ww]ithin\s+(\d+)\s+days\s+after\s+service/)?.[1] || '21'), 10);
+
+  // Service windows (merged across all docs)
+  const windows: string[] = [];
+  if (/6AM-9AM|6am.*9am/i.test(allText)) windows.push('6AM-9AM');
+  if (/9AM-6PM|9am.*6pm/i.test(allText)) windows.push('9AM-6PM');
+  if (/6PM-9PM|6pm.*9pm/i.test(allText)) windows.push('6PM-9PM');
+  if (/weekend/i.test(allText)) windows.push('WEEKEND REQUIRED');
+  const serviceWindows = windows.join(', ');
+
+  const serviceRulesSummary = summarizeRules(instructions);
+  const jobActivity = parseJobActivity(infoSheet);
+  const courtCaseNumber = (courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1] || '').trim();
+  const vendorFingerprint = info.createdBy || (fieldSheet.match(/(ICU\s+Investigations[^,\n]*)/i)?.[1] || '');
+
+  return {
+    defendant, address, addressParts, plaintiff, court, courtAddress, county: info.county,
+    attorney, documents, primaryDoc, serviceType, instructions,
+    jobNumber, clientJobNumber, dueDate, signedDate, responseDeadlineDays, clerkPhone,
+    documentPages, bilingual, orderingClientRule, serviceWindows, serviceRulesSummary,
+    jobActivity, courtCaseNumber, vendorFingerprint,
+  };
+}
+
+function summarizeRules(instructions: string): string {
+  const bits: string[] = [];
+  if (/sub-?serve.*?occupant\s*16\+/i.test(instructions)) bits.push('SUB-SERVE OK TO OCCUPANT 16+');
+  if (/personal.*?place\s+of\s+employment|personal.*?POE/i.test(instructions)) bits.push('PERSONAL SERVICE ONLY AT PLACE OF EMPLOYMENT');
+  if (/call.*?phone|call.*?status/i.test(instructions)) bits.push('CALL CLIENT WITH STATUS AFTER EACH ATTEMPT');
+  if (/hospitals?.*?churches?.*?jails?/i.test(instructions)) bits.push('NEVER SERVE AT: HOSPITALS, CHURCHES, JAILS');
+  if (/BK\s*case\s*#/i.test(instructions)) bits.push('IF SUBJECT PRESENTS A BK CASE # -> STOP, DO NOT SERVE');
+  return bits.join('. ') + (bits.length ? '.' : '');
 }
 
 export function parseAddressParts(address: string): AddressParts {
