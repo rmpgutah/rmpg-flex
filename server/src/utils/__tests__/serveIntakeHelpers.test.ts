@@ -129,6 +129,23 @@ describe('parseJobActivity', () => {
   it('returns [] when no Job Activity section', () => {
     expect(parseJobActivity('nothing relevant')).toEqual([]);
   });
+
+  it('does not merge trailing "Job Created" metadata into an activity detail', () => {
+    // Repro of the armstrong David Blake row: pdftotext -layout collapses a
+    // side-column metadata field ("Job Created  Apr 1, 2026") onto the same
+    // line as a "Job Data Updated | David Blake" entry. Parser must keep only
+    // the actor in detail, not the trailing metadata.
+    const infoSheet = [
+      'Job Activity',
+      ' 4/2/26, 6:07 am     Job Data Updated                                                                          David Blake            Job Created      Apr 1, 2026',
+    ].join('\n');
+    const r = parseJobActivity(infoSheet);
+    expect(r).toHaveLength(1);
+    expect(r[0].when).toBe('4/2/26, 6:07 am');
+    expect(r[0].action).toBe('Job Data Updated');
+    expect(r[0].detail).toBe('David Blake');
+    expect(r[0].detail).not.toMatch(/Job Created/i);
+  });
 });
 
 describe('computeDiligenceSchedule', () => {

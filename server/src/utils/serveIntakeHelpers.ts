@@ -190,7 +190,15 @@ export function parseJobActivity(text: string): JobActivityEntry[] {
     // Split rest by 2+ spaces — first chunk is action, remainder joined is detail
     const parts = rest.split(/\s{2,}/).map(p => p.trim()).filter(Boolean);
     const action = parts[0] || '';
-    const detail = parts.slice(1).join(' ');
+    let detail = parts.slice(1).join(' ');
+    // Strip trailing metadata tokens that the pdftotext layout sometimes
+    // merges onto an activity row — e.g. the "Job Created Apr 1, 2026" field
+    // sitting in a side column alongside a "Job Data Updated | David Blake"
+    // entry. Without this, the narrative reads
+    //   "JOB DATA UPDATED: DAVID BLAKE JOB CREATED APR 1, 2026"
+    // merging two unrelated log entries.
+    const metadataTail = /\s+(?:Job Created|Created By|Client Reference|Order Number|Job Number)\b.*$/i;
+    detail = detail.replace(metadataTail, '').trim();
     out.push({ when, action, detail });
   }
   return out;
@@ -333,9 +341,12 @@ export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   // SCHEDULE
   const scheduleLine = `SCHEDULE -- WINDOWS: ${up(i.serviceWindows)} | DUE: ${i.dueDate} | DAYS REMAINING: ${i.daysRemaining}`;
 
-  // RECOMMENDED SCHEDULE
-  const recLines = i.recommendedAttempts.map((a, idx) => `  ${idx + 1}. ${a.label}${a.weekend ? ' [WEEKEND]' : ''}`).join('\n');
-  const recommendedLine = `RECOMMENDED SCHEDULE --\n${recLines}`;
+  // RECOMMENDED SCHEDULE — if no attempts could be computed (e.g. due date is
+  // already in the past at intake time) render an explicit deadline-passed
+  // directive instead of a blank section so the dispatcher has clear guidance.
+  const recommendedLine = i.recommendedAttempts.length === 0
+    ? 'RECOMMENDED SCHEDULE -- DEADLINE PASSED; INITIATE ATTEMPTS IMMEDIATELY.'
+    : `RECOMMENDED SCHEDULE --\n${i.recommendedAttempts.map((a, idx) => `  ${idx + 1}. ${a.label}${a.weekend ? ' [WEEKEND]' : ''}`).join('\n')}`;
 
   // CLIENT HISTORY
   const historyLines = i.jobActivity.map(e => `  ${e.when} -- ${e.action}${e.detail ? ': ' + e.detail : ''}`).join('\n');
