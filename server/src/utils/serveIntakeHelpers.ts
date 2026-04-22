@@ -150,6 +150,18 @@ export function parseInfoSheetLabels(text: string): InfoSheetLabels {
       .replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4},\s*\d{1,2}:\d{2}\s*(?:am|pm)\b.*$/i, '')
       .replace(/\s+Show More\b.*$/, '')
       .replace(/\s+Job Activity\b.*$/, '')
+      // Strip UI chrome labels from info-sheet right-panel bleed.
+      // Apply most-specific (longer) patterns first so shorter ones don't
+      // leave residue at the end of the string.
+      .replace(/\s+Mobile\s+Attempt.*$/i, '')
+      .replace(/\s+Attempt\s+Photo.*$/i, '')
+      .replace(/\s+Upload\s+Files?\s*$/i, '')
+      .replace(/\s+Uploads?\s*$/i, '')
+      .replace(/\s+\d+\s+Attempts?\s*$/i, '')
+      .replace(/\s+New\s+(?:Attempt|Affidavit|Note)\s*$/i, '')
+      .replace(/\s+Service\s+Attempts?\s*$/i, '')
+      .replace(/\s+No\s+Affidavits?\s*$/i, '')
+      .replace(/\s+Affidavits?\s*$/i, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
     out[positions[i].key] = cleaned;

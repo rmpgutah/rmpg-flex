@@ -104,6 +104,20 @@ describe('parseInfoSheetLabels', () => {
     const r = parseInfoSheetLabels('');
     expect(r.plaintiff).toBe('');
   });
+
+  it('strips Uploads/Affidavits/Service Attempts trailer text from labels', () => {
+    const text = `Court Case
+    Plaintiff           Capital One, N.A., successor by merger to
+                        Discover Bank No Affidavits
+    Court               THIRD JUDICIAL DISTRICT COURT, STATE
+                        OF UTAH - MATHESON Uploads Upload Files
+    Address             450 S STATE ST PO BOX 1860
+                        SALT LAKE CITY, UT 84114 Mobile Attempt Photo`;
+    const r = parseInfoSheetLabels(text);
+    expect(r.plaintiff).toBe('Capital One, N.A., successor by merger to Discover Bank');
+    expect(r.court).toBe('THIRD JUDICIAL DISTRICT COURT, STATE OF UTAH - MATHESON');
+    expect(r.courtAddress).toBe('450 S STATE ST PO BOX 1860 SALT LAKE CITY, UT 84114');
+  });
 });
 
 describe('parseJobActivity', () => {

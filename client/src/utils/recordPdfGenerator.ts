@@ -937,22 +937,29 @@ function renderStructuredCallNotes(
       if (!body) continue;
       y = checkPageBreak(doc, y, 22, prio);
       const sec = openAutoSection(doc, title, y);
-      y = sec.sectionY + SPACING.SECTION_HEADER_H + 1;
-      const fields = body.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
+      y = sec.contentY;
+      // Set the font BEFORE splitTextToSize so width measurements match the
+      // actual drawn font (jsPDF uses the current font metrics for wrapping;
+      // setting font after produces letter-spaced output when wrap width
+      // falls below the min-word width under an incorrect font).
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const maxWidth = ffw - 4;
+      const fields = body.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
       for (const f of fields) {
-        const lines = doc.splitTextToSize(f.toUpperCase(), ffw - 2);
+        const lines = doc.splitTextToSize(f.toUpperCase(), maxWidth);
         for (const line of lines) {
           y = checkPageBreak(doc, y, 4.2, prio);
-          doc.text(line, lx + 1, y);
-          y += 4;
+          y += 3.2; // advance to baseline before drawing (text extends up from baseline)
+          doc.text(line, lx + 2, y);
+          y += 0.8;
         }
-        y += 0.8;
+        y += 1.2; // field separator gap
       }
-      y += 1.5;
+      y += 2; // trailing pad before border
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+      y += 3; // explicit gap between structured sections so next header never sits flush on prior content
     }
   } catch {
     // malformed notes — bail gracefully

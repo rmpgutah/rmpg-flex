@@ -6327,6 +6327,31 @@ function seedData(): void {
   } catch (err: any) {
     console.warn('[migration] property name strip failed:', err?.message || err);
   }
+
+  // One-shot: clean plaintiff persons created before the parseInfoSheetLabels
+  // trailer-strip fix (2026-04-22). The prior parser left "No Affidavits",
+  // "Uploads", "Upload Files", "Mobile Attempt Photo", and similar
+  // right-panel-bleed tokens appended to the end of the plaintiff org name.
+  try {
+    const ran = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'plaintiff_name_cleanup_20260422' LIMIT 1").get() as any;
+    if (!ran) {
+      db.prepare(`
+        UPDATE persons
+        SET last_name = TRIM(
+          REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(last_name,
+            ' No Affidavits', ''),
+            ' Uploads', ''),
+            ' Upload Files', ''),
+            ' Mobile Attempt Photo', ''),
+            ' Service Attempts', '')
+        )
+        WHERE role_tag = 'plaintiff' AND entity_type = 'organization'
+      `).run();
+      db.prepare("INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('plaintiff_name_cleanup_20260422', ?)").run(new Date().toISOString());
+    }
+  } catch (err: any) {
+    console.warn('[migration] plaintiff cleanup failed:', err?.message || err);
+  }
 }
 
 export default { initDatabase, getDb };
