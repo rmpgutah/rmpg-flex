@@ -1,4 +1,7 @@
-import * as levenshtein from 'fast-levenshtein';
+// fast-levenshtein is CJS; under tsx/esbuild, namespace import puts `.get` under `.default`.
+// Use require() via createRequire to get the real module shape directly.
+import { createRequire } from 'module';
+const levenshtein: { get: (a: string, b: string) => number } = createRequire(import.meta.url)('fast-levenshtein');
 
 export interface AddressParts {
   building: string;
