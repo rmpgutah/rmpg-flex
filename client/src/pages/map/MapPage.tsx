@@ -127,7 +127,10 @@ import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
 import HeatmapLegend from './components/HeatmapLegend';
+import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
 import { useMapHotspots } from './hooks/useMapHotspots';
+import { useMapDimBase } from './hooks/useMapDimBase';
+import { useMapIdleZones } from './hooks/useMapIdleZones';
 import { computeTrailStats, formatTrailStats, downloadTrailAsGpx } from './utils/trailStats';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
@@ -406,6 +409,26 @@ export default function MapPage() {
     enabled: showHeatmap && !advancedHeatmapEnabled,
     mode: heatmapMode === 'risk' ? 'risk' : 'calls',
     topN: 5,
+  });
+
+  // Dim-base mode: slightly darken the base tiles when the heatmap is on
+  // so hot peaks pop without muting our own marker colors. Toggle persists.
+  const [dimBaseEnabled, setDimBaseEnabled] = usePersistedState<boolean>('rmpg_map_dimBaseEnabled', true);
+  useMapDimBase({
+    mapInstanceRef,
+    enabled: dimBaseEnabled && showHeatmap,
+    opacity: 0.35,
+  });
+
+  // Idle-zone detection: highlight stretches >=10min where a unit stayed
+  // within ~50m as orange circles. Reuses playbackTrails — pure client-side.
+  const [showIdleZones, setShowIdleZones] = usePersistedState<boolean>('rmpg_map_showIdleZones', false);
+  useMapIdleZones({
+    mapInstanceRef,
+    trails: playbackTrails,
+    enabled: showIdleZones && showBreadcrumbs,
+    minIdleSec: 600,
+    clusterRadiusM: 50,
   });
 
   // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
@@ -2987,6 +3010,29 @@ export default function MapPage() {
                     ))}
                   </div>
 
+                  {/* Dim base map toggle — darkens base tiles so heat pops */}
+                  <button
+                    onClick={() => setDimBaseEnabled(!dimBaseEnabled)}
+                    className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                      dimBaseEnabled ? 'text-red-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                    }`}
+                  >
+                    <span className="flex-1 text-left">Dim Base Map</span>
+                    {dimBaseEnabled && <span className="led-dot led-red" style={{ width: 5, height: 5 }} />}
+                  </button>
+
+                  {/* Saved filter presets */}
+                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
+                    <HeatmapPresets
+                      current={{ days: heatmapDays, mode: heatmapMode, typeFilter: heatmapTypeFilter }}
+                      onApply={(p: HeatmapPresetValue) => {
+                        setHeatmapDays(p.days);
+                        setHeatmapMode(p.mode);
+                        setHeatmapTypeFilter(p.typeFilter);
+                      }}
+                    />
+                  </div>
+
                   {/* Advanced mode toggle */}
                   <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
@@ -5532,11 +5578,31 @@ export default function MapPage() {
             <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
             <button
               type="button"
+              onClick={() => setShowIdleZones(!showIdleZones)}
+              style={{
+                marginLeft: 8,
+                padding: '1px 6px',
+                background: showIdleZones ? '#f59e0b30' : '#88888820',
+                border: showIdleZones ? '1px solid #f59e0b80' : '1px solid #88888850',
+                color: showIdleZones ? '#f59e0b' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Highlight stretches where a unit was stationary >10min"
+            >
+              IDLE
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 for (const trail of playbackTrails) downloadTrailAsGpx(trail);
               }}
               style={{
-                marginLeft: 8,
+                marginLeft: 4,
                 padding: '1px 6px',
                 background: '#88888820',
                 border: '1px solid #88888850',
