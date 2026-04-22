@@ -52,7 +52,11 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'county',
     label: 'Counties',
     file: 'county.geojson',
-    visible: true,
+    // Off by default so the map opens clean (plain black Spillman base
+    // + only the operational overlays the dispatcher has explicitly
+    // enabled). Users opt-in via the layers panel; visibility is
+    // session-only — not persisted yet.
+    visible: false,
     selectable: true,
     style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
@@ -76,7 +80,9 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'beat',
     label: 'Beats',
     file: 'beat.geojson',
-    visible: true,
+    // Off by default (see county note). Most operational views want a
+    // clean base; dispatchers who need beat polygons toggle them on.
+    visible: false,
     selectable: true,
     style: { fillColor: '#22c55e', fillOpacity: 0.20, strokeColor: '#22c55e', strokeOpacity: 0.6, strokeWeight: 1.2 },
     labelProp: 'beat_code',
