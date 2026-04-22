@@ -401,6 +401,32 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     // ── Civil case ───────────────────────────────────────────
     const caseNumber = nextCaseNumber(db);
+
+    // ── Duplicate-intake detection (warn only, don't block) ──
+    const caseCourtNum = parsed.courtCaseNumber || parsed.clientJobNumber || null;
+    if (caseCourtNum) {
+      const dupCase = db.prepare(`
+        SELECT id, case_number, created_at
+        FROM cases
+        WHERE court_case_number = ?
+          AND datetime(created_at) > datetime('now','-90 days')
+        LIMIT 1
+      `).get(caseCourtNum) as any;
+      if (dupCase) {
+        warnings.push(`Duplicate job: case #${caseCourtNum} was already intaken on ${dupCase.created_at} (case_id=${dupCase.id}). Creating new case anyway.`);
+      }
+      const dupServe = db.prepare(`
+        SELECT id, created_at
+        FROM serve_queue
+        WHERE case_number = ?
+          AND datetime(created_at) > datetime('now','-90 days')
+        LIMIT 1
+      `).get(caseCourtNum) as any;
+      if (dupServe) {
+        warnings.push(`Duplicate job: serve_queue entry for case #${caseCourtNum} was created on ${dupServe.created_at} (serve_queue_id=${dupServe.id}). Creating new entry anyway.`);
+      }
+    }
+
     const linkedPersonsArr = [defendantId, plaintiffId, attorneyId].filter((x): x is number => x != null);
     const caseTitle = `${parsed.plaintiff || 'Plaintiff'} v. ${parsed.defendant.first} ${parsed.defendant.last}`.slice(0, 200);
     const caseResult = db.prepare(`
