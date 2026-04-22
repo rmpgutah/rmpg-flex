@@ -44,9 +44,10 @@
       /* Theme-aware pre-splash background — must be in <head> so it's parsed
          before the pre-splash <div> paints. The boot script above has already
          added theme-dark / theme-light classes to <html>, so the correct rule
-         wins from first paint with no FOUC. Kept in sync with --surface-base
-         values in client/src/index.css. */
-      #pre-splash { background: #000000; }
+         wins from first paint with no FOUC.
+         Values MUST match THEME_BODY_BACKGROUNDS in client/src/utils/theme.ts
+         so the splash fades into the hydrated body with no shade shift. */
+      #pre-splash { background: #0a0a0a; }
       html.theme-light #pre-splash { background: #0d2a4d; }
     </style>
     <!--
