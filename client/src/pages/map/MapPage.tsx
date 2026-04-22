@@ -78,9 +78,10 @@ import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrict
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useMapRouting } from '../../hooks/useMapRouting';
+import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
+import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
@@ -371,13 +372,26 @@ export default function MapPage() {
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
-  const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
+  // Multi-unit routing: when multiple units are assigned to a call, show an
+  // ETA-colored polyline for each simultaneously (green=fastest, amber=mid,
+  // red=slowest) so the dispatcher can see who's closest at a glance.
+  // Each Route click in the call info window adds to the current set rather
+  // than replacing — clicking Route on unit B while unit A is already routed
+  // shows both polylines.
+  const { activeRoutes, routeLoading, showRoute, clearAllRoutes, updateOrigin } =
+    useMultiUnitRouting({ map: mapInstanceRef.current });
 
   // Auto-pan the map to newly-dispatched P1 calls so dispatchers don't miss
   // high-priority events while looking at another part of the map. Existing
   // P1s at page-load do NOT trigger a pan — only calls that arrive after
   // this mount. No-op until the Map instance is ready.
   useAutoPanToP1(mapInstanceRef.current, calls);
+
+  // Audible chirp when a new P1 dispatches — paired with the auto-pan above
+  // so dispatchers who aren't looking at the map still get cued. Defaults on;
+  // user can toggle via localStorage key `rmpg_map_p1AudioEnabled`.
+  const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
+  useP1AudioAlert(calls, { enabled: p1AudioEnabled });
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -1462,16 +1476,18 @@ export default function MapPage() {
   }, []);
 
   // ============================================================
-  // Update Route When Routed Unit GPS Changes
+  // Update Routes When Routed Unit GPS Changes (multi-unit)
   // ============================================================
 
   useEffect(() => {
-    if (!activeRoute) return;
-    const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
-    if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
-      updateOrigin(routedUnit.latitude, routedUnit.longitude);
+    if (activeRoutes.length === 0) return;
+    for (const route of activeRoutes) {
+      const routedUnit = units.find(u => u.call_sign === route.unitCallSign);
+      if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+        updateOrigin(route.unitCallSign, routedUnit.latitude, routedUnit.longitude);
+      }
     }
-  }, [activeRoute, units, updateOrigin]);
+  }, [activeRoutes, units, updateOrigin]);
 
   // ============================================================
   // Heat Map Circles
@@ -5401,13 +5417,16 @@ export default function MapPage() {
         </div>}
 
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
-        {activeRoute && (
+        {/* Lists one row per active unit route; colors match the polylines
+            (green=fastest, amber=mid, red=slowest) for instant "who's closest"
+            read. Single Clear All action collapses the whole set. */}
+        {activeRoutes.length > 0 && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 200 }),
+                : { bottom: 48, left: 16, minWidth: 220 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
@@ -5416,22 +5435,51 @@ export default function MapPage() {
               boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
-                {activeRoute.unitCallSign} → {activeRoute.callNumber}
+                ROUTES ({activeRoutes.length})
               </span>
               <button
-                onClick={clearRoute}
+                onClick={clearAllRoutes}
                 style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
-                title="Clear route"
+                title="Clear all routes"
               >
                 ✕
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
-            </div>
+            {activeRoutes
+              .slice()
+              .sort((a, b) => a.durationSec - b.durationSec)
+              .map((r) => (
+                <div
+                  key={r.unitCallSign}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '3px 0',
+                    borderTop: '1px solid ' + (isLightMapStyle(mapStyle) ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'),
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      background: r.color,
+                      display: 'inline-block',
+                      borderRadius: 2,
+                      flexShrink: 0,
+                      boxShadow: `0 0 6px ${r.color}80`,
+                    }}
+                    title="Route color"
+                  />
+                  <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em', minWidth: 70 }}>
+                    {r.unitCallSign}
+                  </span>
+                  <span style={{ fontSize: 13, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{r.eta}</span>
+                  <span style={{ fontSize: 10, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999', marginLeft: 'auto' }}>{r.distance}</span>
+                </div>
+              ))}
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
             )}
