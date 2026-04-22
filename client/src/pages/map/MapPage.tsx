@@ -129,6 +129,7 @@ import CallHistoryPanel from './components/CallHistoryPanel';
 import HeatmapLegend from './components/HeatmapLegend';
 import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
 import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
+import RouteComparePanel from './components/RouteComparePanel';
 import { useMapHotspots } from './hooks/useMapHotspots';
 import { useMapDimBase } from './hooks/useMapDimBase';
 import { useMapIdleZones } from './hooks/useMapIdleZones';
@@ -341,7 +342,7 @@ export default function MapPage() {
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
-  const [breadcrumbHours, setBreadcrumbHours] = useState(8);
+  const [breadcrumbHours, setBreadcrumbHours] = useState(24);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
@@ -352,6 +353,21 @@ export default function MapPage() {
 
   // Trail playback state
   const [playbackTrailsRaw, setPlaybackTrailsRaw] = useState<PlaybackTrail[]>([]);
+
+  // Breadcrumb fetch-window presets. Labels are compact per operator request
+  // (24h / 48h / 7d / 14d / 21d / 1mo / 3mo / 1y). Values are hours — the
+  // server /dispatch/gps/trails endpoint still takes ?hours= so upstream
+  // doesn't need to change. Month = 30d, year = 365d rounded in hours.
+  const BREADCRUMB_HOUR_PRESETS: ReadonlyArray<{ hours: number; label: string }> = [
+    { hours: 24,   label: '24h' },
+    { hours: 48,   label: '48h' },
+    { hours: 168,  label: '7d' },
+    { hours: 336,  label: '14d' },
+    { hours: 504,  label: '21d' },
+    { hours: 720,  label: '1mo' },
+    { hours: 2160, label: '3mo' },
+    { hours: 8760, label: '1y' },
+  ];
 
   // Trail scrubber — lets dispatchers narrow the rendered trails to a
   // time sub-window without a re-fetch. Values are "hours ago relative to
@@ -464,6 +480,13 @@ export default function MapPage() {
   // Idle-zone detection: highlight stretches >=10min where a unit stayed
   // within ~50m as orange circles. Reuses playbackTrails — pure client-side.
   const [showIdleZones, setShowIdleZones] = usePersistedState<boolean>('rmpg_map_showIdleZones', false);
+
+  // Route comparison — pick two units from the active breadcrumb set and see
+  // side-by-side stats. Visibility is session-only; IDs are not persisted
+  // because their meaning depends on who's on shift right now.
+  const [showRouteCompare, setShowRouteCompare] = useState(false);
+  const [compareUnitA, setCompareUnitA] = useState<string | number | null>(null);
+  const [compareUnitB, setCompareUnitB] = useState<string | number | null>(null);
   useMapIdleZones({
     mapInstanceRef,
     trails: playbackTrails,
@@ -3565,9 +3588,10 @@ export default function MapPage() {
               </button>
               {showBreadcrumbs && (
                 <div className="px-3 py-1 space-y-1">
-                  {/* Hours selector */}
-                  <div className="flex items-center gap-1">
-                    {[2, 4, 8, 12, 24].map((h) => (
+                  {/* Hours selector — presets extend from 24h to 1y per
+                      operator request. Label abbreviates days/months/years. */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                       <button
                         key={h}
                         onClick={() => setBreadcrumbHours(h)}
@@ -3577,7 +3601,7 @@ export default function MapPage() {
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        {h}h
+                        {label}
                       </button>
                     ))}
                     <button
@@ -5621,7 +5645,7 @@ export default function MapPage() {
             <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
             <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
             <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
-            <span>last {breadcrumbHours}h</span>
+            <span>last {BREADCRUMB_HOUR_PRESETS.find((p) => p.hours === breadcrumbHours)?.label || `${breadcrumbHours}h`}</span>
             <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
             <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
             <button
@@ -5666,7 +5690,39 @@ export default function MapPage() {
             >
               ⇩ GPX
             </button>
+            <button
+              type="button"
+              onClick={() => setShowRouteCompare((v) => !v)}
+              style={{
+                marginLeft: 4,
+                padding: '1px 6px',
+                background: showRouteCompare ? '#d4a01730' : '#88888820',
+                border: showRouteCompare ? '1px solid #d4a01780' : '1px solid #88888850',
+                color: showRouteCompare ? '#d4a017' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Compare two units' trail stats side-by-side"
+            >
+              ⇆ COMPARE
+            </button>
           </div>
+        )}
+
+        {/* ── Route Comparison Panel (bottom-right, when toggled) ── */}
+        {showBreadcrumbs && showRouteCompare && (
+          <RouteComparePanel
+            trails={playbackTrails}
+            unitAId={compareUnitA}
+            unitBId={compareUnitB}
+            onChangeA={setCompareUnitA}
+            onChangeB={setCompareUnitB}
+            onClose={() => setShowRouteCompare(false)}
+          />
         )}
 
         {/* ── Trail Time-Window Scrubber (top-left, below chip) ── */}
@@ -6268,18 +6324,18 @@ export default function MapPage() {
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
                   <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
-                    <div className="flex gap-1">
-                      {[2, 4, 8, 12, 24].map((h) => (
+                    <div className="flex gap-1 flex-wrap">
+                      {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                         <button
                           key={h}
                           onClick={() => setBreadcrumbHours(h)}
-                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
+                          className={`flex-1 min-w-[44px] py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
                               ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
-                          {h}h
+                          {label}
                         </button>
                       ))}
                     </div>
