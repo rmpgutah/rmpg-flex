@@ -431,24 +431,45 @@ async function doIntake(
     let lightingConditions = '';
     if (latitude && longitude) {
       try {
-        const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Denver`;
+        const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,cloud_cover,surface_pressure,visibility&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/Denver`;
         const wxResp = await fetch(wxUrl);
         if (wxResp.ok) {
           const wx: any = await wxResp.json();
           const c = wx.current || {};
           const wxCodes: Record<number, string> = {
-            0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
-            45: 'Foggy', 48: 'Depositing rime fog', 51: 'Light drizzle', 53: 'Moderate drizzle',
-            55: 'Dense drizzle', 61: 'Slight rain', 63: 'Moderate rain', 65: 'Heavy rain',
-            66: 'Light freezing rain', 67: 'Heavy freezing rain', 71: 'Slight snow', 73: 'Moderate snow',
-            75: 'Heavy snow', 77: 'Snow grains', 80: 'Slight rain showers', 81: 'Moderate rain showers',
-            82: 'Violent rain showers', 85: 'Slight snow showers', 86: 'Heavy snow showers', 95: 'Thunderstorm',
+            0: 'CLEAR', 1: 'MAINLY CLEAR', 2: 'PARTLY CLOUDY', 3: 'OVERCAST',
+            45: 'FOGGY', 48: 'FREEZING FOG', 51: 'LIGHT DRIZZLE', 53: 'MODERATE DRIZZLE',
+            55: 'DENSE DRIZZLE', 56: 'LIGHT FREEZING DRIZZLE', 57: 'DENSE FREEZING DRIZZLE',
+            61: 'LIGHT RAIN', 63: 'MODERATE RAIN', 65: 'HEAVY RAIN',
+            66: 'LIGHT FREEZING RAIN', 67: 'HEAVY FREEZING RAIN',
+            71: 'LIGHT SNOW', 73: 'MODERATE SNOW', 75: 'HEAVY SNOW', 77: 'SNOW GRAINS',
+            80: 'LIGHT RAIN SHOWERS', 81: 'MODERATE RAIN SHOWERS', 82: 'VIOLENT RAIN SHOWERS',
+            85: 'LIGHT SNOW SHOWERS', 86: 'HEAVY SNOW SHOWERS',
+            95: 'THUNDERSTORM', 96: 'THUNDERSTORM W/ LIGHT HAIL', 99: 'THUNDERSTORM W/ HEAVY HAIL',
           };
-          const desc = wxCodes[c.weather_code] || 'Unknown';
-          const temp = c.temperature_2m ? `${Math.round(c.temperature_2m)}°F` : '';
-          const wind = c.wind_speed_10m ? `${Math.round(c.wind_speed_10m)} mph` : '';
-          const humidity = c.relative_humidity_2m ? `${c.relative_humidity_2m}%` : '';
-          weatherConditions = [desc, temp, wind ? `Wind ${wind}` : '', humidity ? `Humidity ${humidity}` : ''].filter(Boolean).join(', ');
+          const windDirCompass = (deg: number) => {
+            const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            return dirs[Math.round(deg / 22.5) % 16];
+          };
+          const desc = wxCodes[c.weather_code] ?? 'UNKNOWN';
+          const parts: string[] = [desc];
+          if (typeof c.temperature_2m === 'number') {
+            const t = Math.round(c.temperature_2m);
+            const feelsLike = typeof c.apparent_temperature === 'number' ? Math.round(c.apparent_temperature) : null;
+            parts.push(feelsLike !== null && Math.abs(feelsLike - t) >= 2 ? `${t}°F (feels ${feelsLike}°F)` : `${t}°F`);
+          }
+          if (typeof c.wind_speed_10m === 'number') {
+            const w = Math.round(c.wind_speed_10m);
+            const dir = typeof c.wind_direction_10m === 'number' ? ` ${windDirCompass(c.wind_direction_10m)}` : '';
+            const gust = typeof c.wind_gusts_10m === 'number' && c.wind_gusts_10m - c.wind_speed_10m >= 5 ? ` gust ${Math.round(c.wind_gusts_10m)}` : '';
+            parts.push(`Wind ${w} mph${dir}${gust}`);
+          }
+          if (typeof c.relative_humidity_2m === 'number') parts.push(`Humidity ${c.relative_humidity_2m}%`);
+          if (typeof c.cloud_cover === 'number') parts.push(`Clouds ${c.cloud_cover}%`);
+          if (typeof c.precipitation === 'number' && c.precipitation > 0) parts.push(`Precip ${c.precipitation.toFixed(2)}in`);
+          if (typeof c.visibility === 'number') parts.push(`Vis ${(c.visibility / 1609.34).toFixed(1)}mi`);
+          if (typeof c.surface_pressure === 'number') parts.push(`Pressure ${(c.surface_pressure * 0.02953).toFixed(2)}inHg`);
+          weatherConditions = parts.join(', ');
         } else {
           warnings.push('Weather API returned non-OK');
         }

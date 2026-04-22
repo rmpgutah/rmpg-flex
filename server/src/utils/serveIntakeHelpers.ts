@@ -504,7 +504,12 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
 
   const serviceRulesSummary = summarizeRules(instructions);
   const jobActivity = parseJobActivity(infoSheet);
-  const courtCaseNumber = (courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1] || '').trim();
+  // Civil No. must be on the same line as the label; otherwise the label is blank
+  // (docket was filed pre-docketing and the clerk fills it in later). Using [^\S\n]
+  // prevents the regex from leaking onto the next line and capturing the defendant
+  // name (e.g. "Abbey" when Civil No. is empty).
+  const civilNoMatch = courtDocket.match(/Civil\s+No\.[^\S\n]*([A-Z0-9][A-Z0-9-]{2,})/i);
+  const courtCaseNumber = (civilNoMatch?.[1] || '').trim();
   const vendorFingerprint = info.createdBy || (fieldSheet.match(/(ICU\s+Investigations[^,\n]*)/i)?.[1] || '');
   const docketBarcodeJobNumber = extractDocketBarcodeJobNumber(courtDocket);
   const complaintResidence = extractComplaintResidence(courtDocket);
