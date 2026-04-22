@@ -214,20 +214,25 @@ export function sanitizePdfText(text: string): string {
  * mid-word with Courier, this respects word boundaries.
  */
 export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
-  const words = text.split(/(\s+)/);
-  const lines: string[] = [];
-  let currentLine = '';
-  for (const word of words) {
-    const testLine = currentLine + word;
-    if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
-      lines.push(currentLine.trimEnd());
-      currentLine = word.trimStart();
-    } else {
-      currentLine = testLine;
+  // Honor explicit newlines — each \n forces a hard break. Wrap each segment.
+  const paragraphs = text.split(/\r?\n/);
+  const out: string[] = [];
+  for (const para of paragraphs) {
+    if (para === '') { out.push(''); continue; }
+    const words = para.split(/(\s+)/);
+    let currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine + word;
+      if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
+        out.push(currentLine.trimEnd());
+        currentLine = word.trimStart();
+      } else {
+        currentLine = testLine;
+      }
     }
+    if (currentLine.trim()) out.push(currentLine.trimEnd());
   }
-  if (currentLine.trim()) lines.push(currentLine.trimEnd());
-  return lines.length ? lines : [''];
+  return out.length ? out : [''];
 }
 
 function isNarrativeLikePdfText(text: string, width: number): boolean {
