@@ -6276,6 +6276,57 @@ function seedData(): void {
     insertPreset.run('Creative', 0.7, 1024, 0.95, 1.0, 0);
     insertPreset.run('Verbose', 0.5, 2048, 0.9, 1.0, 0);
   }
+
+  // ─── ONE-SHOT: Serve-Intake CFS backfills (2026-04-22) ────
+  // 1. call_persons role: early intake runs wrote role='subject'/'complainant'
+  //    which violate the CHECK constraint and were silently dropped — only the
+  //    attorney ('reporting_party') survived. Re-link defendant/plaintiff for
+  //    existing PSO Client Request calls that have a case_id.
+  // 2. properties.name: early runs suffixed "-- <LAST> RESIDENCE" to the street
+  //    address. Strip it back to the street-only form.
+  // Both are guarded by system_config keys so they only run once per DB.
+  try {
+    const alreadyRan = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'call_persons_backfill_20260422' LIMIT 1").get() as any;
+    if (!alreadyRan) {
+      const pso = db.prepare(`
+        SELECT c.id AS call_id, c.case_id, cs.defendant_person_id, cs.plaintiff_person_id
+        FROM calls_for_service c
+        JOIN cases cs ON cs.id = c.case_id
+        WHERE c.incident_type = 'pso_client_request'
+      `).all() as any[];
+      const ins = db.prepare("INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by) VALUES (?, ?, ?, 1)");
+      for (const row of pso) {
+        if (row.defendant_person_id) {
+          try { ins.run(row.call_id, row.defendant_person_id, 'involved'); } catch { /* ignore */ }
+        }
+        if (row.plaintiff_person_id) {
+          try { ins.run(row.call_id, row.plaintiff_person_id, 'other'); } catch { /* ignore */ }
+        }
+      }
+      db.prepare("INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('call_persons_backfill_20260422', ?)").run(new Date().toISOString());
+    }
+  } catch (err: any) {
+    console.warn('[migration] call_persons backfill failed:', err?.message || err);
+  }
+
+  try {
+    const stripRan = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'property_name_strip_20260422' LIMIT 1").get() as any;
+    if (!stripRan) {
+      // Previous format: "<LastName> Residence — <street>" (em dash U+2014).
+      // Replace the whole stored name with just the street portion of the
+      // property's address column (everything before the first comma).
+      db.prepare(`
+        UPDATE properties
+           SET name = TRIM(substr(address, 1, COALESCE(NULLIF(instr(address, ','), 0) - 1, length(address))))
+         WHERE name LIKE '% Residence%'
+           AND address IS NOT NULL
+           AND address != ''
+      `).run();
+      db.prepare("INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('property_name_strip_20260422', ?)").run(new Date().toISOString());
+    }
+  } catch (err: any) {
+    console.warn('[migration] property name strip failed:', err?.message || err);
+  }
 }
 
 export default { initDatabase, getDb };

@@ -347,7 +347,10 @@ async function doIntake(
     let propertyId: number | null = null;
     if (parsed.address) {
       const ap = parsed.addressParts;
-      const propName = `${parsed.defendant.last} Residence — ${ap.building || (parsed.address.split(',')[0] || '').trim()}`;
+      // Use the street address itself as the property name (e.g. "2361 E 3395 S").
+      // Previously suffixed "<LAST> Residence" which was redundant with address.
+      const streetOnly = (parsed.address.split(',')[0] || '').trim();
+      const propName = streetOnly || parsed.address;
       const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(parsed.address) as any;
       if (existingProp) {
         propertyId = existingProp.id;
@@ -489,7 +492,8 @@ async function doIntake(
           // apps. Surface pressure at SLC's ~4200ft elevation reads ~25inHg which
           // misleads readers. Use pressure_msl for ~29-30inHg like everywhere else.
           if (typeof c.pressure_msl === 'number') parts.push(`Pressure ${(c.pressure_msl * 0.02953).toFixed(2)}inHg`);
-          weatherConditions = parts.join(', ');
+          // One field per line so the CFS PDF can render each value on its own row.
+          weatherConditions = parts.join('\n');
         } else {
           warnings.push('Weather API returned non-OK');
         }
@@ -753,16 +757,27 @@ async function doIntake(
     // the schema has no UNIQUE constraint on (call_id, person_id) so that
     // is safe. Track inserts so we can warn when we persisted fewer than the
     // parties we parsed.
+    // NOTE: call_persons.role has a CHECK constraint allowing only
+    //   'suspect','victim','witness','reporting_party','involved','other'
+    // Previously we inserted 'subject' / 'complainant' which violated the
+    // check and dropped rows (surfaced only as a warning). Map to valid
+    // roles: defendant -> 'involved', plaintiff -> 'other' (civil process,
+    // 'victim' is semantically wrong), attorney -> 'reporting_party'.
     let callPersonsInserted = 0;
-    try {
-      const insertLink = db.prepare('INSERT INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)');
-      insertLink.run(callId, defendantId, 'subject', userId, now); callPersonsInserted++;
-      if (plaintiffId) { insertLink.run(callId, plaintiffId, 'complainant', userId, now); callPersonsInserted++; }
-      if (attorneyId) { insertLink.run(callId, attorneyId, 'reporting_party', userId, now); callPersonsInserted++; }
-    } catch (err) {
-      log.warn({ err }, 'call_persons insert failed');
-      warnings.push('One or more call_persons link rows failed to persist');
-    }
+    const insertLink = db.prepare('INSERT INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)');
+    const tryLink = (personId: number | null, role: string) => {
+      if (!personId) return;
+      try {
+        insertLink.run(callId, personId, role, userId, now);
+        callPersonsInserted++;
+      } catch (err) {
+        log.warn({ err, role, personId }, 'call_persons insert failed');
+        warnings.push(`call_persons insert failed for role=${role}`);
+      }
+    };
+    tryLink(defendantId, 'involved');
+    tryLink(plaintiffId, 'other');
+    tryLink(attorneyId, 'reporting_party');
     const expectedCallPersons = 1 + (plaintiffId ? 1 : 0) + (attorneyId ? 1 : 0);
     if (callPersonsInserted < expectedCallPersons) {
       warnings.push(`Expected ${expectedCallPersons} call_persons rows, inserted ${callPersonsInserted}`);
