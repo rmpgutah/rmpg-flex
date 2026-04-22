@@ -191,7 +191,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
         {/* Results dropdown */}
         {searchResults.length > 0 && !selectedPerson && (
-          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-gray-700">
+          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-rmpg-700">
             {searchResults.map((person) => {
               const flags = parseFlags(person.flags);
               return (
@@ -207,11 +207,14 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
                     </span>
                     {flags.length > 0 && (
                       <div className="flex gap-1">
-                        {flags.map((f, i) => (
-                          <span key={`${f}-${i}`} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
-                            {f}
-                          </span>
-                        ))}
+                        {flags.map((f, i) => {
+                          const flagText = typeof f === 'object' && f !== null ? (f as any).type || JSON.stringify(f) : String(f);
+                          return (
+                            <span key={`${flagText}-${i}`} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                              {flagText}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -305,7 +308,9 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           placeholder="Additional details about this person's involvement..."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          maxLength={2000}
         />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{notes.length}/2000</div>
       </div>
       {/* Create Person Modal */}
       <PersonFormModal

@@ -58,12 +58,12 @@ export function mapDbCall(row: any): CallForService {
     location_floor: row.location_floor || undefined,
     location_room: row.location_room || undefined,
     zone_beat: row.zone_beat || undefined,
-    section_id: row.section_id || undefined,
+    sector_id: row.sector_id || undefined,
     zone_id: row.zone_id || undefined,
     beat_id: row.beat_id || undefined,
     // Dispatch district data
     dispatch_code: row.dispatch_code || undefined,
-    section_name: row.section_name || undefined,
+    sector_name: row.sector_name || undefined,
     zone_name: row.zone_name || undefined,
     beat_name: row.beat_name || undefined,
     beat_descriptor: row.beat_descriptor || undefined,
@@ -100,6 +100,8 @@ export function mapDbCall(row: any): CallForService {
     le_notified: !!row.le_notified,
     le_agency: row.le_agency || undefined,
     le_case_number: row.le_case_number || undefined,
+    case_number: row.case_number || undefined,
+    incident_number: row.incident_number || undefined,
     // Additional operational flags
     mental_health_crisis: !!row.mental_health_crisis,
     juvenile_involved: !!row.juvenile_involved,
@@ -120,11 +122,11 @@ export function mapDbCall(row: any): CallForService {
     process_service_type: row.process_service_type || undefined,
     process_served_to: row.process_served_to || undefined,
     process_served_address: row.process_served_address || undefined,
-    process_attempts: row.process_attempts || undefined,
+    process_attempts: row.process_attempts ?? undefined,
     process_served_at: row.process_served_at || undefined,
     process_service_result: row.process_service_result || undefined,
     // Damage
-    damage_estimate: row.damage_estimate || undefined,
+    damage_estimate: row.damage_estimate ?? undefined,
     damage_description: row.damage_description || undefined,
     // Resolution
     action_taken: row.action_taken || undefined,

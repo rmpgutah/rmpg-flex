@@ -203,13 +203,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }, backoff);
                 return;
               }
-            } catch { /* fall through to logout */ }
+            } catch (err) { console.warn('[Auth] Token refresh retry failed:', err); /* fall through to logout */ }
           }
           clearTokens();
           setToken(null);
           setUser(null);
         }
-      } catch {
+      } catch (err) {
+        console.warn('[Auth] Token refresh failed, retrying with backoff:', err);
         // Network/timeout error — retry with exponential backoff (1s, 2s, 4s, ... max 30s)
         refreshFailCountRef.current++;
         const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
@@ -307,7 +308,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(null);
           setUser(null);
         }
-      } catch {
+      } catch (err) {
+        console.warn('[Auth] Initial auth check failed:', err);
         if (gen !== generationRef.current) return; // stale
 
         // API not available — attempt offline auth via Electron local cache
@@ -319,7 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(cachedUser);
               return; // loaded from local DB — skip mock
             }
-          } catch { /* fall through to mock */ }
+          } catch (err) { console.warn('[Auth] Cached user fetch failed:', err); /* fall through to mock */ }
         }
 
         // Fallback mock user for pure-browser development ONLY
@@ -428,12 +430,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoginStep('complete');
       } else {
         const errData = await res.json().catch(() => ({}));
-        if (errData.code === 'MFA_EXPIRED') {
+        if (errData.code === 'MFA_EXPIRED' || errData.code === 'VERIFICATION_SESSION_EXPIRED_PLEASE') {
           setLoginStep('password');
           setPending2FA(false);
-          throw new Error('Verification expired. Please enter your password again.');
+          throw new Error('Verification session expired. Please sign in again.');
         }
-        const message = errData.error || 'Invalid verification code';
+        if (errData.code === 'TOTP_DECRYPT_ERROR') {
+          setError('Authentication configuration error. Contact your administrator.');
+          throw new Error(errData.error);
+        }
+        const message = errData.error || 'Invalid verification code. Wait for a new code and try again.';
         setError(message);
         throw new Error(message);
       }
@@ -569,6 +575,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           safeSetItem(SESSION_ID_KEY, data.sessionId);
         }
 
+        // Store last login info for display on login page
+        if (data.lastLoginAt) {
+          try {
+            sessionStorage.setItem('rmpg_last_login_info', JSON.stringify({
+              time: data.lastLoginAt,
+              ip: data.lastLoginIp || '',
+            }));
+          } catch (err) { console.warn('[Auth] Session storage write failed:', err); }
+        }
+
         // Store username for offline auth lookup
         safeSetItem(LAST_USERNAME_KEY, username);
 
@@ -646,7 +662,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'X-Requested-With': 'XMLHttpRequest',
           Authorization: `Bearer ${currentToken}`,
         },
-        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+        body: JSON.stringify({ tempToken: currentToken, code, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (res.ok) {
@@ -859,16 +875,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         setUser(data.user || data);
       }
-    } catch { /* silent — stale data is acceptable */ }
+    } catch (err) { console.warn('[Auth] User refresh failed:', err); }
   }, []);
 
   // ─── Session idle timeout (CJIS compliance) ────────
   // Tracks user activity (mouse, keyboard, touch) and auto-logs out
   // after the configured inactivity period.
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const idleTimeoutMsRef = useRef(60 * 60 * 1000); // default 1 hour inactivity, updated from server
+  const idleTimeoutMsRef = useRef(60 * 60 * 1000); // 1 hour of inactivity before auto-logout
   const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxSessionMsRef = useRef(8 * 60 * 60 * 1000); // default 8 hours absolute max
+  const maxSessionMsRef = useRef(12 * 60 * 60 * 1000); // 12 hours of continuous use before auto-logout
 
   // Fetch session timeout config from server once authenticated
   useEffect(() => {
@@ -951,18 +967,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, logout]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount — clear timers and sensitive state from memory
   useEffect(() => {
     return () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
       }
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
       }
       if (sessionTimerRef.current) {
         clearTimeout(sessionTimerRef.current);
+        sessionTimerRef.current = null;
       }
+      // Clear sensitive auth state from memory on unmount
+      tempTokenRef.current = null;
+      isRefreshingRef.current = false;
     };
   }, []);
 

@@ -10,29 +10,31 @@ import {
   Search,
   Loader2,
   AlertTriangle,
-  Clock,
   DollarSign,
   TrendingUp,
   Calendar,
-  ChevronRight,
   Edit3,
   Trash2,
   Phone,
   Mail,
-  ExternalLink,
   RefreshCw,
-  Filter,
   X,
   Save,
-  AlertCircle,
   BarChart3,
   Activity,
   Target,
   FileSignature,
+  Globe,
+  Eye,
+  Flame,
 } from 'lucide-react';
+import IconButton from '../components/IconButton';
 import LeadsTab from '../components/crm/LeadsTab';
 import ProposalsTab from '../components/crm/ProposalsTab';
 import ReportsTab from '../components/crm/ReportsTab';
+import WebIntelPanel from '../components/crm/WebIntelPanel';
+import CompetitorMonitorPanel from '../components/crm/CompetitorMonitorPanel';
+import FirecrawlTab from '../components/crm/FirecrawlTab';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
@@ -50,7 +52,7 @@ import type {
   CrmDashboardStats,
 } from '../types';
 
-type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports';
+type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors' | 'firecrawl';
 
 const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -62,6 +64,9 @@ const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[
   { id: 'invoices', label: 'Invoices', icon: FileText },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'webintel', label: 'Web Intel', icon: Globe },
+  { id: 'competitors', label: 'Competitors', icon: Eye },
+  { id: 'firecrawl', label: 'Firecrawl', icon: Flame },
 ];
 
 const TASK_TYPES = ['follow_up', 'site_visit', 'contract_renewal', 'billing', 'other'] as const;
@@ -76,16 +81,16 @@ function formatCurrency(val: number): string {
 
 function formatDate(d?: string): string {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string): string {
   if (!d) return '—';
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ── Priority badge colors ──────────────────────────────
@@ -93,37 +98,51 @@ function priorityColor(p: string): string {
   switch (p) {
     case 'urgent': return 'text-red-400 bg-red-900/30 border-red-700/50';
     case 'high': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'normal': return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
-    case 'low': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
-    default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'normal': return 'text-rmpg-200 bg-rmpg-700/20 border-rmpg-600/60';
+    case 'low': return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
+    default: return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
   }
 }
 
 function statusColor(s: string): string {
   switch (s) {
     case 'pending': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'in_progress': return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
+    case 'in_progress': return 'text-rmpg-200 bg-rmpg-700/20 border-rmpg-600/60';
     case 'completed': return 'text-green-400 bg-green-900/30 border-green-700/50';
-    case 'cancelled': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
-    default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'cancelled': return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
+    default: return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
   }
 }
 
 function invoiceStatusColor(s: string): string {
   switch (s) {
     case 'paid': return 'text-green-400 bg-green-900/30 border-green-700/50';
-    case 'sent': return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
+    case 'sent': return 'text-rmpg-200 bg-rmpg-700/20 border-rmpg-600/60';
     case 'overdue': return 'text-red-400 bg-red-900/30 border-red-700/50';
     case 'partial': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    case 'draft': return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
-    case 'void': case 'cancelled': return 'text-rmpg-500 bg-rmpg-900/30 border-rmpg-700/50';
-    default: return 'text-rmpg-400 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'draft': return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
+    case 'void': case 'cancelled': return 'text-rmpg-400 bg-rmpg-900/30 border-rmpg-700/50';
+    default: return 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50';
   }
 }
 
 // ════════════════════════════════════════════════════════
 // CRM PAGE
 // ════════════════════════════════════════════════════════
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CrmPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -175,6 +194,31 @@ export default function CrmPage() {
   const [activityForm, setActivityForm] = useState<{ client_id: string; activity_type: string; subject: string; details: string }>({
     client_id: '', activity_type: 'note', subject: '', details: '',
   });
+
+  // Feature 12: Pipeline summary
+  const [pipelineSummary, setPipelineSummary] = useState<any>(null);
+  // Feature 13: Follow-ups
+  const [followUps, setFollowUps] = useState<any>(null);
+  // Feature 14: Source analytics
+  const [sourceAnalytics, setSourceAnalytics] = useState<any>(null);
+  // Feature 15: Revenue forecast
+  const [revenueForecast, setRevenueForecast] = useState<any>(null);
+
+  const fetchPipelineSummary = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/pipeline-summary'); setPipelineSummary(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchFollowUps = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/leads/follow-ups'); setFollowUps(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchSourceAnalytics = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/leads/source-analytics'); setSourceAnalytics(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchRevenueForecast = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/revenue-forecast'); setRevenueForecast(res); } catch { /* ignore */ }
+  }, []);
 
   // Persist active section
   useEffect(() => { try { localStorage.setItem('crm_active_section', activeSection); } catch { /* ignore */ } }, [activeSection]);
@@ -261,8 +305,14 @@ export default function CrmPage() {
     if (activeSection === 'contacts') fetchContacts();
     if (activeSection === 'invoices') fetchInvoices();
     if (activeSection === 'tasks') fetchTasks();
-    if (activeSection === 'dashboard') fetchDashboard();
-  }, [activeSection, fetchProperties, fetchContacts, fetchInvoices, fetchTasks, fetchDashboard]);
+    if (activeSection === 'dashboard') {
+      fetchDashboard();
+      fetchPipelineSummary();
+      fetchFollowUps();
+      fetchSourceAnalytics();
+      fetchRevenueForecast();
+    }
+  }, [activeSection, fetchProperties, fetchContacts, fetchInvoices, fetchTasks, fetchDashboard, fetchPipelineSummary, fetchFollowUps, fetchSourceAnalytics, fetchRevenueForecast]);
 
   // Live sync
   useLiveSync('admin', useCallback(() => { fetchClients(); fetchDashboard(); }, [fetchClients, fetchDashboard]));
@@ -371,22 +421,34 @@ export default function CrmPage() {
   // ════════════════════════════════════════════════════════
   // RENDER
   // ════════════════════════════════════════════════════════
+  // Set document title
+  useEffect(() => { document.title = 'CRM \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowTaskModal(false); setEditingTask(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
       </div>
     );
   }
+
 
   return (
     <div className="flex h-full">
       {/* ── Sidebar ────────────────────────────────────── */}
       <div className="w-48 border-r border-rmpg-600 bg-surface-sunken flex flex-col flex-shrink-0">
-        <div className="px-3 py-2 border-b border-rmpg-600">
+        <div className="px-3 py-2.5 border-b border-rmpg-600" style={{ background: '#050505' }}>
           <div className="flex items-center gap-2">
             <RmpgLogo height={14} iconOnly />
-            <span className="text-xs font-bold text-brand-400 tracking-wider">OVERWATCH</span>
+            <span className="text-xs font-bold text-brand-400 tracking-wider uppercase">Overwatch</span>
           </div>
         </div>
         <nav className="flex-1 py-1">
@@ -394,19 +456,19 @@ export default function CrmPage() {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
             return (
-              <button
+              <button type="button"
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-all duration-150 ${
                   isActive
-                    ? 'bg-brand-600/20 text-brand-400 border-l-2 border-brand-400'
+                    ? 'bg-brand-600/20 text-brand-400 border-l-2 border-brand-400 font-medium'
                     : 'text-rmpg-300 hover:bg-rmpg-700/30 hover:text-rmpg-200 border-l-2 border-transparent'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 flex-shrink-0" />
                 {item.label}
                 {item.id === 'tasks' && tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length > 0 && (
-                  <span className="ml-auto text-[9px] font-mono px-1 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50">
+                  <span className="ml-auto text-[8px] font-mono font-bold px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50 tabular-nums" style={{ borderRadius: '2px' }}>
                     {tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length}
                   </span>
                 )}
@@ -419,9 +481,10 @@ export default function CrmPage() {
       {/* ── Main Content ──────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {fetchError && (
-          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
-            <span>⚠ {fetchError}</span>
-            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2 shadow-lg">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+            <span className="flex-1">{fetchError}</span>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]">Dismiss</button>
           </div>
         )}
         {activeSection === 'dashboard' && renderDashboard()}
@@ -433,31 +496,34 @@ export default function CrmPage() {
         {activeSection === 'invoices' && renderInvoices()}
         {activeSection === 'tasks' && renderTasks()}
         {activeSection === 'reports' && <ReportsTab />}
+        {activeSection === 'webintel' && <WebIntelPanel />}
+        {activeSection === 'competitors' && <CompetitorMonitorPanel />}
+        {activeSection === 'firecrawl' && <FirecrawlTab />}
       </div>
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowTaskModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
-              <button onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <IconButton onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close task modal"><X className="w-3.5 h-3.5" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title</label>
-                <input className="input-dark w-full" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
+                <input className="input-dark w-full min-h-[36px]" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select className="input-dark w-full" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
                     {TASK_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select className="input-dark w-full" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
                     {TASK_PRIORITIES.map(p => <option key={p} value={p}>{toDisplayLabel(p)}</option>)}
                   </select>
                 </div>
@@ -465,11 +531,11 @@ export default function CrmPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Due Date</label>
-                  <input type="date" className="input-dark w-full" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
+                  <input type="date" className="input-dark w-full min-h-[36px]" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
                 </div>
                 <div>
                   <label className="field-label">Assign To</label>
-                  <select className="input-dark w-full" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
                     <option value="">Unassigned</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -477,27 +543,27 @@ export default function CrmPage() {
               </div>
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
+                <select className="input-dark w-full min-h-[36px]" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
                   <option value="">No client</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Description</label>
-                <textarea className="input-dark w-full" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
+                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
               </div>
               {editingTask && (
                 <div>
                   <label className="field-label">Status</label>
-                  <select className="input-dark w-full" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
                     {TASK_STATUSES.map(s => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
                   </select>
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={saveTask} className="toolbar-btn toolbar-btn-primary" disabled={!taskForm.title?.trim()}>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600 bg-surface-sunken/50">
+              <button type="button" onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!taskForm.title?.trim()}>
                 <Save className="w-3 h-3" /> {editingTask ? 'Update' : 'Create'}
               </button>
             </div>
@@ -507,38 +573,38 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowActivityModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">Log Activity</span>
-              <button onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <IconButton onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close activity modal"><X className="w-3.5 h-3.5" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
+                <select className="input-dark w-full min-h-[36px]" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
                   <option value="">Select client...</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Type</label>
-                <select className="input-dark w-full" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
+                <select className="input-dark w-full min-h-[36px]" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
                   {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Subject</label>
-                <input className="input-dark w-full" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
+                <input className="input-dark w-full min-h-[36px]" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
               </div>
               <div>
                 <label className="field-label">Details</label>
-                <textarea className="input-dark w-full" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
+                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={logActivity} className="toolbar-btn toolbar-btn-primary" disabled={!activityForm.client_id}>
+              <button type="button" onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={logActivity} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!activityForm.client_id}>
                 <Save className="w-3 h-3" /> Log
               </button>
             </div>
@@ -581,12 +647,12 @@ export default function CrmPage() {
 
   function renderDashboard() {
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
           <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
-          <button onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
-          <button onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
+          <button type="button" onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3 h-3" /> Log Activity
           </button>
         </PanelTitleBar>
@@ -594,11 +660,127 @@ export default function CrmPage() {
         {stats && (
           <div className="p-4 space-y-4">
             {/* Stats Cards */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
               <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
               <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
-              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-blue-400" />
+              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-gray-400" />
+            </div>
+
+            {/* Feature 15: Revenue Forecast */}
+            {revenueForecast && (
+              <div className="panel-inset p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-3.5 h-3.5 text-green-400" />
+                  <span className="text-xs font-bold text-white">Revenue Forecast</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div><div className="text-lg font-bold text-green-400 font-mono">{formatCurrency(revenueForecast.won_revenue)}</div><div className="text-[9px] text-rmpg-400 uppercase">Won</div></div>
+                  <div><div className="text-lg font-bold text-brand-300 font-mono">{formatCurrency(revenueForecast.total_expected)}</div><div className="text-[9px] text-rmpg-400 uppercase">Expected</div></div>
+                  <div><div className="text-lg font-bold text-white font-mono">{formatCurrency(revenueForecast.total_pipeline)}</div><div className="text-[9px] text-rmpg-400 uppercase">Total Pipeline</div></div>
+                  <div><div className="text-lg font-bold text-amber-400 font-mono">{revenueForecast.active_deals}</div><div className="text-[9px] text-rmpg-400 uppercase">Active Deals</div></div>
+                </div>
+              </div>
+            )}
+
+            {/* Feature 12: Pipeline Summary */}
+            {pipelineSummary && (
+              <div className="panel-inset p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-3.5 h-3.5 text-brand-400" />
+                  <span className="text-xs font-bold text-white">Sales Pipeline</span>
+                </div>
+                <div className="flex gap-1">
+                  {(pipelineSummary.stages || []).map((s: any) => {
+                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-gray-700', qualified: 'bg-gray-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
+                    return (
+                      <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
+                        <div className="text-sm font-bold text-white font-mono tabular-nums">{s.count}</div>
+                        <div className="text-[8px] text-white/70 uppercase font-bold tracking-wider">{s.pipeline_stage}</div>
+                        {s.total_value > 0 && <div className="text-[8px] text-white/50 font-mono">{formatCurrency(s.total_value)}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {pipelineSummary.conversions?.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1 text-[9px] text-rmpg-400">
+                    {pipelineSummary.conversions.map((c: any, i: number) => (
+                      <span key={i}>{c.from} → {c.to}: <span className="text-white font-bold">{c.rate}%</span>{i < pipelineSummary.conversions.length - 1 ? ' | ' : ''}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Feature 13: Follow-up Reminders + Feature 14: Source Analytics */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Follow-ups */}
+              {followUps && (
+                <div className="panel-inset p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-bold text-white">Follow-up Reminders</span>
+                  </div>
+                  {(followUps.overdue?.length || 0) > 0 && (
+                    <div className="mb-2">
+                      <div className="text-[9px] text-red-400 font-bold uppercase mb-1">Overdue ({followUps.overdue.length})</div>
+                      {followUps.overdue.slice(0, 5).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">{l.next_follow_up}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(followUps.today?.length || 0) > 0 && (
+                    <div className="mb-2">
+                      <div className="text-[9px] text-amber-400 font-bold uppercase mb-1">Today ({followUps.today.length})</div>
+                      {followUps.today.slice(0, 5).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-amber-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">Score: {l.lead_score}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(followUps.upcoming?.length || 0) > 0 && (
+                    <div>
+                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
+                      {followUps.upcoming.slice(0, 3).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-gray-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">{l.next_follow_up}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!followUps.overdue?.length && !followUps.today?.length && !followUps.upcoming?.length && (
+                    <p className="text-xs text-rmpg-400">No follow-ups scheduled</p>
+                  )}
+                </div>
+              )}
+
+              {/* Feature 14: Lead Source Analytics */}
+              {sourceAnalytics && (
+                <div className="panel-inset p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BarChart3 className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs font-bold text-white">Lead Sources ({sourceAnalytics.period_days}d)</span>
+                  </div>
+                  <div className="space-y-1">
+                    {(sourceAnalytics.data || []).slice(0, 8).map((s: any) => (
+                      <div key={s.source} className="flex items-center gap-2 text-[10px]">
+                        <span className="w-24 text-rmpg-300 truncate capitalize">{s.source.replace(/_/g, ' ')}</span>
+                        <div className="flex-1 bg-rmpg-700 h-2 overflow-hidden" style={{ borderRadius: '2px' }}>
+                          <div className="h-full bg-brand-500 transition-all duration-300" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%`, borderRadius: '2px' }} />
+                        </div>
+                        <span className="text-white w-6 text-right">{s.total_leads}</span>
+                        <span className="text-green-400 w-10 text-right">{s.conversion_rate}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -611,7 +793,7 @@ export default function CrmPage() {
                 {expiringContracts.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No contracts expiring soon</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                     {expiringContracts.map((c: any) => (
                       <div key={c.id} className="flex items-center justify-between text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div>
@@ -631,13 +813,13 @@ export default function CrmPage() {
               {/* Recent Activity */}
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-3.5 h-3.5 text-blue-400" />
+                  <Activity className="w-3.5 h-3.5 text-gray-400" />
                   <span className="text-xs font-bold text-white">Recent Activity</span>
                 </div>
                 {recentActivity.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No recent activity</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                     {recentActivity.slice(0, 10).map((a: any) => (
                       <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div className="flex items-center justify-between">
@@ -647,7 +829,7 @@ export default function CrmPage() {
                         <div className="text-rmpg-300 mt-0.5">
                           <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                             a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                            a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
+                            a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
                             'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                           }`}>{toDisplayLabel(a.activity_type)}</span>
                           {a.subject && <span className="ml-1.5">{a.subject}</span>}
@@ -670,21 +852,23 @@ export default function CrmPage() {
         {/* Client List */}
         <div className="w-80 border-r border-rmpg-600 flex flex-col flex-shrink-0">
           <PanelTitleBar title="CLIENTS" icon={Building2}>
-            <input className="input-dark text-xs flex-1" style={{ maxWidth: 120 }} placeholder="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
-            <button onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary">
+            <input className="input-dark text-xs flex-1 min-h-[36px]" style={{ maxWidth: 120 }} placeholder="Search..." aria-label="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+            <button type="button" onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {filteredClients.length === 0 && !isLoading && (
               <div className="text-center py-12 text-rmpg-500">
-                <Building2 size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">{clientSearch ? 'No clients match your search' : 'No clients yet'}</p>
+                <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                  <Building2 size={24} className="text-rmpg-600" />
+                </div>
+                <p className="text-sm font-medium text-rmpg-400">{clientSearch ? 'No clients match your search' : 'No clients yet'}</p>
                 <p className="text-xs text-rmpg-600 mt-1">{clientSearch ? 'Try a different search term' : 'Click "New" to add your first client'}</p>
               </div>
             )}
             {filteredClients.map(c => (
-              <button
+              <button type="button"
                 key={c.id}
                 onClick={() => setSelectedClientId(String(c.id))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-700/30 transition-colors ${
@@ -703,7 +887,7 @@ export default function CrmPage() {
         </div>
 
         {/* Client Detail */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {selectedClient ? (
             <div>
               <div className="panel-title-bar flex items-center justify-between">
@@ -714,9 +898,9 @@ export default function CrmPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
-                  <button onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
-                  <button onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
+                  <button type="button" onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
+                  <button type="button" onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
+                  <button type="button" onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
                     <Activity className="w-3 h-3" /> Log
                   </button>
                 </div>
@@ -768,30 +952,41 @@ export default function CrmPage() {
                 <div className="panel-inset p-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-white">Activity Timeline</span>
-                    <button onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
+                    <button type="button" onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
                       <Plus className="w-3 h-3" /> Log
                     </button>
                   </div>
                   {clientActivity.length === 0 ? (
                     <p className="text-xs text-rmpg-400">No activity recorded</p>
                   ) : (
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                      {clientActivity.map((a: any) => (
-                        <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
-                          <div className="flex items-center justify-between">
-                            <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
-                              a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                              a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
-                              a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
-                              'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
-                            }`}>{toDisplayLabel(a.activity_type)}</span>
-                            <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
+                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                      <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
+                      {clientActivity.map((a: any) => {
+                        const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
+                          a.activity_type === 'email' ? 'bg-gray-500' :
+                          a.activity_type === 'meeting' ? 'bg-purple-500' :
+                          a.activity_type === 'invoice' ? 'bg-amber-500' :
+                          a.activity_type === 'contract_change' ? 'bg-gray-500' : 'bg-rmpg-500';
+                        return (
+                          <div key={a.id} className="relative mb-2">
+                            <div className={`absolute -left-[14px] top-1.5 w-2 h-2 rounded-full ${dotColor}`} />
+                            <div className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
+                              <div className="flex items-center justify-between">
+                                <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
+                                  a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
+                                  a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
+                                  a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
+                                  'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
+                                }`}>{toDisplayLabel(a.activity_type)}</span>
+                                <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
+                              </div>
+                              {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
+                              {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
+                              {a.created_by_name && <div className="text-rmpg-500 mt-0.5">-- {a.created_by_name}</div>}
+                            </div>
                           </div>
-                          {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
-                          {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
-                          {a.created_by_name && <div className="text-rmpg-500 mt-0.5">— {a.created_by_name}</div>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -817,9 +1012,9 @@ export default function CrmPage() {
 
   function renderProperties() {
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
-          <input className="input-dark text-xs" style={{ maxWidth: 200 }} placeholder="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
+          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
         <div className="p-4">
           {filteredProperties.length === 0 ? (
@@ -856,14 +1051,14 @@ export default function CrmPage() {
 
   function renderContacts() {
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="CONTACTS" icon={Users}>
-          <input className="input-dark text-xs" style={{ maxWidth: 200 }} placeholder="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
-          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
+          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
             <option value="">All Relationships</option>
             {RELATIONSHIP_TYPES.map(r => <option key={r} value={r}>{toDisplayLabel(r)}</option>)}
           </select>
-          <button onClick={fetchContacts} className="toolbar-btn"><Search className="w-3 h-3" /> Search</button>
+          <button type="button" onClick={fetchContacts} className="toolbar-btn"><Search className="w-3 h-3" /> Search</button>
         </PanelTitleBar>
         <div className="p-4">
           {contacts.length === 0 ? (
@@ -871,7 +1066,7 @@ export default function CrmPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Name</th>
                     <th className="p-2 font-medium">Client</th>
@@ -883,7 +1078,7 @@ export default function CrmPage() {
                 </thead>
                 <tbody>
                   {contacts.map((c: any) => (
-                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
+                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-[#181818]/50 transition-colors">
                       <td className="p-2 text-rmpg-200">{c.first_name} {c.last_name}</td>
                       <td className="p-2 text-brand-400">{c.client_name}</td>
                       <td className="p-2">
@@ -909,9 +1104,9 @@ export default function CrmPage() {
 
   function renderInvoices() {
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="INVOICES" icon={FileText}>
-          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
@@ -926,7 +1121,7 @@ export default function CrmPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Invoice #</th>
                     <th className="p-2 font-medium">Client</th>
@@ -939,7 +1134,7 @@ export default function CrmPage() {
                 </thead>
                 <tbody>
                   {filteredInvoices.map((inv: any) => (
-                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
+                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-[#181818]/50 transition-colors">
                       <td className="p-2 text-green-400 font-mono">{inv.invoice_number}</td>
                       <td className="p-2 text-rmpg-200">{inv.client_name || '—'}</td>
                       <td className="p-2">
@@ -966,9 +1161,9 @@ export default function CrmPage() {
 
   function renderTasks() {
     return (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
-          <select className="input-dark text-xs" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>
             <option value="">All</option>
             <option value="pending">Pending</option>
@@ -976,19 +1171,25 @@ export default function CrmPage() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <button onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3 h-3" /> New Task
           </button>
         </PanelTitleBar>
         <div className="p-4">
           {tasks.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-400 text-sm">No tasks found</div>
+            <div className="text-center py-12 text-rmpg-500">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                <CheckSquare className="w-7 h-7 text-rmpg-600" />
+              </div>
+              <p className="text-sm font-medium text-rmpg-400">No tasks found</p>
+              <p className="text-[10px] text-rmpg-600 mt-1">Click "New Task" to create one</p>
+            </div>
           ) : (
             <div className="space-y-2">
               {tasks.map(task => (
                 <div key={task.id} className="panel-inset p-3 flex items-start gap-3">
                   {/* Checkbox */}
-                  <button
+                  <button type="button"
                     onClick={() => toggleTaskComplete(task)}
                     className={`mt-0.5 w-4 h-4 border flex-shrink-0 flex items-center justify-center ${
                       task.status === 'completed'
@@ -1023,8 +1224,8 @@ export default function CrmPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
-                    <button onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                    <IconButton onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200" aria-label={`Edit task ${task.title}`}><Edit3 className="w-3 h-3" /></IconButton>
+                    <IconButton onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400" aria-label={`Delete task ${task.title}`}><Trash2 className="w-3 h-3" /></IconButton>
                   </div>
                 </div>
               ))}
@@ -1039,13 +1240,13 @@ export default function CrmPage() {
 // ── Stat Card Component ──────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: React.ElementType; label: string; value: string | number; sub?: string; color: string }) {
   return (
-    <div className="panel-inset p-3">
+    <div className="panel-inset p-3 hover:bg-surface-raised/30 transition-colors group cursor-default">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`w-3.5 h-3.5 ${color}`} />
-        <span className="text-[10px] text-rmpg-400 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold">{label}</span>
       </div>
-      <div className={`text-lg font-bold font-mono ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-rmpg-400 mt-0.5">{sub}</div>}
+      <div className={`text-lg font-bold font-mono tabular-nums ${color}`}>{value}</div>
+      {sub && <div className="text-[10px] text-rmpg-500 mt-0.5">{sub}</div>}
     </div>
   );
 }

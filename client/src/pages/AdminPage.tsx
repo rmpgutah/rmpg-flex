@@ -25,6 +25,9 @@ import {
   Fingerprint,
   Search,
   Mail,
+  Plug,
+  ClipboardList,
+  Brain,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -55,30 +58,34 @@ import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
+import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
 import AdminEmailTab from './admin/AdminEmailTab';
+import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
+import AdminAISettingsTab from './admin/AdminAISettingsTab';
+import AdminGodModeTab from './admin/AdminGodModeTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
 // ============================================================
 
 const LoadingSpinner: React.FC = () => (
-  <div className="flex items-center justify-center py-20">
+  <div className="flex flex-col items-center justify-center py-20 gap-3" role="status" aria-label="Loading content">
     <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
-    <span className="ml-2 text-sm text-rmpg-300">Loading...</span>
+    <span className="text-xs text-rmpg-400 tracking-wide uppercase">Loading...</span>
   </div>
 );
 
 function ErrorBanner({ error, setError }: { error: string | null; setError: (e: string | null) => void }) {
   if (!error) return null;
   return (
-    <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs">
-      <AlertCircle className="w-4 h-4 shrink-0" />
-      {error}
-      <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+    <div role="alert" className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs animate-fade-in">
+      <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <span className="flex-1">{error}</span>
+      <button type="button" onClick={() => setError(null)} className="ml-auto p-0.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 transition-colors" aria-label="Dismiss error">
         <XCircle className="w-3.5 h-3.5" />
       </button>
     </div>
@@ -224,7 +231,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -238,7 +245,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -322,6 +329,7 @@ export default function AdminPage() {
     } else {
       setUserActivity([]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser?.id]);
 
   const fetchClients = useCallback(async (options?: { silent?: boolean }) => {
@@ -363,7 +371,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'users') fetchUsers();
     else if (activeTab === 'clients') fetchClients();
-    else if (activeTab === 'system') { if (users.length === 0) fetchUsers(); }
+    else if (activeTab === 'system') { if (users.length === 0 && !loadingUsers) fetchUsers(); }
     else if (activeTab === 'audit') fetchAuditLog();
   }, [activeTab, fetchUsers, fetchClients, fetchAuditLog]);
 
@@ -431,8 +439,8 @@ export default function AdminPage() {
           method: 'PUT',
           body: JSON.stringify(body),
         });
-        if (selectedUser && selectedUser.id === editingUser.id) {
-          setSelectedUser(prev => prev ? { ...prev, ...(updated as any) } : prev);
+        if (selectedUser && selectedUser.id === editingUser.id && updated) {
+          setSelectedUser(prev => prev ? { ...prev, ...(updated as Record<string, any>) } : prev);
         }
       } else {
         body.username = data.username;
@@ -485,7 +493,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleStatusChange = async (userId: string, newStatus: string) => {
+  const handleStatusChange = useCallback(async (userId: string, newStatus: string) => {
     try {
       await apiFetch(`/personnel/${userId}`, {
         method: 'PUT',
@@ -495,7 +503,7 @@ export default function AdminPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user status');
     }
-  };
+  }, [fetchUsers]);
 
   // ============================================================
   // Client CRUD handlers
@@ -635,6 +643,12 @@ export default function AdminPage() {
       ],
     },
     {
+      category: 'AI & Intelligence',
+      tabs: [
+        { id: 'ai_settings', label: 'AI Command Center', icon: Brain },
+      ],
+    },
+    {
       category: 'Communications',
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
@@ -649,8 +663,10 @@ export default function AdminPage() {
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
-        { id: 'skiptracer', label: 'Skip Tracer', icon: Search },
+        { id: 'warrant_scrapers', label: 'Warrant Scrapers', icon: Shield },
+        { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
+        { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
     },
@@ -658,6 +674,13 @@ export default function AdminPage() {
       category: 'Compliance',
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
+        { id: 'iped', label: 'IPED', icon: ClipboardList },
+      ],
+    },
+    {
+      category: 'God Mode',
+      tabs: [
+        { id: 'godmode', label: 'God Mode', icon: Shield },
       ],
     },
   ];
@@ -667,17 +690,29 @@ export default function AdminPage() {
   // Render
   // ============================================================
 
+  // Set document title
+  useEffect(() => { document.title = 'Administration \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setUserModalOpen(false); setEditingUser(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} aria-hidden="true" />
             <RmpgLogo height={64} />
-            <div className="flex-1">
-              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0', letterSpacing: '0.12em' }}>System Administration</h1>
+              <p className="text-[9px] tracking-wide mt-0.5" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -692,24 +727,29 @@ export default function AdminPage() {
       {/* Mobile: horizontal scroll tabs */}
       {isMobile && (
         <div
-          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
-          style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--border-subtle)' }}
+          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark"
+          style={{ background: '#050505', borderBottom: '1px solid #181818' }}
+          role="tablist"
+          aria-label="Admin sections"
         >
           {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
-              <button
+              <button type="button"
                 key={tab.id}
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                 style={{
-                  color: isActive ? '#ffffff' : '#8a9aaa',
-                  background: isActive ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
+                  color: isActive ? '#ffffff' : '#888888',
+                  background: isActive ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(136,136,136,0.4)' : '1px solid transparent',
+                  borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
                 }}
               >
-                <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
+                <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} aria-hidden="true" />
                 {tab.label}
               </button>
             );
@@ -721,19 +761,22 @@ export default function AdminPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <div
-            className="flex-shrink-0 overflow-y-auto py-2"
+          <nav
+            className="flex-shrink-0 overflow-y-auto py-2 scrollbar-dark"
             style={{
               width: 200,
-              background: '#0d1520',
-              borderRight: '1px solid #162236',
+              background: '#050505',
+              borderRight: '1px solid #181818',
             }}
+            aria-label="Admin navigation"
+            role="tablist"
           >
-            {tabGroups.map((group) => (
-              <div key={group.category} className="mb-1">
+            {tabGroups.map((group, gi) => (
+              <div key={group.category} className={gi > 0 ? 'mt-2' : ''}>
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em]"
-                  style={{ color: '#5a6e80' }}
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#181818]/60 mb-0.5"
+                  style={{ color: '#505050' }}
+                  aria-hidden="true"
                 >
                   {group.category}
                 </div>
@@ -741,28 +784,33 @@ export default function AdminPage() {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
                   return (
-                    <button
+                    <button type="button"
                       key={tab.id}
+                      role="tab"
+                      aria-selected={isActive}
+                      id={`admin-tab-${tab.id}`}
+                      aria-controls={`admin-tabpanel-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(136,136,136,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                       style={{
-                        color: isActive ? '#ffffff' : '#8a9aaa',
-                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : 'transparent',
-                        borderLeft: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
+                        color: isActive ? '#ffffff' : '#888888',
+                        background: isActive ? 'rgba(136, 136, 136, 0.14)' : undefined,
+                        borderLeft: isActive ? '2px solid #888888' : '2px solid transparent',
+                        fontWeight: isActive ? 600 : 400,
                       }}
                     >
-                      <Icon style={{ width: 13, height: 13 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
-                      {tab.label}
+                      <Icon style={{ width: 13, height: 13 }} className={`transition-colors duration-150 shrink-0 ${isActive ? 'text-brand-400' : 'text-rmpg-600'}`} aria-hidden="true" />
+                      <span className="truncate">{tab.label}</span>
                     </button>
                   );
                 })}
               </div>
             ))}
-          </div>
+          </nav>
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`}>
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -884,6 +932,14 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'warrant_scrapers' && (
+          <AdminWarrantScrapersTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'iped' && (
           <AdminIPEDTab
             LoadingSpinner={LoadingSpinner}
@@ -940,30 +996,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'clearpathgps' && (
-          <AdminClearPathGpsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'arrests' && (
-          <AdminArrestsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'branding' && (
           <AdminBrandingTab
             LoadingSpinner={LoadingSpinner}
@@ -978,6 +1010,26 @@ export default function AdminPage() {
             error={error}
             setError={setError}
           />
+        )}
+
+        {activeTab === 'integrations' && (
+          <AdminIntegrationsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'ai_settings' && (
+          <AdminAISettingsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'godmode' && (
+          <AdminGodModeTab />
         )}
 
         {activeTab === 'audit' && (

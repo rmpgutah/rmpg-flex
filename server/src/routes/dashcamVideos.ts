@@ -16,7 +16,7 @@ import { localNow } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -53,7 +53,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10 GB max
+  limits: { fileSize: 10 * 1024 * 1024 * 1024, files: 1, fields: 20, parts: 25, fieldSize: 1024 * 1024 }, // 10 GB max
   fileFilter: (_req, file, cb) => {
     const allowed = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska'];
     if (allowed.includes(file.mimetype) || file.originalname.match(/\.(mp4|mov|avi|webm|mkv)$/i)) {
@@ -67,7 +67,7 @@ const upload = multer({
 // Separate upload config for webhook — stricter size limit (500 MB)
 const webhookUpload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 },
+  limits: { fileSize: 500 * 1024 * 1024, files: 1, fields: 10, parts: 15, fieldSize: 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska'];
     if (allowed.includes(file.mimetype) || file.originalname.match(/\.(mp4|mov|avi|webm|mkv)$/i)) {
@@ -85,7 +85,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { vehicle_id, unit_id, case_number, search, limit: limitStr, offset: offsetStr } = req.query;
-    const limit = Math.min(parseInt(String(limitStr), 10) || 50, 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(limitStr), 10)) || 100000));
     const offset = Math.max(0, Math.min(parseInt(String(offsetStr), 10) || 0, 10000));
 
     let query = `
@@ -121,14 +121,14 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     res.json({ videos, total });
   } catch (error: any) {
     console.error('[DashcamVideos] list videos error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list videos', code: 'DASHCAMVIDEOS_LIST_VIDEOS_ERROR' });
   }
 });
 
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id — Single video detail
 // ============================================================
-router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.get('/:id', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`
@@ -146,13 +146,13 @@ router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Respo
     `).get(req.params.id);
 
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
     res.json(video);
   } catch (error: any) {
     console.error('[DashcamVideos] get video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get video', code: 'DASHCAMVIDEOS_GET_VIDEO_ERROR' });
   }
 });
 
@@ -162,7 +162,7 @@ router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Respo
 router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), upload.single('video'), (req: Request, res: Response) => {
   try {
     if (!req.file) {
-      res.status(400).json({ error: 'No video file uploaded' });
+      res.status(400).json({ error: 'No video file uploaded', code: 'NO_VIDEO_FILE_UPLOADED' });
       return;
     }
 
@@ -177,8 +177,41 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     if (!title) {
       // Cleanup uploaded file
       fs.unlinkSync(req.file.path);
-      res.status(400).json({ error: 'Title is required' });
+      res.status(400).json({ error: 'Title is required', code: 'TITLE_IS_REQUIRED' });
       return;
+    }
+
+    // Validate title length
+    if (typeof title !== 'string' || title.length > 500) {
+      fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_MUST_BE_500' });
+      return;
+    }
+
+    // Validate classification whitelist
+    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'other'];
+    if (classification && !validClassifications.includes(classification)) {
+      fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: `Classification must be one of: ${validClassifications.join(', ')}` });
+      return;
+    }
+
+    // Validate GPS coordinates if provided
+    if (latitude != null) {
+      const lat = parseFloat(String(latitude));
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        fs.unlinkSync(req.file.path);
+        res.status(400).json({ error: 'latitude must be between -90 and 90', code: 'LATITUDE_MUST_BE_BETWEEN' });
+        return;
+      }
+    }
+    if (longitude != null) {
+      const lng = parseFloat(String(longitude));
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        fs.unlinkSync(req.file.path);
+        res.status(400).json({ error: 'longitude must be between -180 and 180', code: 'LONGITUDE_MUST_BE_BETWEEN' });
+        return;
+      }
     }
 
     // Auto-resolve vehicle_id from unit's assigned fleet vehicle if not provided
@@ -227,59 +260,73 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
 // ============================================================
 // PUT /api/fleet/dashcam-videos/:id — Update video metadata
 // ============================================================
-router.put('/:id', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
-    const {
-      title, vehicle_id, unit_id, recorded_at, case_number,
-      classification, speed_mph, latitude, longitude, address, notes,
-    } = req.body;
+    // Validate fields if provided
+    if (req.body.title !== undefined && (typeof req.body.title !== 'string' || req.body.title.length > 500)) {
+      res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_MUST_BE_500' });
+      return;
+    }
+    // Audit 2026-04-11: client offered 'flagged' and 'restricted' but server
+    // rejected them — Save button silently failed. Added both to the allowlist.
+    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'flagged', 'restricted', 'other'];
+    if (req.body.classification && !validClassifications.includes(req.body.classification)) {
+      res.status(400).json({ error: `Classification must be one of: ${validClassifications.join(', ')}` });
+      return;
+    }
+    if (req.body.notes !== undefined && req.body.notes !== null && typeof req.body.notes === 'string' && req.body.notes.length > 10000) {
+      res.status(400).json({ error: 'Notes must be 10000 characters or less', code: 'NOTES_MUST_BE_10000' });
+      return;
+    }
 
-    db.prepare(`
-      UPDATE dashcam_videos SET
-        title = COALESCE(?, title),
-        vehicle_id = ?,
-        unit_id = ?,
-        recorded_at = COALESCE(?, recorded_at),
-        case_number = ?,
-        classification = COALESCE(?, classification),
-        speed_mph = ?,
-        latitude = ?,
-        longitude = ?,
-        address = ?,
-        notes = ?,
-        updated_at = ?
-      WHERE id = ?
-    `).run(
-      title || null,
-      vehicle_id ?? existing.vehicle_id,
-      unit_id ?? existing.unit_id,
-      recorded_at || null,
-      case_number ?? existing.case_number,
-      classification || null,
-      speed_mph != null ? parseFloat(String(speed_mph)) : existing.speed_mph,
-      latitude != null ? parseFloat(String(latitude)) : existing.latitude,
-      longitude != null ? parseFloat(String(longitude)) : existing.longitude,
-      address ?? existing.address,
-      notes ?? existing.notes,
-      localNow(),
-      id,
-    );
+    // Audit 2026-04-11: previous handler used `?? existing.X` preserve-on-
+    // null pattern that meant the user could never CLEAR a field by sending
+    // null. Switched to a dynamic SET clause gated by hasOwnProperty so
+    // explicit nulls now write through correctly and only fields actually
+    // present in the request body are touched.
+    const fieldMap: Record<string, (v: any) => any> = {
+      title: v => v ?? null,
+      vehicle_id: v => v ?? null,
+      unit_id: v => v ?? null,
+      recorded_at: v => v ?? null,
+      case_number: v => v ?? null,
+      classification: v => v ?? null,
+      speed_mph: v => v == null ? null : parseFloat(String(v)),
+      latitude: v => v == null ? null : parseFloat(String(v)),
+      longitude: v => v == null ? null : parseFloat(String(v)),
+      address: v => v ?? null,
+      notes: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const values: any[] = [];
+    for (const [key, transform] of Object.entries(fieldMap)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        sets.push(`${key} = ?`);
+        values.push(transform(req.body[key]));
+      }
+    }
+    if (sets.length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }); return; }
+    sets.push('updated_at = ?');
+    values.push(localNow());
+    values.push(id);
+    db.prepare(`UPDATE dashcam_videos SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    const title = req.body.title;
 
     auditLog(req, 'dashcam_updated', 'dashcam_video', id, `Updated dash cam video: ${title || existing.title}`);
     broadcast('fleet', 'dashcam_updated', { id });
@@ -287,21 +334,21 @@ router.put('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] update video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update video', code: 'DASHCAMVIDEOS_UPDATE_VIDEO_ERROR' });
   }
 });
 
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id — Delete video + file
 // ============================================================
-router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamIdMiddleware, authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
@@ -319,14 +366,14 @@ router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), 
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] delete video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete video', code: 'DASHCAMVIDEOS_DELETE_VIDEO_ERROR' });
   }
 });
 
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/stream — Stream with Range
 // ============================================================
-router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) => {
+router.get('/:id/stream', validateParamIdMiddleware, (req: Request, res: Response, next) => {
   // Accept token from query string for <video> elements (can't set Authorization header)
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
@@ -337,14 +384,14 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
     // Prevent path traversal: resolve within DASHCAM_DIR and verify containment
     const filePath = safeDashcamPath(video.file_path);
     if (!filePath || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
+      res.status(404).json({ error: 'Video file not found on disk', code: 'VIDEO_FILE_NOT_FOUND' });
       return;
     }
 
@@ -391,43 +438,58 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
     }
   } catch (error: any) {
     console.error('[DashcamVideos] stream video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stream video', code: 'DASHCAMVIDEOS_STREAM_VIDEO_ERROR' });
   }
 });
 
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/links — List linked entities
 // ============================================================
-router.get('/:id/links', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.get('/:id/links', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
-    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
 
     const links = db.prepare(`
       SELECT * FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(videoId);
 
     res.json(links);
   } catch (error: any) {
     console.error('[DashcamVideos] list video links error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list video links', code: 'DASHCAMVIDEOS_LIST_VIDEO_LINKS' });
   }
 });
 
 // ============================================================
 // POST /api/fleet/dashcam-videos/:id/links — Link video to entity
 // ============================================================
-router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/links', validateParamIdMiddleware, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
-    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
     const { entity_type, entity_id, notes } = req.body;
     const user = req.user!;
 
     if (!entity_type || !entity_id) {
-      res.status(400).json({ error: 'entity_type and entity_id are required' });
+      res.status(400).json({ error: 'entity_type and entity_id are required', code: 'ENTITYTYPE_AND_ENTITYID_ARE' });
+      return;
+    }
+
+    // Validate entity_id is a positive integer
+    const parsedEntityId = parseInt(String(entity_id), 10);
+    if (isNaN(parsedEntityId) || parsedEntityId <= 0) {
+      res.status(400).json({ error: 'entity_id must be a positive integer', code: 'ENTITYID_MUST_BE_A' });
+      return;
+    }
+
+    // Validate notes length
+    if (notes !== undefined && notes !== null && (typeof notes !== 'string' || notes.length > 2000)) {
+      res.status(400).json({ error: 'notes must be 2000 characters or less', code: 'NOTES_MUST_BE_2000' });
       return;
     }
 
@@ -440,7 +502,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
     // Check video exists
     const video = db.prepare('SELECT id, title FROM dashcam_videos WHERE id = ?').get(videoId) as any;
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
@@ -449,7 +511,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
       'SELECT id FROM dashcam_video_links WHERE video_id = ? AND entity_type = ? AND entity_id = ?'
     ).get(videoId, entity_type, entity_id);
     if (existing) {
-      res.status(409).json({ error: 'This link already exists' });
+      res.status(409).json({ error: 'This link already exists', code: 'THIS_LINK_ALREADY_EXISTS' });
       return;
     }
 
@@ -465,22 +527,22 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[DashcamVideos] link video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link video', code: 'DASHCAMVIDEOS_LINK_VIDEO_ERROR' });
   }
 });
 
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id/links/:linkId — Remove link
 // ============================================================
-router.delete('/:id/links/:linkId', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', validateParamIdMiddleware, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const linkId = parseInt(String(req.params.linkId), 10);
-    if (isNaN(linkId)) { res.status(400).json({ error: 'Invalid link ID' }); return; }
+    if (isNaN(linkId)) { res.status(400).json({ error: 'Invalid link ID', code: 'INVALID_LINK_ID' }); return; }
 
     const link = db.prepare('SELECT * FROM dashcam_video_links WHERE id = ?').get(linkId) as any;
     if (!link) {
-      res.status(404).json({ error: 'Link not found' });
+      res.status(404).json({ error: 'Link not found', code: 'LINK_NOT_FOUND' });
       return;
     }
 
@@ -493,7 +555,7 @@ router.delete('/:id/links/:linkId', validateParamId, authenticateToken, requireR
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] unlink video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink video', code: 'DASHCAMVIDEOS_UNLINK_VIDEO_ERROR' });
   }
 });
 
@@ -510,13 +572,13 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     const webhookSecret = process.env.CLEARPATHGPS_WEBHOOK_SECRET;
     if (!webhookSecret) {
       console.error('[DASHCAM] Webhook rejected: CLEARPATHGPS_WEBHOOK_SECRET not configured');
-      res.status(503).json({ error: 'Webhook not configured' });
+      res.status(503).json({ error: 'Webhook not configured', code: 'WEBHOOK_NOT_CONFIGURED' });
       return;
     }
     const providedSecret = String(req.headers['x-webhook-secret'] || req.body?.webhook_secret || '');
     if (!providedSecret || providedSecret.length !== webhookSecret.length ||
         !crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(webhookSecret))) {
-      res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -542,7 +604,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     if ((safeLat != null && (isNaN(safeLat) || safeLat < -90 || safeLat > 90)) ||
         (safeLon != null && (isNaN(safeLon) || safeLon < -180 || safeLon > 180)) ||
         (safeSpeed != null && (isNaN(safeSpeed) || safeSpeed < 0 || safeSpeed > 999))) {
-      res.status(400).json({ error: 'Invalid numeric values' });
+      res.status(400).json({ error: 'Invalid numeric values', code: 'INVALID_NUMERIC_VALUES' });
       return;
     }
 
@@ -619,7 +681,234 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Automatic Incident Correlation
+// Links dashcam videos to calls/incidents by matching
+// time window and GPS proximity.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videoId = parseInt(String(req.params.id), 10);
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+
+    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(videoId) as any;
+    if (!video) { res.status(404).json({ error: 'Video not found' }); return; }
+
+    const correlations: any[] = [];
+    const recordedAt = video.recorded_at || video.created_at;
+
+    if (recordedAt) {
+      // Find calls within +/- 30 minutes of the video recording time
+      const callsNearby = db.prepare(`
+        SELECT id, call_number, incident_type, status, location_address, latitude, longitude, created_at
+        FROM calls_for_service
+        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= 30
+        ORDER BY ABS(julianday(created_at) - julianday(?))
+        LIMIT 10
+      `).all(recordedAt, recordedAt) as any[];
+
+      for (const call of callsNearby) {
+        let distance_mi: number | null = null;
+        if (video.latitude && video.longitude && call.latitude && call.longitude) {
+          const R = 3958.8;
+          const dLat = (call.latitude - video.latitude) * Math.PI / 180;
+          const dLng = (call.longitude - video.longitude) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(video.latitude * Math.PI / 180) * Math.cos(call.latitude * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+          distance_mi = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 100) / 100;
+        }
+
+        correlations.push({
+          entity_type: 'call',
+          entity_id: call.id,
+          identifier: call.call_number,
+          type: call.incident_type,
+          location: call.location_address,
+          time: call.created_at,
+          distance_mi,
+          confidence: distance_mi !== null && distance_mi < 0.31 ? 'high' : distance_mi !== null && distance_mi < 1.24 ? 'medium' : 'low',
+        });
+      }
+
+      // Find incidents in the same time window
+      const incidentsNearby = db.prepare(`
+        SELECT id, incident_number, incident_type, status, location_address, latitude, longitude, created_at
+        FROM incidents
+        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= 30
+        ORDER BY ABS(julianday(created_at) - julianday(?))
+        LIMIT 10
+      `).all(recordedAt, recordedAt) as any[];
+
+      for (const inc of incidentsNearby) {
+        correlations.push({
+          entity_type: 'incident',
+          entity_id: inc.id,
+          identifier: inc.incident_number,
+          type: inc.incident_type,
+          location: inc.location_address,
+          time: inc.created_at,
+          distance_mi: null,
+          confidence: 'medium',
+        });
+      }
+    }
+
+    // Sort by confidence (high first)
+    const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    correlations.sort((a, b) => (order[a.confidence] || 2) - (order[b.confidence] || 2));
+
+    res.json({ video_id: videoId, correlations });
+  } catch (error: any) {
+    console.error('[DashcamVideos] auto-correlate error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to auto-correlate', code: 'DASHCAM_AUTOCORRELATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Video Quality Monitoring
+// Returns video quality statistics (resolution proxy from file
+// size, missing metadata, corrupt files).
+// ════════════════════════════════════════════════════════════
+router.get('/quality/report', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Videos with missing critical metadata
+    const missingMetadata = db.prepare(`
+      SELECT id, title, recorded_at, created_at,
+        CASE
+          WHEN recorded_at IS NULL THEN 'missing_recorded_at'
+          WHEN duration_seconds IS NULL OR duration_seconds = 0 THEN 'missing_duration'
+          WHEN file_size IS NULL OR file_size = 0 THEN 'missing_file_size'
+          WHEN latitude IS NULL AND longitude IS NULL THEN 'missing_gps'
+          ELSE 'ok'
+        END as issue
+      FROM dashcam_videos
+      WHERE recorded_at IS NULL OR duration_seconds IS NULL OR duration_seconds = 0
+        OR file_size IS NULL OR file_size = 0
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).all() as any[];
+
+    // Average file size per minute (quality proxy)
+    const qualityStats = db.prepare(`
+      SELECT
+        COUNT(*) as total_videos,
+        AVG(file_size) as avg_file_size,
+        AVG(CASE WHEN duration_seconds > 0 THEN file_size * 1.0 / duration_seconds ELSE NULL END) as avg_bytes_per_second,
+        MIN(file_size) as min_file_size,
+        MAX(file_size) as max_file_size,
+        SUM(file_size) as total_storage_bytes,
+        AVG(duration_seconds) as avg_duration_seconds
+      FROM dashcam_videos
+      WHERE file_size > 0
+    `).get() as any;
+
+    // Videos by source
+    const bySource = db.prepare(`
+      SELECT source, COUNT(*) as count, SUM(file_size) as total_bytes,
+        AVG(duration_seconds) as avg_duration
+      FROM dashcam_videos GROUP BY source
+    `).all() as any[];
+
+    // Very small files (potentially corrupt or incomplete)
+    const suspiciouslySmall = db.prepare(`
+      SELECT id, title, file_size, duration_seconds, created_at
+      FROM dashcam_videos
+      WHERE file_size > 0 AND file_size < 50000
+      ORDER BY created_at DESC LIMIT 20
+    `).all() as any[];
+
+    res.json({
+      total_videos: qualityStats?.total_videos || 0,
+      avg_file_size_mb: qualityStats?.avg_file_size ? Math.round(qualityStats.avg_file_size / 1024 / 1024 * 10) / 10 : 0,
+      avg_bitrate_kbps: qualityStats?.avg_bytes_per_second ? Math.round(qualityStats.avg_bytes_per_second * 8 / 1024) : 0,
+      total_storage_gb: qualityStats?.total_storage_bytes ? Math.round(qualityStats.total_storage_bytes / 1024 / 1024 / 1024 * 100) / 100 : 0,
+      missing_metadata: missingMetadata,
+      missing_metadata_count: missingMetadata.length,
+      suspiciously_small: suspiciouslySmall,
+      by_source: bySource,
+    });
+  } catch (error: any) {
+    console.error('[DashcamVideos] quality report error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get quality report', code: 'DASHCAM_QUALITY_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Storage Usage Tracking
+// Returns storage usage breakdown by vehicle, unit, source,
+// and classification with trend data.
+// ════════════════════════════════════════════════════════════
+router.get('/storage/usage', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Total storage used
+    const total = db.prepare(`
+      SELECT COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes
+      FROM dashcam_videos
+    `).get() as any;
+
+    // By classification
+    const byClassification = db.prepare(`
+      SELECT classification, COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes
+      FROM dashcam_videos GROUP BY classification ORDER BY total_bytes DESC
+    `).all() as any[];
+
+    // By vehicle
+    const byVehicle = db.prepare(`
+      SELECT COALESCE(fv.vehicle_number, 'Unassigned') as vehicle,
+        COUNT(*) as count, COALESCE(SUM(v.file_size), 0) as total_bytes
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      GROUP BY v.vehicle_id ORDER BY total_bytes DESC LIMIT 20
+    `).all() as any[];
+
+    // Monthly trend (last 12 months)
+    const monthlyTrend = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as month,
+        COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes
+      FROM dashcam_videos
+      WHERE created_at >= datetime('now', '-12 months')
+      GROUP BY month ORDER BY month
+    `).all() as any[];
+
+    // Disk usage check
+    let diskInfo: any = null;
+    try {
+      const stats = fs.statfsSync(DASHCAM_DIR);
+      diskInfo = {
+        total_gb: Math.round((stats.bsize * stats.blocks) / 1024 / 1024 / 1024 * 100) / 100,
+        free_gb: Math.round((stats.bsize * stats.bfree) / 1024 / 1024 / 1024 * 100) / 100,
+        used_pct: Math.round((1 - stats.bfree / stats.blocks) * 100),
+      };
+    } catch { /* statfs may not be available */ }
+
+    res.json({
+      total_videos: total.count,
+      total_storage_gb: Math.round(total.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      by_classification: byClassification.map((c: any) => ({
+        ...c,
+        total_gb: Math.round(c.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      })),
+      by_vehicle: byVehicle.map((v: any) => ({
+        ...v,
+        total_gb: Math.round(v.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      })),
+      monthly_trend: monthlyTrend.map((m: any) => ({
+        ...m,
+        total_gb: Math.round(m.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      })),
+      disk: diskInfo,
+    });
+  } catch (error: any) {
+    console.error('[DashcamVideos] storage usage error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get storage usage', code: 'DASHCAM_STORAGE_USAGE_ERROR' });
   }
 });
 
@@ -660,7 +949,21 @@ router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'su
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
+  }
+});
+
+// POST /api/fleet/dashcam-videos/:id/burn — Queue HUD burn for a video
+router.post('/:id/burn', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    db.prepare("UPDATE dashcam_videos SET burn_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(id);
+    res.json({ success: true, message: 'HUD burn queued' });
+  } catch (error: any) {
+    console.error('Dashcam burn error:', error);
+    res.status(500).json({ error: 'Failed to queue burn', code: 'DASHCAM_BURN_ERROR' });
   }
 });
 

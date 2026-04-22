@@ -10,15 +10,16 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
+import { auditEmailSend } from '../utils/emailAudit';
 import { broadcast } from '../utils/websocket';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import type { NextFunction } from 'express';
 
 /** Validate Graph API string IDs (alphanumeric, hyphens, underscores, equals, plus). Blocks path traversal. */
 function validateGraphId(req: Request, res: Response, next: NextFunction) {
   const id = req.params.id || req.params.aid;
-  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
-    return res.status(400).json({ error: 'Invalid message ID' });
+  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id as string)) {
+    return res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' });
   }
   next();
 }
@@ -33,17 +34,20 @@ import {
   getDecryptedValue,
   getAuthorizationUrl,
   exchangeCodeForTokens,
-  getGraphClient,
-  testConnection,
+  getAuthorizationUrlForUser,
+  verifyOAuthStateForUser,
+  exchangeCodeForUserTokens,
+  getGraphClientForUser,
+  isUserAuthorized,
   getStatus,
   isConfigured,
   isEnabled,
-  isAuthorized,
   clearCachedAuth,
 } from '../utils/msGraphClient';
 import { testSMTPConnection } from '../utils/smtpClient';
 import { sendEmail } from '../utils/emailSender';
 import { syncNow, restartEmailPoller } from '../utils/emailPoller';
+import { isUserEnrolled, getUserTokens } from '../utils/userGraphTokens';
 
 const router = Router();
 
@@ -65,7 +69,7 @@ function textToEmailHtml(text: string, signature?: string): string {
   escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
   escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, (_match, linkText, url) => {
     // Only allow safe URL schemes — block javascript:, data:, vbscript: etc.
-    const trimmedUrl = url.trim().toLowerCase();
+    const trimmedUrl = (url || '').trim().toLowerCase();
     if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('mailto:')) {
       // Escape URL for safe insertion into href attribute — prevents attribute injection
       const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -88,47 +92,37 @@ function getUserSignature(userId: number): string | null {
   return row?.config_value || null;
 }
 
+/** Verify that a cached message belongs to the authenticated user.
+ *  Returns true if the email exists and is owned by userId. Returns false
+ *  if the email is not cached for this user — callers should respond with 404
+ *  (not 403) to avoid leaking the existence of other users' messages. */
+function userOwnsMessage(graphId: string, userId: number): boolean {
+  const db = getDb();
+  const row = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(graphId) as { owner_user_id: number } | undefined;
+  return !!row && row.owner_user_id === userId;
+}
+
 // ─── PUBLIC: OAuth callback (no JWT — redirect from Microsoft) ───
 
 router.get('/oauth/callback', async (req: Request, res: Response) => {
   try {
-    const { code, state, error, error_description } = req.query;
+    const { code, state, error } = req.query;
+    if (error) return res.redirect('/email?status=error&message=Microsoft+denied');
+    if (!code || !state) return res.redirect('/email?status=error&message=Missing+code');
 
-    if (error) {
-      console.error('[OAuth] Microsoft returned error:', error, error_description);
-      res.redirect('/admin?tab=email&status=error&message=Microsoft+authorization+failed');
-      return;
-    }
+    let userId: number;
+    try { userId = verifyOAuthStateForUser(String(state)); }
+    catch { return res.redirect('/email?status=error&message=Invalid+state'); }
 
-    if (!code || !state) {
-      res.redirect('/admin?tab=email&status=error&message=Missing+code+or+state');
-      return;
-    }
-
-    // Validate CSRF state
-    const storedState = getConfigValue(CONFIG_KEYS.oauthState);
-    if (!storedState || storedState !== String(state)) {
-      res.redirect('/admin?tab=email&status=error&message=Invalid+state+token');
-      return;
-    }
-
-    // Clear state to prevent replay
-    deleteConfigValue(CONFIG_KEYS.oauthState);
-
-    // Exchange code for tokens — use hardcoded production domain to prevent Host header injection
     const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
     const redirectUri = `https://${host}/api/email/oauth/callback`;
-    await exchangeCodeForTokens(String(code), redirectUri);
+    await exchangeCodeForUserTokens(String(code), redirectUri, userId);
 
-    // Enable integration and start poller
-    setConfigValue(CONFIG_KEYS.enabled, 'true');
-    restartEmailPoller();
-
-    console.log('[OAuth] Microsoft email authorized successfully');
-    res.redirect('/admin?tab=email&status=authorized');
+    if (getConfigValue(CONFIG_KEYS.enabled) !== 'true') setConfigValue(CONFIG_KEYS.enabled, 'true');
+    res.redirect('/email?enrolled=1');
   } catch (err: any) {
-    console.error('[OAuth] Token exchange failed:', err.message);
-    res.redirect('/admin?tab=email&status=error&message=Token+exchange+failed');
+    console.error('[OAuth] Per-user exchange failed:', err.message);
+    res.redirect('/email?status=error&message=Token+exchange+failed');
   }
 });
 
@@ -141,15 +135,35 @@ router.use(authenticateToken);
 // ============================================================
 
 // GET /api/email/status — Integration status
-router.get('/status', (_req: Request, res: Response) => {
+router.get('/status', (req: Request, res: Response) => {
   try {
     const status = getStatus();
+    const userId = req.user!.userId;
+    const enrolled = isUserEnrolled(userId);
+    const tokens = enrolled ? getUserTokens(userId) : null;
     const db = getDb();
-    const cached = db.prepare('SELECT COUNT(*) as count FROM email_cache').get() as { count: number };
-    res.json({ ...status, cachedMessages: cached?.count || 0 });
+    const cached = db.prepare('SELECT COUNT(*) as count FROM email_cache WHERE owner_user_id = ?').get(userId) as { count: number };
+    res.json({
+      ...status,
+      enrolled,
+      mailbox: tokens?.mailbox || null,
+      cachedMessages: cached?.count || 0,
+    });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
+  }
+});
+
+// GET /api/email/oauth/authorize — Per-user Microsoft consent URL
+router.get('/oauth/authorize', (req: Request, res: Response) => {
+  try {
+    const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
+    const redirectUri = `https://${host}/api/email/oauth/callback`;
+    const url = getAuthorizationUrlForUser(req.user!.userId, redirectUri);
+    res.json({ authorizationUrl: url });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -160,7 +174,7 @@ router.get('/signature', (req: Request, res: Response) => {
     res.json({ signature: signature || '' });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -168,6 +182,14 @@ router.get('/signature', (req: Request, res: Response) => {
 router.put('/signature', (req: Request, res: Response) => {
   try {
     const { signature } = req.body;
+    if (signature !== undefined && typeof signature !== 'string') {
+      res.status(400).json({ error: 'Signature must be a string', code: 'SIGNATURE_MUST_BE_A' });
+      return;
+    }
+    if (signature && signature.length > 5000) {
+      res.status(400).json({ error: 'Signature must be 5000 characters or less', code: 'SIGNATURE_MUST_BE_5000' });
+      return;
+    }
     const db = getDb();
     const key = `email_signature_${req.user!.userId}`;
     // Delete existing signature first, then insert if non-empty
@@ -179,35 +201,35 @@ router.put('/signature', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/unread-count — Unread count (for nav badge)
-router.get('/unread-count', (_req: Request, res: Response) => {
+router.get('/unread-count', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(
-      "SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0"
-    ).get() as { count: number };
+      "SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0 AND owner_user_id = ?"
+    ).get(req.user!.userId) as { count: number };
     res.json({ count: row?.count || 0 });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/folders — List mailbox folders
 router.get('/folders', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) {
+    if (!isUserAuthorized(req.user!.userId)) {
       res.json([]);
       return;
     }
 
     // Try live from Graph, fall back to cache
     try {
-      const client = await getGraphClient();
+      const client = await getGraphClientForUser(req.user!.userId);
       const result = await client
         .api('/me/mailFolders')
         .select('id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount')
@@ -217,7 +239,7 @@ router.get('/folders', async (req: Request, res: Response) => {
     } catch {
       // Fall back to cached
       const db = getDb();
-      const folders = db.prepare('SELECT * FROM email_folders ORDER BY display_name').all();
+      const folders = db.prepare('SELECT * FROM email_folders WHERE owner_user_id = ? ORDER BY display_name').all(req.user!.userId);
       res.json(folders.map((f: any) => ({
         id: f.graph_id,
         displayName: f.display_name,
@@ -228,15 +250,24 @@ router.get('/folders', async (req: Request, res: Response) => {
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/folders/:id/children — List child folders
 router.get('/folders/:id/children', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.json([]); return; }
-    const client = await getGraphClient();
+    if (!isUserAuthorized(req.user!.userId)) { res.json([]); return; }
+    // Verify the parent folder belongs to this user (if we have it cached).
+    // If it's not in the cache, allow the Graph call to proceed — Graph will
+    // enforce access against the authenticated mailbox.
+    const db = getDb();
+    const folder = db.prepare('SELECT owner_user_id FROM email_folders WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (folder && folder.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Folder not found', code: 'FOLDER_NOT_FOUND' });
+      return;
+    }
+    const client = await getGraphClientForUser(req.user!.userId);
     const result = await client
       .api(`/me/mailFolders/${req.params.id}/childFolders`)
       .select('id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount')
@@ -245,18 +276,22 @@ router.get('/folders/:id/children', validateGraphId, async (req: Request, res: R
     res.json(result.value || []);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/folders — Create a new folder
 router.post('/folders', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
     const { displayName, parentFolderId } = req.body;
-    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
+    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required', code: 'FOLDER_NAME_REQUIRED' }); return; }
+    if (displayName.length > 256) { res.status(400).json({ error: 'Folder name must be 256 characters or less', code: 'FOLDER_NAME_MUST_BE' }); return; }
+    if (parentFolderId && !/^[A-Za-z0-9_=+\-]{10,250}$/.test(parentFolderId)) {
+      res.status(400).json({ error: 'Invalid parent folder ID', code: 'INVALID_PARENT_FOLDER_ID' }); return;
+    }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const apiPath = parentFolderId
       ? `/me/mailFolders/${parentFolderId}/childFolders`
       : '/me/mailFolders';
@@ -266,38 +301,38 @@ router.post('/folders', async (req: Request, res: Response) => {
     res.json(folder);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // PATCH /api/email/folders/:id — Rename a folder
 router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
     const { displayName } = req.body;
-    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
+    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required', code: 'FOLDER_NAME_REQUIRED' }); return; }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     await client.api(`/me/mailFolders/${req.params.id}`).update({ displayName: displayName.trim() });
     auditLog(req, 'UPDATE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id, displayName }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // DELETE /api/email/folders/:id — Delete a folder
 router.delete('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
-    const client = await getGraphClient();
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+    const client = await getGraphClientForUser(req.user!.userId);
     await client.api(`/me/mailFolders/${req.params.id}`).delete();
     auditLog(req, 'DELETE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -307,17 +342,17 @@ router.get('/messages', async (req: Request, res: Response) => {
     const {
       folder = 'inbox',
       page = '1',
-      per_page = '25',
+      per_page = '100000',
       search,
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
 
     // Try live from Graph API
-    if (isAuthorized()) {
+    if (isUserAuthorized(req.user!.userId)) {
       try {
-        const client = await getGraphClient();
+        const client = await getGraphClientForUser(req.user!.userId);
         // Sanitize folder ID to prevent path traversal in Graph API URL
         const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
         let apiPath = safeFolder === 'inbox'
@@ -372,8 +407,8 @@ router.get('/messages', async (req: Request, res: Response) => {
 
     // Fallback to cached messages
     const db = getDb();
-    const conditions: string[] = [];
-    const params: any[] = [];
+    const conditions: string[] = ['owner_user_id = ?'];
+    const params: any[] = [req.user!.userId];
 
     if (folder && folder !== 'all') {
       conditions.push('folder_id = ?');
@@ -419,7 +454,7 @@ router.get('/messages', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -427,33 +462,60 @@ router.get('/messages', async (req: Request, res: Response) => {
 // IMPORTANT: Must be registered before /messages/:id to avoid Express treating "batch" as an ID
 router.post('/messages/batch', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { action, ids } = req.body;
     if (!action || !Array.isArray(ids) || ids.length === 0) {
-      res.status(400).json({ error: 'Action and ids[] required' });
+      res.status(400).json({ error: 'Action and ids[] required', code: 'ACTION_AND_IDS_REQUIRED' });
       return;
     }
+    const VALID_BATCH_ACTIONS = ['delete', 'archive', 'markRead', 'markUnread'];
+    if (!VALID_BATCH_ACTIONS.includes(action)) {
+      res.status(400).json({ error: `Invalid action. Must be one of: ${VALID_BATCH_ACTIONS.join(', ')}` });
+      return;
+    }
+    // Validate all IDs are valid Graph IDs
+    for (const id of ids) {
+      if (typeof id !== 'string' || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
+        res.status(400).json({ error: 'Invalid message ID in batch', code: 'INVALID_MESSAGE_ID_IN' });
+        return;
+      }
+    }
 
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const db = getDb();
+    const userId = req.user!.userId;
+
+    // Filter input ids to those owned by the authenticated user — ignore any
+    // foreign ids silently rather than leaking existence.
+    const cappedIds = ids.slice(0, 50) as string[];
+    const placeholders = cappedIds.map(() => '?').join(',');
+    const ownedRows = cappedIds.length > 0
+      ? db.prepare(
+          `SELECT graph_id FROM email_cache WHERE graph_id IN (${placeholders}) AND owner_user_id = ?`
+        ).all(...cappedIds, userId) as { graph_id: string }[]
+      : [];
+    const ownedIds = new Set(ownedRows.map(r => r.graph_id));
+    const skipped = cappedIds.length - ownedIds.size;
+
     let success = 0;
     let failed = 0;
 
-    for (const id of ids.slice(0, 50)) {
+    for (const id of cappedIds) {
+      if (!ownedIds.has(id)) continue;
       try {
         if (action === 'delete') {
           await client.api(`/me/messages/${id}/move`).post({ destinationId: 'deleteditems' });
-          db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(id);
+          db.prepare('DELETE FROM email_cache WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         } else if (action === 'archive') {
           await client.api(`/me/messages/${id}/move`).post({ destinationId: 'archive' });
-          db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(id);
+          db.prepare('DELETE FROM email_cache WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         } else if (action === 'markRead') {
           await client.api(`/me/messages/${id}`).update({ isRead: true });
-          db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ?').run(id);
+          db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         } else if (action === 'markUnread') {
           await client.api(`/me/messages/${id}`).update({ isRead: false });
-          db.prepare('UPDATE email_cache SET is_read = 0 WHERE graph_id = ?').run(id);
+          db.prepare('UPDATE email_cache SET is_read = 0 WHERE graph_id = ? AND owner_user_id = ?').run(id, userId);
         }
         success++;
       } catch {
@@ -461,26 +523,31 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
       }
     }
 
-    auditLog(req, 'BATCH_EMAIL', 'email', 0, JSON.stringify({ action, count: ids.length, success, failed }));
-    res.json({ success, failed });
+    auditLog(req, 'BATCH_EMAIL', 'email', 0, JSON.stringify({ action, count: ids.length, success, failed, skipped }));
+    res.json({ success, failed, skipped });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/mark-all-read — Mark all messages in a folder as read
 router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { folder = 'inbox' } = req.body;
-    const client = await getGraphClient();
+    // Validate folder ID to prevent injection
+    if (typeof folder !== 'string' || folder.length > 250) {
+      res.status(400).json({ error: 'Invalid folder', code: 'INVALID_FOLDER' }); return;
+    }
+    const client = await getGraphClientForUser(req.user!.userId);
     const db = getDb();
+    const userId = req.user!.userId;
 
     const unread = db.prepare(
-      'SELECT graph_id FROM email_cache WHERE folder_id = ? AND is_read = 0'
-    ).all(folder) as { graph_id: string }[];
+      'SELECT graph_id FROM email_cache WHERE folder_id = ? AND is_read = 0 AND owner_user_id = ?'
+    ).all(folder, userId) as { graph_id: string }[];
 
     let success = 0;
     for (const row of unread.slice(0, 100)) {
@@ -490,25 +557,78 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
       } catch { /* skip individual failures */ }
     }
 
-    db.prepare('UPDATE email_cache SET is_read = 1 WHERE folder_id = ? AND is_read = 0').run(folder);
+    db.prepare('UPDATE email_cache SET is_read = 1 WHERE folder_id = ? AND is_read = 0 AND owner_user_id = ?').run(folder, userId);
 
     auditLog(req, 'MARK_ALL_READ', 'email', 0, JSON.stringify({ folder, count: success }));
     res.json({ success: true, marked: success });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
+});
+
+router.get('/messages/search', async (req: Request, res: Response) => {
+  const db = getDb();
+  const q = String(req.query.q || '').trim();
+  const folder = req.query.folder ? String(req.query.folder) : '';
+  const from = req.query.from ? String(req.query.from) : '';
+  const after = req.query.after ? String(req.query.after) : '';
+  const before = req.query.before ? String(req.query.before) : '';
+  const flagged = req.query.flagged === '1';
+  const hasAttachment = req.query.has_attachment === '1';
+  const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '25'), 10)) || 100000));
+  const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10));
+
+  if (!q && !folder && !from && !after && !before && !flagged && !hasAttachment) {
+    return res.json({ results: [], total: 0 });
+  }
+
+  const where: string[] = ['ec.owner_user_id = ?'];
+  const params: any[] = [req.user!.userId];
+  if (q.length >= 2) {
+    // Sanitize FTS query — drop quote/special chars that break MATCH syntax
+    const safeQ = q.replace(/["']/g, ' ').replace(/[^\w\s*]/g, ' ').trim();
+    if (safeQ) {
+      where.push('ec.id IN (SELECT rowid FROM email_cache_fts WHERE email_cache_fts MATCH ?)');
+      params.push(safeQ);
+    }
+  }
+  if (folder) { where.push('ec.folder_id = ?'); params.push(folder); }
+  if (from)   { where.push('ec.from_address LIKE ?'); params.push(`%${from}%`); }
+  if (after)  { where.push('ec.received_at >= ?'); params.push(after); }
+  if (before) { where.push('ec.received_at <= ?'); params.push(before); }
+  if (flagged) where.push('ec.is_flagged = 1');
+  if (hasAttachment) where.push('ec.has_attachments = 1');
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM email_cache ec ${whereSql}`).get(...params) as any).c;
+  const rows = db.prepare(
+    `SELECT ec.id, ec.graph_id, ec.subject, ec.from_address, ec.from_name, ec.body_preview, ec.received_at, ec.folder_id, ec.is_read, ec.is_flagged, ec.has_attachments
+     FROM email_cache ec ${whereSql}
+     ORDER BY ec.received_at DESC LIMIT ? OFFSET ?`
+  ).all(...params, limit, offset);
+
+  res.json({ results: rows, total, limit, offset });
 });
 
 // GET /api/email/messages/:id — Full message with body
 router.get('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) {
-      res.status(503).json({ error: 'Email not authorized' });
+    if (!isUserAuthorized(req.user!.userId)) {
+      res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' });
       return;
     }
 
-    const client = await getGraphClient();
+    // Verify ownership if message is cached. If not cached, fall through to
+    // Graph which enforces against the authenticated mailbox.
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
+    const client = await getGraphClientForUser(req.user!.userId);
     const msg = await client
       .api(`/me/messages/${req.params.id}`)
       .select('id,conversationId,subject,from,toRecipients,ccRecipients,body,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
@@ -517,9 +637,8 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
     // Mark as read in Graph
     if (!msg.isRead) {
       client.api(`/me/messages/${req.params.id}`).update({ isRead: true }).catch((err) => { console.error('[Email] Background operation failed:', err.message || err); });
-      // Also update cache
-      const db = getDb();
-      db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ?').run(req.params.id);
+      // Also update cache (scoped to owner)
+      db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ? AND owner_user_id = ?').run(req.params.id, req.user!.userId);
     }
 
     res.json({
@@ -547,16 +666,24 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/messages/:id/attachments — List attachments
 router.get('/messages/:id/attachments', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
-    const client = await getGraphClient();
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
+    const client = await getGraphClientForUser(req.user!.userId);
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
       .select('id,name,contentType,size,isInline,contentId')
@@ -568,20 +695,28 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
       contentType: a.contentType,
       size: a.size,
       isInline: a.isInline || false,
-      contentId: a.contentId,
+      contentId: a.contentId || a.id,
     })));
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/messages/:id/attachments/:aid — Download attachment
 router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
-    const client = await getGraphClient();
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
+    const client = await getGraphClientForUser(req.user!.userId);
     const attachment = await client
       .api(`/me/messages/${req.params.id}/attachments/${req.params.aid}`)
       .get();
@@ -594,7 +729,7 @@ router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Reques
     res.send(content);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -603,13 +738,45 @@ router.post('/send', async (req: Request, res: Response) => {
   try {
     const { to, cc, bcc, subject, body, attachments } = req.body;
     if (!to || !subject) {
-      res.status(400).json({ error: 'To and subject are required' });
+      res.status(400).json({ error: 'To and subject are required', code: 'TO_AND_SUBJECT_ARE' });
+      return;
+    }
+    if (typeof subject !== 'string' || subject.length > 998) {
+      res.status(400).json({ error: 'Subject must be a string of 998 characters or less', code: 'SUBJECT_MUST_BE_A' });
+      return;
+    }
+    if (body && typeof body !== 'string') {
+      res.status(400).json({ error: 'Body must be a string', code: 'BODY_MUST_BE_A' });
+      return;
+    }
+    if (body && body.length > 500000) {
+      res.status(400).json({ error: 'Body too large (max 500KB)', code: 'BODY_TOO_LARGE_MAX' });
       return;
     }
 
     const toList = Array.isArray(to) ? to : [to];
     const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : undefined;
     const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined;
+
+    // Validate email addresses
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const allRecipients = [...toList, ...(ccList || []), ...(bccList || [])];
+    if (allRecipients.length > 100) {
+      res.status(400).json({ error: 'Too many recipients (max 100)', code: 'TOO_MANY_RECIPIENTS_MAX' });
+      return;
+    }
+    for (const addr of allRecipients) {
+      if (typeof addr !== 'string' || !emailRegex.test(addr.trim())) {
+        res.status(400).json({ error: `Invalid email address: ${String(addr).slice(0, 50)}` });
+        return;
+      }
+    }
+
+    // Validate attachments
+    if (attachments && (!Array.isArray(attachments) || attachments.length > 25)) {
+      res.status(400).json({ error: 'Attachments must be an array of 25 or fewer items', code: 'ATTACHMENTS_MUST_BE_AN' });
+      return;
+    }
 
     const signature = getUserSignature(req.user!.userId);
 
@@ -620,7 +787,7 @@ router.post('/send', async (req: Request, res: Response) => {
       contentType: att.contentType || 'application/octet-stream',
     }));
 
-    const sent = await sendEmail({
+    const sent = await sendEmail(req.user!.userId, {
       to: toList,
       cc: ccList,
       bcc: bccList,
@@ -629,95 +796,124 @@ router.post('/send', async (req: Request, res: Response) => {
       attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
     });
 
-    if (sent) {
-      auditLog(req, 'SEND_EMAIL', 'email', 0, JSON.stringify({ to: toList, subject, attachmentCount: emailAttachments.length }));
+    if (sent.ok) {
+      auditEmailSend(req, 'SEND', {
+        to: toList, cc: ccList, bcc: bccList, subject,
+        messageId: sent.messageId, transport: sent.transport,
+      });
       broadcast('admin', 'email:sent', { to: toList, subject });
       res.json({ success: true });
     } else {
-      res.status(500).json({ error: 'Failed to send email' });
+      auditEmailSend(req, 'SEND', {
+        to: toList, cc: ccList, bcc: bccList, subject,
+        error: `${sent.reason}: ${sent.detail}`,
+      });
+      res.status(500).json({ error: `Failed to send email: ${sent.reason}`, code: 'FAILED_TO_SEND_EMAIL', detail: sent.detail });
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/reply — Reply to message
 router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Response) => {
+  const messageId = String(req.params.id);
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { body } = req.body;
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const signature = getUserSignature(req.user!.userId);
 
-    await client.api(`/me/messages/${req.params.id}/reply`).post({
+    await client.api(`/me/messages/${messageId}/reply`).post({
       comment: textToEmailHtml(body || '', signature || undefined),
     });
 
-    auditLog(req, 'REPLY_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
+    auditEmailSend(req, 'REPLY', { messageId, transport: 'graph' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    auditEmailSend(req, 'REPLY', { messageId, error: err?.message || String(err) });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/reply-all — Reply all
 router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res: Response) => {
+  const messageId = String(req.params.id);
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { body } = req.body;
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
     const signature = getUserSignature(req.user!.userId);
 
-    await client.api(`/me/messages/${req.params.id}/replyAll`).post({
+    await client.api(`/me/messages/${messageId}/replyAll`).post({
       comment: textToEmailHtml(body || '', signature || undefined),
     });
 
-    auditLog(req, 'REPLY_ALL_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
+    auditEmailSend(req, 'REPLY_ALL', { messageId, transport: 'graph' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    auditEmailSend(req, 'REPLY_ALL', { messageId, error: err?.message || String(err) });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/forward — Forward message
 router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: Response) => {
+  const messageId = String(req.params.id);
+  let toList: string[] = [];
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { to, body } = req.body;
-    if (!to) { res.status(400).json({ error: 'Recipient required' }); return; }
+    if (!to) { res.status(400).json({ error: 'Recipient required', code: 'RECIPIENT_REQUIRED' }); return; }
 
-    const toList = Array.isArray(to) ? to : [to];
-    const client = await getGraphClient();
+    toList = Array.isArray(to) ? to : [to];
+    const emailRegexFwd = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const addr of toList) {
+      if (typeof addr !== 'string' || !emailRegexFwd.test(addr.trim())) {
+        res.status(400).json({ error: `Invalid email address: ${String(addr).slice(0, 50)}` }); return;
+      }
+    }
+    if (toList.length > 50) { res.status(400).json({ error: 'Too many recipients (max 50)', code: 'TOO_MANY_RECIPIENTS_MAX' }); return; }
+    const client = await getGraphClientForUser(req.user!.userId);
 
     const signature = getUserSignature(req.user!.userId);
-    await client.api(`/me/messages/${req.params.id}/forward`).post({
+    await client.api(`/me/messages/${messageId}/forward`).post({
       comment: textToEmailHtml(body || '', signature || undefined),
       toRecipients: toList.map((email: string) => ({
         emailAddress: { address: email.trim() },
       })),
     });
 
-    auditLog(req, 'FORWARD_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id, to: toList }));
+    auditEmailSend(req, 'FORWARD', { messageId, to: toList, transport: 'graph' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    auditEmailSend(req, 'FORWARD', { messageId, to: toList, error: err?.message || String(err) });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // PATCH /api/email/messages/:id — Update message (read/unread, flag)
 router.patch('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
+
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
 
     const { isRead, isFlagged } = req.body;
-    const client = await getGraphClient();
+    const client = await getGraphClientForUser(req.user!.userId);
 
     const updates: any = {};
     if (isRead !== undefined) updates.isRead = isRead;
@@ -727,67 +923,80 @@ router.patch('/messages/:id', validateGraphId, async (req: Request, res: Respons
 
     await client.api(`/me/messages/${req.params.id}`).update(updates);
 
-    // Update cache
-    const db = getDb();
+    // Update cache (scoped to owner)
     if (isRead !== undefined) {
-      db.prepare('UPDATE email_cache SET is_read = ? WHERE graph_id = ?').run(isRead ? 1 : 0, req.params.id);
+      db.prepare('UPDATE email_cache SET is_read = ? WHERE graph_id = ? AND owner_user_id = ?').run(isRead ? 1 : 0, req.params.id, req.user!.userId);
     }
     if (isFlagged !== undefined) {
-      db.prepare('UPDATE email_cache SET is_flagged = ? WHERE graph_id = ?').run(isFlagged ? 1 : 0, req.params.id);
+      db.prepare('UPDATE email_cache SET is_flagged = ? WHERE graph_id = ? AND owner_user_id = ?').run(isFlagged ? 1 : 0, req.params.id, req.user!.userId);
     }
 
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // DELETE /api/email/messages/:id — Move to trash
 router.delete('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
-    const client = await getGraphClient();
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
+    const client = await getGraphClientForUser(req.user!.userId);
 
     // Move to Deleted Items folder
     await client.api(`/me/messages/${req.params.id}/move`).post({
       destinationId: 'deleteditems',
     });
 
-    // Remove from cache
-    const db = getDb();
-    db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(req.params.id);
+    // Remove from cache (scoped to owner)
+    db.prepare('DELETE FROM email_cache WHERE graph_id = ? AND owner_user_id = ?').run(req.params.id, req.user!.userId);
 
     auditLog(req, 'DELETE_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/move — Move to folder
 router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isUserAuthorized(req.user!.userId)) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { folderId } = req.body;
-    if (!folderId) { res.status(400).json({ error: 'Folder ID required' }); return; }
+    if (!folderId) { res.status(400).json({ error: 'Folder ID required', code: 'FOLDER_ID_REQUIRED' }); return; }
 
-    const client = await getGraphClient();
+    // Verify ownership if cached; otherwise Graph enforces mailbox access
+    const db = getDb();
+    const ownerRow = db.prepare('SELECT owner_user_id FROM email_cache WHERE graph_id = ?').get(req.params.id) as { owner_user_id: number } | undefined;
+    if (ownerRow && ownerRow.owner_user_id !== req.user!.userId) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
+    const client = await getGraphClientForUser(req.user!.userId);
     await client.api(`/me/messages/${req.params.id}/move`).post({
       destinationId: folderId,
     });
 
-    // Update cache folder
-    const db = getDb();
-    db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ?').run(folderId, req.params.id);
+    // Update cache folder (scoped to owner)
+    db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ? AND owner_user_id = ?').run(folderId, req.params.id, req.user!.userId);
 
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -804,24 +1013,26 @@ router.get('/templates', (_req: Request, res: Response) => {
       FROM email_templates t
       LEFT JOIN users u ON t.created_by = u.id
       ORDER BY t.category, t.name
+    
+      LIMIT 1000
     `).all();
-    res.json({ data: templates });
+    res.json(templates);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/templates/:id — Get single template
-router.get('/templates/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/templates/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
-    if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
+    if (!template) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
     res.json(template);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -830,7 +1041,7 @@ router.post('/templates', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name, category, subject, body } = req.body;
-    if (!name) { res.status(400).json({ error: 'Template name is required' }); return; }
+    if (!name) { res.status(400).json({ error: 'Template name is required', code: 'TEMPLATE_NAME_IS_REQUIRED' }); return; }
 
     const result = db.prepare(`
       INSERT INTO email_templates (name, category, subject, body, created_by)
@@ -841,47 +1052,69 @@ router.post('/templates', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // PUT /api/email/templates/:id — Update template
-router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
+router.put('/templates/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { name, category, subject, body } = req.body;
     const now = localNow();
 
     const existing = db.prepare('SELECT id FROM email_templates WHERE id = ?').get(req.params.id);
-    if (!existing) { res.status(404).json({ error: 'Template not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
 
-    db.prepare(`
-      UPDATE email_templates SET name = ?, category = ?, subject = ?, body = ?, updated_at = ?
-      WHERE id = ?
-    `).run(name, category, subject, body, now, req.params.id);
+    // Audit 2026-04-11: previous handler hard-overwrote name/category/
+    // subject/body unconditionally — partial PUTs (e.g. only `name`)
+    // bound undefined into NOT NULL columns and the entire request
+    // failed. Switched to a dynamic SET clause gated by hasOwnProperty.
+    const fieldMap: Record<string, (v: any) => any> = {
+      name: v => v ?? null,
+      category: v => v ?? null,
+      subject: v => v ?? null,
+      body: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const values: any[] = [];
+    for (const [key, transform] of Object.entries(fieldMap)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        sets.push(`${key} = ?`);
+        values.push(transform(req.body[key]));
+      }
+    }
+    if (sets.length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }); return; }
+    sets.push('updated_at = ?');
+    values.push(now);
+    values.push(req.params.id);
+    db.prepare(`UPDATE email_templates SET ${sets.join(', ')} WHERE id = ?`).run(...values);
 
-    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template: ${name}`);
+    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template ${req.params.id}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // DELETE /api/email/templates/:id — Delete template
-router.delete('/templates/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/templates/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
-    if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
-    if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates' }); return; }
+    if (!template) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
+    // God Mode: admin bypass — can delete system templates
+    if (template.is_system && req.user?.role !== 'admin') { res.status(400).json({ error: 'Cannot delete system templates', code: 'CANNOT_DELETE_SYSTEM_TEMPLATES' }); return; }
+    if (template.is_system && req.user?.role === 'admin') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'email_template', parseInt(String(req.params.id), 10), `Admin God Mode: deleting system template ${template.name}`);
+    }
 
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
     auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -894,7 +1127,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
   try {
     const { q } = req.query;
     if (!q || String(q).trim().length < 2) {
-      res.json({ data: [] });
+      res.json([]);
       return;
     }
 
@@ -931,16 +1164,16 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // De-duplicate by email
     const seen = new Set<string>();
     const unique = results.filter(r => {
-      const key = r.email.toLowerCase();
+      const key = (r.email || '').toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
-    res.json({ data: unique });
+    res.json(unique);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -953,9 +1186,9 @@ router.post('/link', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { emailGraphId, incidentId, callId, warrantId, personId, linkType, notes } = req.body;
-    if (!emailGraphId) { res.status(400).json({ error: 'Email ID is required' }); return; }
+    if (!emailGraphId) { res.status(400).json({ error: 'Email ID is required', code: 'EMAIL_ID_IS_REQUIRED' }); return; }
     if (!incidentId && !callId && !warrantId && !personId) {
-      res.status(400).json({ error: 'At least one link target is required' });
+      res.status(400).json({ error: 'At least one link target is required', code: 'AT_LEAST_ONE_LINK' });
       return;
     }
 
@@ -971,7 +1204,7 @@ router.post('/link', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -979,9 +1212,15 @@ router.post('/link', (req: Request, res: Response) => {
 router.get('/links/:emailGraphId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // Verify the caller owns this cached email before listing its links.
+    // If not cached, return empty (don't leak existence of another user's email).
+    if (!userOwnsMessage(String(req.params.emailGraphId), req.user!.userId)) {
+      res.json([]);
+      return;
+    }
     const links = db.prepare(`
       SELECT el.*,
-        i.case_number as incident_case_number,
+        i.incident_number as incident_case_number,
         c.call_number as call_number,
         p.first_name || ' ' || p.last_name as person_name,
         u.full_name as linked_by_name
@@ -992,11 +1231,13 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
       LEFT JOIN users u ON el.linked_by = u.id
       WHERE el.email_graph_id = ?
       ORDER BY el.created_at DESC
+    
+      LIMIT 1000
     `).all(String(req.params.emailGraphId));
-    res.json({ data: links });
+    res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1004,31 +1245,35 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
 router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // Only surface links where the linked email belongs to the authenticated
+    // user. Don't leak that another user's email was linked to this incident.
     const links = db.prepare(`
       SELECT el.*, ec.subject, ec.from_address, ec.from_name, ec.received_at, ec.body_preview,
         u.full_name as linked_by_name
       FROM email_incident_links el
-      LEFT JOIN email_cache ec ON el.email_graph_id = ec.graph_id
+      INNER JOIN email_cache ec ON el.email_graph_id = ec.graph_id
       LEFT JOIN users u ON el.linked_by = u.id
-      WHERE el.incident_id = ?
+      WHERE el.incident_id = ? AND ec.owner_user_id = ?
       ORDER BY ec.received_at DESC
-    `).all(req.params.incidentId);
-    res.json({ data: links });
+
+      LIMIT 1000
+    `).all(req.params.incidentId, req.user!.userId);
+    res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // DELETE /api/email/link/:id — Remove a link
-router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/link/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1038,35 +1283,43 @@ router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'sup
 
 // POST /api/email/schedule — Schedule an email for later delivery
 router.post('/schedule', (req: Request, res: Response) => {
+  const { to, cc, bcc, subject } = req.body || {};
+  const toList = Array.isArray(to) ? to : (to ? [to] : []);
+  const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : undefined;
+  const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined;
   try {
     const db = getDb();
-    const { to, cc, bcc, subject, body, attachments, scheduledAt } = req.body;
+    const { body, attachments, scheduledAt } = req.body;
     if (!to || !subject || !scheduledAt) {
-      res.status(400).json({ error: 'To, subject, and scheduledAt are required' });
+      res.status(400).json({ error: 'To, subject, and scheduledAt are required', code: 'TO_SUBJECT_AND_SCHEDULEDAT' });
       return;
     }
 
-    const toList = Array.isArray(to) ? to : [to];
-
     const result = db.prepare(`
-      INSERT INTO scheduled_emails (to_addresses, cc_addresses, bcc_addresses, subject, body, attachments, scheduled_at, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_emails (to_addresses, cc_addresses, bcc_addresses, subject, body, attachments, scheduled_at, created_by, owner_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       JSON.stringify(toList),
-      cc ? JSON.stringify(Array.isArray(cc) ? cc : [cc]) : null,
-      bcc ? JSON.stringify(Array.isArray(bcc) ? bcc : [bcc]) : null,
+      ccList ? JSON.stringify(ccList) : null,
+      bccList ? JSON.stringify(bccList) : null,
       subject, body || '',
       attachments ? JSON.stringify(attachments) : null,
-      scheduledAt, req.user!.userId
+      scheduledAt, req.user!.userId, req.user!.userId
     );
 
-    auditLog(req, 'SCHEDULE_EMAIL', 'email', Number(result.lastInsertRowid) as number,
-      JSON.stringify({ to: toList, subject, scheduledAt }));
+    auditEmailSend(req, 'SCHEDULE_SEND', {
+      to: toList, cc: ccList, bcc: bccList, subject,
+      messageId: `scheduled:${result.lastInsertRowid}`,
+    });
 
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    auditEmailSend(req, 'SCHEDULE_SEND', {
+      to: toList, cc: ccList, bcc: bccList, subject,
+      error: err?.message || String(err),
+    });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1081,28 +1334,34 @@ router.get('/scheduled', (req: Request, res: Response) => {
       LEFT JOIN users u ON se.created_by = u.id
       WHERE se.status = ? AND se.created_by = ?
       ORDER BY se.scheduled_at ASC
+    
+      LIMIT 1000
     `).all(String(status), req.user!.userId);
-    res.json({ data: rows });
+    res.json(rows);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // DELETE /api/email/scheduled/:id — Cancel a scheduled email
-router.delete('/scheduled/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/scheduled/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
-      .get(req.params.id, req.user!.userId) as any;
-    if (!row) { res.status(404).json({ error: 'Scheduled email not found' }); return; }
-    if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails' }); return; }
+    const row = req.user?.role === 'admin'
+      ? db.prepare('SELECT * FROM scheduled_emails WHERE id = ?').get(req.params.id) as any
+      : db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?').get(req.params.id, req.user!.userId) as any;
+    if (!row) { res.status(404).json({ error: 'Scheduled email not found', code: 'SCHEDULED_EMAIL_NOT_FOUND' }); return; }
+    if (row.status !== 'pending' && req.user?.role !== 'admin') { res.status(400).json({ error: 'Can only cancel pending emails', code: 'CAN_ONLY_CANCEL_PENDING' }); return; }
+    if (req.user?.role === 'admin' && row.status !== 'pending') {
+      auditLog(req, 'ADMIN_OVERRIDE', 'scheduled_email', Number(req.params.id), `Admin God Mode: bypassed pending-only cancel restriction (status: ${row.status})`);
+    }
 
     db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1115,7 +1374,7 @@ router.put('/admin/credentials', requireRole('admin'), (req: Request, res: Respo
   try {
     const { clientId, clientSecret, tenantId } = req.body;
     if (!clientId || !clientSecret || !tenantId) {
-      res.status(400).json({ error: 'All three Azure AD credentials are required' });
+      res.status(400).json({ error: 'All three Azure AD credentials are required', code: 'ALL_THREE_AZURE_AD' });
       return;
     }
 
@@ -1128,7 +1387,7 @@ router.put('/admin/credentials', requireRole('admin'), (req: Request, res: Respo
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1153,7 +1412,7 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1161,7 +1420,7 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
 router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: Response) => {
   try {
     if (!isConfigured()) {
-      res.status(400).json({ error: 'Azure AD credentials not configured yet' });
+      res.status(400).json({ error: 'Azure AD credentials not configured yet', code: 'AZURE_AD_CREDENTIALS_NOT' });
       return;
     }
 
@@ -1176,14 +1435,24 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     res.json({ url });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/admin/test-connection — Test Graph API connection
+// Phase 4: tests the calling admin's own per-user Graph tokens. The
+// admin must enroll via /api/email/oauth/my/authorize before this can
+// succeed. SMTP tested tenant-wide.
 router.post('/admin/test-connection', requireRole('admin'), async (req: Request, res: Response) => {
   try {
-    const graphResult = await testConnection();
+    let graphResult: { success: boolean; mailbox?: string; error?: string };
+    try {
+      const client = await getGraphClientForUser(req.user!.userId);
+      const me = await client.api('/me').select('mail,displayName,userPrincipalName').get();
+      graphResult = { success: true, mailbox: me.mail || me.userPrincipalName || 'unknown' };
+    } catch (err: any) {
+      graphResult = { success: false, error: err?.message || 'Connection failed — enroll this user via OAuth' };
+    }
     const smtpResult = await testSMTPConnection().catch(() => ({ success: false, error: 'SMTP not configured' }));
 
     res.json({
@@ -1192,7 +1461,7 @@ router.post('/admin/test-connection', requireRole('admin'), async (req: Request,
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1219,7 +1488,7 @@ router.put('/admin/enable', requireRole('admin'), (req: Request, res: Response) 
     res.json({ success: true, ...getStatus() });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1240,7 +1509,7 @@ router.put('/admin/smtp-settings', requireRole('admin'), (req: Request, res: Res
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1251,7 +1520,380 @@ router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: R
     res.json(result);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 22: Email Flag/Star — Flag important emails for follow-up
+// (Already exists via PATCH /messages/:id with isFlagged)
+// Additional: Bulk flag endpoint and flagged list
+// ════════════════════════════════════════════════════════════
+
+router.get('/flagged', async (req: Request, res: Response) => {
+  try {
+    if (isUserAuthorized(req.user!.userId)) {
+      try {
+        const client = await getGraphClientForUser(req.user!.userId);
+        const result = await client
+          .api('/me/messages')
+          .filter("flag/flagStatus eq 'flagged'")
+          .select('id,conversationId,subject,from,toRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime')
+          .orderby('receivedDateTime desc')
+          .top(50)
+          .get();
+
+        res.json({
+          messages: (result.value || []).map((msg: any) => ({
+            id: msg.id,
+            conversationId: msg.conversationId,
+            subject: msg.subject || '(No subject)',
+            fromAddress: msg.from?.emailAddress?.address || '',
+            fromName: msg.from?.emailAddress?.name || '',
+            bodyPreview: msg.bodyPreview || '',
+            hasAttachments: msg.hasAttachments || false,
+            isRead: msg.isRead || false,
+            isFlagged: true,
+            importance: msg.importance || 'normal',
+            receivedAt: msg.receivedDateTime,
+          })),
+        });
+        return;
+      } catch { /* fall through to cache */ }
+    }
+
+    // Fallback to cache
+    const db = getDb();
+    const rows = db.prepare(
+      'SELECT * FROM email_cache WHERE is_flagged = 1 AND owner_user_id = ? ORDER BY received_at DESC LIMIT 50'
+    ).all(req.user!.userId) as any[];
+
+    res.json({
+      messages: rows.map((r: any) => ({
+        id: r.graph_id,
+        conversationId: r.conversation_id,
+        subject: r.subject,
+        fromAddress: r.from_address,
+        fromName: r.from_name,
+        bodyPreview: r.body_preview,
+        hasAttachments: !!r.has_attachments,
+        isRead: !!r.is_read,
+        isFlagged: true,
+        importance: r.importance,
+        receivedAt: r.received_at,
+      })),
+    });
+  } catch (err: any) {
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 23: Email Auto-Categorization
+// Auto-tag emails based on keywords (incident, court, admin)
+// ════════════════════════════════════════════════════════════
+
+router.post('/categorize', (req: Request, res: Response) => {
+  try {
+    const { messageId, subject, bodyPreview } = req.body;
+    if (!messageId) { res.status(400).json({ error: 'messageId is required', code: 'MESSAGEID_IS_REQUIRED' }); return; }
+
+    // Verify caller owns this cached message before categorizing it
+    if (!userOwnsMessage(String(messageId), req.user!.userId)) {
+      res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+      return;
+    }
+
+    const text = `${subject || ''} ${bodyPreview || ''}`.toLowerCase();
+
+    const categories: string[] = [];
+    const KEYWORD_MAP: Record<string, string[]> = {
+      'incident': ['incident', 'report', 'crime', 'theft', 'assault', 'trespass', 'vandalism', 'burglary'],
+      'court': ['court', 'subpoena', 'hearing', 'trial', 'arraignment', 'judge', 'prosecutor', 'defendant', 'verdict'],
+      'admin': ['invoice', 'billing', 'payment', 'contract', 'renewal', 'schedule', 'payroll', 'hr', 'human resources'],
+      'dispatch': ['dispatch', 'call', 'unit', 'respond', 'emergency', 'priority', 'code'],
+      'serve': ['serve', 'process server', 'service of process', 'summons', 'writ', 'garnishment'],
+      'training': ['training', 'certification', 'course', 'exam', 'qualification', 'continuing education'],
+      'fleet': ['vehicle', 'fleet', 'maintenance', 'inspection', 'mileage', 'fuel'],
+    };
+
+    for (const [category, keywords] of Object.entries(KEYWORD_MAP)) {
+      if (keywords.some(kw => text.includes(kw))) {
+        categories.push(category);
+      }
+    }
+
+    // Store categorization in cache (scoped to owner)
+    if (categories.length > 0) {
+      const db = getDb();
+      db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ? AND owner_user_id = ?')
+        .run(JSON.stringify(categories), messageId, req.user!.userId);
+    }
+
+    res.json({ messageId, categories });
+  } catch (err: any) {
+    console.error('Email categorize error:', err.message);
+    res.status(500).json({ error: 'Failed to email categorize', code: 'EMAIL_CATEGORIZE_ERROR' });
+  }
+});
+
+router.post('/categorize/batch', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    // Auto-categorize this user's uncategorized cached messages only
+    const uncategorized = db.prepare(
+      "SELECT graph_id, subject, body_preview FROM email_cache WHERE (categories IS NULL OR categories = '[]') AND owner_user_id = ? LIMIT 200"
+    ).all(userId) as any[];
+
+    const KEYWORD_MAP: Record<string, string[]> = {
+      'incident': ['incident', 'report', 'crime', 'theft', 'assault', 'trespass'],
+      'court': ['court', 'subpoena', 'hearing', 'trial', 'arraignment', 'judge'],
+      'admin': ['invoice', 'billing', 'payment', 'contract', 'renewal', 'payroll'],
+      'dispatch': ['dispatch', 'call', 'unit', 'respond', 'emergency'],
+      'serve': ['serve', 'process server', 'summons', 'writ'],
+      'training': ['training', 'certification', 'course', 'exam'],
+      'fleet': ['vehicle', 'fleet', 'maintenance', 'inspection'],
+    };
+
+    let categorized = 0;
+    for (const msg of uncategorized) {
+      const text = `${msg.subject || ''} ${msg.body_preview || ''}`.toLowerCase();
+      const categories: string[] = [];
+      for (const [category, keywords] of Object.entries(KEYWORD_MAP)) {
+        if (keywords.some(kw => text.includes(kw))) categories.push(category);
+      }
+      if (categories.length > 0) {
+        db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ? AND owner_user_id = ?')
+          .run(JSON.stringify(categories), msg.graph_id, userId);
+        categorized++;
+      }
+    }
+
+    res.json({ processed: uncategorized.length, categorized });
+  } catch (err: any) {
+    console.error('Email batch categorize error:', err.message);
+    res.status(500).json({ error: 'Failed to email batch categorize', code: 'EMAIL_BATCH_CATEGORIZE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 25: Email Thread View
+// Group emails by conversation thread
+// ════════════════════════════════════════════════════════════
+
+router.get('/threads', async (req: Request, res: Response) => {
+  try {
+    const { folder = 'inbox', page = '1', per_page = '100000' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
+
+    if (isUserAuthorized(req.user!.userId)) {
+      try {
+        const client = await getGraphClientForUser(req.user!.userId);
+        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
+        const apiPath = safeFolder === 'inbox'
+          ? '/me/mailFolders/inbox/messages'
+          : `/me/mailFolders/${safeFolder}/messages`;
+
+        const result = await client
+          .api(apiPath)
+          .select('id,conversationId,subject,from,toRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime')
+          .orderby('receivedDateTime desc')
+          .top(perPage * 3) // Fetch more to group
+          .skip((pageNum - 1) * perPage)
+          .get();
+
+        // Group by conversationId
+        const threads: Record<string, any> = {};
+        for (const msg of result.value || []) {
+          const convId = msg.conversationId || msg.id;
+          if (!threads[convId]) {
+            threads[convId] = {
+              conversationId: convId,
+              subject: msg.subject || '(No subject)',
+              messages: [],
+              latestDate: msg.receivedDateTime,
+              hasUnread: false,
+              messageCount: 0,
+            };
+          }
+          threads[convId].messages.push({
+            id: msg.id,
+            fromAddress: msg.from?.emailAddress?.address || '',
+            fromName: msg.from?.emailAddress?.name || '',
+            bodyPreview: msg.bodyPreview || '',
+            isRead: msg.isRead || false,
+            receivedAt: msg.receivedDateTime,
+          });
+          threads[convId].messageCount++;
+          if (!msg.isRead) threads[convId].hasUnread = true;
+          if (msg.receivedDateTime > threads[convId].latestDate) {
+            threads[convId].latestDate = msg.receivedDateTime;
+          }
+        }
+
+        const threadList = Object.values(threads)
+          .sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
+          .slice(0, perPage);
+
+        res.json({ threads: threadList, hasMore: Object.keys(threads).length > perPage });
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // Fallback: group cached messages by conversation_id
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT graph_id, conversation_id, subject, from_address, from_name,
+        body_preview, is_read, is_flagged, received_at
+      FROM email_cache
+      WHERE folder_id = ? AND owner_user_id = ?
+      ORDER BY received_at DESC
+      LIMIT ?
+    `).all(folder, req.user!.userId, perPage * 3) as any[];
+
+    const threads: Record<string, any> = {};
+    for (const r of rows) {
+      const convId = r.conversation_id || r.graph_id;
+      if (!threads[convId]) {
+        threads[convId] = {
+          conversationId: convId,
+          subject: r.subject || '(No subject)',
+          messages: [],
+          latestDate: r.received_at,
+          hasUnread: false,
+          messageCount: 0,
+        };
+      }
+      threads[convId].messages.push({
+        id: r.graph_id,
+        fromAddress: r.from_address,
+        fromName: r.from_name,
+        bodyPreview: r.body_preview,
+        isRead: !!r.is_read,
+        receivedAt: r.received_at,
+      });
+      threads[convId].messageCount++;
+      if (!r.is_read) threads[convId].hasUnread = true;
+    }
+
+    const threadList = Object.values(threads)
+      .sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
+      .slice(0, perPage);
+
+    res.json({ threads: threadList, hasMore: Object.keys(threads).length > perPage });
+  } catch (err: any) {
+    console.error('Email threads error:', err.message);
+    res.status(500).json({ error: 'Failed to email threads', code: 'EMAIL_THREADS_ERROR' });
+  }
+});
+
+// GET /api/email/thread/:conversationId — Get all messages in a thread
+router.get('/thread/:conversationId', async (req: Request, res: Response) => {
+  try {
+    const convId = req.params.conversationId;
+    if (!convId || convId.length > 250) { res.status(400).json({ error: 'Invalid conversation ID', code: 'INVALID_CONVERSATION_ID' }); return; }
+
+    if (isUserAuthorized(req.user!.userId)) {
+      try {
+        const client = await getGraphClientForUser(req.user!.userId);
+        const result = await client
+          .api('/me/messages')
+          .filter(`conversationId eq '${(convId as string).replace(/'/g, "''")}'`)
+          .select('id,conversationId,subject,from,toRecipients,ccRecipients,body,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
+          .orderby('receivedDateTime asc')
+          .top(50)
+          .get();
+
+        res.json({
+          conversationId: convId,
+          messages: (result.value || []).map((msg: any) => ({
+            id: msg.id,
+            subject: msg.subject || '(No subject)',
+            fromAddress: msg.from?.emailAddress?.address || '',
+            fromName: msg.from?.emailAddress?.name || '',
+            toAddresses: (msg.toRecipients || []).map((r: any) => ({
+              email: r.emailAddress?.address,
+              name: r.emailAddress?.name,
+            })),
+            bodyHtml: msg.body?.content || '',
+            bodyPreview: msg.bodyPreview || '',
+            hasAttachments: msg.hasAttachments || false,
+            isRead: msg.isRead || false,
+            receivedAt: msg.receivedDateTime,
+            sentAt: msg.sentDateTime,
+          })),
+        });
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // Fallback to cache
+    const db = getDb();
+    const rows = db.prepare(
+      'SELECT * FROM email_cache WHERE conversation_id = ? AND owner_user_id = ? ORDER BY received_at ASC'
+    ).all(convId, req.user!.userId) as any[];
+
+    res.json({
+      conversationId: convId,
+      messages: rows.map((r: any) => ({
+        id: r.graph_id,
+        subject: r.subject,
+        fromAddress: r.from_address,
+        fromName: r.from_name,
+        bodyPreview: r.body_preview,
+        hasAttachments: !!r.has_attachments,
+        isRead: !!r.is_read,
+        receivedAt: r.received_at,
+      })),
+    });
+  } catch (err: any) {
+    console.error('Email thread error:', err.message);
+    res.status(500).json({ error: 'Failed to email thread', code: 'EMAIL_THREAD_ERROR' });
+  }
+});
+
+
+// ════════════════════════════════════════════════════════════
+// Image Proxy — loads external email images through the server
+// to bypass CORS/referrer restrictions on CDN-hosted content
+// ════════════════════════════════════════════════════════════
+router.get('/image-proxy', (req: Request, res: Response, next: NextFunction) => {
+  // Accept auth via Authorization header OR ?token= query param (for blob iframe img src)
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  authenticateToken(req, res, next);
+}, async (req: Request, res: Response) => {
+  try {
+    const url = req.query.url as string;
+    if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      res.status(400).json({ error: 'Valid http/https URL required' });
+      return;
+    }
+    const parsed = new URL(url);
+    if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(parsed.hostname) ||
+        parsed.hostname.startsWith('10.') || parsed.hostname.startsWith('192.168.') || parsed.hostname.startsWith('172.')) {
+      res.status(403).json({ error: 'Internal URLs not allowed' });
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RMPG-Flex/1.0)', 'Accept': 'image/*,*/*;q=0.8' } });
+    clearTimeout(timeout);
+    if (!response.ok) { res.status(response.status).end(); return; }
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    if (!contentType.startsWith('image/')) { res.status(415).json({ error: 'Not an image' }); return; }
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.send(buffer);
+  } catch (err: any) {
+    if (err.name === 'AbortError') { res.status(504).json({ error: 'Image fetch timeout' }); }
+    else { res.status(502).json({ error: 'Failed to fetch image' }); }
   }
 });
 

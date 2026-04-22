@@ -76,7 +76,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
         </div>
         <div className="panel-inset p-2 flex items-center gap-2">
           {FILTER_BUTTONS.map((btn) => (
-            <button
+            <button type="button"
               key={btn.value}
               onClick={() => setDutyFilter(btn.value)}
               className={`toolbar-btn text-[10px] px-2.5 py-1 ${
@@ -95,29 +95,31 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
 
       {/* Officer Grid */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-            <Radio className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-16" role="status">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <Radio className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No officers match the selected filter.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Try selecting a different duty status filter.</p>
+          <p className="text-sm text-rmpg-400 font-medium">No officers match the selected filter</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Try selecting a different duty status filter</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3" role="list" aria-label="Duty board officers">
           {filtered.map((officer) => {
             const isOnDuty = officer.status === 'on_duty';
             const activeEntry = activeEntryMap.get(officer.id);
             const alertCount = credAlertMap.get(officer.id) || 0;
 
             return (
-              <button
+              <button type="button"
                 key={officer.id}
+                role="listitem"
                 onClick={() => onOfficerClick(officer)}
-                className={`panel-beveled p-3 text-left transition-all hover:brightness-110 border-l-2 border-t-2 ${
+                className={`panel-beveled p-3 text-left transition-all duration-200 hover:brightness-110 hover:shadow-lg border-l-2 border-t-2 focus:outline-none focus:ring-1 focus:ring-brand-500/50 ${
                   isOnDuty
                     ? 'border-l-green-500 border-t-green-500 bg-[#0a1a0a]'
                     : 'border-l-rmpg-600 border-t-rmpg-600 bg-surface-base'
                 }`}
+                aria-label={`${officer.last_name}, ${officer.first_name} — ${isOnDuty ? 'On Duty' : 'Off Duty'}`}
               >
                 <div className="flex items-start gap-2.5">
                   <OfficerAvatar officer={officer} size="sm" />
@@ -138,25 +140,25 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
 
                 {/* Status Badges */}
                 <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
                     isOnDuty
                       ? 'bg-green-900/50 text-green-400 border border-green-700/50'
                       : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600'
                   }`}>
-                    <span className={isOnDuty ? 'led-dot led-green' : 'led-dot led-off'} />
+                    <span className={isOnDuty ? 'led-dot led-green' : 'led-dot led-off'} aria-hidden="true" />
                     {isOnDuty ? 'On Duty' : 'Off Duty'}
                   </span>
 
                   {activeEntry && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-blue-900/30 text-blue-400 border border-blue-700/30">
-                      <Clock className="w-2.5 h-2.5" />
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-gray-900/30 text-gray-400 border border-gray-700/30" title="Time clocked in">
+                      <Clock className="w-2.5 h-2.5" aria-hidden="true" />
                       {getElapsedHours(activeEntry.clock_in)}
                     </span>
                   )}
 
                   {alertCount > 0 && (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold bg-amber-900/30 text-amber-400 border border-amber-700/30">
-                      <AlertTriangle className="w-2.5 h-2.5" />
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold bg-amber-900/30 text-amber-400 border border-amber-700/30" title={`${alertCount} credential alert(s)`}>
+                      <AlertTriangle className="w-2.5 h-2.5" aria-hidden="true" />
                       {alertCount}
                     </span>
                   )}

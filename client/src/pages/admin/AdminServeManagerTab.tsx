@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
@@ -16,6 +17,20 @@ interface Props {
   error: string | null;
   setError: (e: string | null) => void;
 }
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function AdminServeManagerTab({ LoadingSpinner, error, setError }: Props) {
   // ── Status ──
@@ -212,13 +227,16 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     }
   };
 
+  // Set document title (must be before early return to preserve hook order)
+  useEffect(() => { document.title = 'Admin - Serve Manager \u2014 RMPG Flex'; }, []);
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Link2 className="w-4 h-4 text-brand-400" />
+        <Link2 className="w-4 h-4 text-[#d4a017]" />
         <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">ServeManager Integration</h2>
         {status?.configured && (
           <span className="ml-2 flex items-center gap-1 text-green-400 text-[10px]">
@@ -236,7 +254,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
       {/* ═══ Section 1: API Key Management ═══ */}
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
-        <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+        <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
           API Key
         </div>
@@ -248,34 +266,34 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={status?.configured ? 'Enter new key to replace...' : 'Enter your ServeManager API key...'}
-              className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
+              className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 font-mono transition-colors"
             />
-            <button
+            <button type="button"
               onClick={() => setShowKey(!showKey)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
             >
               {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
-          <button
+          <button type="button"
             onClick={handleSaveKey}
             disabled={savingKey || !apiKey.trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
-            {savingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {savingKey ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save
           </button>
           {status?.configured && (
             <>
-              <button
+              <button type="button"
                 onClick={handleTestConnection}
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                 Test
               </button>
-              <button
+              <button type="button"
                 onClick={handleClearKey}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -288,7 +306,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
         {/* Test result */}
         {testResult && (
-          <div className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm ${
+          <div className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-[2px] animate-in fade-in duration-200 ${
             testResult.success
               ? 'bg-green-950/30 border border-green-800/40 text-green-400'
               : 'bg-red-950/30 border border-red-800/40 text-red-400'
@@ -306,25 +324,25 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {status?.configured && (
         <div className="panel-beveled bg-surface-base p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
               <RefreshCw className="w-3.5 h-3.5" />
               Data Sync
             </div>
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={() => handleSync('incremental')}
                 disabled={syncing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
                 Incremental Sync
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleSync('full')}
                 disabled={syncing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
                 Full Sync
               </button>
             </div>
@@ -332,15 +350,15 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
           {/* Stats row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div className="bg-surface-sunken p-2 rounded-sm">
+            <div className="bg-surface-sunken p-2 rounded-[2px]">
               <div className="text-[10px] text-rmpg-400">Cached Jobs</div>
               <div className="text-lg font-bold font-mono text-rmpg-100">{status.cached_jobs}</div>
             </div>
-            <div className="bg-surface-sunken p-2 rounded-sm">
+            <div className="bg-surface-sunken p-2 rounded-[2px]">
               <div className="text-[10px] text-rmpg-400">Cached Attempts</div>
               <div className="text-lg font-bold font-mono text-rmpg-100">{status.cached_attempts}</div>
             </div>
-            <div className="bg-surface-sunken p-2 rounded-sm">
+            <div className="bg-surface-sunken p-2 rounded-[2px]">
               <div className="text-[10px] text-rmpg-400">Last Sync</div>
               <div className="text-xs font-mono text-rmpg-200">
                 {status.last_sync
@@ -358,16 +376,16 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           {/* Sync history */}
           {syncLog.length > 0 && (
             <div className="space-y-1">
-              <div className="text-[10px] text-rmpg-400 font-bold">Sync History</div>
+              <div className="text-[10px] text-[#d4a017] font-bold uppercase tracking-wider">Sync History</div>
               <div className="max-h-32 overflow-y-auto space-y-0.5">
                 {syncLog.slice(0, 10).map((entry) => (
-                  <div key={entry.id} className="flex items-center gap-2 text-[10px] bg-surface-sunken px-2 py-1 rounded-sm">
+                  <div key={entry.id} className="flex items-center gap-2 text-[10px] bg-surface-sunken px-2 py-1 rounded-[2px]">
                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                       entry.status === 'completed' ? 'bg-green-400' : entry.status === 'failed' ? 'bg-red-400' : 'bg-amber-400 animate-pulse'
                     }`} />
                     <span className="text-rmpg-300 font-mono">{entry.sync_type}</span>
                     <span className="text-rmpg-500">{entry.jobs_synced} jobs, {entry.attempts_synced} attempts</span>
-                    <span className="ml-auto text-rmpg-500 whitespace-nowrap">{new Date(entry.started_at).toLocaleString()}</span>
+                    <span className="ml-auto text-rmpg-500 whitespace-nowrap">{safeDateTimeStr(entry.started_at)}</span>
                     {entry.error_message && (
                       <span className="text-red-400 truncate max-w-[200px]" title={entry.error_message}>
                         {entry.error_message}
@@ -385,25 +403,25 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {status?.configured && (
         <div className="panel-beveled bg-surface-base p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
               <Play className="w-3.5 h-3.5" />
               Auto-Poller — Job-to-Dispatch
             </div>
             <div className="flex items-center gap-1.5">
-              <button
+              <button type="button"
                 onClick={handlePollerPollNow}
                 disabled={pollerPolling}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
               >
-                {pollerPolling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {pollerPolling ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                 Poll Now
               </button>
-              <button
+              <button type="button"
                 onClick={handlePollerSave}
                 disabled={pollerSaving || !pollerDirty}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
               >
-                {pollerSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                {pollerSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                 Save
               </button>
             </div>
@@ -411,7 +429,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
           {/* Poll result feedback */}
           {pollerPollResult && (
-            <div className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm ${
+            <div className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-[2px] animate-in fade-in duration-200 ${
               pollerPollResult.error
                 ? 'bg-red-950/30 border border-red-800/40 text-red-400'
                 : pollerPollResult.callsCreated > 0
@@ -429,12 +447,12 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           {/* Poller settings grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Enable/Disable toggle */}
-            <div className="flex items-center justify-between bg-surface-sunken p-2.5 rounded-sm">
+            <div className="flex items-center justify-between bg-surface-sunken p-2.5 rounded-[2px]">
               <div>
-                <div className="text-[10px] font-bold text-rmpg-300">Poller Enabled</div>
+                <div className="text-[10px] font-bold text-rmpg-200">Poller Enabled</div>
                 <div className="text-[9px] text-rmpg-500">Automatically sync jobs on interval</div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => { setPollerEnabled(!pollerEnabled); setPollerDirty(true); }}
                 className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
               >
@@ -446,12 +464,12 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             </div>
 
             {/* Auto-create dispatch calls toggle */}
-            <div className="flex items-center justify-between bg-surface-sunken p-2.5 rounded-sm">
+            <div className="flex items-center justify-between bg-surface-sunken p-2.5 rounded-[2px]">
               <div>
-                <div className="text-[10px] font-bold text-rmpg-300">Auto-Create Dispatch Calls</div>
+                <div className="text-[10px] font-bold text-rmpg-200">Auto-Create Dispatch Calls</div>
                 <div className="text-[9px] text-rmpg-500">Create calls for unlinked target jobs</div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => { setPollerAutoCreate(!pollerAutoCreate); setPollerDirty(true); }}
                 className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
               >
@@ -463,27 +481,27 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             </div>
 
             {/* Poll interval */}
-            <div className="bg-surface-sunken p-2.5 rounded-sm space-y-1">
-              <div className="text-[10px] font-bold text-rmpg-300">Poll Interval (seconds)</div>
+            <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-200">Poll Interval (seconds)</div>
               <input
                 type="number"
                 min={60}
                 max={1800}
                 value={pollerInterval}
                 onChange={(e) => { setPollerInterval(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
               />
               <div className="text-[9px] text-rmpg-500">Min 60s, max 1800s (30 min)</div>
             </div>
 
             {/* Target client */}
-            <div className="bg-surface-sunken p-2.5 rounded-sm space-y-1">
-              <div className="text-[10px] font-bold text-rmpg-300">Target Client</div>
+            <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-200">Target Client</div>
               <input
                 type="text"
                 value={pollerTargetClient}
                 onChange={(e) => { setPollerTargetClient(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               />
               <div className="text-[9px] text-rmpg-500">Only jobs from this client trigger auto-dispatch</div>
             </div>
@@ -506,7 +524,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {status?.configured && status.cached_jobs > 0 && (
         <div className="panel-beveled bg-surface-base p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
               <Briefcase className="w-3.5 h-3.5" />
               Cached Jobs ({jobTotal})
             </div>
@@ -517,11 +535,11 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   type="text"
                   value={jobSearch}
                   onChange={(e) => { setJobSearch(e.target.value); setJobPage(1); }}
-                  placeholder="Search jobs..."
-                  className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-sm w-48 focus:border-brand-500 focus:outline-none"
+                  placeholder="Search jobs..." aria-label="Search jobs..."
+                  className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-[2px] w-48 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 />
               </div>
-              <button onClick={fetchJobs} className="toolbar-btn text-[10px] flex items-center gap-1">
+              <button type="button" onClick={fetchJobs} className="toolbar-btn text-[10px] flex items-center gap-1">
                 <RefreshCw className={`w-3 h-3 ${loadingJobs ? 'animate-spin' : ''}`} />
               </button>
             </div>
@@ -529,14 +547,14 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
           {/* Selected job detail */}
           {selectedJob && (
-            <div className="bg-surface-sunken border border-rmpg-600 p-3 rounded-sm space-y-2">
+            <div className="bg-surface-sunken border border-rmpg-600 p-3 rounded-[2px] space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-brand-400" />
                   <span className="text-xs font-bold text-rmpg-100">Job #{selectedJob.sm_job_number}</span>
                   <ServiceStatusBadge status={selectedJob.service_status} />
                 </div>
-                <button onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
+                <button type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -559,7 +577,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 <div className="space-y-1 mt-2">
                   <div className="text-[10px] font-bold text-rmpg-400">Attempts ({selectedJob.attempts.length})</div>
                   {selectedJob.attempts.map((att) => (
-                    <div key={att.id} className="flex items-center gap-2 text-[10px] bg-rmpg-800/50 px-2 py-1 rounded-sm">
+                    <div key={att.id} className="flex items-center gap-2 text-[10px] bg-rmpg-800/50 px-2 py-1 rounded-[2px]">
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${att.success ? 'bg-green-400' : 'bg-amber-400'}`} />
                       <span className="text-rmpg-300">{att.service_status || 'Attempted'}</span>
                       {att.serve_type && <span className="text-rmpg-500">({att.serve_type})</span>}
@@ -576,7 +594,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           {/* Jobs table */}
           {loadingJobs ? (
             <div className="flex justify-center py-4">
-              <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+              <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -598,7 +616,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     <tr
                       key={job.id}
                       onClick={() => handleViewJob(job.id)}
-                      className="border-b border-rmpg-800 hover:bg-rmpg-800/50 cursor-pointer transition-colors"
+                      className="border-b border-rmpg-800 hover:bg-[#181818]/60 cursor-pointer transition-all duration-100"
                     >
                       <td className="py-1 pr-2 font-mono text-brand-400">{job.sm_job_number}</td>
                       <td className="py-1 pr-2 text-rmpg-200 max-w-[120px] truncate">{job.recipient_name || '—'}</td>
@@ -607,7 +625,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                       <td className="py-1 pr-2 text-rmpg-300 max-w-[100px] truncate">{job.client_company_name || '—'}</td>
                       <td className="py-1 pr-2 text-rmpg-400 whitespace-nowrap">{job.due_date || '—'}</td>
                       <td className="py-1 pr-2 text-center font-mono text-rmpg-300">{job.attempt_count}</td>
-                      <td className="py-1 text-rmpg-500 whitespace-nowrap">{new Date(job.synced_at).toLocaleDateString()}</td>
+                      <td className="py-1 text-rmpg-500 whitespace-nowrap">{safeDateStr(job.synced_at)}</td>
                     </tr>
                   ))}
                   {jobs.length === 0 && (
@@ -629,14 +647,14 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 Page {jobPage} of {jobTotalPages} ({jobTotal} total)
               </span>
               <div className="flex items-center gap-1">
-                <button
+                <button type="button"
                   onClick={() => setJobPage(p => Math.max(1, p - 1))}
                   disabled={jobPage <= 1}
                   className="toolbar-btn p-1 disabled:opacity-30"
                 >
                   <ChevronLeft className="w-3 h-3" />
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setJobPage(p => Math.min(jobTotalPages, p + 1))}
                   disabled={jobPage >= jobTotalPages}
                   className="toolbar-btn p-1 disabled:opacity-30"
@@ -651,7 +669,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
       {/* Not configured hint */}
       {!status?.configured && (
-        <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-3 rounded-sm">
+        <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-3 rounded-[2px]">
           <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
           Enter your ServeManager API key above to enable the integration. You can find your API key in your ServeManager account settings.
         </div>
@@ -672,7 +690,7 @@ function ServiceStatusBadge({ status }: { status: string | null }) {
   };
 
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${colors[status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded-[2px] border ${colors[status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
       {status}
     </span>
   );

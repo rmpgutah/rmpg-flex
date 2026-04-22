@@ -201,7 +201,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   };
 
   // Speed → color + subtle background for evidence strip
-  const spdClr = displaySpeed == null ? '#6b7280' : displaySpeed > 80 ? '#f87171' : displaySpeed > 60 ? '#fbbf24' : '#4ade80';
+  const spdClr = displaySpeed == null ? '#666666' : displaySpeed > 80 ? '#f87171' : displaySpeed > 60 ? '#fbbf24' : '#4ade80';
   const speedBg = (mph: number | null | undefined): string => {
     if (mph == null) return '';
     if (mph > 80) return 'bg-red-500/10';
@@ -212,14 +212,14 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   // ── Render ────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         ref={containerRef}
         className={`bg-black overflow-hidden ${isFullscreen ? 'w-full h-full' : 'w-[960px] max-h-[92vh]'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* ── Header Bar ── */}
-        <div className="flex items-center justify-between h-7 px-2 bg-[var(--surface-sunken)] border-b border-rmpg-700">
+        <div className="flex items-center justify-between h-7 px-2 bg-[var(--surface-sunken)] border-b border-[#2b2b2b]">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[9px] font-mono font-bold text-amber-500/80 uppercase tracking-widest truncate">
               {video.title}
@@ -237,19 +237,19 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setHudVisible(!hudVisible)} className="toolbar-btn h-5 flex items-center gap-1">
+            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="toolbar-btn h-5 flex items-center gap-1">
               <span className={`led-dot ${hudVisible ? 'led-green' : 'led-off'}`} style={{ width: 5, height: 5 }} />
               <span className="text-[8px]">HUD</span>
             </button>
             {onEditVideo && (
-              <button onClick={() => onEditVideo(video)} className="toolbar-btn h-5 px-1">
+              <button type="button" onClick={() => onEditVideo(video)} className="toolbar-btn h-5 px-1">
                 <Edit2 className="w-3 h-3" />
               </button>
             )}
-            <button onClick={toggleFullscreen} className="toolbar-btn h-5 px-1">
+            <button type="button" onClick={toggleFullscreen} className="toolbar-btn h-5 px-1">
               {isFullscreen ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
             </button>
-            <button onClick={onClose} className="toolbar-btn h-5 px-1">
+            <button type="button" onClick={onClose} className="toolbar-btn h-5 px-1" aria-label="Close" title="Close">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -284,9 +284,9 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
               </div>
 
               {/* ── Bottom: Evidence Strip (full-width, 2-row, solid) ── */}
-              <div className={`absolute left-0 right-0 ${isFullscreen ? 'bottom-14' : 'bottom-10'} bg-black/90 border-t border-rmpg-700`}>
+              <div className={`absolute left-0 right-0 ${isFullscreen ? 'bottom-14' : 'bottom-10'} bg-black/90 border-t border-[#2b2b2b]`}>
                 {/* Row 1 — Primary evidence data */}
-                <div className="flex items-center h-6 divide-x divide-[#1e3048]">
+                <div className="flex items-center h-6 divide-x divide-[#2b2b2b]">
                   {/* Timestamp */}
                   <div className="px-2 font-mono text-[11px] text-white/80 font-bold tabular-nums tracking-wider whitespace-nowrap">
                     {formatHudTime(currentTime)}
@@ -318,7 +318,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
                 </div>
 
                 {/* Row 2 — Secondary context */}
-                <div className="flex items-center h-5 divide-x divide-[#1e3048] border-t border-rmpg-700/50">
+                <div className="flex items-center h-5 divide-x divide-[#2b2b2b] border-t border-[#2b2b2b]/50">
                   {/* Vehicle */}
                   <div className="flex-1 px-2 font-mono text-[9px] text-white/40 tracking-wider truncate">
                     VEH #{video.vehicle_number || '--'} {vehDesc}
@@ -352,7 +352,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
         {/* ── Metadata Bar (below video) ── */}
         <div className="panel-inset bg-[var(--surface-sunken)]">
           {/* Primary data row */}
-          <div className="flex items-center h-6 divide-x divide-[#1e3048]">
+          <div className="flex items-center h-6 divide-x divide-[#2b2b2b]">
             <span className="px-2 text-[9px] font-mono text-white/30 uppercase tracking-wider">
               <span className="text-white/15 mr-1">VEH</span>
               <span className="text-white/50">{video.vehicle_number ? `#${video.vehicle_number}` : '--'}</span>
@@ -386,7 +386,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
           {/* Detail lines */}
           {(displayAddress || video.notes || hasLiveGps) && (
-            <div className="px-2 pb-1.5 space-y-0.5 border-t border-rmpg-700/50">
+            <div className="px-2 pb-1.5 space-y-0.5 border-t border-[#2b2b2b]/50">
               {displayAddress && (
                 <div className="flex items-center gap-1 text-[8px] font-mono text-white/25 pt-1">
                   <span className="text-white/12">LOC</span>

@@ -5,6 +5,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     resolve(__dirname, 'index.html'),
     resolve(__dirname, 'src/**/*.{js,ts,jsx,tsx}'),
@@ -20,6 +21,15 @@ export default {
       '2xl': '2px',
       '3xl': '2px',
       full: '2px',
+    },
+    screens: {
+      'xs': '475px',
+      'sm': '640px',
+      'md': '768px',
+      'lg': '1024px',
+      'xl': '1280px',
+      '2xl': '1536px',
+      '3xl': '1920px',
     },
     extend: {
       fontFamily: {
@@ -42,31 +52,29 @@ export default {
         // modifier works (e.g. bg-surface-sunken/50). RGB channels are
         // declared in index.css as --surface-*-rgb (space-separated).
         surface: {
-          base:    'rgb(var(--surface-base-rgb) / <alpha-value>)',     // #141e2b / #0d2a4d
-          raised:  'rgb(var(--surface-raised-rgb) / <alpha-value>)',   // #1a2636 / #153a6a
-          sunken:  'rgb(var(--surface-sunken-rgb) / <alpha-value>)',   // #0d1520 / #081e3d
-          overlay: 'rgb(var(--surface-overlay-rgb) / <alpha-value>)',  // #0a1018 / #061630
-          deep:    'rgb(var(--surface-deep-rgb) / <alpha-value>)',     // #060c14 / #041022
+          // Dark Mode colors:  #000000 #0b0b0b #000000 #030303 #000000
+          // Light Mode colors: #0d2a4d #153a6a #081e3d #061630 #041022
+          base:    'rgb(var(--surface-base-rgb) / <alpha-value>)',
+          raised:  'rgb(var(--surface-raised-rgb) / <alpha-value>)',
+          sunken:  'rgb(var(--surface-sunken-rgb) / <alpha-value>)',
+          overlay: 'rgb(var(--surface-overlay-rgb) / <alpha-value>)',
+          deep:    'rgb(var(--surface-deep-rgb) / <alpha-value>)',
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Spillman Flex / Motorola Solutions blue theme
-        //   Primary blue (toolbar / accents):   #1a5a9e
-        //   Logo charcoal (body / base):        #303030
-        //   Logo gold (field labels / accents):  #d4a017
-        //   Logo light grey (text):              #d0d0d0
+        // Pure black shell with neutral metallic accents
 
         brand: {
-          50:  '#f0f5fa',    // Lightest tint
-          100: '#d6e4f0',
-          200: '#a8c8e8',
-          300: '#6ba3d4',
-          400: '#3b8ad4',    // Lighter accent
-          500: '#1a5a9e',    // Primary — Motorola blue
-          600: '#164d87',    // Slightly deeper
-          700: '#124070',    // Deep blue
-          800: '#0e3359',    // Very deep
-          900: '#0a2642',    // Darkest blue
+          50:  '#f2f2f2',
+          100: '#dddddd',
+          200: '#bfbfbf',
+          300: '#9e9e9e',
+          400: '#7f7f7f',
+          500: '#666666',
+          600: '#4c4c4c',
+          700: '#343434',
+          800: '#1f1f1f',
+          900: '#0e0e0e',
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -78,25 +86,39 @@ export default {
           700: '#936c0a',
         },
 
-        // Neutral steel-blue greys — Spillman Flex dark theme
+        // Keep the "blue" token name for existing utility usage, but render it as neutral gray
+        blue: {
+          50:  '#f1f1f1',
+          100: '#d9d9d9',
+          200: '#bdbdbd',
+          300: '#a1a1a1',
+          400: '#c8c8c8',
+          500: '#9a9a9a',
+          600: '#737373',
+          700: '#4f4f4f',
+          800: '#2e2e2e',
+          900: '#141414',
+        },
+
+        // Neutral graphite greys — no blue cast
         rmpg: {
-          50:  '#e8edf2',    // Light background
-          100: '#d0d8e0',    // Light grey
-          200: '#b0bcc8',    // Medium light
-          300: '#8a9aaa',    // Medium grey
-          400: '#5a6e80',    // Grey
-          500: '#3a4e60',    // Mid-dark
-          600: '#2a3a4e',    // Dark steel-blue
-          700: '#1e3048',    // Deep steel-blue
-          800: '#162236',    // Deeper
-          900: '#0d1520',    // Near black
-          950: '#060c14',    // App background
+          50:  '#ededed',
+          100: '#d6d6d6',
+          200: '#b8b8b8',
+          300: '#969696',
+          400: '#757575',
+          500: '#5a5a5a',
+          600: '#434343',
+          700: '#2d2d2d',
+          800: '#1b1b1b',
+          900: '#0d0d0d',
+          950: '#030303',
         },
 
         dispatch: {
           emergency: '#dc2626',    // Safety red (not brand)
           urgent:    '#d4a017',    // Brand gold
-          routine:   '#4a90c4',    // Muted steel blue
+          routine:   '#a7b1bc',
           scheduled: '#6b7280',
         },
         success: {
@@ -110,7 +132,7 @@ export default {
         status: {
           available:  '#22c55e',
           dispatched: '#d4a017',   // Brand gold
-          enroute:    '#4a90c4',   // Steel blue
+          enroute:    '#d5dde6',
           onscene:    '#a855f7',
           busy:       '#dc2626',   // Safety red
           offduty:    '#6b7280',

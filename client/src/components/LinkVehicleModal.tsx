@@ -177,7 +177,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
 
         {/* Results dropdown */}
         {searchResults.length > 0 && !selectedVehicle && (
-          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-gray-700">
+          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-rmpg-700">
             {searchResults.map((vehicle) => (
               <button
                 key={vehicle.id}

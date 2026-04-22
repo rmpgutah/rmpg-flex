@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob, ServeSkipAddress, ServeSkipTrace } from '../../types';
+import { safeDateStr } from '../../utils/dateUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ function AddressTypeBadge({ type }: { type: string }) {
   else if (lower === 'previous') cls = 'bg-yellow-900/40 text-yellow-400 border-yellow-700/50';
 
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${cls}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${cls}`}>
       {type}
     </span>
   );
@@ -157,31 +158,36 @@ export default function ServeSkipTracePanel({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-black/40 transition-opacity"
+        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Panel */}
       <div
-        className="fixed top-0 right-0 z-50 h-full w-full sm:w-[400px] bg-surface-base border-l border-rmpg-700 panel-beveled shadow-2xl flex flex-col animate-slide-in-right"
+        className="fixed top-0 right-0 z-50 h-full w-full sm:w-[400px] bg-[#141414] border-l border-[#2b2b2b] panel-beveled shadow-md flex flex-col"
         style={{ animation: 'slideInRight 0.2s ease-out' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Skip Trace Lookup"
       >
         {/* ─── Header ─────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
           <div className="flex items-center gap-2">
-            <Search size={16} className="text-blue-400" />
-            <h2 className="text-sm font-semibold text-white">Skip Trace Lookup</h2>
+            <Search size={16} className="text-[#d4a017]" />
+            <h2 className="text-sm font-semibold text-white tracking-wide">Skip Trace Lookup</h2>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-500 hover:text-white transition-colors"
+            className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#181818] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+            aria-label="Close skip trace panel"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* ─── Scrollable Body ────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-dark">
           {/* Search Section */}
           <div className="space-y-3">
             <div>
@@ -190,7 +196,7 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchName}
                 onChange={e => setSearchName(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 placeholder="Recipient name"
               />
             </div>
@@ -200,14 +206,14 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchAddress}
                 onChange={e => setSearchAddress(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 placeholder="Last known address"
               />
             </div>
-            <button
+            <button type="button"
               onClick={runLookup}
               disabled={loading || !searchName.trim()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#888888] hover:bg-[#888888]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
             >
               {loading ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -223,7 +229,7 @@ export default function ServeSkipTracePanel({
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2 px-3 py-2 text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded">
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-sm">
               <AlertTriangle size={14} />
               <span>{error}</span>
             </div>
@@ -234,7 +240,7 @@ export default function ServeSkipTracePanel({
             <div className="space-y-4">
               {/* Result Count Badge */}
               <div className="flex items-center gap-2">
-                <span className="text-[11px] px-2 py-0.5 rounded bg-blue-900/40 text-blue-400 border border-blue-700/50">
+                <span className="text-[11px] px-2 py-0.5 rounded-[2px] bg-[#888888]/20 text-gray-400 border border-[#888888]/40 font-mono">
                   {result.resultCount} person(s) found
                 </span>
               </div>
@@ -256,7 +262,7 @@ export default function ServeSkipTracePanel({
                   {result.persons.map((person, i) => (
                     <div
                       key={i}
-                      className="px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded"
+                      className="px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] transition-colors hover:bg-[#141414]"
                     >
                       <div className="flex items-center gap-2">
                         <User size={14} className="text-rmpg-400" />
@@ -278,7 +284,7 @@ export default function ServeSkipTracePanel({
               {/* Addresses */}
               {sortedAddresses.length > 0 && (
                 <div className="space-y-1">
-                  <h3 className="text-[11px] text-rmpg-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
                     <MapPin size={12} /> Addresses
                   </h3>
                   <div className="space-y-1.5">
@@ -287,10 +293,10 @@ export default function ServeSkipTracePanel({
                       return (
                         <div
                           key={i}
-                          className={`px-3 py-2 bg-surface-sunken border rounded text-sm ${
+                          className={`px-3 py-2 bg-[#0c0c0c] border rounded-[2px] text-sm transition-all duration-150 hover:bg-[#141414] ${
                             matches
-                              ? 'border-green-700/50 bg-green-900/10'
-                              : 'border-rmpg-700'
+                              ? 'border-green-700/50 bg-green-900/10 shadow-[0_0_6px_rgba(34,197,94,0.1)]'
+                              : 'border-[#2b2b2b]'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -312,9 +318,9 @@ export default function ServeSkipTracePanel({
                                 )}
                               </div>
                             </div>
-                            <button
+                            <button type="button"
                               onClick={() => onAddToRoute(addr)}
-                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-700/40 rounded transition-colors"
+                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-[#888888]/20 hover:bg-[#888888]/40 text-gray-400 border border-[#888888]/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
                               title="Add to Route"
                             >
                               <Plus size={10} />
@@ -331,14 +337,14 @@ export default function ServeSkipTracePanel({
               {/* Phone Numbers */}
               {result.phones && result.phones.length > 0 && (
                 <div className="space-y-1">
-                  <h3 className="text-[11px] text-rmpg-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
                     <Phone size={12} /> Phone Numbers
                   </h3>
                   <div className="space-y-1">
                     {result.phones.map((ph, i) => (
                       <div
                         key={i}
-                        className="px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded flex items-center justify-between"
+                        className="px-3 py-1.5 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm flex items-center justify-between"
                       >
                         <span className="text-xs text-white font-mono">{ph.number}</span>
                         <div className="flex items-center gap-2">
@@ -358,14 +364,14 @@ export default function ServeSkipTracePanel({
               {/* Employment */}
               {result.employment && result.employment.length > 0 && (
                 <div className="space-y-1">
-                  <h3 className="text-[11px] text-rmpg-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
                     <Briefcase size={12} /> Employment
                   </h3>
                   <div className="space-y-1">
                     {result.employment.map((emp, i) => (
                       <div
                         key={i}
-                        className="px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded"
+                        className="px-3 py-1.5 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm"
                       >
                         <p className="text-xs text-white">{emp.employer}</p>
                         {emp.title && (
@@ -384,23 +390,24 @@ export default function ServeSkipTracePanel({
 
           {/* Previous Lookups Accordion */}
           {priorTraces.length > 0 && (
-            <div className="border border-rmpg-700 rounded overflow-hidden">
-              <button
+            <div className="border border-[#2b2b2b] rounded-[2px] overflow-hidden">
+              <button type="button"
                 onClick={() => setHistoryOpen(v => !v)}
-                className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-rmpg-400 hover:text-rmpg-200 bg-surface-sunken transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-rmpg-400 hover:text-rmpg-300 bg-[#0c0c0c] transition-all duration-150 hover:bg-[#141414]"
+                aria-expanded={historyOpen}
               >
-                <span className="font-semibold uppercase tracking-wider">
+                <span className="font-semibold uppercase tracking-wider text-[#d4a017]">
                   Previous Lookups ({priorTraces.length})
                 </span>
                 {historyOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </button>
               {historyOpen && (
-                <div className="border-t border-rmpg-700 divide-y divide-[#1e3048]">
+                <div className="border-t border-[#2b2b2b] divide-y divide-[#2b2b2b]">
                   {priorTraces.map((trace: ServeSkipTrace) => (
                     <div key={trace.id} className="px-3 py-2 text-[11px]">
                       <div className="flex items-center justify-between">
-                        <span className="text-rmpg-200">
-                          {new Date(trace.created_at).toLocaleDateString()}
+                        <span className="text-rmpg-300">
+                          {safeDateStr(trace.created_at)}
                         </span>
                         <span className="text-rmpg-500">{trace.search_type}</span>
                       </div>

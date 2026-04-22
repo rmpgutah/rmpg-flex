@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
+import StatusBarRadio from './StatusBarRadio';
+import { safeTimeStr } from '../utils/dateUtils';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -14,6 +16,7 @@ interface StatusBarProps {
   isConnected: boolean;
   user: { first_name: string; last_name: string; role: string; badge_number?: string } | null;
   activeCallCount: number;
+  callsByPriority?: { priority: string; count: number }[];
   activeBOLOs: number;
   gpsTracking?: boolean;
   gpsUnitCallSign?: string | null;
@@ -25,6 +28,7 @@ export default function StatusBar({
   isConnected,
   user,
   activeCallCount,
+  callsByPriority,
   activeBOLOs,
   gpsTracking,
   gpsUnitCallSign,
@@ -40,56 +44,69 @@ export default function StatusBar({
 
   return (
     <div className="status-bar">
-      {/* Connection Status */}
-      <div className="status-bar-section">
+      {/* 26: Connection Status with uppercase tracking */}
+      <div className="status-bar-section" style={{ letterSpacing: '0.04em' }}>
         <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-        <span style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>
+        <span style={{ color: isConnected ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
           {isConnected ? 'CONNECTED' : 'OFFLINE'}
         </span>
       </div>
 
-      {/* Server */}
+      {/* 27: Server version with logo */}
       <div className="status-bar-section">
         <RmpgLogo height={12} iconOnly />
-        <span>RMPG-FLEX v{APP_VERSION}</span>
+        <span style={{ letterSpacing: '0.02em' }}>RMPG-FLEX v{APP_VERSION}</span>
       </div>
 
-      {/* Active Calls */}
+      {/* 28: Active Calls with tabular-nums and color highlight + priority breakdown */}
       <div className="status-bar-section">
-        <span>CALLS: {activeCallCount}</span>
+        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span>
+        {callsByPriority && callsByPriority.length > 0 && activeCallCount > 0 && (
+          <span style={{ color: '#666666', marginLeft: 4 }}>
+            ({callsByPriority.filter(p => p.count > 0).map(p => `${p.count} ${p.priority}`).join(', ')})
+          </span>
+        )}
+        </span>
       </div>
 
-      {/* BOLOs */}
+      {/* 29: BOLOs with tabular-nums */}
       <div className="status-bar-section">
         {activeBOLOs > 0 && (
           <span className="led-dot led-red animate-led-blink" />
         )}
-        <span style={activeBOLOs > 0 ? { color: '#ef4444' } : undefined}>
-          BOLO: {activeBOLOs}
+        <span style={activeBOLOs > 0 ? { color: '#ef4444', fontWeight: 700 } : undefined}>
+          BOLO: <span className="tabular-nums">{activeBOLOs}</span>
         </span>
       </div>
 
-      {/* GPS Status */}
+      {/* 30: GPS Status with tabular-nums for accuracy/time */}
       <div className="status-bar-section">
-        {gpsTracking ? (
-          <>
-            <span className="led-dot led-green animate-led-blink" />
-            <span style={{ color: '#22c55e' }}>
-              GPS: {gpsUnitCallSign || 'ON'}
-            </span>
-            {gpsAccuracy != null && (
-              <span style={{ color: '#5a6e80', marginLeft: 4 }}>
-                ±{Math.round(gpsAccuracy)}m
+        {gpsTracking ? (() => {
+          const ageSec = gpsLastSent ? (Date.now() - new Date(gpsLastSent).getTime()) / 1000 : Infinity;
+          const isLost = ageSec > 600;     // >10 min
+          const isStale = ageSec > 120;    // >2 min
+          const ledClass = isLost ? 'led-red' : isStale ? 'led-amber' : 'led-green';
+          const gpsColor = isLost ? '#ef4444' : isStale ? '#f59e0b' : '#22c55e';
+          return (
+            <>
+              <span className={`led-dot ${ledClass} animate-led-blink`} />
+              <span style={{ color: gpsColor, fontWeight: 700 }}>
+                GPS: {gpsUnitCallSign || 'ON'}
               </span>
-            )}
-            {gpsLastSent && (
-              <span style={{ color: '#5a6e80', marginLeft: 4 }}>
-                {new Date(gpsLastSent).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
-            )}
-          </>
-        ) : (
-          <span style={{ color: '#5a6e80' }}>GPS: OFF</span>
+              {gpsAccuracy != null && (
+                <span className="tabular-nums" style={{ color: '#666666', marginLeft: 4 }}>
+                  ±{Math.round(gpsAccuracy)}m
+                </span>
+              )}
+              {gpsLastSent && (
+                <span className="tabular-nums" style={{ color: isStale ? gpsColor : '#505050', marginLeft: 4 }}>
+                  {safeTimeStr(gpsLastSent)}
+                </span>
+              )}
+            </>
+          );
+        })() : (
+          <span style={{ color: '#3a3a3a' }}>GPS: OFF</span>
         )}
       </div>
 
@@ -100,15 +117,18 @@ export default function StatusBar({
         </span>
       </div>
 
+      {/* Radio */}
+      <StatusBarRadio />
+
       {/* Battery */}
       <BatteryIndicator />
 
-      {/* Timestamp (right-aligned) */}
+      {/* 31: Timestamp with tabular-nums for stable clock rendering */}
       <div className="status-bar-section">
-        <span style={{ color: '#22c55e' }}>
+        <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
-        <span style={{ color: '#5a6e80', marginLeft: 8 }}>
+        <span style={{ color: '#666666', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',

@@ -12,6 +12,7 @@ import {
   ChevronRight, RefreshCw, Filter,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { formatDateTime, formatDate, parseTimestamp } from '../utils/dateUtils';
@@ -28,9 +29,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   defensive_tactics: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   first_aid: 'bg-green-900/40 text-green-400 border-green-700/50',
   legal: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  communication: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
-  driving: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
-  technology: 'bg-indigo-900/40 text-indigo-400 border-indigo-700/50',
+  communication: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  driving: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  technology: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   leadership: 'bg-brand-900/40 text-brand-400 border-brand-700/50',
   compliance: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -38,7 +39,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   completed: { bg: 'bg-green-900/50', text: 'text-green-400', border: 'border-green-700/50' },
-  in_progress: { bg: 'bg-blue-900/50', text: 'text-blue-400', border: 'border-blue-700/50' },
+  in_progress: { bg: 'bg-gray-900/50', text: 'text-gray-400', border: 'border-gray-700/50' },
   scheduled: { bg: 'bg-amber-900/50', text: 'text-amber-400', border: 'border-amber-700/50' },
   overdue: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
   expired: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
@@ -57,9 +58,24 @@ interface Officer {
 }
 
 // ── Main Component ─────────────────────────────────────────
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrainingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [records, setRecords] = useState<TrainingRecord[]>([]);
   const [requirements, setRequirements] = useState<TrainingRequirement[]>([]);
@@ -72,6 +88,14 @@ export default function TrainingPage() {
   const [editRecord, setEditRecord] = useState<TrainingRecord | null>(null);
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   const [editRequirement, setEditRequirement] = useState<TrainingRequirement | null>(null);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [bulkCourseName, setBulkCourseName] = useState('');
+  const [bulkCategory, setBulkCategory] = useState<string>('other');
+  const [bulkProvider, setBulkProvider] = useState('');
+  const [bulkHours, setBulkHours] = useState('0');
+  const [bulkOfficerIds, setBulkOfficerIds] = useState<string[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [trainingCompletion, setTrainingCompletion] = useState<any>(null);
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -87,7 +111,12 @@ export default function TrainingPage() {
       ]);
       if (!mountedRef.current) return;
       setRecords(recs || []);
-      setRequirements(reqs || []);
+      // Normalize required_for_roles — DB stores as JSON string, UI expects array
+      setRequirements((reqs || []).map(r => ({
+        ...r,
+        required_for_roles: Array.isArray(r.required_for_roles) ? r.required_for_roles
+          : (() => { try { return JSON.parse(r.required_for_roles as any || '[]'); } catch { return []; } })(),
+      })));
       setOfficers((users || []).filter(u => u.status === 'active'));
     } catch (err: any) {
       console.error('Failed to load training data:', err);
@@ -99,6 +128,36 @@ export default function TrainingPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('training', fetchData);
+
+  // Fetch training completion data
+  useEffect(() => {
+    apiFetch('/personnel/training-completion').then(d => setTrainingCompletion(d)).catch(() => {});
+  }, [records]);
+
+  const handleBulkAssign = async () => {
+    if (!bulkCourseName || bulkOfficerIds.length === 0) return;
+    setBulkSaving(true);
+    try {
+      await apiFetch('/personnel/training-bulk-assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          officer_ids: bulkOfficerIds,
+          course_name: bulkCourseName,
+          category: bulkCategory,
+          provider: bulkProvider || undefined,
+          hours: parseFloat(bulkHours) || 0,
+        }),
+      });
+      setShowBulkAssign(false);
+      setBulkCourseName('');
+      setBulkOfficerIds([]);
+      fetchData();
+    } catch (err) {
+      console.error('Bulk assign error:', err);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   // ── Record CRUD ──────────────────────────────────────
   const handleSaveRecord = async (data: Partial<TrainingRecord>) => {
@@ -159,12 +218,24 @@ export default function TrainingPage() {
     { key: 'calendar', label: 'Calendar', icon: Calendar },
   ];
 
+  // Set document title
+  useEffect(() => { document.title = 'Training Management \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowRecordModal(false); setEditRecord(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-surface-sunken">
       {fetchError && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {/* Header */}
@@ -179,42 +250,53 @@ export default function TrainingPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh">
+          <IconButton onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh" aria-label="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          </IconButton>
           {isAdmin && (
-            <button
-              onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
-              className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" />
-              Add Record
-            </button>
+            <>
+              <button type="button"
+                onClick={() => setShowBulkAssign(true)}
+                className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1"
+              >
+                <Users className="w-3 h-3" />
+                Bulk Assign
+              </button>
+              <button type="button"
+                onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
+                className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                Add Record
+              </button>
+            </>
           )}
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="panel-inset mx-3 mt-3 p-1 flex items-center gap-1 flex-shrink-0">
+      <div className="panel-inset mx-3 mt-3 p-1 flex items-center gap-1 flex-shrink-0" role="tablist" aria-label="Training management tabs">
         {TABS.map(({ key, label, icon: Icon }) => (
-          <button
+          <button type="button"
             key={key}
+            role="tab"
+            aria-selected={activeTab === key}
             onClick={() => setActiveTab(key)}
-            className={`text-[10px] px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+            className={`text-[10px] px-3 py-1.5 flex items-center gap-1.5 transition-colors duration-150 ${
               activeTab === key ? 'toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
-            <Icon className="w-3 h-3" />
+            <Icon className="w-3 h-3" aria-hidden="true" />
             {label}
           </button>
         ))}
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-dark" role="tabpanel">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             <span className="ml-2 text-xs text-rmpg-400">Loading training data...</span>
           </div>
         ) : (
@@ -265,6 +347,74 @@ export default function TrainingPage() {
           onSave={handleSaveRequirement}
           onClose={() => { setShowRequirementModal(false); setEditRequirement(null); }}
         />
+      )}
+
+      {/* Bulk Assignment Modal */}
+      {showBulkAssign && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowBulkAssign(false)}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg p-4 space-y-3 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-rmpg-100 uppercase flex items-center gap-2">
+                <Users className="w-4 h-4 text-brand-400" /> Bulk Training Assignment
+              </h2>
+              <IconButton onClick={() => setShowBulkAssign(false)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close bulk assign">
+                <X className="w-4 h-4" />
+              </IconButton>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Course Name</label>
+                <input type="text" value={bulkCourseName} onChange={e => setBulkCourseName(e.target.value)}
+                  className="input-dark w-full mt-1 text-xs" placeholder="e.g. Annual Firearms Qualification" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
+                  <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="input-dark w-full mt-1 text-xs">
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Hours</label>
+                  <input type="number" value={bulkHours} onChange={e => setBulkHours(e.target.value)}
+                    className="input-dark w-full mt-1 text-xs" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Provider</label>
+                <input type="text" value={bulkProvider} onChange={e => setBulkProvider(e.target.value)}
+                  className="input-dark w-full mt-1 text-xs" placeholder="Optional" />
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">
+                  Select Officers ({bulkOfficerIds.length} selected)
+                  <button type="button" className="ml-2 text-brand-400 hover:text-brand-300"
+                    onClick={() => setBulkOfficerIds(bulkOfficerIds.length === officers.length ? [] : officers.map(o => o.id))}>
+                    {bulkOfficerIds.length === officers.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </label>
+                <div className="max-h-[150px] overflow-y-auto mt-1 border border-rmpg-700 rounded-sm bg-surface-sunken p-1 space-y-0.5">
+                  {officers.map(o => (
+                    <label key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
+                      <input type="checkbox"
+                        checked={bulkOfficerIds.includes(o.id)}
+                        onChange={e => setBulkOfficerIds(e.target.checked ? [...bulkOfficerIds, o.id] : bulkOfficerIds.filter(id => id !== o.id))}
+                        className="w-3 h-3" />
+                      {o.full_name} {o.badge_number ? `(#${o.badge_number})` : ''}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowBulkAssign(false)} className="toolbar-btn text-[10px] px-3 py-1.5">Cancel</button>
+              <button type="button" onClick={handleBulkAssign} disabled={bulkSaving || !bulkCourseName || bulkOfficerIds.length === 0}
+                className="toolbar-btn-primary text-[10px] px-3 py-1.5 disabled:opacity-50">
+                {bulkSaving ? 'Assigning...' : `Assign to ${bulkOfficerIds.length} Officer(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -327,16 +477,46 @@ function DashboardTab({ records, requirements, officers }: {
       completed: records.filter(r => r.category === cat && r.status === 'completed').length,
     })).filter(c => c.total > 0);
 
-    return { completed, inProgress, scheduled, overdue, totalHours, expiringSoon, officerCompliance, avgCompliance, byCategory };
+    const overduePersonnel = officerCompliance.filter(o => o.overdue > 0);
+    const overduePercent = officerCompliance.length > 0
+      ? Math.round((overduePersonnel.length / officerCompliance.length) * 100) : 0;
+
+    return { completed, inProgress, scheduled, overdue, totalHours, expiringSoon, officerCompliance, avgCompliance, byCategory, overduePersonnel, overduePercent };
   }, [records, requirements, officers]);
 
   return (
     <div className="p-4 space-y-4">
+      {/* Compliance Summary Banner */}
+      <div className="panel-beveled p-3 border-l-2 border-l-brand-500" role="region" aria-label="Compliance summary">
+        <div className="flex items-center gap-2 mb-2">
+          <CheckCircle className="w-3.5 h-3.5 text-brand-400" aria-hidden="true" />
+          <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Compliance Summary</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center" role="group" aria-label="Compliance metrics">
+          <div>
+            <p className="text-lg font-bold font-mono text-brand-300">{officers.length}</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Total Personnel</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold font-mono" style={{ color: stats.overduePersonnel.length > 0 ? '#ef4444' : '#22c55e' }}>{stats.overduePersonnel.length}</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Overdue Personnel ({stats.overduePercent}%)</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold font-mono text-orange-400">{stats.expiringSoon}</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Certs Expiring (30d)</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold font-mono" style={{ color: stats.avgCompliance >= 90 ? '#22c55e' : stats.avgCompliance >= 70 ? '#f59e0b' : '#ef4444' }}>{stats.avgCompliance}%</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Avg Compliance</p>
+          </div>
+        </div>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
         <StatCard value={records.length} label="Total Records" color="#6b8aad" borderColor="#4a6a8a" />
         <StatCard value={stats.completed} label="Completed" color="#22c55e" borderColor="#15803d" />
-        <StatCard value={stats.inProgress} label="In Progress" color="#3b82f6" borderColor="#1d4ed8" />
+        <StatCard value={stats.inProgress} label="In Progress" color="#888888" borderColor="#666666" />
         <StatCard value={stats.scheduled} label="Scheduled" color="#f59e0b" borderColor="#b45309" />
         <StatCard value={stats.overdue} label="Overdue" color="#ef4444" borderColor="#b91c1c" />
         <StatCard value={stats.expiringSoon} label="Expiring (30d)" color="#f97316" borderColor="#c2410c" />
@@ -409,7 +589,7 @@ function DashboardTab({ records, requirements, officers }: {
           </div>
           <div className="space-y-1 max-h-[300px] overflow-y-auto">
             {stats.officerCompliance.map(o => (
-              <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-800/30">
+              <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-700/30">
                 <span className="text-[11px] text-rmpg-100 flex-1 truncate">{o.full_name}</span>
                 {o.badge_number && (
                   <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>
@@ -455,11 +635,176 @@ function DashboardTab({ records, requirements, officers }: {
                   <span className="text-rmpg-500">—</span>
                   <span className="text-rmpg-300">{r.course_name}</span>
                   <span className={`ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 ${STATUS_COLORS[r.status].bg} ${STATUS_COLORS[r.status].text} border ${STATUS_COLORS[r.status].border}`}>
-                    {r.status}
+                    {String(r.status).replace(/_/g, ' ')}
                   </span>
                 </div>
               ))}
           </div>
+        </div>
+      )}
+
+      {/* Overdue Personnel Detail */}
+      {stats.overduePersonnel.length > 0 && (
+        <div className="panel-beveled p-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-3.5 h-3.5 text-red-400" />
+            <span className="text-[9px] text-red-400 uppercase font-bold tracking-wider">
+              Overdue Personnel ({stats.overduePersonnel.length})
+            </span>
+          </div>
+          <div className="space-y-1.5 max-h-[250px] overflow-y-auto">
+            {stats.overduePersonnel.map(o => (
+              <div key={o.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-700/50 bg-red-900/5">
+                <span className="text-[11px] text-rmpg-100 font-medium w-32 truncate">{o.full_name}</span>
+                {o.badge_number && <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>}
+                <span className="text-[9px] text-red-400 font-bold">{o.overdue} missing</span>
+                <span className="ml-auto text-[9px] font-mono" style={{
+                  color: o.compliance >= 90 ? '#22c55e' : o.compliance >= 70 ? '#f59e0b' : '#ef4444',
+                }}>{o.compliance}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Feature 18: Training Materials Library */}
+      <TrainingMaterialsPanel />
+
+      {/* Feature 20: Mandatory Training Alerts */}
+      <MandatoryTrainingAlerts />
+    </div>
+  );
+}
+
+// ── Feature 18: Training Materials Library Component ──
+function TrainingMaterialsPanel() {
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchMaterials = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch<{ data: any[] }>('/personnel/training-materials');
+      setMaterials(res.data || []);
+    } catch { setMaterials([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { if (expanded) fetchMaterials(); }, [expanded]);
+
+  return (
+    <div className="panel-beveled p-3">
+      <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(!expanded); }} className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-3.5 h-3.5 text-brand-400" />
+          <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Training Materials Library</span>
+        </div>
+        <ChevronRight className={`w-3 h-3 text-rmpg-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </div>
+      {expanded && (
+        <div className="mt-2">
+          {loading ? (
+            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
+          ) : materials.length === 0 ? (
+            <p className="text-[11px] text-rmpg-500 text-center py-4">No training materials uploaded yet.</p>
+          ) : (
+            <div className="space-y-1 max-h-[200px] overflow-y-auto">
+              {materials.map((m: any) => (
+                <div key={m.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-700/30 bg-surface-sunken">
+                  <FileText className="w-3 h-3 text-brand-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-rmpg-100 truncate">{m.title}</div>
+                    {m.description && <div className="text-[9px] text-rmpg-500 truncate">{m.description}</div>}
+                  </div>
+                  <span className={`text-[8px] uppercase border px-1.5 py-0.5 ${CATEGORY_COLORS[m.category] || CATEGORY_COLORS.other}`}>
+                    {m.category}
+                  </span>
+                  {m.file_url && (
+                    <a href={m.file_url} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:text-brand-300">
+                      <Archive className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Feature 20: Mandatory Training Alerts ──
+function MandatoryTrainingAlerts() {
+  const [alerts, setAlerts] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchAlerts = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch<any>('/personnel/training-alerts');
+      setAlerts(res);
+    } catch { setAlerts(null); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { if (expanded) fetchAlerts(); }, [expanded]);
+
+  return (
+    <div className="panel-beveled p-3 border-l-2 border-l-amber-500">
+      <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(!expanded); }} className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-[9px] text-amber-400 uppercase font-bold tracking-wider">
+            Mandatory Training Alerts {alerts ? `(${alerts.total_alerts})` : ''}
+          </span>
+        </div>
+        <ChevronRight className={`w-3 h-3 text-rmpg-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </div>
+      {expanded && (
+        <div className="mt-2">
+          {loading ? (
+            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
+          ) : !alerts || alerts.total_alerts === 0 ? (
+            <p className="text-[11px] text-green-400 text-center py-4">All officers are current on mandatory training!</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+                <div className="bg-red-900/20 border border-red-700/30 p-1.5 rounded-sm">
+                  <div className="font-bold text-red-400">{alerts.expired}</div>
+                  <div className="text-rmpg-400">Expired</div>
+                </div>
+                <div className="bg-amber-900/20 border border-amber-700/30 p-1.5 rounded-sm">
+                  <div className="font-bold text-amber-400">{alerts.expiring_soon}</div>
+                  <div className="text-rmpg-400">Expiring Soon</div>
+                </div>
+                <div className="bg-rmpg-800/20 border border-rmpg-700/30 p-1.5 rounded-sm">
+                  <div className="font-bold text-rmpg-300">{alerts.never_completed}</div>
+                  <div className="text-rmpg-400">Never Completed</div>
+                </div>
+              </div>
+              <div className="max-h-[200px] overflow-y-auto space-y-1">
+                {alerts.alerts.slice(0, 20).map((a: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px] py-0.5">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      a.alert_type === 'expired' ? 'bg-red-500' : a.alert_type === 'expiring_soon' ? 'bg-amber-500' : 'bg-rmpg-500'
+                    }`} />
+                    <span className="text-rmpg-200 w-28 truncate">{a.officer_name}</span>
+                    <span className="text-rmpg-400 flex-1 truncate">{a.course_name}</span>
+                    <span className={`text-[9px] font-bold ${
+                      a.alert_type === 'expired' ? 'text-red-400' : a.alert_type === 'expiring_soon' ? 'text-amber-400' : 'text-rmpg-500'
+                    }`}>
+                      {a.alert_type === 'expired' ? `${a.days_overdue}d overdue` :
+                       a.alert_type === 'expiring_soon' ? `${Math.abs(a.days_overdue)}d left` :
+                       'Never done'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -484,13 +829,24 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | TrainingStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | TrainingStatus | 'expiring_soon'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | TrainingCategory>('all');
   const [officerFilter, setOfficerFilter] = useState<string>('all');
 
   const filtered = useMemo(() => {
     let result = records;
-    if (statusFilter !== 'all') result = result.filter(r => r.status === statusFilter);
+    if (statusFilter === 'expiring_soon') {
+      const now = new Date();
+      const thirtyDays = new Date();
+      thirtyDays.setDate(thirtyDays.getDate() + 30);
+      result = result.filter(r => {
+        if (!r.expiry_date) return false;
+        const exp = new Date(r.expiry_date);
+        return exp > now && exp <= thirtyDays;
+      });
+    } else if (statusFilter !== 'all') {
+      result = result.filter(r => r.status === statusFilter);
+    }
     if (categoryFilter !== 'all') result = result.filter(r => r.category === categoryFilter);
     if (officerFilter !== 'all') result = result.filter(r => r.officer_id === officerFilter);
     if (search.trim()) {
@@ -512,16 +868,21 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search..." aria-label="Search..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="input-dark text-[11px] pl-6 pr-2 py-1 w-40"
+            className={`input-dark text-[11px] pl-6 ${search ? 'pr-7' : 'pr-2'} py-1 w-40 min-h-[36px]`}
           />
+          {search && (
+            <IconButton onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+              <X className="w-3 h-3" />
+            </IconButton>
+          )}
         </div>
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as any)}
-          className="input-dark text-[10px] px-2 py-1"
+          className="input-dark text-[10px] px-2 py-1 min-h-[36px]"
         >
           <option value="all">All Statuses</option>
           <option value="completed">Completed</option>
@@ -529,11 +890,12 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
           <option value="scheduled">Scheduled</option>
           <option value="overdue">Overdue</option>
           <option value="expired">Expired</option>
+          <option value="expiring_soon">Expiring in 30 Days</option>
         </select>
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as any)}
-          className="input-dark text-[10px] px-2 py-1"
+          className="input-dark text-[10px] px-2 py-1 min-h-[36px]"
         >
           <option value="all">All Categories</option>
           {CATEGORIES.map(c => (
@@ -543,7 +905,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
         <select
           value={officerFilter}
           onChange={e => setOfficerFilter(e.target.value)}
-          className="input-dark text-[10px] px-2 py-1"
+          className="input-dark text-[10px] px-2 py-1 min-h-[36px]"
         >
           <option value="all">All Officers</option>
           {officers.map(o => (
@@ -575,7 +937,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
             </thead>
             <tbody>
               {filtered.map(record => (
-                <tr key={record.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={record.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
@@ -588,7 +950,22 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                     {record.completed_date ? formatDate(record.completed_date) : '—'}
                   </td>
                   <td className="py-1.5 px-2 text-rmpg-300 font-mono text-[10px]">
-                    {record.expiry_date ? formatDate(record.expiry_date) : '—'}
+                    {record.expiry_date ? (
+                      <span className="flex items-center gap-1">
+                        <span className={
+                          new Date(record.expiry_date) < new Date() ? 'text-red-400 font-bold' :
+                          new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' :
+                          new Date(record.expiry_date) <= new Date(Date.now() + 60 * 86400000) ? 'text-yellow-400' : ''
+                        }>{formatDate(record.expiry_date)}</span>
+                        {(() => {
+                          const days = Math.ceil((new Date(record.expiry_date).getTime() - Date.now()) / 86400000);
+                          if (days < 0) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase animate-pulse">EXPIRED {Math.abs(days)}d</span>;
+                          if (days <= 30) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase">{days}d LEFT</span>;
+                          if (days <= 60) return <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold uppercase">{days}d LEFT</span>;
+                          return <span className="text-[8px] px-1 py-0 text-green-400 font-mono">{days}d</span>;
+                        })()}
+                      </span>
+                    ) : '—'}
                   </td>
                   <td className="py-1.5 px-2 text-right text-rmpg-200 font-mono">{record.hours || 0}</td>
                   <td className="py-1.5 px-2 text-right text-rmpg-200 font-mono">{record.score ?? '—'}</td>
@@ -598,12 +975,12 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                   {isAdmin && (
                     <td className="py-1.5 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit">
+                        <IconButton onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit training record ${record.id}`}>
                           <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
+                        </IconButton>
+                        <IconButton onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete" aria-label={`Delete training record ${record.id}`}>
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </IconButton>
                       </div>
                     </td>
                   )}
@@ -634,7 +1011,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
           {requirements.length} Training Requirements
         </span>
         {isAdmin && (
-          <button onClick={onAdd} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+          <button type="button" onClick={onAdd} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
             <Plus className="w-3 h-3" />
             Add Requirement
           </button>
@@ -673,12 +1050,12 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1">
-                      <button onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit">
+                      <IconButton onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit requirement ${req.id}`}>
                         <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete">
+                      </IconButton>
+                      <IconButton onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete" aria-label={`Delete requirement ${req.id}`}>
                         <Trash2 className="w-3 h-3" />
-                      </button>
+                      </IconButton>
                     </div>
                   )}
                 </div>
@@ -690,7 +1067,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                 <div className="grid grid-cols-3 gap-2 text-[10px] text-rmpg-400 mb-2">
                   <div>
                     <span className="text-rmpg-500">Roles: </span>
-                    <span className="text-rmpg-300">{req.required_for_roles.map(r => r.replace(/_/g, ' ')).join(', ')}</span>
+                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ')).join(', ') || '—'}</span>
                   </div>
                   <div>
                     <span className="text-rmpg-500">Min Hours: </span>
@@ -787,9 +1164,9 @@ function CalendarTab({ records, requirements }: {
     <div className="p-4 space-y-3">
       {/* Month navigation */}
       <div className="flex items-center justify-between">
-        <button onClick={prevMonth} className="toolbar-btn text-[10px] px-3 py-1">← Prev</button>
+        <button type="button" onClick={prevMonth} className="toolbar-btn text-[10px] px-3 py-1">← Prev</button>
         <span className="text-sm font-bold text-rmpg-100">{monthName}</span>
-        <button onClick={nextMonth} className="toolbar-btn text-[10px] px-3 py-1">Next →</button>
+        <button type="button" onClick={nextMonth} className="toolbar-btn text-[10px] px-3 py-1">Next →</button>
       </div>
 
       {/* Calendar grid */}
@@ -805,7 +1182,7 @@ function CalendarTab({ records, requirements }: {
             return (
               <div
                 key={i}
-                className={`min-h-[80px] border-b border-r border-rmpg-800/30 p-1 ${
+                className={`min-h-[80px] border-b border-r border-rmpg-700/30 p-1 ${
                   day && isToday(day) ? 'bg-brand-900/20' : day ? 'bg-surface-base' : 'bg-surface-sunken'
                 }`}
               >
@@ -880,11 +1257,11 @@ function StatusBadge({ status }: { status: string }) {
 
 function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
   return (
-    <div className="text-center py-16">
-      <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-        <Icon className="w-7 h-7 text-rmpg-600" />
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <div className="w-14 h-14 bg-rmpg-700/20 border border-rmpg-700/30 flex items-center justify-center mb-4 panel-inset">
+        <Icon className="w-7 h-7 text-rmpg-500" style={{ opacity: 0.7 }} />
       </div>
-      <p className="text-xs text-rmpg-500">{message}</p>
+      <p className="text-sm text-rmpg-300">{message}</p>
     </div>
   );
 }
@@ -934,13 +1311,13 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Training Record' : 'Add Training Record'}
           </h2>
-          <button onClick={onClose} className="toolbar-btn p-1"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="p-4 space-y-3">
@@ -950,7 +1327,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             <select
               value={form.officer_id}
               onChange={e => update('officer_id', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
             >
               <option value="">Select officer...</option>
               {officers.map(o => (
@@ -967,7 +1344,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               type="text"
               value={form.course_name}
               onChange={e => handleCourseSelect(e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               placeholder="e.g. Firearms Qualification"
             />
             <datalist id="course-suggestions">
@@ -984,7 +1361,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               <select
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
                   <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
@@ -998,7 +1375,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               <select
                 value={form.status}
                 onChange={e => update('status', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="in_progress">In Progress</option>
@@ -1016,7 +1393,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               type="text"
               value={form.provider}
               onChange={e => update('provider', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               placeholder="e.g. Utah POST, RMPG Internal"
             />
           </div>
@@ -1029,7 +1406,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="date"
                 value={form.completed_date}
                 onChange={e => update('completed_date', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               />
             </div>
             {/* Expiry Date */}
@@ -1039,7 +1416,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="date"
                 value={form.expiry_date}
                 onChange={e => update('expiry_date', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               />
             </div>
           </div>
@@ -1052,7 +1429,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="number"
                 value={form.hours}
                 onChange={e => update('hours', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 step="0.5"
               />
@@ -1064,7 +1441,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="number"
                 value={form.score}
                 onChange={e => update('score', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 max="100"
               />
@@ -1076,7 +1453,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="text"
                 value={form.certificate_number}
                 onChange={e => update('certificate_number', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               />
             </div>
           </div>
@@ -1087,14 +1464,14 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             <textarea
               value={form.notes}
               onChange={e => update('notes', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none"
+              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
             />
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 p-3 border-t border-rmpg-700">
-          <button onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
-          <button
+          <button type="button" onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
+          <button type="button"
             onClick={handleSubmit}
             disabled={!form.officer_id || !form.course_name}
             className="toolbar-btn-primary text-[10px] px-4 py-1.5"
@@ -1145,13 +1522,13 @@ function RequirementModal({ requirement, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Requirement' : 'Add Training Requirement'}
           </h2>
-          <button onClick={onClose} className="toolbar-btn p-1"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="p-4 space-y-3">
@@ -1162,7 +1539,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
               type="text"
               value={form.course_name}
               onChange={e => update('course_name', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               placeholder="e.g. Annual Firearms Qualification"
             />
           </div>
@@ -1174,7 +1551,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
               <select
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
                   <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
@@ -1201,7 +1578,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
             <label className="field-label mb-1 block">Required for Roles</label>
             <div className="flex flex-wrap gap-1.5">
               {ROLES.map(role => (
-                <button
+                <button type="button"
                   key={role}
                   onClick={() => toggleRole(role)}
                   className={`text-[10px] px-2 py-1 capitalize ${
@@ -1222,7 +1599,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                 type="number"
                 value={form.renewal_period_months}
                 onChange={e => update('renewal_period_months', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 placeholder="0 = no renewal"
               />
@@ -1235,7 +1612,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                 type="number"
                 value={form.minimum_hours}
                 onChange={e => update('minimum_hours', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 step="0.5"
               />
@@ -1248,15 +1625,15 @@ function RequirementModal({ requirement, onSave, onClose }: {
             <textarea
               value={form.description}
               onChange={e => update('description', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none"
+              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
               placeholder="Brief description of this requirement..."
             />
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 p-3 border-t border-rmpg-700">
-          <button onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
-          <button
+          <button type="button" onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
+          <button type="button"
             onClick={handleSubmit}
             disabled={!form.course_name}
             className="toolbar-btn-primary text-[10px] px-4 py-1.5"

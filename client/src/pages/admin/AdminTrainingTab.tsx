@@ -37,6 +37,20 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Props) {
   const { addToast } = useToast();
   const [stats, setStats] = useState<TrainingStats | null>(null);
@@ -138,31 +152,51 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
   if (!stats) return <div className="p-4 text-rmpg-500">No training data available</div>;
 
   return (
-    <div className="p-4">
+    <div className="p-4 space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-        <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-blue-400">{stats.total_officers}</div>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Total Officers</div>
-        </div>
-        <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black" style={{ color: stats.overall_compliance_rate >= 90 ? '#22c55e' : stats.overall_compliance_rate >= 70 ? '#f59e0b' : '#ef4444' }}>
-            {stats.overall_compliance_rate}%
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" role="group" aria-label="Training compliance overview">
+        <div className="panel-beveled p-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-gray-900/30 border border-gray-700/40 shrink-0" aria-hidden="true">
+            <GraduationCap style={{ width: 14, height: 14 }} className="text-gray-400" />
           </div>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Compliance Rate</div>
+          <div>
+            <div className="text-[18px] font-black text-gray-400 tabular-nums leading-tight">{stats.total_officers}</div>
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Total Officers</div>
+          </div>
         </div>
-        <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-red-400">{stats.total_overdue}</div>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Overdue Items</div>
+        <div className="panel-beveled p-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center shrink-0" style={{ background: stats.overall_compliance_rate >= 90 ? 'rgba(34,197,94,0.15)' : stats.overall_compliance_rate >= 70 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', border: `1px solid ${stats.overall_compliance_rate >= 90 ? 'rgba(34,197,94,0.3)' : stats.overall_compliance_rate >= 70 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}` }} aria-hidden="true">
+            <CheckCircle style={{ width: 14, height: 14 }} className={stats.overall_compliance_rate >= 90 ? 'text-green-400' : stats.overall_compliance_rate >= 70 ? 'text-amber-400' : 'text-red-400'} />
+          </div>
+          <div>
+            <div className="text-[18px] font-black tabular-nums leading-tight" style={{ color: stats.overall_compliance_rate >= 90 ? '#22c55e' : stats.overall_compliance_rate >= 70 ? '#f59e0b' : '#ef4444' }}>
+              {stats.overall_compliance_rate}%
+            </div>
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Compliance Rate</div>
+          </div>
         </div>
-        <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-amber-400">{stats.expiring_soon}</div>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Expiring (30d)</div>
+        <div className="panel-beveled p-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-red-900/30 border border-red-700/40 shrink-0" aria-hidden="true">
+            <AlertTriangle style={{ width: 14, height: 14 }} className="text-red-400" />
+          </div>
+          <div>
+            <div className="text-[18px] font-black text-red-400 tabular-nums leading-tight">{stats.total_overdue}</div>
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Overdue Items</div>
+          </div>
+        </div>
+        <div className="panel-beveled p-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-amber-900/30 border border-amber-700/40 shrink-0" aria-hidden="true">
+            <Clock style={{ width: 14, height: 14 }} className="text-amber-400" />
+          </div>
+          <div>
+            <div className="text-[18px] font-black text-amber-400 tabular-nums leading-tight">{stats.expiring_soon}</div>
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Expiring (30d)</div>
+          </div>
         </div>
       </div>
 
       {/* Category Compliance Bars */}
-      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-2">
+      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#242424] pb-1.5">
         <GraduationCap style={{ width: 10, height: 10 }} />
         Compliance by Category
       </div>
@@ -196,7 +230,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px]">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider bg-[var(--grid-header-bg)]">
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#080808' }}>
             <th className="text-left px-3 py-1.5 font-bold">Officer</th>
             <th className="text-left px-3 py-1.5 font-bold">Badge</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>
@@ -211,12 +245,12 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             const statusColor = o.overdue === 0 ? '#22c55e' : o.overdue <= 2 ? '#f59e0b' : '#ef4444';
             const statusLabel = o.overdue === 0 ? 'COMPLIANT' : `${o.overdue} OVERDUE`;
             return (
-              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-white/[0.02]">
+              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors">
                 <td className="px-3 py-2 font-semibold text-white">{o.full_name}</td>
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>
                 <td className="px-3 py-2 text-center font-mono text-rmpg-300">{o.completed}/{o.required}</td>
-                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#5a6e80' }}>
+                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#666666' }}>
                   {o.overdue}
                 </td>
                 <td className="px-3 py-2">

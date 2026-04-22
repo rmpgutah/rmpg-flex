@@ -45,9 +45,9 @@ export type ShiftType = 'day' | 'swing' | 'night' | 'custom';
 
 export const SHIFT_TYPES: Record<ShiftType, { label: string; defaultStart: string; defaultEnd: string; color: string }> = {
   day:    { label: 'Day Shift',   defaultStart: '06:00', defaultEnd: '14:00', color: '#f59e0b' },
-  swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: '#3b82f6' },
+  swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: '#888888' },
   night:  { label: 'Night Shift', defaultStart: '22:00', defaultEnd: '06:00', color: '#a855f7' },
-  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: '#6b7280' },
+  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: '#666666' },
 };
 
 const LS_KEY = 'rmpg_shift_plans';
@@ -126,7 +126,7 @@ export function useShiftPlanning() {
       setOfficers(activeOfficers);
       setUnits(unitData as UnitOption[]);
     } catch (err) {
-      console.error('[ShiftPlanning] Failed to fetch personnel:', err);
+      console.warn('[useShiftPlanning] Failed to fetch personnel:', err);
     }
   }, []);
 
@@ -315,7 +315,7 @@ export function useShiftPlanning() {
         body: JSON.stringify(plan),
       });
     } catch (err) {
-      console.error('[ShiftPlanning] Save to server failed:', err);
+      console.warn('[useShiftPlanning] Save to server failed:', err);
       throw err;
     }
   }, []);
@@ -331,8 +331,8 @@ export function useShiftPlanning() {
           return [...data, ...localOnly];
         });
       }
-    } catch {
-      // Server endpoint might not exist yet — use localStorage fallback
+    } catch (err) {
+      console.warn('[useShiftPlanning] Server plans fetch failed, using localStorage fallback:', err);
     }
   }, []);
 

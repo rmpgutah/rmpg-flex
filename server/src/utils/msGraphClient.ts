@@ -7,10 +7,12 @@
 // Follows the same pattern as clearPathGpsClient.ts.
 
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import config from '../config';
 import { Client } from '@microsoft/microsoft-graph-client';
+import { getUserTokens, setUserTokens, markUserNeedsReauth } from './userGraphTokens';
 
 // ============================================================
 // Encryption helpers (same pattern as clearPathGpsClient.ts)
@@ -20,7 +22,8 @@ function deriveKey(): Buffer {
   return crypto.createHash('sha256').update(config.jwt.secret).digest();
 }
 
-function encrypt(plaintext: string): string {
+/** AES-256-GCM encrypt with key derived from JWT_SECRET. Output is iv:authTag:ciphertext (hex). */
+export function encryptToken(plaintext: string): string {
   const key = deriveKey();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -30,7 +33,8 @@ function encrypt(plaintext: string): string {
   return `${iv.toString('hex')}:${authTag}:${encrypted}`;
 }
 
-function decrypt(stored: string): string {
+/** Decrypt a string produced by encryptToken(). Throws on tamper or wrong key. */
+export function decryptToken(stored: string): string {
   const key = deriveKey();
   const parts = stored.split(':');
   if (parts.length !== 3) throw new Error('Invalid encrypted format');
@@ -85,13 +89,13 @@ export function getConfigValue(key: string): string | null {
 export function getDecryptedValue(key: string): string | null {
   const val = getConfigValue(key);
   if (!val) return null;
-  try { return decrypt(val); } catch { return null; }
+  try { return decryptToken(val); } catch { return null; }
 }
 
 export function setConfigValue(key: string, value: string, shouldEncrypt = false): void {
   const db = getDb();
   const now = localNow();
-  const stored = shouldEncrypt ? encrypt(value) : value;
+  const stored = shouldEncrypt ? encryptToken(value) : value;
 
   db.prepare(
     "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'"
@@ -274,6 +278,137 @@ export async function ensureValidToken(): Promise<string> {
 // ============================================================
 // Graph API client
 // ============================================================
+
+/** Per-user variant. Throws if user has no tokens. Refreshes if expiring within 1min. */
+export async function ensureValidTokenForUser(userId: number): Promise<string> {
+  const tokens = getUserTokens(userId);
+  if (!tokens) throw new Error(`User ${userId} not enrolled — needs OAuth`);
+  if (tokens.expiresAt > Date.now() + 60_000) return tokens.accessToken;
+
+  const clientId = getDecryptedValue(CONFIG_KEYS.clientId);
+  const clientSecret = getDecryptedValue(CONFIG_KEYS.clientSecret);
+  const tenantId = getDecryptedValue(CONFIG_KEYS.tenantId);
+  if (!clientId || !clientSecret || !tenantId || !tokens.refreshToken) {
+    markUserNeedsReauth(userId);
+    throw new Error(`User ${userId} token refresh failed: missing refresh_token or app config`);
+  }
+
+  const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: tokens.refreshToken,
+    scope: GRAPH_SCOPES.join(' '),
+  });
+  const res = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    markUserNeedsReauth(userId);
+    throw new Error(`Token refresh HTTP ${res.status}`);
+  }
+  const data = await res.json() as any;
+  setUserTokens(userId, {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || tokens.refreshToken,
+    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    mailbox: tokens.mailbox,
+    scopes: tokens.scopes,
+  });
+  return data.access_token;
+}
+
+/** Per-user Graph client — uses ensureValidTokenForUser internally. */
+export async function getGraphClientForUser(userId: number): Promise<Client> {
+  const accessToken = await ensureValidTokenForUser(userId);
+  return Client.init({ authProvider: (done) => done(null, accessToken) });
+}
+
+/** Per-user authorization check — true iff tokens exist and not marked for reauth. */
+export function isUserAuthorized(userId: number): boolean {
+  const tokens = getUserTokens(userId);
+  return !!tokens && tokens.expiresAt > 0;
+}
+
+// ============================================================
+// Per-user OAuth (signed-state CSRF, writes to user_graph_tokens)
+// ============================================================
+
+export function buildOAuthStateForUser(userId: number): string {
+  return jwt.sign(
+    { userId, nonce: crypto.randomBytes(16).toString('hex'), purpose: 'graph_oauth' },
+    config.jwt.secret,
+    { expiresIn: '10m' }
+  );
+}
+
+export function verifyOAuthStateForUser(state: string): number {
+  const decoded = jwt.verify(state, config.jwt.secret) as any;
+  if (decoded.purpose !== 'graph_oauth' || typeof decoded.userId !== 'number') {
+    throw new Error('Invalid OAuth state');
+  }
+  return decoded.userId;
+}
+
+export function getAuthorizationUrlForUser(userId: number, redirectUri: string): string {
+  const clientId = getDecryptedValue(CONFIG_KEYS.clientId);
+  const tenantId = getDecryptedValue(CONFIG_KEYS.tenantId);
+  if (!clientId || !tenantId) throw new Error('Email integration not configured');
+  const state = buildOAuthStateForUser(userId);
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    response_mode: 'query',
+    scope: GRAPH_SCOPES.join(' '),
+    state,
+    prompt: 'select_account',
+  });
+  return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params}`;
+}
+
+export async function exchangeCodeForUserTokens(code: string, redirectUri: string, userId: number): Promise<void> {
+  const clientId = getDecryptedValue(CONFIG_KEYS.clientId);
+  const clientSecret = getDecryptedValue(CONFIG_KEYS.clientSecret);
+  const tenantId = getDecryptedValue(CONFIG_KEYS.tenantId);
+  if (!clientId || !clientSecret || !tenantId) throw new Error('Not configured');
+
+  const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    }).toString(),
+  });
+  if (!res.ok) throw new Error(`Token exchange HTTP ${res.status}`);
+  const data = await res.json() as any;
+
+  let mailbox = '';
+  try {
+    const meRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+      headers: { Authorization: `Bearer ${data.access_token}` },
+    });
+    if (meRes.ok) {
+      const me = await meRes.json() as any;
+      mailbox = me.userPrincipalName || me.mail || '';
+    }
+  } catch { /* tolerated */ }
+
+  setUserTokens(userId, {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || null,
+    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    mailbox,
+    scopes: data.scope || GRAPH_SCOPES.join(' '),
+  });
+}
 
 /** Get an authenticated Microsoft Graph client. */
 export async function getGraphClient(): Promise<Client> {

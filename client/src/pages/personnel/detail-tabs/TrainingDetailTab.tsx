@@ -31,7 +31,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const borderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-l-green-500';
-      case 'in_progress': return 'border-l-blue-500';
+      case 'in_progress': return 'border-l-gray-500';
       case 'scheduled': return 'border-l-amber-500';
       case 'overdue':
       case 'expired': return 'border-l-red-500';
@@ -42,7 +42,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-t-green-500';
-      case 'in_progress': return 'border-t-blue-500';
+      case 'in_progress': return 'border-t-gray-500';
       case 'scheduled': return 'border-t-amber-500';
       case 'overdue':
       case 'expired': return 'border-t-red-500';
@@ -67,7 +67,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
         );
       case 'in_progress':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50">
             <Clock className="w-2.5 h-2.5" />
             In Progress
           </span>
@@ -95,7 +95,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading training records...</span>
       </div>
     );
@@ -109,7 +109,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
           <GraduationCap className="w-3.5 h-3.5 text-brand-400" />
           Training Records
         </h3>
-        <button
+        <button type="button"
           onClick={() => onAddTraining(officerId)}
           className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
         >
@@ -124,9 +124,9 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="field-label text-green-400/70">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-blue-500" style={{ background: '#0a0f1a' }}>
-          <p className="text-lg font-bold font-mono text-blue-400">{inProgress}</p>
-          <p className="field-label text-blue-400/70">In Progress</p>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-gray-500" style={{ background: '#0a0a0a' }}>
+          <p className="text-lg font-bold font-mono text-gray-400">{inProgress}</p>
+          <p className="field-label text-gray-400/70">In Progress</p>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-brand-400">
           <p className="text-lg font-bold font-mono text-brand-400">{totalHours}</p>
@@ -137,7 +137,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
       {/* Training Cards */}
       {training.length === 0 ? (
         <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center  bg-surface-sunken">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#050505' }}>
             <GraduationCap className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-xs text-rmpg-500">No training records for this officer.</p>

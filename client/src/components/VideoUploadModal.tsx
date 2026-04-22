@@ -367,15 +367,15 @@ export default function VideoUploadModal({
   const isUploading = phase === 'uploading' || phase === 'initializing' || phase === 'finalizing';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={handleClose}>
-      <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-[520px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={handleClose}>
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-[520px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
           <div className="flex items-center gap-2">
             <Upload className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Upload Body Camera Video</h2>
           </div>
-          <button onClick={handleClose} disabled={isUploading} className="toolbar-btn p-1">
+          <button type="button" onClick={handleClose} disabled={isUploading} className="toolbar-btn p-1" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -416,7 +416,7 @@ export default function VideoUploadModal({
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-lg hover:border-brand-500 transition-colors flex flex-col items-center gap-2"
+                className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-sm hover:border-brand-500 transition-colors flex flex-col items-center gap-2"
               >
                 <Upload className="w-6 h-6 text-rmpg-500" />
                 <span className="text-xs text-rmpg-400">Click to select video</span>

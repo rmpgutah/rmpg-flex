@@ -6,6 +6,7 @@ import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { playRadioTone } from '../utils/radioTones';
 import { useToast } from './ToastProvider';
+import { safeTimeStr } from '../utils/dateUtils';
 
 // ─── Panic Alarm — loops the unified panicWarble tone ────────────
 // Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
@@ -52,6 +53,8 @@ function playPanicAlarm(durationMs = 10000): { stop: () => void } {
 }
 
 interface PanicAlert {
+  panic_id?: number;
+  user_id?: number;
   user_name: string;
   badge_number?: string;
   role: string;
@@ -63,7 +66,13 @@ interface PanicAlert {
   call_id?: string | number;
   location_address?: string;
   unit_call_sign?: string;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
+  escalation_level?: number;
 }
+
+// Roles that can mark false alarm
+const SUPERVISOR_ROLES = ['admin', 'manager', 'supervisor'];
 
 // ─── Platform detection ─────────────────────────────────────
 const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
@@ -75,7 +84,7 @@ interface PanicButtonProps {
   longitude?: number | null;
 }
 
-export default function PanicButton({ latitude, longitude }: PanicButtonProps = {}) {
+export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const { user } = useAuth();
   const { subscribe } = useWebSocket();
   const panicAudio = usePanicAudio();
@@ -83,6 +92,8 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
   const [sending, setSending] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [incomingAlert, setIncomingAlert] = useState<PanicAlert | null>(null);
+  const [ownPanicId, setOwnPanicId] = useState<number | null>(null);
+  const [ownPanicTime, setOwnPanicTime] = useState<number | null>(null);
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,10 +119,13 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
     }
     volumeUpPressTimesRef.current = [];
     volumeUpHeldRef.current = false;
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+
     // Directly trigger panic (no confirmation needed for hardware trigger)
     setSending(true);
     try {
-      await apiFetch('/dispatch/panic', {
+      const result = await apiFetch<{ panic_id?: number }>('/dispatch/panic', {
         method: 'POST',
         body: JSON.stringify({
           latitude: latitude ?? null,
@@ -119,11 +133,15 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
           trigger_method: 'hardware_button',
         }),
       });
-      // Start live mic broadcast for 15 seconds
-      panicAudio.startBroadcast();
+      if (result?.panic_id) {
+        setOwnPanicId(result.panic_id);
+        setOwnPanicTime(Date.now());
+      }
+      // Start live mic broadcast for 60 seconds
+      panicAudio.startBroadcast(result?.panic_id);
     } catch (err) {
       console.error('Failed to send hardware panic alert:', err);
-      addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
+      addToast('PANIC ALERT FAILED -- Retry or radio dispatch!', 'error', 15000);
     } finally {
       setSending(false);
       sendingRef.current = false;
@@ -192,12 +210,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
     };
   }, [triggerHardwarePanic]);
 
-  // Listen for incoming panic alerts
+  // Listen for incoming panic alerts and status updates
   useEffect(() => {
     const unsub = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg.payload || msg;
       // Don't show your own panic alert back to yourself
-      if (data.user_id && user?.id && data.user_id === user.id) return;
+      if (data.user_id && user?.id && String(data.user_id) === String(user.id)) return;
       setIncomingAlert(data);
       // Set the sender's user ID so the "Respond" talk-back button works
       if (data.user_id) {
@@ -205,24 +223,134 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       }
       // Play alarm
       alarmRef.current = playPanicAlarm(8000);
-      // Auto-dismiss after 30 seconds (tracked for cleanup)
+      // Auto-dismiss after 60 seconds (tracked for cleanup)
       if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
       autoDismissTimerRef.current = setTimeout(() => {
         setIncomingAlert(null);
         alarmRef.current?.stop();
-      }, 30000);
+      }, 60000);
     });
+
+    // Panic acknowledged — update alert display
+    const unsubAck = subscribe('panic_acknowledged', (msg: any) => {
+      const data = msg.data || msg.payload || msg;
+      setIncomingAlert(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          acknowledged_by: data.acknowledged_by || data.user_name,
+          acknowledged_at: data.acknowledged_at || new Date().toISOString(),
+        };
+      });
+      // Stop alarm sound on acknowledge
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+    });
+
+    // Panic resolved — dismiss alert
+    const unsubResolved = subscribe('panic_resolved', (msg: any) => {
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+      setOwnPanicId(null);
+      setOwnPanicTime(null);
+      addToast('Panic alert resolved', 'success', 5000);
+    });
+
+    // Panic cancelled — dismiss alert
+    const unsubCancelled = subscribe('panic_cancelled', (_msg: any) => {
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+      setOwnPanicId(null);
+      setOwnPanicTime(null);
+    });
+
+    // Panic false alarm — dismiss alert
+    const unsubFalse = subscribe('panic_false_alarm', (_msg: any) => {
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+      setOwnPanicId(null);
+      setOwnPanicTime(null);
+      addToast('Panic marked as false alarm', 'info', 5000);
+    });
+
+    // Panic escalated — update escalation level
+    const unsubEscalated = subscribe('panic_escalated', (msg: any) => {
+      const data = msg.data || msg.payload || msg;
+      setIncomingAlert(prev => {
+        if (!prev) return prev;
+        return { ...prev, escalation_level: data.escalation_level };
+      });
+    });
+
     return () => {
       unsub();
+      unsubAck();
+      unsubResolved();
+      unsubCancelled();
+      unsubFalse();
+      unsubEscalated();
       if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
     };
-  }, [subscribe, user?.id, panicAudio]);
+  }, [subscribe, user?.id, panicAudio, addToast]);
 
-  const dismissAlert = useCallback(() => {
+  // Server-side acknowledge — sends POST to /dispatch/panic/:id/acknowledge
+  const acknowledgeAlert = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (panicId) {
+      try {
+        await apiFetch(`/dispatch/panic/${panicId}/acknowledge`, { method: 'POST' });
+      } catch (err) {
+        console.error('Failed to acknowledge panic:', err);
+      }
+    }
+    // Always dismiss locally even if server call fails
     setIncomingAlert(null);
     alarmRef.current?.stop();
     alarmRef.current = null;
-  }, []);
+  }, [incomingAlert?.panic_id]);
+
+  // Cancel own panic (within 30 seconds)
+  const cancelOwnPanic = useCallback(async () => {
+    if (!ownPanicId) return;
+    try {
+      await apiFetch(`/dispatch/panic/${ownPanicId}/cancel`, { method: 'POST' });
+      setOwnPanicId(null);
+      setOwnPanicTime(null);
+      addToast('Panic alert cancelled', 'info', 5000);
+    } catch (err) {
+      console.error('Failed to cancel panic:', err);
+      addToast('Failed to cancel panic alert', 'error', 5000);
+    }
+  }, [ownPanicId, addToast]);
+
+  // False alarm (supervisor+ only)
+  const markFalseAlarm = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (!panicId) return;
+    const notes = window.prompt('Enter false alarm notes:');
+    if (notes === null) return; // User cancelled prompt
+    try {
+      await apiFetch(`/dispatch/panic/${panicId}/false-alarm`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: notes || 'No notes provided' }),
+      });
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+    } catch (err) {
+      console.error('Failed to mark false alarm:', err);
+      addToast('Failed to mark false alarm', 'error', 5000);
+    }
+  }, [incomingAlert?.panic_id, addToast]);
+
+  // Check if current user can cancel (own panic within 30s)
+  const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);
+
+  // Check if current user is supervisor+
+  const isSupervisor = user?.role && SUPERVISOR_ROLES.includes(user.role);
 
   const handlePanicClick = () => {
     setConfirmVisible(true);
@@ -236,19 +364,27 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     setConfirmVisible(false);
     setSending(true);
+
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+
     try {
-      await apiFetch('/dispatch/panic', {
+      const result = await apiFetch<{ panic_id?: number }>('/dispatch/panic', {
         method: 'POST',
         body: JSON.stringify({
           latitude: latitude ?? null,
           longitude: longitude ?? null,
         }),
       });
-      // Start live mic broadcast for 15 seconds
-      panicAudio.startBroadcast();
+      if (result?.panic_id) {
+        setOwnPanicId(result.panic_id);
+        setOwnPanicTime(Date.now());
+      }
+      // Start live mic broadcast for 60 seconds
+      panicAudio.startBroadcast(result?.panic_id);
     } catch (err) {
       console.error('Failed to send panic alert:', err);
-      addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
+      addToast('PANIC ALERT FAILED -- Retry or radio dispatch!', 'error', 15000);
     } finally {
       setSending(false);
     }
@@ -265,7 +401,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       <div className="relative">
         {confirmVisible ? (
           <div className="flex items-center gap-1">
-            <button
+            <button type="button"
               onClick={handleConfirm}
               className="panic-btn-confirm animate-emergency-blink"
               title="CONFIRM — Send emergency alert NOW"
@@ -273,33 +409,45 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               <AlertTriangle style={{ width: 11, height: 11 }} />
               CONFIRM
             </button>
-            <button
+            <button type="button"
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: 'var(--border-default)', border: '1px solid var(--border-strong)', color: '#8a9aaa' }}
+              style={{ background: '#222222', border: '1px solid #2a2a2a', color: '#888888' }}
             >
               Cancel
             </button>
           </div>
         ) : (
-          <button
-            onClick={handlePanicClick}
-            disabled={sending || panicAudio.isBroadcasting}
-            className="panic-btn"
-            title="PANIC — Send emergency alert to all dispatch and users"
-          >
-            {panicAudio.isBroadcasting ? (
-              <>
-                <Mic style={{ width: 12, height: 12 }} className="animate-emergency-blink" />
-                <span>LIVE {panicAudio.broadcastTimeLeft}s</span>
-              </>
-            ) : (
-              <>
-                <AlertTriangle style={{ width: 12, height: 12 }} />
-                <span>{sending ? 'SENDING...' : 'PANIC'}</span>
-              </>
+          <div className="flex items-center gap-1">
+            <button type="button"
+              onClick={handlePanicClick}
+              disabled={sending || panicAudio.isBroadcasting}
+              className="panic-btn"
+              title="PANIC -- Send emergency alert to all dispatch and users"
+            >
+              {panicAudio.isBroadcasting ? (
+                <>
+                  <Mic style={{ width: 12, height: 12 }} className="animate-emergency-blink" />
+                  <span>LIVE {panicAudio.broadcastTimeLeft}s</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle style={{ width: 12, height: 12 }} />
+                  <span>{sending ? 'SENDING...' : 'PANIC'}</span>
+                </>
+              )}
+            </button>
+            {canCancel && (
+              <button type="button"
+                onClick={cancelOwnPanic}
+                className="px-2 py-1 text-[9px] font-bold uppercase"
+                style={{ background: '#1a1a1a', border: '1px solid #f59e0b', color: '#f59e0b' }}
+                title="Cancel your panic alert"
+              >
+                CANCEL
+              </button>
             )}
-          </button>
+          </div>
         )}
       </div>
 
@@ -323,8 +471,8 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               <span className="text-sm font-bold uppercase tracking-widest text-white">
                 Emergency Panic Alert
               </span>
-              <button
-                onClick={dismissAlert}
+              <button type="button"
+                onClick={acknowledgeAlert}
                 className="ml-auto p-1 hover:bg-red-800/50 transition-colors"
               >
                 <X style={{ width: 14, height: 14, color: '#ffffff' }} />
@@ -332,21 +480,21 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: 'var(--surface-sunken)', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: '#050505', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
                 </div>
-                <div className="text-xs font-mono" style={{ color: '#8a9aaa' }}>
+                <div className="text-xs font-mono" style={{ color: '#888888' }}>
                   {incomingAlert.badge_number && `Badge: ${incomingAlert.badge_number} | `}
-                  {incomingAlert.role?.toUpperCase()}
+                  {(incomingAlert.role || '').toUpperCase()}
                   {incomingAlert.unit_call_sign && ` | Unit: ${incomingAlert.unit_call_sign}`}
                 </div>
               </div>
 
               {/* Auto-created dispatch card info */}
               {incomingAlert.call_number && (
-                <div className="text-center p-2" style={{ background: 'var(--surface-sunken)', border: '1px solid #dc2626' }}>
+                <div className="text-center p-2" style={{ background: '#050505', border: '1px solid #dc2626' }}>
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider animate-emergency-blink"
@@ -371,14 +519,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)' }}>
+                <div className="text-xs text-center text-white p-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)' }}>
+                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
@@ -386,15 +534,30 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
 
               {/* Raw GPS coordinates */}
               {(incomingAlert.latitude != null && incomingAlert.longitude != null) && (
-                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#5a6e80' }}>
+                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#666666' }}>
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}
                 </div>
               )}
 
-              <div className="text-center text-[10px] font-mono" style={{ color: 'var(--bevel-highlight)' }}>
-                {new Date(incomingAlert.triggered_at).toLocaleTimeString('en-US', { hour12: false })}
+              <div className="text-center text-[10px] font-mono" style={{ color: '#383838' }}>
+                {safeTimeStr(incomingAlert.triggered_at)}
               </div>
+
+              {/* Acknowledged indicator */}
+              {incomingAlert.acknowledged_by && (
+                <div className="text-center text-[10px] font-mono p-1.5" style={{ background: '#0a1a0a', border: '1px solid #166534', color: '#22c55e' }}>
+                  Acknowledged by {incomingAlert.acknowledged_by}
+                  {incomingAlert.acknowledged_at && ` at ${safeTimeStr(incomingAlert.acknowledged_at)}`}
+                </div>
+              )}
+
+              {/* Escalation level indicator */}
+              {incomingAlert.escalation_level && incomingAlert.escalation_level > 1 && (
+                <div className="text-center text-[10px] font-bold uppercase tracking-wider p-1" style={{ background: '#1a0505', border: '1px solid #dc2626', color: '#ef4444' }}>
+                  Escalation Level {incomingAlert.escalation_level}
+                </div>
+              )}
 
               {/* Live Audio Indicator — shows when receiving panic mic broadcast */}
               {panicAudio.isReceiving && (
@@ -411,41 +574,54 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               )}
 
               {/* Respond Button — talk back to panic sender */}
-              <div className="flex gap-2">
-                {!panicAudio.isReceiving && panicAudio.panicSenderUserId && (
-                  <button
-                    onClick={() => {
-                      if (panicAudio.isResponding) {
-                        panicAudio.stopResponse();
-                      } else {
-                        panicAudio.startResponse(panicAudio.panicSenderUserId!);
-                      }
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold uppercase tracking-wide ${
-                      panicAudio.isResponding
-                        ? 'btn-success'
-                        : 'btn-primary'
-                    }`}
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  {!panicAudio.isReceiving && panicAudio.panicSenderUserId && (
+                    <button type="button"
+                      onClick={() => {
+                        if (panicAudio.isResponding) {
+                          panicAudio.stopResponse();
+                        } else {
+                          panicAudio.startResponse(panicAudio.panicSenderUserId!);
+                        }
+                      }}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold uppercase tracking-wide ${
+                        panicAudio.isResponding
+                          ? 'btn-success'
+                          : 'btn-primary'
+                      }`}
+                    >
+                      {panicAudio.isResponding ? (
+                        <>
+                          <MicOff size={12} />
+                          Stop Talking
+                        </>
+                      ) : (
+                        <>
+                          <Mic size={12} />
+                          Respond
+                        </>
+                      )}
+                    </button>
+                  )}
+                  <button type="button"
+                    onClick={acknowledgeAlert}
+                    aria-label="Acknowledge panic alert"
+                    className={`${!panicAudio.isReceiving && panicAudio.panicSenderUserId ? '' : 'w-full'} btn-danger py-2 justify-center flex-1`}
                   >
-                    {panicAudio.isResponding ? (
-                      <>
-                        <MicOff size={12} />
-                        Stop Talking
-                      </>
-                    ) : (
-                      <>
-                        <Mic size={12} />
-                        Respond
-                      </>
-                    )}
+                    ACKNOWLEDGE
+                  </button>
+                </div>
+                {/* False alarm — supervisor+ only */}
+                {isSupervisor && incomingAlert.panic_id && (
+                  <button type="button"
+                    onClick={markFalseAlarm}
+                    className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
+                    style={{ background: '#1a1a1a', border: '1px solid #444', color: '#888' }}
+                  >
+                    Mark False Alarm
                   </button>
                 )}
-                <button
-                  onClick={dismissAlert}
-                  className={`${!panicAudio.isReceiving && panicAudio.panicSenderUserId ? '' : 'w-full'} btn-danger py-2 justify-center flex-1`}
-                >
-                  ACKNOWLEDGE
-                </button>
               </div>
             </div>
           </div>

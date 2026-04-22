@@ -11,6 +11,7 @@ import {
   LE_AGENCY_OPTIONS,
 } from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 
@@ -30,6 +31,14 @@ export interface IncidentFormData {
   priority: CallPriority;
   location_address: string;
   narrative: string;
+  initial_contact_details: string;
+  scene_observations_details: string;
+  involved_parties_details: string;
+  statements_admissions_details: string;
+  actions_taken_details: string;
+  evidence_follow_up_details: string;
+  notifications_referrals_details: string;
+  follow_up_case_status_details: string;
   occurred_date: string;
   occurred_time: string;
   end_date: string;
@@ -46,7 +55,7 @@ export interface IncidentFormData {
   domestic_violence: boolean;
   disposition: string;
   zone_beat: string;
-  section_id: string;
+  sector_id: string;
   zone_id: string;
   beat_id: string;
   responding_le_agency: string;
@@ -125,11 +134,84 @@ const TRESPASS_TYPES: string[] = ['trespass'];
 const USE_OF_FORCE_TYPES: string[] = ['assault', 'battery', 'use_of_force'];
 const PSO_TYPES: string[] = ['pso_client_request'];
 
+const GUIDED_NARRATIVE_FIELDS = [
+  { key: 'initial_contact_details', label: 'INITIAL CONTACT / COMPLAINT' },
+  { key: 'scene_observations_details', label: 'SCENE OBSERVATIONS / CONDITIONS' },
+  { key: 'involved_parties_details', label: 'INVOLVED PARTIES / VEHICLES / WITNESSES' },
+  { key: 'statements_admissions_details', label: 'STATEMENTS / ADMISSIONS' },
+  { key: 'actions_taken_details', label: 'ACTIONS TAKEN' },
+  { key: 'evidence_follow_up_details', label: 'EVIDENCE / STATEMENTS / FOLLOW-UP' },
+  { key: 'notifications_referrals_details', label: 'NOTIFICATIONS / REFERRALS' },
+  { key: 'follow_up_case_status_details', label: 'FOLLOW-UP / CASE STATUS' },
+] as const;
+
+type GuidedNarrativeFieldKey = typeof GUIDED_NARRATIVE_FIELDS[number]['key'];
+
+function createEmptyGuidedNarrativeFields(): Record<GuidedNarrativeFieldKey, string> {
+  return GUIDED_NARRATIVE_FIELDS.reduce((acc, field) => {
+    acc[field.key] = '';
+    return acc;
+  }, {} as Record<GuidedNarrativeFieldKey, string>);
+}
+
+function buildNarrativeForSubmit(data: IncidentFormData): string {
+  const baseNarrative = data.narrative.trim();
+  const guidedSections = GUIDED_NARRATIVE_FIELDS
+    .map(({ key, label }) => {
+      const value = data[key].trim();
+      return value ? `${label}\n${value}` : '';
+    })
+    .filter(Boolean);
+
+  return [baseNarrative, ...guidedSections].filter(Boolean).join('\n\n');
+}
+
+function escapeGuidedNarrativeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function splitNarrativeIntoGuidedFields(rawNarrative: string): { narrative: string } & Record<GuidedNarrativeFieldKey, string> {
+  const emptyFields = createEmptyGuidedNarrativeFields();
+  const narrative = rawNarrative.trim();
+
+  if (!narrative) {
+    return { narrative: '', ...emptyFields };
+  }
+
+  const headingPattern = new RegExp(
+    `(?:^|\\n\\n)(${GUIDED_NARRATIVE_FIELDS.map((field) => escapeGuidedNarrativeRegex(field.label)).join('|')})\\n`,
+    'g',
+  );
+  const matches = Array.from(narrative.matchAll(headingPattern));
+
+  if (matches.length === 0) {
+    return { narrative, ...emptyFields };
+  }
+
+  const extracted = createEmptyGuidedNarrativeFields();
+  const baseNarrative = narrative.slice(0, matches[0].index ?? 0).trim();
+
+  matches.forEach((match, index) => {
+    const label = match[1];
+    const field = GUIDED_NARRATIVE_FIELDS.find((entry) => entry.label === label);
+    if (!field) return;
+
+    const start = (match.index ?? 0) + match[0].length;
+    const end = index + 1 < matches.length ? (matches[index + 1].index ?? narrative.length) : narrative.length;
+    extracted[field.key] = narrative.slice(start, end).trim();
+  });
+
+  return {
+    narrative: baseNarrative,
+    ...extracted,
+  };
+}
+
 const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
   { value: 'P1', label: 'P1', color: 'border-red-500 text-red-400 bg-red-900/30', desc: 'Emergency' },
   { value: 'P2', label: 'P2', color: 'border-amber-500 text-amber-400 bg-amber-900/30', desc: 'Urgent' },
   { value: 'P3', label: 'P3', color: 'border-brand-500 text-brand-400 bg-brand-900/30', desc: 'Routine' },
-  { value: 'P4', label: 'P4', color: 'border-gray-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
+  { value: 'P4', label: 'P4', color: 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
 ];
 
 // WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS
@@ -169,6 +251,14 @@ const EMPTY_FORM: IncidentFormData = {
   priority: 'P3',
   location_address: '',
   narrative: '',
+  initial_contact_details: '',
+  scene_observations_details: '',
+  involved_parties_details: '',
+  statements_admissions_details: '',
+  actions_taken_details: '',
+  evidence_follow_up_details: '',
+  notifications_referrals_details: '',
+  follow_up_case_status_details: '',
   occurred_date: '',
   occurred_time: '',
   end_date: '',
@@ -185,7 +275,7 @@ const EMPTY_FORM: IncidentFormData = {
   domestic_violence: false,
   disposition: '',
   zone_beat: '',
-  section_id: '',
+  sector_id: '',
   zone_id: '',
   beat_id: '',
   responding_le_agency: '',
@@ -269,16 +359,26 @@ export default function IncidentFormModal({
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
+  const compiledNarrative = buildNarrativeForSubmit(formData);
 
   useEffect(() => {
     if (isOpen) {
       if (editingIncident) {
         const inc = editingIncident as any;
+        const parsedNarrative = splitNarrativeIntoGuidedFields(editingIncident.narrative || '');
         const initial: IncidentFormData = {
           incident_type: editingIncident.type,
           priority: editingIncident.priority,
           location_address: editingIncident.location,
-          narrative: editingIncident.narrative || '',
+          narrative: parsedNarrative.narrative,
+          initial_contact_details: parsedNarrative.initial_contact_details,
+          scene_observations_details: parsedNarrative.scene_observations_details,
+          involved_parties_details: parsedNarrative.involved_parties_details,
+          statements_admissions_details: parsedNarrative.statements_admissions_details,
+          actions_taken_details: parsedNarrative.actions_taken_details,
+          evidence_follow_up_details: parsedNarrative.evidence_follow_up_details,
+          notifications_referrals_details: parsedNarrative.notifications_referrals_details,
+          follow_up_case_status_details: parsedNarrative.follow_up_case_status_details,
           occurred_date: inc.occurred_date || '',
           occurred_time: inc.occurred_time || '',
           end_date: inc.end_date || '',
@@ -295,7 +395,7 @@ export default function IncidentFormModal({
           domestic_violence: !!inc.domestic_violence,
           disposition: inc.disposition || '',
           zone_beat: inc.zone_beat || '',
-          section_id: inc.section_id || '',
+          sector_id: inc.sector_id || '',
           zone_id: inc.zone_id || '',
           beat_id: inc.beat_id || '',
           responding_le_agency: inc.responding_le_agency || '',
@@ -383,7 +483,10 @@ export default function IncidentFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.incident_type) return;
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      narrative: buildNarrativeForSubmit(formData),
+    });
   };
 
   const update = (field: string, value: string | boolean) => {
@@ -449,10 +552,41 @@ export default function IncidentFormModal({
                   </optgroup>
                 ))}
               </select>
+              {/* Feature 30: Incident Type Auto-suggest based on narrative keywords */}
+              {formData.narrative && !formData.incident_type && (() => {
+                const text = formData.narrative.toLowerCase();
+                const suggestions: { type: string; label: string }[] = [];
+                if (text.includes('theft') || text.includes('stole') || text.includes('shoplifting')) suggestions.push({ type: 'theft', label: 'Theft' });
+                if (text.includes('assault') || text.includes('hit') || text.includes('punch') || text.includes('fight')) suggestions.push({ type: 'assault', label: 'Assault' });
+                if (text.includes('burglary') || text.includes('break in') || text.includes('broken window')) suggestions.push({ type: 'burglary', label: 'Burglary' });
+                if (text.includes('trespass') || text.includes('trespassing')) suggestions.push({ type: 'trespass', label: 'Trespass' });
+                if (text.includes('vandal') || text.includes('graffiti') || text.includes('damage')) suggestions.push({ type: 'vandalism', label: 'Vandalism' });
+                if (text.includes('drug') || text.includes('narcotic') || text.includes('substance')) suggestions.push({ type: 'drugs', label: 'Drug Offense' });
+                if (text.includes('domestic') || text.includes('dv')) suggestions.push({ type: 'domestic_violence', label: 'Domestic Violence' });
+                if (text.includes('accident') || text.includes('collision') || text.includes('crash')) suggestions.push({ type: 'traffic_accident', label: 'Traffic Accident' });
+                if (text.includes('suspicious') || text.includes('prowler')) suggestions.push({ type: 'suspicious_activity', label: 'Suspicious Activity' });
+                if (text.includes('alarm')) suggestions.push({ type: 'alarm', label: 'Alarm' });
+                if (suggestions.length === 0) return null;
+                return (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <span className="text-[8px] text-rmpg-500">Suggested:</span>
+                    {suggestions.slice(0, 3).map(s => (
+                      <button
+                        key={s.type}
+                        type="button"
+                        className="px-1.5 py-0.5 text-[8px] bg-brand-900/30 text-brand-300 border border-brand-600/30 hover:bg-brand-800/40 transition-colors"
+                        onClick={() => update('incident_type', s.type)}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
-              <select className="select-dark mt-1" value={formData.section_id} onChange={(e) => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+              <select className="select-dark mt-1" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
                 {sectionOptions.map((s) => <option key={s} value={s}>{s} — {sectionLabels.get(s) || s}</option>)}
               </select>
@@ -461,7 +595,7 @@ export default function IncidentFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Zone ID</label>
               <select className="select-dark mt-1" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
-                {zonesForSection(formData.section_id).map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
+                {zonesForSection(formData.sector_id).map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
@@ -512,7 +646,7 @@ export default function IncidentFormModal({
                   if (district) {
                     setFormData((prev) => ({
                       ...prev,
-                      section_id: district.section_id || prev.section_id,
+                      sector_id: district.sector_id || prev.sector_id,
                       zone_id: district.zone_id || prev.zone_id,
                       beat_id: district.beat_id || prev.beat_id,
                     }));
@@ -667,17 +801,34 @@ export default function IncidentFormModal({
             </div>
           </div>
 
-          {/* Damage */}
+          {/* Damage — Feature 25: Property Damage Calculator */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Estimate ($)</label>
               <input
                 type="text"
                 className="input-dark mt-1"
-                placeholder="e.g. 500.00"
+                placeholder="e.g. 500.00 — separate items with + (100+250+150)"
                 value={formData.damage_estimate}
                 onChange={(e) => update('damage_estimate', e.target.value)}
               />
+              {/* Feature 25: Auto-sum if user enters multiple values with + */}
+              {formData.damage_estimate && formData.damage_estimate.includes('+') && (() => {
+                const parts = formData.damage_estimate.split('+').map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+                const total = parts.reduce((sum, n) => sum + n, 0);
+                return parts.length > 1 ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400">Total: ${total.toFixed(2)}</span>
+                    <button
+                      type="button"
+                      className="text-[8px] text-brand-400 hover:text-brand-300 underline"
+                      onClick={() => update('damage_estimate', total.toFixed(2))}
+                    >
+                      Apply total
+                    </button>
+                  </div>
+                ) : null;
+              })()}
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Description</label>
@@ -921,7 +1072,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-                <input type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', e.target.value)} />
+                <input type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
@@ -1056,17 +1207,137 @@ export default function IncidentFormModal({
       {/* ── Narrative Section ── */}
       {activeSection === 'narrative' && (
         <div>
+          <div className="mb-4 border border-rmpg-600 bg-rmpg-800/40 p-3 space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Initial Contact / Complaint</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="What brought you to the scene, who reported it, and what was first observed on arrival?"
+                  value={formData.initial_contact_details}
+                  onChange={(e) => update('initial_contact_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scene Observations / Conditions</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Describe scene layout, weather, lighting, hazards, damage, and anything notable on approach."
+                  value={formData.scene_observations_details}
+                  onChange={(e) => update('scene_observations_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Involved Parties / Vehicles / Witnesses</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Document subjects, victims, witnesses, vehicles, identifiers, and relevant observations."
+                  value={formData.involved_parties_details}
+                  onChange={(e) => update('involved_parties_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Statements / Admissions</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Summarize witness statements, spontaneous utterances, admissions, denials, and quote-worthy remarks."
+                  value={formData.statements_admissions_details}
+                  onChange={(e) => update('statements_admissions_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Actions Taken</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Describe officer actions, scene handling, interviews, searches, notifications, and resources used."
+                  value={formData.actions_taken_details}
+                  onChange={(e) => update('actions_taken_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Evidence / Statements / Follow-Up</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Capture evidence collected, property handled, forms served, statements obtained, and next investigative steps."
+                  value={formData.evidence_follow_up_details}
+                  onChange={(e) => update('evidence_follow_up_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notifications / Referrals</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Document supervisor, LE, EMS, fire, client, CPS, crisis, or other agency notifications and referrals."
+                  value={formData.notifications_referrals_details}
+                  onChange={(e) => update('notifications_referrals_details', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Follow-Up / Case Status</label>
+                <textarea
+                  className="textarea-dark mt-1"
+                  rows={3}
+                  placeholder="Record disposition, service result, pending tasks, evidence destination, and who owns the next follow-up."
+                  value={formData.follow_up_case_status_details}
+                  onChange={(e) => update('follow_up_case_status_details', e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-rmpg-500">
+              Guided detail entries are appended to the saved narrative automatically and loaded back into these fields when you reopen the report.
+            </p>
+          </div>
+
           <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Narrative</label>
+          {/* Feature 24: Narrative quality indicators */}
+          {(() => {
+            const wordCount = compiledNarrative.split(/\s+/).filter(Boolean).length;
+            const issues: string[] = [];
+            if (wordCount > 0 && wordCount < 20) issues.push('Very short narrative — add more detail');
+            if (compiledNarrative === compiledNarrative.toUpperCase() && compiledNarrative.length > 20) issues.push('ALL CAPS detected — use normal case');
+            if (compiledNarrative.length > 0 && !compiledNarrative.includes('.')) issues.push('No periods — check for proper sentences');
+            return issues.length > 0 ? (
+              <div className="mt-1 mb-1 px-2 py-1 bg-amber-950/30 border border-amber-700/30 text-[9px] text-amber-400 flex items-center gap-1.5">
+                <span style={{ fontSize: 12 }}>!</span>
+                {issues.join(' | ')}
+              </div>
+            ) : null;
+          })()}
           <textarea
             className="textarea-dark mt-1"
-            rows={12}
+            rows={14}
             placeholder="Describe the incident in detail. Include who, what, when, where, why, and how..."
             value={formData.narrative}
             onChange={(e) => update('narrative', e.target.value)}
+            spellCheck={true}
           />
           <p className="text-[10px] text-rmpg-500 mt-1">
-            {formData.narrative.length} characters | {formData.narrative.split(/\s+/).filter(Boolean).length} words
+            {/* Feature 39: Word count display */}
+            {compiledNarrative.length} characters | {compiledNarrative.split(/\s+/).filter(Boolean).length} words after guided details
+            {compiledNarrative.split(/\s+/).filter(Boolean).length >= 100 && (
+              <span className="text-green-400 ml-2">Sufficient detail</span>
+            )}
           </p>
+          {/* Feature 26: Witness Statement Template */}
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              className="toolbar-btn text-[9px]"
+              onClick={() => {
+                const template = `WITNESS STATEMENT\n\nI, [Witness Name], state the following:\n\nOn ${formData.occurred_date || '[Date]'} at approximately ${formData.occurred_time || '[Time]'}, at ${formData.location_address || '[Location]'}, I observed the following:\n\n[Describe what you saw, heard, or experienced in your own words]\n\nI declare under penalty of perjury that the foregoing is true and correct.\n\nSignature: ____________________\nDate: ${new Date().toLocaleDateString()}\nWitness Contact: `;
+                update('narrative', formData.narrative + (formData.narrative ? '\n\n' : '') + template);
+              }}
+            >
+              <FileText className="w-3 h-3" /> Insert Witness Template
+            </button>
+          </div>
         </div>
       )}
     </FormModal>

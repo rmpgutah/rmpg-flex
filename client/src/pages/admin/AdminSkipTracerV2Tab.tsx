@@ -97,12 +97,12 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
 
   const getCategoryColor = (cat: string) => {
     switch (cat) {
-      case 'people': return '#60a5fa';
+      case 'people': return '#aaaaaa';
       case 'court': return '#f59e0b';
       case 'property': return '#34d399';
       case 'business': return '#a78bfa';
       case 'registry': return '#f472b6';
-      case 'osint': return '#818cf8';
+      case 'osint': return '#aaaaaa';
       default: return '#888';
     }
   };
@@ -115,12 +115,12 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
       <div className="panel-beveled bg-surface-base p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-              <Search className="w-5 h-5 text-blue-400" />
+            <div className="p-2 rounded-sm" style={{ background: 'rgba(136, 136, 136, 0.15)' }}>
+              <Search className="w-5 h-5 text-gray-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
-                Skip Tracer V2 — Sources
+                Skip Tracker 3.5 — Sources
               </h2>
               <p className="text-[10px] text-rmpg-500 mt-0.5">
                 Multi-source dossier builder — configure and manage data source adapters
@@ -184,7 +184,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                 {/* Source header row */}
                 <div className="flex items-center gap-3">
                   {/* Enable/disable toggle */}
-                  <button
+                  <button type="button"
                     onClick={() => handleToggle(source.name, isEnabled)}
                     className="shrink-0"
                     title={isEnabled ? 'Disable source' : 'Enable source'}
@@ -247,12 +247,12 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                         value={edit?.apiKey ?? ''}
                         onChange={(e) => handleApiKeyChange(source.name, e.target.value)}
                         placeholder="Enter API key"
-                        className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 pr-7 font-mono focus:border-blue-500 focus:outline-none"
+                        className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 pr-7 font-mono focus:border-gray-500 focus:outline-none"
                       />
-                      <button
+                      <button type="button"
                         onClick={() => setShowKeys(prev => ({ ...prev, [source.name]: !prev[source.name] }))}
                         className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
-                        type="button"
+                        aria-label="Toggle API key visibility"
                       >
                         {showKeys[source.name] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
@@ -263,12 +263,12 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                 {/* Save button when edits exist */}
                 {hasEdits && (
                   <div className="flex justify-end">
-                    <button
+                    <button type="button"
                       onClick={() => handleSave(source.name)}
                       disabled={isSaving}
                       className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
                     >
-                      {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                      {isSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                       Save
                     </button>
                   </div>
@@ -281,7 +281,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
 
       {/* Info */}
       <div className="text-[9px] text-rmpg-600 px-1">
-        Skip Tracer V2 queries multiple data sources in parallel and merges results into unified dossier profiles.
+        Skip Tracker 3.5 queries multiple data sources in parallel and merges results into unified dossier profiles.
         Enable/disable sources here and configure API keys where required. Costs shown are per-lookup estimates.
       </div>
     </div>

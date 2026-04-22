@@ -67,18 +67,18 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
       {/* Codes grid */}
       <div
         className="grid grid-cols-2 gap-1.5 p-3 font-mono"
-        style={{ background: '#0d1520', border: '1px solid #1e3048' }}
+        style={{ background: '#050505', border: '1px solid #2b2b2b' }}
       >
         {codes.map((code, i) => (
           <div
             key={i}
             className="flex items-center gap-2 px-2 py-1"
-            style={{ background: '#141e2b' }}
+            style={{ background: '#0a0a0a' }}
           >
-            <span className="text-[9px] w-4 text-right" style={{ color: '#6b7280' }}>
+            <span className="text-[9px] w-4 text-right" style={{ color: '#666666' }}>
               {i + 1}.
             </span>
-            <span className="text-body-sm tracking-wider" style={{ color: '#e5e7eb' }}>
+            <span className="text-body-sm tracking-wider" style={{ color: '#e0e0e0' }}>
               {code}
             </span>
           </div>
@@ -87,14 +87,14 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
 
       {/* Action buttons */}
       <div className="flex gap-2">
-        <button
+        <button type="button"
           onClick={handleCopy}
           className="toolbar-btn flex-1 flex items-center justify-center gap-1.5 h-8 text-[10px] uppercase tracking-wider"
         >
           {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
           {copied ? 'Copied' : 'Copy All'}
         </button>
-        <button
+        <button type="button"
           onClick={handleDownload}
           className="toolbar-btn flex-1 flex items-center justify-center gap-1.5 h-8 text-[10px] uppercase tracking-wider"
         >
@@ -104,7 +104,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
       </div>
 
       {/* Acknowledge checkbox + button */}
-      <div className="pt-2" style={{ borderTop: '1px solid #1e3048' }}>
+      <div className="pt-2" style={{ borderTop: '1px solid #2b2b2b' }}>
         <label className="flex items-center gap-2 cursor-pointer mb-3">
           <input
             type="checkbox"
@@ -112,12 +112,12 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
             onChange={(e) => setAcknowledged(e.target.checked)}
             className="accent-brand-500"
           />
-          <span className="text-[10px]" style={{ color: '#8a9aaa' }}>
+          <span className="text-[10px]" style={{ color: '#888888' }}>
             I have saved my backup codes in a secure location
           </span>
         </label>
 
-        <button
+        <button type="button"
           onClick={onAcknowledge}
           disabled={!acknowledged}
           className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"

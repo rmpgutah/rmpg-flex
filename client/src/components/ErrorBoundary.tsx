@@ -30,6 +30,20 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
+
+    // Auto-reload on stale chunk errors (happens after deploys when cached JS references old chunks)
+    const msg = error.message || '';
+    if (msg.includes('Failed to fetch dynamically imported module') || msg.includes('ChunkLoadError') || msg.includes('Loading chunk')) {
+      const reloadKey = 'rmpg_chunk_reload';
+      const lastReload = sessionStorage.getItem(reloadKey);
+      // Only auto-reload once per session to prevent infinite loops
+      if (!lastReload || Date.now() - parseInt(lastReload) > 30000) {
+        sessionStorage.setItem(reloadKey, String(Date.now()));
+        window.location.reload();
+        return;
+      }
+    }
+
     // Save component stack for display in error UI
     this.setState({ componentStack: info.componentStack || null });
     // Report to server for diagnostics (fire-and-forget, best-effort)
@@ -68,11 +82,11 @@ export default class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex items-center justify-center min-h-[400px] p-8">
-          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-2xl">
+          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-md animate-scale-in" style={{ borderTop: '2px solid #dc2626' }}>
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3 border-b border-red-900/30"
-              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #141e2b 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #141414 100%)' }}
             >
               <AlertTriangle className="w-5 h-5 text-red-400" />
               <h2 className="text-sm font-bold text-red-300 uppercase tracking-wider">
@@ -91,7 +105,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 
               {/* Action buttons */}
               <div className="flex items-center gap-3 mb-4">
-                <button
+                <button type="button"
                   onClick={this.handleReload}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide
                              bg-red-700 hover:bg-red-600 border border-red-500 text-white shadow-sm transition-colors"
@@ -99,7 +113,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                   <RefreshCw className="w-3.5 h-3.5" />
                   Reload Page
                 </button>
-                <button
+                <button type="button"
                   onClick={this.handleDismiss}
                   className="toolbar-btn"
                 >
@@ -108,7 +122,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </div>
 
               {/* Collapsible details */}
-              <button
+              <button type="button"
                 onClick={() => this.setState({ showDetails: !showDetails })}
                 className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-rmpg-200 transition-colors uppercase tracking-wider font-bold"
               >

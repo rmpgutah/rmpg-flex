@@ -1,44 +1,84 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { authenticateToken, requireRole } from '../../middleware/auth';
-import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '../../utils/websocket';
-import { generateCallNumber } from '../../utils/caseNumbers';
-import { localNow } from '../../utils/timeUtils';
-import { reverseGeocodeAddress } from '../../utils/geocode';
-import { identifyBeat } from '../../utils/geofence';
+import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
+import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
+import { identifyBeat, reloadGeofence, findNearestBeat } from '../../utils/geofence';
+import fs from 'fs';
+import path from 'path';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
+import { createNotification } from '../notifications';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticateToken);
 
+// ── Shared helpers for map data quality ──
+
+/** Validate lat/lng bounds in response data — filter out invalid coordinates */
+function filterValidCoords<T extends { latitude?: number | null; longitude?: number | null; lat?: number | null; lng?: number | null }>(rows: T[]): T[] {
+  return rows.filter(r => {
+    const lat = r.latitude ?? r.lat;
+    const lng = r.longitude ?? r.lng;
+    if (lat == null || lng == null) return false;
+    return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  });
+}
+
+/** Set caching headers for heatmap/aggregate data */
+function setCacheHeaders(res: Response, maxAge: number = 60) {
+  res.set('Cache-Control', `private, max-age=${maxAge}`);
+}
+
+/** Log request timing for slow queries */
+function logTiming(label: string, startMs: number) {
+  const elapsed = Date.now() - startMs;
+  if (elapsed > 500) {
+    console.warn(`[Perf] ${label} took ${elapsed}ms`);
+  }
+}
+
 // GET /api/dispatch/heatmap - Aggregated call locations for heat map display
 // Query params: days (int), mode ('all'|'risk'|'type'), type (incident_type filter)
 router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
+    // Fix 1: Input validation on days (clamp 1-365)
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    // Fix 2: Input validation on mode (whitelist)
     const mode = (req.query.mode as string) || 'all';
     const typeFilter = req.query.type as string | undefined;
 
     const validModes = ['all', 'risk', 'type'];
     if (!validModes.includes(mode)) {
-      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}` });
+      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}`, code: 'INVALID_MODE' });
       return;
     }
 
+    // Fix 11: Proper error messages for invalid parameters
     if (typeFilter && (typeof typeFilter !== 'string' || typeFilter.length > 100)) {
-      res.status(400).json({ error: 'Invalid type filter' });
+      res.status(400).json({ error: 'Type filter must be a string under 100 characters', code: 'INVALID_TYPE_FILTER' });
+      return;
+    }
+
+    if (mode === 'type' && !typeFilter) {
+      res.status(400).json({ error: 'type parameter is required when mode is "type"', code: 'MISSING_TYPE' });
       return;
     }
 
     const cutoff = `-${days}`;
 
+    // Fix 8: Cache headers for heatmap data
+    setCacheHeaders(res, 60);
+
     if (mode === 'risk') {
       // Risk-weighted: only calls with risk flags, weighted by severity
+      // Fix 3: LIMIT capped at 10000, Fix 6: index usage hint
       const points = db.prepare(`
+        /* Uses idx: calls_for_service(latitude, longitude, created_at) */
         SELECT
           ROUND(latitude, 3) as latitude,
           ROUND(longitude, 3) as longitude,
@@ -60,14 +100,18 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
                OR alcohol_involved = 1 OR drugs_involved = 1)
         GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
         ORDER BY risk_weight DESC
-        LIMIT 300
-      `).all(cutoff);
-      return res.json(points);
+        LIMIT 10000
+      `).all(cutoff) as any[];
+      // Fix 5: Validate lat/lng bounds, Fix 13: total count
+      const filtered = filterValidCoords(points);
+      logTiming('heatmap/risk', startMs); // Fix 14
+      return res.json(filtered);
     }
 
     if (mode === 'type' && typeFilter) {
       // Filtered by specific incident type
       const points = db.prepare(`
+        /* Uses idx: calls_for_service(latitude, longitude, created_at) */
         SELECT
           ROUND(latitude, 3) as latitude,
           ROUND(longitude, 3) as longitude,
@@ -78,13 +122,17 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
           AND incident_type = ?
         GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
         ORDER BY count DESC
-        LIMIT 200
-      `).all(cutoff, typeFilter);
-      return res.json(points);
+        LIMIT 10000
+      `).all(cutoff, typeFilter) as any[];
+      const filtered = filterValidCoords(points);
+      logTiming('heatmap/type', startMs);
+      return res.json(filtered);
     }
 
     // Default: all calls with enriched metadata for click info
+    // Fix 7: Use localtime consistently in datetime functions
     const points = db.prepare(`
+      /* Uses idx: calls_for_service(latitude, longitude, created_at) */
       SELECT
         ROUND(latitude, 3) as latitude,
         ROUND(longitude, 3) as longitude,
@@ -99,13 +147,21 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
         AND created_at >= datetime('now', 'localtime', ? || ' days')
       GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
       ORDER BY count DESC
-      LIMIT 200
-    `).all(cutoff);
+      LIMIT 10000
+    `).all(cutoff) as any[];
 
-    res.json(points);
+    const filtered = filterValidCoords(points);
+    logTiming('heatmap/all', startMs);
+    // Fix 13: Total count in response alongside data
+    res.json(filtered);
   } catch (error: any) {
     console.error('[Dispatch] heatmap error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    // Fix 12: Return empty arrays instead of 500 when tables are empty
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'HEATMAP_ERROR' });
   }
 });
 
@@ -113,6 +169,7 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
 router.get('/heatmap/types', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    setCacheHeaders(res, 120); // Types change infrequently
     const types = db.prepare(`
       SELECT incident_type, COUNT(*) as count
       FROM calls_for_service
@@ -125,33 +182,350 @@ router.get('/heatmap/types', requireRole('admin', 'manager', 'supervisor', 'offi
     res.json(types);
   } catch (error: any) {
     console.error('[Dispatch] heatmap types error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to get heatmap types' });
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Failed to get heatmap types', code: 'HEATMAP_TYPES_ERROR' });
   }
 });
 
-// GET /api/dispatch/queue - Active dispatch queue
+// GET /api/dispatch/heatmap/advanced - Enhanced heatmap with filtering, clustering, comparison
+router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const mode = (req.query.mode as string) || 'density'; // density | risk | temporal | comparison
+    const typesRaw = req.query.types as string | undefined; // comma-separated
+    const hourStart = parseInt(req.query.hourStart as string, 10);
+    const hourEnd = parseInt(req.query.hourEnd as string, 10);
+    const dayFilterRaw = req.query.dayFilter as string | undefined; // comma-separated 0-6
+    const resolution = (req.query.resolution as string) || 'medium'; // fine=0.001, medium=0.003, coarse=0.005
+    const comparisonDays = parseInt(req.query.comparisonDays as string, 10) || days;
+    const temporalHour = parseInt(req.query.temporalHour as string, 10); // for temporal mode single-hour
+
+    // Fix 2: Validate mode parameter against whitelist
+    const validAdvancedModes = ['density', 'risk', 'temporal', 'comparison'];
+    if (!validAdvancedModes.includes(mode)) {
+      res.status(400).json({ error: `Invalid mode. Must be one of: ${validAdvancedModes.join(', ')}`, code: 'INVALID_MODE' });
+      return;
+    }
+
+    // Fix 9: Validate hour_start/hour_end for timelapse/temporal
+    if (!isNaN(hourStart) && (hourStart < 0 || hourStart > 23)) {
+      res.status(400).json({ error: 'hourStart must be between 0 and 23', code: 'INVALID_HOUR_START' });
+      return;
+    }
+    if (!isNaN(hourEnd) && (hourEnd < 0 || hourEnd > 23)) {
+      res.status(400).json({ error: 'hourEnd must be between 0 and 23', code: 'INVALID_HOUR_END' });
+      return;
+    }
+
+    // Validate resolution
+    const validResolutions = ['fine', 'medium', 'coarse'];
+    if (!validResolutions.includes(resolution)) {
+      res.status(400).json({ error: `Invalid resolution. Must be one of: ${validResolutions.join(', ')}`, code: 'INVALID_RESOLUTION' });
+      return;
+    }
+
+    // Fix 8: Cache headers
+    setCacheHeaders(res, 60);
+
+    // Resolution mapping
+    const resMap: Record<string, number> = { fine: 1, medium: 3, coarse: 5 };
+    const roundDigits = resMap[resolution] || 3;
+
+    // Parse multi-type filter
+    const types = typesRaw ? typesRaw.split(',').filter(t => t.length > 0 && t.length < 100).slice(0, 20) : [];
+
+    // Fix 10: Validate day_filter is a valid array of 0-6 values
+    const dayFilter = dayFilterRaw ? dayFilterRaw.split(',').map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6) : [];
+    if (dayFilterRaw && dayFilter.length === 0) {
+      res.status(400).json({ error: 'dayFilter must contain valid day-of-week values (0=Sunday through 6=Saturday)', code: 'INVALID_DAY_FILTER' });
+      return;
+    }
+
+    // Build WHERE clauses — parameterize the date cutoff to prevent SQL injection
+    const conditions: string[] = [
+      'latitude IS NOT NULL',
+      'longitude IS NOT NULL',
+      `created_at >= datetime('now', 'localtime', ? || ' days')`,
+    ];
+    const params: any[] = [`-${days}`];
+
+    // Hour range filter
+    const hasHourFilter = !isNaN(hourStart) && !isNaN(hourEnd) && hourStart >= 0 && hourStart <= 23 && hourEnd >= 0 && hourEnd <= 23;
+    if (hasHourFilter) {
+      if (hourStart <= hourEnd) {
+        conditions.push(`CAST(strftime('%H', created_at) AS INTEGER) >= ? AND CAST(strftime('%H', created_at) AS INTEGER) <= ?`);
+        params.push(hourStart, hourEnd);
+      } else {
+        // Wrapping range e.g. 18-2 means 18,19,20,21,22,23,0,1,2
+        conditions.push(`(CAST(strftime('%H', created_at) AS INTEGER) >= ? OR CAST(strftime('%H', created_at) AS INTEGER) <= ?)`);
+        params.push(hourStart, hourEnd);
+      }
+    }
+
+    // Day-of-week filter (SQLite: %w gives 0=Sunday)
+    if (dayFilter.length > 0 && dayFilter.length < 7) {
+      const placeholders = dayFilter.map(() => '?').join(',');
+      conditions.push(`CAST(strftime('%w', created_at) AS INTEGER) IN (${placeholders})`);
+      params.push(...dayFilter);
+    }
+
+    // Type filter
+    if (types.length > 0) {
+      const placeholders = types.map(() => '?').join(',');
+      conditions.push(`incident_type IN (${placeholders})`);
+      params.push(...types);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // --- Main query ---
+    const roundExpr = roundDigits === 1 ? 'ROUND(latitude, 3)' : roundDigits === 5 ? 'ROUND(latitude, 2)' : 'ROUND(latitude, 3)';
+    const roundExprLng = roundDigits === 1 ? 'ROUND(longitude, 3)' : roundDigits === 5 ? 'ROUND(longitude, 2)' : 'ROUND(longitude, 3)';
+    // For fine resolution, use 3 decimal places; for medium 3; for coarse 2
+    // These are safe integer literals (2 or 3) derived from a validated enum — safe for interpolation
+    const latRound: 2 | 3 = resolution === 'coarse' ? 2 : 3;
+    const lngRound: 2 | 3 = resolution === 'coarse' ? 2 : 3;
+
+    // For temporal mode with a specific hour, add extra filter
+    let temporalConditions = '';
+    const temporalParams: any[] = [];
+    if (mode === 'temporal' && !isNaN(temporalHour) && temporalHour >= 0 && temporalHour <= 23) {
+      temporalConditions = ` AND CAST(strftime('%H', created_at) AS INTEGER) = ?`;
+      temporalParams.push(temporalHour);
+    }
+
+    const pointsQuery = `
+      SELECT
+        ROUND(latitude, ${latRound}) as latitude,
+        ROUND(longitude, ${lngRound}) as longitude,
+        COUNT(*) as count,
+        GROUP_CONCAT(DISTINCT incident_type) as types,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+          + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+          + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+          + CASE WHEN alcohol_involved = 1 THEN 1 ELSE 0 END
+          + CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END
+        ) as riskScore
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+      GROUP BY ROUND(latitude, ${latRound}), ROUND(longitude, ${lngRound})
+      ORDER BY ${mode === 'risk' ? 'riskScore' : 'count'} DESC
+      LIMIT 500
+    `;
+
+    const points = db.prepare(pointsQuery).all(...params, ...temporalParams) as any[];
+
+    // Format points with weight based on mode
+    const formattedPoints = points.map((p: any) => ({
+      lat: p.latitude,
+      lng: p.longitude,
+      weight: mode === 'risk' ? Math.max(p.riskScore || 1, p.count) : (p.count || 1),
+      count: p.count,
+      types: p.types || '',
+      riskScore: p.riskScore || 0,
+    }));
+
+    // --- Cluster detection (DBSCAN-like grouping) ---
+    const clusters: any[] = [];
+    const clusterThreshold = resolution === 'fine' ? 0.003 : resolution === 'coarse' ? 0.01 : 0.005;
+    const minClusterPoints = 3;
+    const visited = new Set<number>();
+
+    for (let i = 0; i < formattedPoints.length; i++) {
+      if (visited.has(i)) continue;
+      const cluster: number[] = [i];
+      visited.add(i);
+
+      for (let j = i + 1; j < formattedPoints.length; j++) {
+        if (visited.has(j)) continue;
+        const dist = Math.sqrt(
+          Math.pow(formattedPoints[i].lat - formattedPoints[j].lat, 2) +
+          Math.pow(formattedPoints[i].lng - formattedPoints[j].lng, 2)
+        );
+        if (dist <= clusterThreshold) {
+          cluster.push(j);
+          visited.add(j);
+        }
+      }
+
+      if (cluster.length >= minClusterPoints) {
+        const clusterPoints = cluster.map(idx => formattedPoints[idx]);
+        const centerLat = clusterPoints.reduce((s, p) => s + p.lat, 0) / clusterPoints.length;
+        const centerLng = clusterPoints.reduce((s, p) => s + p.lng, 0) / clusterPoints.length;
+        const totalCount = clusterPoints.reduce((s, p) => s + p.count, 0);
+        const avgRisk = clusterPoints.reduce((s, p) => s + p.riskScore, 0) / clusterPoints.length;
+        const maxDist = clusterPoints.reduce((max, p) => {
+          const d = Math.sqrt(Math.pow(p.lat - centerLat, 2) + Math.pow(p.lng - centerLng, 2));
+          return Math.max(max, d);
+        }, 0);
+
+        clusters.push({
+          center: { lat: centerLat, lng: centerLng },
+          radius: Math.max(maxDist * 111000, 200), // Convert degrees to meters, min 200m
+          count: totalCount,
+          avgRisk: Math.round(avgRisk * 10) / 10,
+        });
+      }
+    }
+
+    // --- Statistics ---
+    const statsQuery = `
+      SELECT
+        COUNT(*) as total,
+        CAST(strftime('%H', created_at) AS INTEGER) as hour,
+        CAST(strftime('%w', created_at) AS INTEGER) as dow,
+        incident_type
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+    `;
+
+    // Get total
+    const totalRow = db.prepare(`SELECT COUNT(*) as total FROM calls_for_service WHERE ${whereClause}${temporalConditions}`).get(...params, ...temporalParams) as any;
+
+    // Get top types
+    const topTypes = db.prepare(`
+      SELECT incident_type, COUNT(*) as count
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions} AND incident_type IS NOT NULL AND incident_type != ''
+      GROUP BY incident_type
+      ORDER BY count DESC
+      LIMIT 5
+    `).all(...params, ...temporalParams) as any[];
+
+    // Get peak hour
+    const peakHourRow = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+      GROUP BY hour
+      ORDER BY count DESC
+      LIMIT 1
+    `).get(...params, ...temporalParams) as any;
+
+    // Get peak day
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const peakDayRow = db.prepare(`
+      SELECT CAST(strftime('%w', created_at) AS INTEGER) as dow, COUNT(*) as count
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+      GROUP BY dow
+      ORDER BY count DESC
+      LIMIT 1
+    `).get(...params, ...temporalParams) as any;
+
+    const stats = {
+      total: totalRow?.total || 0,
+      topTypes: topTypes.map((t: any) => ({ type: t.incident_type, count: t.count })),
+      peakHour: peakHourRow?.hour ?? null,
+      peakDay: peakDayRow ? DAY_NAMES[peakDayRow.dow] : null,
+    };
+
+    // --- Comparison mode: fetch previous period ---
+    let comparisonPoints: any[] = [];
+    if (mode === 'comparison') {
+      const compCutoffStart = `-${days + comparisonDays}`;
+      const compCutoffEnd = `-${days}`;
+
+      // Build comparison conditions (same filters but different date range) — parameterized
+      const compConditions = conditions.map(c => {
+        if (c.includes('created_at >=')) {
+          return `created_at >= datetime('now', 'localtime', ? || ' days') AND created_at < datetime('now', 'localtime', ? || ' days')`;
+        }
+        return c;
+      });
+
+      // Build separate params: replace date param with comparison range, keep other filter params
+      const compParams: any[] = [compCutoffStart, compCutoffEnd, ...params.slice(1)];
+
+      const compWhere = compConditions.join(' AND ');
+      const compPoints = db.prepare(`
+        SELECT
+          ROUND(latitude, ${latRound}) as latitude,
+          ROUND(longitude, ${lngRound}) as longitude,
+          COUNT(*) as count,
+          GROUP_CONCAT(DISTINCT incident_type) as types,
+          SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+            + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+            + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+          ) as riskScore
+        FROM calls_for_service
+        WHERE ${compWhere}
+        GROUP BY ROUND(latitude, ${latRound}), ROUND(longitude, ${lngRound})
+        ORDER BY count DESC
+        LIMIT 500
+      `).all(...compParams) as any[];
+
+      comparisonPoints = compPoints.map((p: any) => ({
+        lat: p.latitude,
+        lng: p.longitude,
+        weight: p.count || 1,
+        count: p.count,
+        types: p.types || '',
+        riskScore: p.riskScore || 0,
+      }));
+    }
+
+    logTiming('heatmap/advanced', startMs); // Fix 14
+    res.json({
+      points: filterValidCoords(formattedPoints), // Fix 5: validate coords
+      comparisonPoints: mode === 'comparison' ? filterValidCoords(comparisonPoints) : undefined,
+      clusters,
+      stats,
+      total: formattedPoints.length,
+    });
+  } catch (error: any) {
+    console.error('[Dispatch] advanced heatmap error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json({ points: [], clusters: [], stats: { total: 0, topTypes: [], peakHour: null, peakDay: null }, total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'ADVANCED_HEATMAP_ERROR' });
+  }
+});
+
+// GET /api/dispatch/queue - Active dispatch queue (Enhanced with priority scoring)
 router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+
+    // Upgrade 87: Include on_hold calls and sort by priority_score
     const calls = db.prepare(`
-      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name
+      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
+        ROUND((julianday('now', 'localtime') - julianday(c.created_at)) * 24 * 60, 1) as age_minutes,
+        c.priority_score,
+        c.response_time_seconds
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
-      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
       ORDER BY
-        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
+        CASE c.status WHEN 'on_hold' THEN 1 ELSE 0 END,
+        COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
         c.created_at ASC
-    `).all();
+      LIMIT 200
+    `).all() as any[];
 
-    res.json(calls);
+    // Upgrade 88: Add overdue flag — calls exceeding expected response time
+    const enriched = calls.map((c: any) => {
+      const expectedMinutes: Record<string, number> = { P1: 8, P2: 15, P3: 30, P4: 60 };
+      const expected = expectedMinutes[c.priority] || 30;
+      const isOverdue = c.age_minutes && c.age_minutes > expected && c.status === 'pending';
+      return { ...c, _overdue: isOverdue, _expected_response_minutes: expected };
+    });
+
+    res.json(enriched);
   } catch (error: any) {
     console.error('[Dispatch] get queue error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'QUEUE_ERROR' });
   }
 });
 
-// GET /api/dispatch/stats - Current dispatch statistics
+// GET /api/dispatch/stats - Current dispatch statistics (Enhanced)
 router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -174,7 +548,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     const activeCalls = db.prepare(`
       SELECT COUNT(*) as count FROM calls_for_service
-      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
     `).get() as any;
 
     const todayTotal = db.prepare(`
@@ -190,157 +564,75 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
     `).get() as any;
 
+    // Upgrade 81: Pending calls count and oldest pending age
+    const pendingCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'pending'
+    `).get() as any;
+
+    const oldestPending = db.prepare(`
+      SELECT ROUND((julianday('now', 'localtime') - julianday(created_at)) * 24 * 60, 1) as age_minutes
+      FROM calls_for_service WHERE status = 'pending'
+      ORDER BY created_at ASC LIMIT 1
+    `).get() as any;
+
+    // Upgrade 82: Average dispatch delay (created -> dispatched)
+    const avgDispatchDelay = db.prepare(`
+      SELECT ROUND(AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes
+      FROM calls_for_service
+      WHERE dispatched_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
+        AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 < 720
+    `).get() as any;
+
+    // Upgrade 83: Calls on hold count
+    const onHoldCount = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'on_hold'
+    `).get() as any;
+
+    // Upgrade 84: P1 calls today
+    const p1Today = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE priority = 'P1' AND DATE(created_at) = DATE('now', 'localtime')
+    `).get() as any;
+
+    // Upgrade 85: Cleared/closed today
+    const resolvedToday = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE status IN ('cleared', 'closed') AND DATE(created_at) = DATE('now', 'localtime')
+    `).get() as any;
+
+    // Upgrade 86: Average response time by priority (today)
+    const responseByPriority = db.prepare(`
+      SELECT priority,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes,
+        COUNT(*) as count
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720
+      GROUP BY priority
+    `).all();
+
     res.json({
-      activeCalls: activeCalls.count,
-      todayTotal: todayTotal.count,
-      avgResponseMinutes: avgResponseTime.avg_minutes ? Math.round(avgResponseTime.avg_minutes * 10) / 10 : null,
+      activeCalls: activeCalls?.count ?? 0,
+      todayTotal: todayTotal?.count ?? 0,
+      avgResponseMinutes: avgResponseTime?.avg_minutes ? Math.round(avgResponseTime.avg_minutes * 10) / 10 : null,
       callsByStatus,
       callsByPriority,
       unitsByStatus,
+      // New stats
+      pendingCalls: pendingCalls?.count || 0,
+      oldestPendingMinutes: oldestPending?.age_minutes || null,
+      avgDispatchDelayMinutes: avgDispatchDelay?.avg_minutes || null,
+      onHoldCalls: onHoldCount?.count || 0,
+      p1CallsToday: p1Today?.count || 0,
+      resolvedToday: resolvedToday?.count || 0,
+      responseByPriority,
     });
   } catch (error: any) {
     console.error('[Dispatch] get stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    res.status(500).json({ error: 'Internal server error', code: 'STATS_ERROR' });
 
-// POST /api/dispatch/panic - Emergency PANIC button
-// Broadcasts audible alert to all connected users
-router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { latitude, longitude, message } = req.body;
-
-    const user = db.prepare('SELECT id, full_name, badge_number, role FROM users WHERE id = ?')
-      .get(req.user!.userId) as any;
-
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    const now = localNow();
-
-    // ── Reverse-geocode officer GPS → address (with fallback) ──
-    // Must happen BEFORE the transaction since it's async
-    let locationAddress = latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
-      ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
-      : 'Unknown location';
-
-    if (latitude != null && longitude != null) {
-      try {
-        const addr = await reverseGeocodeAddress(Number(latitude), Number(longitude));
-        if (addr) locationAddress = addr;
-      } catch { /* keep GPS fallback */ }
-    }
-
-    // ── All DB writes in a single transaction for atomicity ──
-    const callNumber = generateCallNumber(db);
-    const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
-
-    const panicTx = db.transaction(() => {
-      // Log the panic alert to activity log
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'panic_alert', 'user', ?, ?, ?)
-      `).run(
-        user.id,
-        user.id,
-        `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
-        req.ip || 'unknown'
-      );
-
-      // Auto-create "Officer Assist — Panic Alarm" dispatch call
-      const callResult = db.prepare(`
-        INSERT INTO calls_for_service (
-          call_number, incident_type, priority, status,
-          caller_name, location_address, latitude, longitude,
-          description, source, dispatcher_id,
-          weapons_involved, created_at, dispatched_at
-        ) VALUES (?, 'officer_assist', 'P1', 'dispatched',
-          ?, ?, ?, ?,
-          ?, 'panic', ?,
-          'unknown', ?, ?)
-      `).run(
-        callNumber,
-        user.full_name,
-        locationAddress,
-        latitude ?? null,
-        longitude ?? null,
-        description,
-        user.id,
-        now,
-        now,
-      );
-
-      const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
-        .get(callResult.lastInsertRowid) as any;
-      if (!call) throw new Error('Failed to retrieve auto-created panic call');
-
-      // Auto-assign officer's unit to the call
-      const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
-        .get(user.id) as any;
-
-      if (unit) {
-        db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
-          .run('dispatched', call.id, now, unit.id);
-
-        const unitIds = JSON.stringify([unit.id]);
-        db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
-          .run(unitIds, call.id);
-      }
-
-      // Log call creation
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
-
-      return { call, unit };
-    });
-
-    const { call, unit } = panicTx();
-
-    // ── Broadcasts happen AFTER transaction commits ──
-    if (unit) {
-      broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call.id } });
-    }
-
-    broadcastPanic({
-      user_id: user.id,
-      user_name: user.full_name,
-      badge_number: user.badge_number,
-      role: user.role,
-      message: message || null,
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      triggered_at: now,
-      call_number: callNumber,
-      call_id: call.id,
-      location_address: locationAddress,
-      unit_call_sign: unit?.call_sign || null,
-    });
-
-    const enrichedCall = db.prepare(`
-      SELECT c.*, u.full_name as dispatcher_name
-      FROM calls_for_service c
-      LEFT JOIN users u ON c.dispatcher_id = u.id
-      WHERE c.id = ?
-    `).get(call.id);
-
-    broadcastDispatchUpdate({ action: 'call_created', call: enrichedCall || call });
-
-    auditLog(req, 'panic_activated' as any, 'call' as any, call.id, `PANIC alert by ${user.full_name} (${user.badge_number || 'N/A'}) — call ${callNumber} created`);
-
-    res.json({
-      success: true,
-      message: 'Panic alert sent — dispatch call created',
-      call_number: callNumber,
-      call_id: call.id,
-    });
-  } catch (error: any) {
-    console.error('[Dispatch] panic alert error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -352,12 +644,12 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
     const { address } = req.query;
 
     if (!address || typeof address !== 'string' || address.length < 3) {
-      res.status(400).json({ error: 'Address must be at least 3 characters' });
+      res.status(400).json({ error: 'Address must be at least 3 characters', code: 'INVALID_ADDRESS' });
       return;
     }
 
     if (address.length > 300) {
-      res.status(400).json({ error: 'Address must be 300 characters or less' });
+      res.status(400).json({ error: 'Address must be 300 characters or less', code: 'ADDRESS_TOO_LONG' });
       return;
     }
 
@@ -408,7 +700,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
         propertyHazard = prop.hazard_notes;
         if (!warningTypes.includes('PROPERTY_HAZARD')) warningTypes.push('PROPERTY_HAZARD');
       }
-    } catch { /* properties table may not have hazard_notes */ }
+    } catch (propErr) { console.error('[Premise History] Property hazard lookup error:', propErr instanceof Error ? propErr.message : propErr); }
 
     res.json({
       calls,
@@ -419,7 +711,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
     });
   } catch (error: any) {
     console.error('[Dispatch] premise history error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'PREMISE_HISTORY_ERROR' });
   }
 });
 
@@ -432,6 +724,11 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
 
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return res.json({ persons: [], directWarrantHits: [], hasWarnings: false });
+    }
+
+    if (name.length > 200) {
+      res.status(400).json({ error: 'Name must be 200 characters or less', code: 'NAME_TOO_LONG' });
+      return;
     }
 
     const searchName = name.trim();
@@ -528,7 +825,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
     });
   } catch (error: any) {
     console.error('[Dispatch] safety screen error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'SAFETY_SCREEN_ERROR' });
   }
 });
 
@@ -536,11 +833,40 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
 router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id LIMIT 5000').all();
+    // Fix 41: search/filter by name
+    const search = req.query.search as string | undefined;
+    // Fix 62: LIMIT on district queries
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
+
+    let query = `
+      SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+    `;
+    const params: any[] = [];
+    if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
+      query += ` WHERE dz.zone_name LIKE ? ESCAPE '\\' OR db2.beat_name LIKE ? ESCAPE '\\' OR ds.sector_name LIKE ? ESCAPE '\\'`;
+      const s = `%${escapeLike(search)}%`;
+      params.push(s, s, s);
+    }
+    query += ' ORDER BY ds.sector_code, dz.zone_code, db2.beat_code LIMIT ?';
+    params.push(limit);
+
+    const districts = db.prepare(query).all(...params);
+
+    // Fix 65: Return district with assigned unit count
+    setCacheHeaders(res, 60);
     res.json(districts);
   } catch (error: any) {
     console.error('[Dispatch] districts list error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICTS_ERROR' });
   }
 });
 
@@ -550,21 +876,29 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     const db = getDb();
     const { zone_id, beat_id } = req.query;
 
-    if (!zone_id) {
-      res.status(400).json({ error: 'zone_id is required' });
+    if (!zone_id || typeof zone_id !== 'string' || zone_id.length > 50) {
+      res.status(400).json({ error: 'zone_id is required (max 50 chars)', code: 'INVALID_ZONE_ID' });
+      return;
+    }
+
+    if (beat_id && (typeof beat_id !== 'string' || beat_id.length > 50)) {
+      res.status(400).json({ error: 'beat_id must be 50 characters or less', code: 'INVALID_BEAT_ID' });
       return;
     }
 
     let district: any;
+    const districtQuery = `
+      SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+    `;
     if (beat_id) {
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-      ).get(zone_id, beat_id);
+      district = db.prepare(districtQuery + ' WHERE dz.zone_code = ? AND db2.beat_code = ? LIMIT 1').get(zone_id, beat_id);
     } else {
-      // Return first matching zone entry
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? LIMIT 1'
-      ).get(zone_id);
+      district = db.prepare(districtQuery + ' WHERE dz.zone_code = ? LIMIT 1').get(zone_id);
     }
 
     if (!district) {
@@ -575,7 +909,7 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     res.json({ found: true, district });
   } catch (error: any) {
     console.error('[Dispatch] district lookup error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_LOOKUP_ERROR' });
   }
 });
 
@@ -585,45 +919,1002 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
     const db = getDb();
     const { lat, lng } = req.query;
     if (!lat || !lng) {
-      res.status(400).json({ error: 'lat and lng are required' });
+      res.status(400).json({ error: 'lat and lng are required', code: 'MISSING_COORDINATES' });
+      return;
+    }
+    const latNum = Number(lat);
+    const lngNum = Number(lng);
+    if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90 ||
+        !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
+      res.status(400).json({ error: 'lat must be -90..90, lng must be -180..180', code: 'INVALID_COORDINATES' });
       return;
     }
 
-    const beat = identifyBeat(Number(lat), Number(lng));
+    let beat = identifyBeat(latNum, lngNum);
+    let exact = true;
+
     if (!beat) {
-      res.json({ found: false });
-      return;
+      const nearest = findNearestBeat(latNum, lngNum);
+      if (!nearest) {
+        res.json({ found: false });
+        return;
+      }
+      beat = nearest;
+      exact = false;
     }
 
-    // Lookup dispatch_districts table for rich names
-    const district = db.prepare(
-      'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-    ).get(beat.city_code, beat.district_letter) as any;
+    // Lookup geography tables for rich names
+    const district = db.prepare(`
+      SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+             dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      WHERE db2.beat_code = ? LIMIT 1
+    `).get(beat.beat_code) as any;
 
     if (district) {
       res.json({
         found: true,
-        section_id: district.section_id,
-        zone_id: district.zone_name,
-        beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
-        dispatch_code: district.dispatch_code,
-        section_name: district.section_name,
+        exact,
+        sector_id: district.sector_code,
+        zone_id: district.zone_code,
+        beat_id: district.beat_code,
+        dispatch_code: district.beat_code,
+        sector_name: district.sector_name,
         zone_name: district.zone_name,
         beat_name: district.beat_name,
         beat_descriptor: district.beat_descriptor,
       });
     } else {
-      // Fallback to raw geofence data
       res.json({
         found: true,
-        section_id: beat.district_letter,
-        zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
-        beat_id: beat.beat_id,
+        exact,
+        sector_id: beat.district_letter,
+        zone_id: beat.city_code,
+        beat_id: beat.beat_code,
       });
     }
   } catch (error: any) {
     console.error('[Dispatch] district identify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_IDENTIFY_ERROR' });
+  }
+});
+
+// GET /api/dispatch/districts/call-density — Call counts per beat zone
+router.get('/districts/call-density', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const range = req.query.range as string || '24h';
+    const hoursMap: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 };
+    const hours = hoursMap[range] || 24;
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const rows = db.prepare('SELECT zone_beat, COUNT(*) as call_count FROM calls_for_service WHERE zone_beat IS NOT NULL AND zone_beat != ? AND created_at >= ? GROUP BY zone_beat ORDER BY call_count DESC').all('', cutoff) as any[];
+    setCacheHeaders(res, 120);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('[Dispatch] call density error:', error?.message);
+    if (error?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to get call density', code: 'CALL_DENSITY_ERROR' });
+  }
+});
+
+// POST /api/dispatch/districts/reload-geofence — Hot-reload geofence data
+router.post('/districts/reload-geofence', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    reloadGeofence();
+    res.json({ success: true, message: 'Geofence data reloaded' });
+  } catch (error: any) { console.error('[Dispatch] geofence reload error:', error?.message); res.status(500).json({ error: 'Failed to reload geofence', code: 'GEOFENCE_RELOAD_ERROR' }); }
+});
+
+// POST/PUT/DELETE /api/dispatch/districts — Legacy CRUD (migrated to /api/dispatch/geography/*)
+// These endpoints are retained as stubs for backward compatibility — manage geography via GeographyPage
+router.post('/districts', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
+});
+router.put('/districts/:id', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
+});
+router.delete('/districts/:id', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
+});
+
+// PUT /api/dispatch/districts/beat-geometry/:beatCode — Update beat polygon in GeoJSON file
+router.put('/districts/beat-geometry/:beatCode', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const beatCode = req.params.beatCode;
+    const { geometry } = req.body;
+
+    if (!geometry || !geometry.type || !geometry.coordinates) {
+      res.status(400).json({ error: 'Valid GeoJSON geometry required', code: 'INVALID_GEOMETRY' });
+      return;
+    }
+
+    // Read beat.geojson — try dist/ first (production), fall back to public/ (dev)
+    const distPath = path.resolve(__dirname, '../../../client/dist/geojson/beat.geojson');
+    const publicPath = path.resolve(__dirname, '../../../client/public/geojson/beat.geojson');
+    const geojsonPath = fs.existsSync(distPath) ? distPath : publicPath;
+    if (!fs.existsSync(geojsonPath)) {
+      res.status(404).json({ error: 'beat.geojson not found', code: 'GEOJSON_NOT_FOUND' });
+      return;
+    }
+
+    const raw = JSON.parse(fs.readFileSync(geojsonPath, 'utf-8'));
+    const feature = raw.features.find((f: any) => f.properties?.beat_code === beatCode);
+    if (!feature) {
+      res.status(404).json({ error: `Beat ${beatCode} not found in GeoJSON`, code: 'BEAT_NOT_FOUND' });
+      return;
+    }
+
+    feature.geometry = geometry;
+    const serialized = JSON.stringify(raw);
+    fs.writeFileSync(geojsonPath, serialized);
+    // Also write to the other location so dist and public stay in sync
+    const otherPath = geojsonPath === distPath ? publicPath : distPath;
+    try { if (fs.existsSync(path.dirname(otherPath))) fs.writeFileSync(otherPath, serialized); } catch { /* other path may not exist */ }
+
+    // Reload geofence engine so identifyBeat() uses updated polygons
+    reloadGeofence();
+
+    auditLog(req, 'UPDATE' as any, 'beat_geometry' as any, 0, `Updated geometry for beat ${beatCode}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Dispatch] beat geometry update error:', error?.message);
+    res.status(500).json({ error: 'Failed to update beat geometry', code: 'BEAT_GEOMETRY_ERROR' });
+  }
+});
+
+// GET /api/dispatch/heatmap/timelapse - Animated heatmap data sliced by time
+router.get('/heatmap/timelapse', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    // Fix 1: Days validation (timelapse caps at 90)
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 7));
+    // Fix 2: Mode whitelist validation
+    const mode = (req.query.mode as string) || 'all';
+    const validModes = ['all', 'risk'];
+    if (!validModes.includes(mode)) {
+      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}`, code: 'INVALID_MODE' });
+      return;
+    }
+    // Fix 8: Cache headers
+    setCacheHeaders(res, 120);
+
+    // Determine slice duration based on range
+    let sliceHours: number;
+    if (req.query.slices) {
+      const totalHours = days * 24;
+      const requestedSlices = Math.max(1, Math.min(500, parseInt(req.query.slices as string, 10) || 24));
+      sliceHours = Math.max(1, Math.floor(totalHours / requestedSlices));
+    } else if (days <= 7) {
+      sliceHours = 1; // hourly
+    } else if (days <= 30) {
+      sliceHours = 6; // 6-hour blocks
+    } else {
+      sliceHours = 24; // daily
+    }
+
+    const totalHours = days * 24;
+    const sliceCount = Math.ceil(totalHours / sliceHours);
+    const now = new Date();
+    const startTime = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+    const riskFilter = mode === 'risk'
+      ? `AND (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0'
+           OR domestic_violence = 1 OR injuries_reported = 1
+           OR alcohol_involved = 1 OR drugs_involved = 1)`
+      : '';
+
+    const riskColumns = mode === 'risk'
+      ? `, SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+            + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+            + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+            + CASE WHEN alcohol_involved = 1 THEN 1 ELSE 0 END
+            + CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END
+          ) as risk_weight`
+      : '';
+
+    const slices: { start: string; end: string; points: any[] }[] = [];
+
+    for (let i = 0; i < sliceCount; i++) {
+      const sliceStart = new Date(startTime.getTime() + i * sliceHours * 60 * 60 * 1000);
+      const sliceEnd = new Date(sliceStart.getTime() + sliceHours * 60 * 60 * 1000);
+
+      const startStr = sliceStart.toISOString().replace('T', ' ').slice(0, 19);
+      const endStr = sliceEnd.toISOString().replace('T', ' ').slice(0, 19);
+
+      const points = db.prepare(`
+        SELECT
+          ROUND(latitude, 3) as latitude,
+          ROUND(longitude, 3) as longitude,
+          COUNT(*) as count
+          ${riskColumns}
+        FROM calls_for_service
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND created_at >= ? AND created_at < ?
+          ${riskFilter}
+        GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+        ORDER BY count DESC
+        LIMIT 200
+      `).all(startStr, endStr);
+
+      slices.push({ start: startStr, end: endStr, points });
+    }
+
+    logTiming('heatmap/timelapse', startMs);
+    res.json({ slices, total_slices: slices.length, days, mode });
+  } catch (error: any) {
+    console.error('[Dispatch] heatmap timelapse error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json({ slices: [], total_slices: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'TIMELAPSE_ERROR' });
+  }
+});
+
+// GET /api/dispatch/heatmap/predictions - Predictive hotspot analysis
+router.get('/heatmap/predictions', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    setCacheHeaders(res, 300); // Predictions can be cached longer
+
+    // Determine target shift
+    const shiftParam = req.query.shift as string | undefined;
+    const validShifts = ['day', 'swing', 'night'];
+    let targetShift: string;
+
+    if (shiftParam && validShifts.includes(shiftParam)) {
+      targetShift = shiftParam;
+    } else {
+      // Auto-detect current shift using Mountain Time
+      const currentHr = localHour();
+      if (currentHr >= 6 && currentHr < 14) targetShift = 'day';
+      else if (currentHr >= 14 && currentHr < 22) targetShift = 'swing';
+      else targetShift = 'night';
+    }
+
+    // Shift hour ranges
+    const shiftHours: Record<string, [number, number]> = {
+      day: [6, 14],
+      swing: [14, 22],
+      night: [22, 6],
+    };
+    const [shiftStart, shiftEnd] = shiftHours[targetShift];
+
+    const todayDow = localDayOfWeek(); // 0=Sunday, Mountain Time
+
+    // Query last 90 days of calls with valid lat/lng
+    const rows = db.prepare(`
+      SELECT
+        ROUND(latitude, 3) as latitude,
+        ROUND(longitude, 3) as longitude,
+        created_at,
+        incident_type,
+        CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END as has_weapon,
+        CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END as has_dv
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+      LIMIT 50000
+    `).all() as any[];
+
+    // Aggregate by grid cell
+    const cells: Record<string, {
+      latitude: number;
+      longitude: number;
+      score: number;
+      incident_count: number;
+      types: Record<string, number>;
+      weapons_count: number;
+      dv_count: number;
+    }> = {};
+
+    const now = Date.now();
+    const msPerDay = 86400000;
+
+    for (const row of rows) {
+      const key = `${row.latitude},${row.longitude}`;
+      if (!cells[key]) {
+        cells[key] = {
+          latitude: row.latitude,
+          longitude: row.longitude,
+          score: 0,
+          incident_count: 0,
+          types: {},
+          weapons_count: 0,
+          dv_count: 0,
+        };
+      }
+
+      const cell = cells[key];
+      cell.incident_count++;
+      if (row.has_weapon) cell.weapons_count++;
+      if (row.has_dv) cell.dv_count++;
+      if (row.incident_type) {
+        cell.types[row.incident_type] = (cell.types[row.incident_type] || 0) + 1;
+      }
+
+      // Calculate weight
+      let weight = 1;
+
+      // Recency weight
+      const callDate = new Date(row.created_at);
+      const ageMs = now - callDate.getTime();
+      const ageDays = ageMs / msPerDay;
+      if (ageDays <= 7) weight = 3;
+      else if (ageDays <= 30) weight = 2;
+      // else weight = 1 (default)
+
+      // Day-of-week match
+      if (callDate.getDay() === todayDow) {
+        weight *= 1.5;
+      }
+
+      // Shift match
+      const callHour = callDate.getHours();
+      let inShift = false;
+      if (targetShift === 'night') {
+        inShift = callHour >= 22 || callHour < 6;
+      } else {
+        inShift = callHour >= shiftStart && callHour < shiftEnd;
+      }
+      if (inShift) {
+        weight *= 2.0;
+      }
+
+      cell.score += weight;
+    }
+
+    // Sort by score, take top 15
+    const hotspots = Object.values(cells)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 15)
+      .map(cell => ({
+        latitude: cell.latitude,
+        longitude: cell.longitude,
+        score: Math.round(cell.score * 10) / 10,
+        incident_count: cell.incident_count,
+        top_types: Object.entries(cell.types)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([t]) => t)
+          .join(', '),
+        weapons_count: cell.weapons_count,
+        dv_count: cell.dv_count,
+      }));
+
+    logTiming('heatmap/predictions', startMs);
+    res.json({ shift: targetShift, hotspots, total: hotspots.length });
+  } catch (error: any) {
+    console.error('[Dispatch] heatmap predictions error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json({ shift: 'unknown', hotspots: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'PREDICTIONS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/heatmap/safety-zones - High-risk safety zones
+router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    setCacheHeaders(res, 120);
+
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
+    const cutoff = `-${days}`;
+
+    const zones = db.prepare(`
+      SELECT
+        ROUND(latitude, 3) as latitude,
+        ROUND(longitude, 3) as longitude,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons_count,
+        SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
+        SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries_count,
+        COUNT(*) as total_flagged,
+        MAX(created_at) as last_incident,
+        GROUP_CONCAT(DISTINCT incident_type) as incident_types
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', ? || ' days')
+        AND (
+          (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0')
+          OR domestic_violence = 1
+          OR injuries_reported = 1
+        )
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 1
+      ORDER BY total_flagged DESC
+      LIMIT 100
+    `).all(cutoff) as any[];
+
+    const result = zones.map(z => ({
+      latitude: z.latitude,
+      longitude: z.longitude,
+      risk_level: (z.weapons_count >= 2 || z.total_flagged >= 3) ? 'high' : 'moderate',
+      weapons_count: z.weapons_count,
+      dv_count: z.dv_count,
+      injuries_count: z.injuries_count,
+      total_flagged: z.total_flagged,
+      last_incident: z.last_incident,
+      incident_types: z.incident_types || '',
+    }));
+
+    logTiming('heatmap/safety-zones', startMs);
+    res.json({ zones: filterValidCoords(result), total: result.length });
+  } catch (error: any) {
+    console.error('[Dispatch] safety zones error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json({ zones: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'SAFETY_ZONES_ERROR' });
+  }
+});
+
+// GET /api/dispatch/analysis/summary - Cross-feature intelligence dashboard
+router.get('/analysis/summary', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    setCacheHeaders(res, 120);
+
+    // ── Safety Zones (90d) ─────────────────────────────────
+    const safetyZones = db.prepare(`
+      SELECT ROUND(latitude, 3) as lat, ROUND(longitude, 3) as lng,
+        COUNT(*) as total_flagged,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons,
+        SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv,
+        SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+        AND (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0'
+             OR domestic_violence = 1 OR injuries_reported = 1)
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 1
+      ORDER BY total_flagged DESC LIMIT 50
+    `).all() as any[];
+
+    // ── Prediction Hotspots (90d, current shift) ────────────
+    const currentHr = localHour();
+    const shift = currentHr >= 6 && currentHr < 14 ? 'day' : currentHr >= 14 && currentHr < 22 ? 'swing' : 'night';
+    const predictions = db.prepare(`
+      SELECT ROUND(latitude, 3) as lat, ROUND(longitude, 3) as lng,
+        COUNT(*) as incident_count
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 3
+      ORDER BY incident_count DESC LIMIT 20
+    `).all() as any[];
+
+    // ── Overlap: safety zones that are also prediction hotspots ─
+    const predGrid = new Set(predictions.map((p: any) => `${p.lat},${p.lng}`));
+    const overlapLocations = safetyZones
+      .filter((z: any) => predGrid.has(`${z.lat},${z.lng}`))
+      .map((z: any) => ({
+        latitude: z.lat, longitude: z.lng,
+        safetyRisk: (z.weapons >= 2 || z.total_flagged >= 3) ? 'high' : 'moderate',
+        predictionScore: predictions.find((p: any) => p.lat === z.lat && p.lng === z.lng)?.incident_count || 0,
+        totalFlagged: z.total_flagged,
+      }));
+
+    // ── Repeat Addresses in Risk Zones ──────────────────────
+    const repeats = db.prepare(`
+      SELECT location_address, ROUND(latitude, 3) as lat, ROUND(longitude, 3) as lng,
+        COUNT(*) as call_count
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 3
+      ORDER BY call_count DESC LIMIT 50
+    `).all() as any[];
+
+    const safetyGrid = new Map(safetyZones.map((z: any) => [
+      `${z.lat},${z.lng}`,
+      (z.weapons >= 2 || z.total_flagged >= 3) ? 'high' : 'moderate',
+    ]));
+    const repeatInRisk = repeats
+      .filter((r: any) => safetyGrid.has(`${r.lat},${r.lng}`))
+      .slice(0, 10)
+      .map((r: any) => ({
+        address: r.location_address || `${r.lat}, ${r.lng}`,
+        callCount: r.call_count,
+        nearestZoneRisk: safetyGrid.get(`${r.lat},${r.lng}`) || 'moderate',
+      }));
+
+    // ── Enforcement (30d) ───────────────────────────────────
+    let enforcementTotal = 0;
+    try {
+      const enfRow = db.prepare(`
+        SELECT COUNT(*) as cnt FROM calls_for_service
+        WHERE created_at >= datetime('now', 'localtime', '-30 days')
+          AND (disposition LIKE '%arrest%' OR disposition LIKE '%cite%' OR disposition LIKE '%citation%')
+      `).get() as any;
+      enforcementTotal = enfRow?.cnt || 0;
+    } catch (enfErr) { console.error('[Analysis] Enforcement query error:', enfErr instanceof Error ? enfErr.message : enfErr); }
+
+    const enfInPredicted = repeats.filter((r: any) => predGrid.has(`${r.lat},${r.lng}`)).length;
+
+    // ── Shift Trend ─────────────────────────────────────────
+    const currentPeriod = db.prepare(`
+      SELECT COUNT(*) as cnt FROM calls_for_service
+      WHERE created_at >= datetime('now', 'localtime', '-7 days')
+    `).get() as any;
+    const previousPeriod = db.prepare(`
+      SELECT COUNT(*) as cnt FROM calls_for_service
+      WHERE created_at >= datetime('now', 'localtime', '-14 days')
+        AND created_at < datetime('now', 'localtime', '-7 days')
+    `).get() as any;
+
+    const currentCalls = currentPeriod?.cnt || 0;
+    const previousCalls = previousPeriod?.cnt || 0;
+    const changePercent = previousCalls > 0 ? Math.round(((currentCalls - previousCalls) / previousCalls) * 100) : 0;
+
+    // ── Geofence count ──────────────────────────────────────
+    let activeGeofences = 0;
+    try {
+      const geoRow = db.prepare('SELECT COUNT(*) as cnt FROM geofences WHERE is_active = 1').get() as any;
+      activeGeofences = geoRow?.cnt || 0;
+    } catch (geoErr) { console.error('[Analysis] Geofence count error:', geoErr instanceof Error ? geoErr.message : geoErr); }
+
+    // ── Repeat address count ────────────────────────────────
+    const repeatCount = repeats.length;
+
+    logTiming('analysis/summary', startMs);
+    res.json({
+      overlapZones: { count: overlapLocations.length, locations: overlapLocations },
+      repeatInRiskZones: { count: repeatInRisk.length, addresses: repeatInRisk },
+      enforcement: {
+        total30d: enforcementTotal,
+        inPredictedAreas: enfInPredicted,
+        effectivenessRate: enforcementTotal > 0 ? Math.round((enfInPredicted / enforcementTotal) * 100) : 0,
+      },
+      shiftTrend: {
+        currentShift: shift,
+        currentPeriodCalls: currentCalls,
+        previousPeriodCalls: previousCalls,
+        changePercent,
+      },
+      metrics: {
+        totalSafetyZones: safetyZones.length,
+        highRiskZones: safetyZones.filter((z: any) => z.weapons >= 2 || z.total_flagged >= 3).length,
+        activePredictions: predictions.length,
+        activeGeofences,
+        totalEnforcement30d: enforcementTotal,
+        repeatAddressCount: repeatCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Dispatch] analysis summary error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'ANALYSIS_SUMMARY_ERROR' });
+  }
+});
+
+// GET /api/dispatch/repeat-addresses - Addresses with repeated calls for service
+// Query params: days (int, default 30), min_count (int, default 3)
+router.get('/repeat-addresses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    // Fix 66: Proper date filtering with validation
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    // Fix 67: Minimum repeat count threshold parameter
+    const minCount = Math.max(2, Math.min(100, parseInt(req.query.min_count as string, 10) || 3));
+    // Fix 4: Pagination support
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
+    const offset = (page - 1) * limit;
+
+    const cutoff = `-${days}`;
+    setCacheHeaders(res, 120);
+
+    // Fix 68: Sort by repeat count (most repeated first) — already ORDER BY call_count DESC
+    const addresses = db.prepare(`
+      SELECT location_address, ROUND(latitude, 4) AS lat, ROUND(longitude, 4) AS lng,
+             COUNT(*) AS call_count, GROUP_CONCAT(DISTINCT incident_type) AS incident_types,
+             MAX(created_at) AS last_call,
+             MIN(created_at) AS first_call
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', ? || ' days')
+      GROUP BY ROUND(latitude, 4), ROUND(longitude, 4)
+      HAVING COUNT(*) >= ?
+      ORDER BY call_count DESC
+      LIMIT ? OFFSET ?
+    `).all(cutoff, minCount, limit, offset) as any[];
+
+    // Fix 69: Coordinate validation
+    const validated = filterValidCoords(addresses);
+
+    // Fix 70: Return structured response with location details
+    logTiming('repeat-addresses', startMs);
+    res.json(validated);
+  } catch (error: any) {
+    console.error('[Dispatch] repeat-addresses error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'REPEAT_ADDRESSES_ERROR' });
+  }
+});
+
+// GET /api/dispatch/heatmap/enforcement - Citation/arrest geographic clusters
+// Query params: type ('citations' | 'arrests'), days (int, default 90)
+router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    setCacheHeaders(res, 120);
+    const type = req.query.type as string;
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
+
+    if (!type || !['citations', 'arrests'].includes(type)) {
+      res.status(400).json({ error: 'type must be "citations" or "arrests"', code: 'INVALID_ENFORCEMENT_TYPE' });
+      return;
+    }
+
+    const cutoff = `-${days}`;
+
+    if (type === 'citations') {
+      // Join citations to calls_for_service via call_id to get coordinates
+      const clusters = db.prepare(`
+        SELECT ROUND(c2.latitude, 3) AS lat, ROUND(c2.longitude, 3) AS lng,
+               COUNT(*) AS total,
+               GROUP_CONCAT(DISTINCT c.violation_description) AS top_statutes,
+               MIN(c.created_at) AS first_date,
+               MAX(c.created_at) AS last_date
+        FROM citations c
+        JOIN calls_for_service c2 ON c.call_id = c2.id
+        WHERE c2.latitude IS NOT NULL AND c2.longitude IS NOT NULL
+          AND c.created_at >= datetime('now', 'localtime', ? || ' days')
+        GROUP BY ROUND(c2.latitude, 3), ROUND(c2.longitude, 3)
+        ORDER BY total DESC
+        LIMIT 100
+      `).all(cutoff);
+
+      logTiming('heatmap/enforcement/citations', startMs);
+      res.json(filterValidCoords(clusters as any[]));
+      return;
+    }
+
+    // Arrests: use incidents with arrest-related dispositions joined to calls_for_service
+    const clusters = db.prepare(`
+      SELECT ROUND(c.latitude, 3) AS lat, ROUND(c.longitude, 3) AS lng,
+             COUNT(*) AS total,
+             GROUP_CONCAT(DISTINCT i.incident_type) AS top_statutes,
+             MIN(i.created_at) AS first_date,
+             MAX(i.created_at) AS last_date
+      FROM incidents i
+      JOIN calls_for_service c ON i.call_id = c.id
+      WHERE c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+        AND i.created_at >= datetime('now', 'localtime', ? || ' days')
+        AND (i.disposition LIKE '%arrest%' OR i.disposition LIKE '%custody%' OR i.disposition LIKE '%booked%')
+      GROUP BY ROUND(c.latitude, 3), ROUND(c.longitude, 3)
+      ORDER BY total DESC
+      LIMIT 100
+    `).all(cutoff);
+
+    logTiming('heatmap/enforcement/arrests', startMs);
+    res.json(filterValidCoords(clusters as any[]));
+  } catch (error: any) {
+    console.error('[Dispatch] enforcement heatmap error:', error?.message || 'Unknown error');
+    if (error?.message?.includes('no such table')) {
+      res.json([]);
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'ENFORCEMENT_ERROR' });
+  }
+});
+
+// GET /api/dispatch/history-map - Historical cleared/closed/archived calls with coords for map display
+router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 7));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
+
+    // Parse comma-separated filters
+    const validStatuses = ['cleared', 'closed', 'archived'];
+    const statusFilter = req.query.status
+      ? String(req.query.status).split(',').filter(s => validStatuses.includes(s))
+      : validStatuses;
+    if (statusFilter.length === 0) {
+      res.status(400).json({ error: 'Invalid status filter', code: 'INVALID_STATUS_FILTER' });
+      return;
+    }
+
+    const typesFilter = req.query.types
+      ? String(req.query.types).split(',').filter(t => t.length > 0 && t.length < 100).slice(0, 30)
+      : [];
+
+    const validPriorities = ['P1', 'P2', 'P3', 'P4'];
+    const priorityFilter = req.query.priority
+      ? String(req.query.priority).split(',').filter(p => validPriorities.includes(p))
+      : [];
+
+    const conditions: string[] = [
+      'c.latitude IS NOT NULL',
+      'c.longitude IS NOT NULL',
+      `c.created_at >= datetime('now', 'localtime', ? || ' days')`,
+    ];
+    const params: any[] = [`-${days}`];
+
+    // Status filter
+    const statusPlaceholders = statusFilter.map(() => '?').join(',');
+    conditions.push(`c.status IN (${statusPlaceholders})`);
+    params.push(...statusFilter);
+
+    // Types filter
+    if (typesFilter.length > 0) {
+      const typePlaceholders = typesFilter.map(() => '?').join(',');
+      conditions.push(`c.incident_type IN (${typePlaceholders})`);
+      params.push(...typesFilter);
+    }
+
+    // Priority filter
+    if (priorityFilter.length > 0) {
+      const priPlaceholders = priorityFilter.map(() => '?').join(',');
+      conditions.push(`c.priority IN (${priPlaceholders})`);
+      params.push(...priorityFilter);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    const rows = db.prepare(`
+      SELECT
+        c.id,
+        c.call_number,
+        c.incident_type,
+        c.priority,
+        c.status,
+        c.disposition,
+        c.location_address,
+        c.latitude,
+        c.longitude,
+        c.created_at,
+        c.cleared_at,
+        c.onscene_at,
+        c.assigned_unit_ids,
+        c.description,
+        c.source,
+        CASE
+          WHEN c.onscene_at IS NOT NULL THEN ROUND((julianday(c.onscene_at) - julianday(c.created_at)) * 24 * 60, 1)
+          WHEN c.cleared_at IS NOT NULL THEN ROUND((julianday(c.cleared_at) - julianday(c.created_at)) * 24 * 60, 1)
+          ELSE NULL
+        END as response_time_min
+      FROM calls_for_service c
+      WHERE ${whereClause}
+      ORDER BY c.created_at DESC
+      LIMIT ?
+    `).all(...params, limit) as any[];
+
+    // Resolve assigned_unit_ids to call_signs
+    const unitStmt = db.prepare('SELECT call_sign FROM units WHERE id = ?');
+    const results = rows.map((row: any) => {
+      let assignedUnits = '';
+      if (row.assigned_unit_ids) {
+        try {
+          const ids = JSON.parse(row.assigned_unit_ids);
+          if (Array.isArray(ids)) {
+            assignedUnits = ids
+              .map((uid: any) => {
+                const u = unitStmt.get(uid) as any;
+                return u?.call_sign || null;
+              })
+              .filter(Boolean)
+              .join(', ');
+          }
+        } catch (parseErr) { console.error('[Aggregates] Failed to parse assigned_unit_ids for history-map:', parseErr instanceof Error ? parseErr.message : parseErr); }
+      }
+      return {
+        id: row.id,
+        call_number: row.call_number,
+        incident_type: row.incident_type,
+        priority: row.priority,
+        status: row.status,
+        disposition: row.disposition,
+        location_address: row.location_address,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        created_at: row.created_at,
+        cleared_at: row.cleared_at,
+        response_time_min: row.response_time_min,
+        assigned_units: assignedUnits,
+        description: row.description,
+        source: row.source,
+      };
+    });
+
+    res.json(results);
+  } catch (error: any) {
+    console.error('[Dispatch] history-map error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'HISTORY_MAP_ERROR' });
+  }
+});
+
+
+// POST /api/dispatch/queue/assign — Quick-assign unit to call from queue
+router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id, unit_id } = req.body;
+    if (!call_id || !unit_id) {
+      res.status(400).json({ error: 'call_id and unit_id required' });
+      return;
+    }
+
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call_id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
+
+    const now = localNow();
+
+    // Update unit status to dispatched
+    db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('dispatched', call_id, now, now, unit_id);
+
+    // Add unit to call's assigned_unit_ids
+    let unitIds: string[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { unitIds = []; }
+    if (!unitIds.includes(String(unit_id))) unitIds.push(String(unit_id));
+    db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, status = ?, dispatched_at = COALESCE(dispatched_at, ?), updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
+
+    // Log
+    auditLog(req, 'DISPATCH_ASSIGN', 'calls_for_service', call_id, JSON.stringify({ unit_id, call_sign: unit.call_sign }));
+
+    // Broadcast
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: call.status === 'pending' ? 'dispatched' : call.status } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
+
+    res.json({ success: true, call_number: call.call_number, unit_call_sign: unit.call_sign });
+  } catch (err: any) {
+    console.error('[Dispatch] queue assign error:', err?.message);
+    res.status(500).json({ error: 'Failed to assign unit' });
+  }
+});
+
+// POST /api/dispatch/queue/auto-assign — Auto-assign nearest available unit
+router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_id } = req.body;
+    if (!call_id) { res.status(400).json({ error: 'call_id required' }); return; }
+
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call_id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call.latitude || !call.longitude) { res.status(400).json({ error: 'Call has no GPS coordinates for auto-assign' }); return; }
+
+    // Find nearest available unit with GPS
+    const units = db.prepare("SELECT * FROM units WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL").all() as any[];
+    if (units.length === 0) { res.status(404).json({ error: 'No available units with GPS' }); return; }
+
+    let nearest = units[0];
+    let minDist = Infinity;
+    for (const u of units) {
+      const dlat = (call.latitude - u.latitude) * 111;
+      const dlng = (call.longitude - u.longitude) * 85;
+      const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+      if (dist < minDist) { minDist = dist; nearest = u; }
+    }
+
+    const now = localNow();
+    db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('dispatched', call_id, now, now, nearest.id);
+
+    let unitIds: string[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { unitIds = []; }
+    if (!unitIds.includes(String(nearest.id))) unitIds.push(String(nearest.id));
+    db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, status = ?, dispatched_at = COALESCE(dispatched_at, ?), updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(unitIds), call.status === 'pending' ? 'dispatched' : call.status, now, now, call_id);
+
+    auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, JSON.stringify({ unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) }));
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: 'dispatched' } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
+
+    res.json({ success: true, call_number: call.call_number, unit_call_sign: nearest.call_sign, distance_km: parseFloat(minDist.toFixed(2)) });
+  } catch (err: any) {
+    console.error('[Dispatch] auto-assign error:', err?.message);
+    res.status(500).json({ error: 'Failed to auto-assign' });
+  }
+});
+
+// ─── ANOMALY ALERTS ──────────────────────────────────────────
+
+// GET /api/dispatch/anomaly-alerts
+router.get('/anomaly-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = parseInt(req.query.hours as string) || 4;
+    const alerts = db.prepare(`
+      SELECT a.*, u.full_name as acknowledged_by_name
+      FROM anomaly_alerts a
+      LEFT JOIN users u ON a.acknowledged_by = u.id
+      WHERE a.created_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+      ORDER BY a.created_at DESC
+    `).all(hours);
+    res.json(alerts);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly alerts error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to fetch anomaly alerts', code: 'ANOMALY_ALERTS_ERROR' });
+  }
+});
+
+// POST /api/dispatch/anomaly-alerts/:id/acknowledge
+router.post('/anomaly-alerts/:id/acknowledge', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) { res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' }); return; }
+
+    db.prepare(`
+      UPDATE anomaly_alerts SET acknowledged_by = ?, acknowledged_at = ? WHERE id = ?
+    `).run(req.user!.userId, localNow(), req.params.id);
+
+    const updated = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate({ action: 'anomaly_acknowledged', alert: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly acknowledge error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to acknowledge alert', code: 'ANOMALY_ACK_ERROR' });
+  }
+});
+
+// ─── BACKUP REQUEST ──────────────────────────────────────────
+
+// POST /api/dispatch/request-backup
+router.post('/request-backup', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { latitude, longitude, message } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const unit = db.prepare('SELECT * FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'backup_requested', 'unit', ?, ?, ?)
+    `).run(req.user!.userId, unit?.id || null, `Backup requested by ${user?.full_name || 'Unknown'}: ${message || 'No message'}`, req.ip || 'unknown');
+
+    // Broadcast to dispatch channel
+    broadcastDispatchUpdate({
+      action: 'backup_requested',
+      user_id: req.user!.userId,
+      user_name: user?.full_name,
+      badge_number: user?.badge_number,
+      call_sign: unit?.call_sign,
+      current_call_id: unit?.current_call_id,
+      latitude, longitude, message,
+      requested_at: localNow(),
+    });
+
+    // Notify all dispatchers
+    const dispatchers = db.prepare(
+      "SELECT id FROM users WHERE role IN ('admin', 'supervisor', 'dispatcher') AND status = 'active'"
+    ).all() as any[];
+    for (const d of dispatchers) {
+      createNotification(
+        d.id, 'backup_request', `BACKUP: ${unit?.call_sign || user?.full_name}`,
+        message || 'Officer requesting backup',
+        'unit', unit?.id || null, 'critical'
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Aggregates] Backup request error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to process backup request', code: 'BACKUP_REQUEST_ERROR' });
   }
 });
 

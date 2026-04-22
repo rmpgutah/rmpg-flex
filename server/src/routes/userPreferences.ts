@@ -37,6 +37,8 @@ const DEFAULTS = {
   dashboard_widgets: null,
   dispatch_sort: 'priority',
   dispatch_show_cleared: 0,
+  theme_preference: 'dark',
+  font_size_preference: 'medium',
 };
 
 // Allowed fields for update — prevents SQL injection via dynamic column names
@@ -59,7 +61,7 @@ router.get('/', (req: Request, res: Response) => {
     res.json(prefs);
   } catch (error: any) {
     console.error('[UserPreferences] GET error:', error?.message);
-    res.status(500).json({ error: 'Failed to get user preferences' });
+    res.status(500).json({ error: 'Failed to get user preferences', code: 'FAILED_TO_GET_USER' });
   }
 });
 
@@ -71,13 +73,13 @@ router.put('/', (req: Request, res: Response) => {
     const updates = req.body;
 
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
-      res.status(400).json({ error: 'Request body must be an object' });
+      res.status(400).json({ error: 'Request body must be an object', code: 'REQUEST_BODY_MUST_BE' });
       return;
     }
 
     // Reject excessively large payloads
     if (Object.keys(updates).length > 50) {
-      res.status(400).json({ error: 'Too many fields in request' });
+      res.status(400).json({ error: 'Too many fields in request', code: 'TOO_MANY_FIELDS_IN' });
       return;
     }
 
@@ -95,12 +97,46 @@ router.put('/', (req: Request, res: Response) => {
           res.status(400).json({ error: `Invalid value type for ${key}` });
           return;
         }
+        // Validate numeric ranges for specific fields
+        if (key === 'font_scale' && (typeof value !== 'number' || value < 0.5 || value > 3.0)) {
+          res.status(400).json({ error: 'font_scale must be between 0.5 and 3.0', code: 'FONTSCALE_MUST_BE_BETWEEN' });
+          return;
+        }
+        if (/^notify_/.test(key) && key !== 'notify_credential_email' && value !== 0 && value !== 1 && value !== true && value !== false) {
+          res.status(400).json({ error: `${key} must be 0 or 1` });
+          return;
+        }
+        if (key === 'compact_mode' && value !== 0 && value !== 1 && value !== true && value !== false) {
+          res.status(400).json({ error: 'compact_mode must be 0 or 1', code: 'COMPACTMODE_MUST_BE_0' });
+          return;
+        }
+        if (key === 'show_map_labels' && value !== 0 && value !== 1 && value !== true && value !== false) {
+          res.status(400).json({ error: 'show_map_labels must be 0 or 1', code: 'SHOWMAPLABELS_MUST_BE_0' });
+          return;
+        }
+        if (key === 'dispatch_show_cleared' && value !== 0 && value !== 1 && value !== true && value !== false) {
+          res.status(400).json({ error: 'dispatch_show_cleared must be 0 or 1', code: 'DISPATCHSHOWCLEARED_MUST_BE_0' });
+          return;
+        }
+        if (key === 'default_map_style' && typeof value === 'string' && !['dark', 'light', 'satellite', 'terrain'].includes(value)) {
+          res.status(400).json({ error: 'Invalid default_map_style', code: 'INVALID_DEFAULTMAPSTYLE' });
+          return;
+        }
+        if (key === 'dispatch_sort' && typeof value === 'string' && !['priority', 'time', 'status'].includes(value)) {
+          res.status(400).json({ error: 'Invalid dispatch_sort value', code: 'INVALID_DISPATCHSORT_VALUE' });
+          return;
+        }
+        // Validate string value lengths
+        if (typeof value === 'string' && value.length > 5000) {
+          res.status(400).json({ error: `Value for ${key} is too long` });
+          return;
+        }
         validUpdates[key] = value;
       }
     }
 
     if (Object.keys(validUpdates).length === 0) {
-      res.status(400).json({ error: 'No valid preference fields provided' });
+      res.status(400).json({ error: 'No valid preference fields provided', code: 'NO_VALID_PREFERENCE_FIELDS' });
       return;
     }
 
@@ -131,7 +167,7 @@ router.put('/', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('[UserPreferences] PUT error:', error?.message);
-    res.status(500).json({ error: 'Failed to update user preferences' });
+    res.status(500).json({ error: 'Failed to update user preferences', code: 'FAILED_TO_UPDATE_USER' });
   }
 });
 
@@ -149,8 +185,89 @@ router.post('/reset', (req: Request, res: Response) => {
     res.json({ ...DEFAULTS, user_id: userId });
   } catch (error: any) {
     console.error('[UserPreferences] RESET error:', error?.message);
-    res.status(500).json({ error: 'Failed to reset user preferences' });
+    res.status(500).json({ error: 'Failed to reset user preferences', code: 'FAILED_TO_RESET_USER' });
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 37: Recently viewed items
+// ═══════════════════════════════════════════════════════════
+router.get('/recently-viewed', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const user = db.prepare('SELECT recently_viewed FROM users WHERE id = ?').get(userId) as any;
+    let items: any[] = [];
+    try { items = JSON.parse(user?.recently_viewed || '[]'); } catch { items = []; }
+    res.json({ data: items });
+  } catch (error: any) { console.error('[UserPreferences] recently-viewed GET error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+});
+
+router.post('/recently-viewed', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const { entity_type, entity_id, title } = req.body;
+    if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required', code: 'ENTITYTYPE_AND_ENTITYID_REQUIRED' });
+
+    const user = db.prepare('SELECT recently_viewed FROM users WHERE id = ?').get(userId) as any;
+    let items: any[];
+    try { items = JSON.parse(user?.recently_viewed || '[]'); } catch { items = []; }
+    // Remove duplicates and add to front
+    items = items.filter((i: any) => !(i.entity_type === entity_type && i.entity_id === entity_id));
+    items.unshift({ entity_type, entity_id, title: title || '', viewed_at: localNow() });
+    items = items.slice(0, 20); // Keep max 20 items
+
+    db.prepare('UPDATE users SET recently_viewed = ? WHERE id = ?').run(JSON.stringify(items), userId);
+    res.json({ data: items });
+  } catch (error: any) { console.error('[UserPreferences] recently-viewed POST error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 38: Favorites/bookmarks
+// ═══════════════════════════════════════════════════════════
+router.get('/favorites', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
+    let items: any[] = [];
+    try { items = JSON.parse(user?.favorites || '[]'); } catch { items = []; }
+    res.json({ data: items });
+  } catch (error: any) { console.error('[UserPreferences] favorites GET error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+});
+
+router.post('/favorites', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const { entity_type, entity_id, title } = req.body;
+    if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required', code: 'ENTITYTYPE_AND_ENTITYID_REQUIRED' });
+
+    const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
+    let items: any[];
+    try { items = JSON.parse(user?.favorites || '[]'); } catch { items = []; }
+    // Don't add duplicates
+    if (!items.find((i: any) => i.entity_type === entity_type && i.entity_id === entity_id)) {
+      items.push({ entity_type, entity_id, title: title || '', added_at: localNow() });
+    }
+
+    db.prepare('UPDATE users SET favorites = ? WHERE id = ?').run(JSON.stringify(items), userId);
+    res.json({ data: items });
+  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
+});
+
+router.delete('/favorites/:entity_type/:entity_id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
+    let items: any[] = [];
+    try { items = JSON.parse(user?.favorites || '[]'); } catch { items = []; }
+    items = items.filter((i: any) => !(i.entity_type === req.params.entity_type && String(i.entity_id) === req.params.entity_id));
+    db.prepare('UPDATE users SET favorites = ? WHERE id = ?').run(JSON.stringify(items), userId);
+    res.json({ data: items });
+  } catch (error: any) { console.error('[UserPreferences] favorites DELETE error:', error?.message); res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 export default router;

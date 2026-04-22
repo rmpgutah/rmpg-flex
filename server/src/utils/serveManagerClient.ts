@@ -29,8 +29,13 @@ export function encryptApiKey(plaintext: string): string {
 export function decryptApiKey(stored: string): string {
   const key = deriveKey();
   const parts = stored.split(':');
-  if (parts.length !== 3) throw new Error('Invalid encrypted format');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted API key format: expected iv:authTag:ciphertext');
+  }
   const [ivHex, authTagHex, ciphertext] = parts;
+  if (!ivHex || !authTagHex || !ciphertext) {
+    throw new Error('Invalid encrypted API key format: empty segment');
+  }
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -51,7 +56,9 @@ export function getApiKey(): string | null {
     if (row?.config_value) {
       return decryptApiKey(row.config_value);
     }
-  } catch (e: any) { console.warn('[ServeManager] API key decrypt failed:', e?.message); }
+  } catch (err) {
+    console.error('[ServeManagerClient] Failed to resolve API key from DB:', err instanceof Error ? err.message : err);
+  }
 
   return config.serveManagerApiKey || null;
 }
@@ -99,17 +106,7 @@ export async function smFetch<T = any>(
 
   const { method = 'GET', body, params } = options;
 
-  // Validate endpoint path: block traversal, protocol switching, and SSRF vectors
-  if (endpoint.includes('..') || endpoint.includes('//') || endpoint.includes('\\')) {
-    throw new ServeManagerError('Invalid endpoint path', 400);
-  }
-  const sanitizedEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
-  // Verify the constructed URL stays within the ServeManager domain
-  const parsedUrl = new URL(sanitizedEndpoint, SM_BASE_URL);
-  if (!parsedUrl.origin.includes('servemanager.com')) {
-    throw new ServeManagerError('Invalid endpoint — must target ServeManager API', 400);
-  }
-  let url = parsedUrl.toString();
+  let url = `${SM_BASE_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
   if (params && Object.keys(params).length > 0) {
     const sp = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
@@ -131,7 +128,7 @@ export async function smFetch<T = any>(
     fetchOpts.body = JSON.stringify({ data: body });
   }
 
-  fetchOpts.signal = AbortSignal.timeout(15_000);
+  fetchOpts.signal = AbortSignal.timeout(30_000); // 30 second timeout on all SM API calls
   const response = await fetch(url, fetchOpts);
 
   if (!response.ok) {
@@ -144,7 +141,16 @@ export async function smFetch<T = any>(
     );
   }
 
-  const json = await response.json();
+  let json: any;
+  try {
+    json = await response.json();
+  } catch (parseErr) {
+    throw new ServeManagerError(
+      `ServeManager API returned invalid JSON: ${response.status}`,
+      response.status,
+      null
+    );
+  }
   return json;
 }
 

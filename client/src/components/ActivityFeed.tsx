@@ -26,7 +26,7 @@ const ACTION_CONFIG: Record<ActivityAction, { icon: React.ElementType; color: st
   call_onscene: { icon: Radio, color: 'text-purple-400' },
   call_cleared: { icon: Phone, color: 'text-rmpg-300' },
   call_closed: { icon: Phone, color: 'text-rmpg-400' },
-  unit_status_change: { icon: Radio, color: 'text-cyan-400' },
+  unit_status_change: { icon: Radio, color: 'text-gray-400' },
   incident_created: { icon: FileText, color: 'text-brand-400' },
   incident_submitted: { icon: FileText, color: 'text-brand-300' },
   incident_approved: { icon: FileText, color: 'text-green-400' },
@@ -43,7 +43,9 @@ const ACTION_CONFIG: Record<ActivityAction, { icon: React.ElementType; color: st
 };
 
 function formatTime(dateStr: string, showDate: boolean): string {
+  if (!dateStr) return '--:--:--';
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '--:--:--';
   if (showDate) {
     return date.toLocaleString('en-US', {
       month: 'short',
@@ -88,7 +90,7 @@ export default React.memo(function ActivityFeed({
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-rmpg-200 leading-relaxed">
                     {entry.user_name && (
-                      <span className="font-semibold text-rmpg-100">{entry.user_name} </span>
+                      <span className="font-semibold text-rmpg-200">{entry.user_name} </span>
                     )}
                     {entry.description}
                   </p>

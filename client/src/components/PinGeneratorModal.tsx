@@ -106,8 +106,8 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
       <div
         className="w-full max-w-md mx-4"
         style={{
-          background: '#141e2b',
-          border: '1px solid #1e3048',
+          background: '#0a0a0a',
+          border: '1px solid #2b2b2b',
           borderTop: '3px solid #d97706',
         }}
       >
@@ -117,10 +117,9 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
             <Key className="w-4 h-4 text-amber-500" />
             <span className="text-sm font-bold text-white">Generate Offline PIN</span>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-400 hover:text-white transition-colors"
-          >
+            className="p-1 text-rmpg-400 hover:text-white transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -152,7 +151,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
 
           {/* Generate button */}
           {!generatedPin && (
-            <button
+            <button type="button"
               onClick={handleGenerate}
               disabled={generating || !selectedUserId}
               className="btn-primary w-full justify-center"
@@ -212,13 +211,13 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
               </div>
 
               {/* Copy button */}
-              <button
+              <button type="button"
                 onClick={handleCopy}
                 className="flex items-center gap-2 mx-auto px-3 py-1.5 text-xs transition-colors"
                 style={{
-                  background: copied ? 'rgba(34, 197, 94, 0.15)' : '#1a2636',
-                  border: `1px solid ${copied ? '#22c55e' : '#2a3e58'}`,
-                  color: copied ? '#22c55e' : '#8a9aaa',
+                  background: copied ? 'rgba(34, 197, 94, 0.15)' : '#141414',
+                  border: `1px solid ${copied ? '#22c55e' : '#2e2e2e'}`,
+                  color: copied ? '#22c55e' : '#888888',
                 }}
               >
                 {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -244,7 +243,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
               </div>
 
               {/* Generate another */}
-              <button
+              <button type="button"
                 onClick={() => {
                   setGeneratedPin(null);
                   setExpiresAt(null);

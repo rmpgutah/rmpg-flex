@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — RapidAPI Skip Trace Adapter
+// Skip Tracker 3.5 — RapidAPI Skip Trace Adapter
 // ============================================================
 // Wraps the existing RapidAPI Skip Tracing Working API.
 // Legacy config key: skiptracer_api_key (from v1 integration).

@@ -31,6 +31,23 @@ export type CommandAction =
   | { type: 'le_notify'; callNumber: string; agency?: string }
   | { type: 'select_call'; callId: string; callNumber: string }
   | { type: 'set_mileage'; callSign: string; mileageType: 'start' | 'end'; value: number }
+  | { type: 'voice_status'; callSign?: string }
+  | { type: 'voice_check'; callNumber: string }
+  | { type: 'voice_eta'; callSign: string }
+  | { type: 'voice_weather' }
+  | { type: 'voice_time' }
+  | { type: 'voice_ack' }
+  | { type: 'voice_allclear'; callNumber?: string }
+  | { type: 'voice_summary' }
+  | { type: 'voice_locate'; callSign: string }
+  | { type: 'voice_serve'; callNumber: string }
+  | { type: 'voice_deadline'; callNumber: string }
+  | { type: 'voice_stack' }
+  | { type: 'voice_units' }
+  | { type: 'voice_pending' }
+  | { type: 'voice_priority' }
+  | { type: 'lookup_code'; code: string; result?: { description: string; priority: string; category: string; requires_backup: boolean; officer_safety: boolean; ems_needed: boolean; fire_needed: boolean } }
+  | { type: 'premise_alert'; address: string; alerts?: { title: string; alert_type: string; alert_level: string; description?: string }[] }
   | { type: 'show_help' }
   | { type: 'none' };
 
@@ -81,6 +98,23 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
   QT:   { usage: 'QT <name or address>',      desc: 'Query trespass orders' },
   PI:   { usage: 'PI <call#>',               desc: 'Promote call to incident report' },
   LE:   { usage: 'LE <call#> [agency]',      desc: 'Notify external agency' },
+  STATUS: { usage: 'STATUS [unit]',          desc: 'Voice announce unit status' },
+  CHECK: { usage: 'CHECK <call#>',          desc: 'Voice read-back call details' },
+  ETA:  { usage: 'ETA <unit>',              desc: 'Voice announce unit ETA' },
+  WEATHER: { usage: 'WEATHER',              desc: 'Voice announce weather' },
+  TIME: { usage: 'TIME',                    desc: 'Voice announce current time' },
+  ACK:  { usage: 'ACK or 10-4',            desc: 'Play acknowledgment tone' },
+  'ALL-CLEAR': { usage: 'ALL-CLEAR [call#]', desc: 'Announce all-clear on call' },
+  SUMMARY:  { usage: 'SUMMARY or SHIFT',       desc: 'Voice announce shift summary stats' },
+  LOCATE:   { usage: 'LOCATE <unit>',           desc: 'Announce unit last known GPS location' },
+  SERVE:    { usage: 'SERVE <call#>',           desc: 'Announce serve details (doc, subject, attempts)' },
+  DEADLINE: { usage: 'DEADLINE <call#>',        desc: 'Announce 72hr deadline status' },
+  STACK:    { usage: 'STACK',                   desc: 'Announce stacked calls at selected location' },
+  UNITS:    { usage: 'UNITS',                   desc: 'Announce all unit statuses' },
+  PENDING:  { usage: 'PENDING',                 desc: 'Announce pending call count and details' },
+  PRIORITY: { usage: 'PRIORITY',                desc: 'Announce calls by priority breakdown' },
+  CODE: { usage: 'CODE <10-code>',              desc: 'Lookup dispatch code (10-71, CODE-3, etc.)' },
+  PA:   { usage: 'PA <address>',                desc: 'Premise alerts — check location for warnings' },
   HELP: { usage: 'HELP',                       desc: 'Show command reference' },
 };
 
@@ -89,6 +123,7 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
 export interface CadContext {
   units: Array<{ id: string; call_sign: string; status: string; current_call_id?: string }>;
   calls: Array<{ id: string; call_number: string; status: string }>;
+  currentUser?: string;
 }
 
 // ─── Fuzzy Matching ──────────────────────────────────────────
@@ -233,8 +268,8 @@ export async function executeCommand(
 
       try {
         await apiFetch(`/dispatch/units/${unit.id}/mileage`, {
-          method: 'POST',
-          body: JSON.stringify({ type: mileageType, mileage: mileageVal }),
+          method: 'PUT',
+          body: JSON.stringify({ mileage: mileageVal }),
         });
         return {
           success: true,
@@ -471,9 +506,19 @@ export async function executeCommand(
       }
 
       try {
-        await apiFetch(`/dispatch/calls/${call.id}/notes`, {
-          method: 'POST',
-          body: JSON.stringify({ content: noteText }),
+        // Fetch current call to get existing notes, then append
+        const current = await apiFetch<any>(`/dispatch/calls/${call.id}`);
+        let existingNotes: any[] = [];
+        try { existingNotes = JSON.parse(current.notes || '[]'); } catch { /* start fresh */ }
+        existingNotes.push({
+          id: String(Date.now()),
+          author: ctx.currentUser || 'Dispatch',
+          text: noteText,
+          timestamp: new Date().toISOString(),
+        });
+        await apiFetch(`/dispatch/calls/${call.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ notes: JSON.stringify(existingNotes) }),
         });
         return {
           success: true,
@@ -654,6 +699,288 @@ export async function executeCommand(
       }
     }
 
+    // ── Voice: Status ──
+    case 'STATUS': {
+      if (args.length === 0) {
+        const active = ctx.units.filter(u => u.status !== 'off_duty');
+        return {
+          success: true,
+          message: `Voice announcing ${active.length} active units status`,
+          action: { type: 'voice_status' },
+        };
+      }
+      const unit = fuzzyFindUnit(args[0], ctx.units);
+      if (!unit) {
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice announcing status: ${unit.call_sign} — ${unit.status.toUpperCase()}`,
+        action: { type: 'voice_status', callSign: unit.call_sign },
+      };
+    }
+
+    // ── Voice: Check (read-back call details) ──
+    case 'CHECK': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: CHECK <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice read-back for ${call.call_number}`,
+        action: { type: 'voice_check', callNumber: call.call_number },
+      };
+    }
+
+    // ── Voice: ETA ──
+    case 'ETA': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: ETA <unit>', action: { type: 'none' } };
+      }
+      const unit = fuzzyFindUnit(args[0], ctx.units);
+      if (!unit) {
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice announcing ETA for ${unit.call_sign}`,
+        action: { type: 'voice_eta', callSign: unit.call_sign },
+      };
+    }
+
+    // ── Voice: Weather ──
+    case 'WEATHER': {
+      return {
+        success: true,
+        message: 'Voice announcing current weather',
+        action: { type: 'voice_weather' },
+      };
+    }
+
+    // ── Voice: Time ──
+    case 'TIME': {
+      return {
+        success: true,
+        message: 'Voice announcing current time',
+        action: { type: 'voice_time' },
+      };
+    }
+
+    // ── Voice: Acknowledgment ──
+    case 'ACK':
+    case '10-4': {
+      return {
+        success: true,
+        message: '10-4',
+        action: { type: 'voice_ack' },
+      };
+    }
+
+    // ── Voice: All-Clear ──
+    case 'ALL-CLEAR':
+    case 'ALLCLEAR': {
+      if (args.length > 0) {
+        const call = fuzzyFindCall(args[0], ctx.calls);
+        if (!call) {
+          return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+        }
+        return {
+          success: true,
+          message: `All clear — ${call.call_number}`,
+          action: { type: 'voice_allclear', callNumber: call.call_number },
+        };
+      }
+      return {
+        success: true,
+        message: 'All clear announced',
+        action: { type: 'voice_allclear' },
+      };
+    }
+
+    // ── Voice: Shift Summary ──
+    case 'SUMMARY':
+    case 'SHIFT':
+    case '/SUMMARY':
+    case '/SHIFT': {
+      return {
+        success: true,
+        message: 'Voice announcing shift summary',
+        action: { type: 'voice_summary' },
+      };
+    }
+
+    // ── Voice: Locate Unit ──
+    case 'LOCATE':
+    case '/LOCATE': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: LOCATE <unit>', action: { type: 'none' } };
+      }
+      const unit = fuzzyFindUnit(args[0], ctx.units);
+      if (!unit) {
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice announcing location of ${unit.call_sign}`,
+        action: { type: 'voice_locate', callSign: unit.call_sign },
+      };
+    }
+
+    // ── Voice: Serve Details ──
+    case 'SERVE':
+    case '/SERVE': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: SERVE <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice announcing serve details for ${call.call_number}`,
+        action: { type: 'voice_serve', callNumber: call.call_number },
+      };
+    }
+
+    // ── Voice: Deadline Status ──
+    case 'DEADLINE':
+    case '/DEADLINE': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: DEADLINE <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Voice announcing deadline for ${call.call_number}`,
+        action: { type: 'voice_deadline', callNumber: call.call_number },
+      };
+    }
+
+    // ── Voice: Stacked Calls ──
+    case 'STACK':
+    case '/STACK': {
+      return {
+        success: true,
+        message: 'Voice announcing stacked calls at selected location',
+        action: { type: 'voice_stack' },
+      };
+    }
+
+    // ── Voice: All Unit Statuses ──
+    case 'UNITS':
+    case '/UNITS': {
+      const active = ctx.units.filter(u => u.status !== 'off_duty');
+      return {
+        success: true,
+        message: `Voice announcing ${active.length} active unit statuses`,
+        action: { type: 'voice_units' },
+      };
+    }
+
+    // ── Voice: Pending Calls ──
+    case 'PENDING':
+    case '/PENDING': {
+      const pending = ctx.calls.filter(c => c.status === 'pending');
+      return {
+        success: true,
+        message: `Voice announcing ${pending.length} pending calls`,
+        action: { type: 'voice_pending' },
+      };
+    }
+
+    // ── Voice: Priority Breakdown ──
+    case 'PRIORITY':
+    case '/PRIORITY': {
+      return {
+        success: true,
+        message: 'Voice announcing call priority breakdown',
+        action: { type: 'voice_priority' },
+      };
+    }
+
+    // ── Dispatch Code Lookup ──
+    case 'CODE':
+    case '10': {
+      // Allow "CODE 10-71" or "10-71" or "CODE CODE-3" or just "10-71"
+      let codeQuery = args.join('-') || '';
+      // If entered as "10 71", reconstruct as "10-71"
+      if (verb === '10' && args.length >= 1) {
+        codeQuery = '10-' + args.join('-');
+      }
+      if (!codeQuery) {
+        return { success: false, message: 'Usage: CODE <code> (e.g., CODE 10-71, 10-71, CODE-3)', action: { type: 'none' } };
+      }
+      try {
+        const result = await apiFetch<{ found: boolean; code?: string; description?: string; priority?: string; category?: string; requires_backup?: number; officer_safety?: number; ems_needed?: number; fire_needed?: number }>(
+          `/dispatch/geography/codes/lookup/${encodeURIComponent(codeQuery)}`
+        );
+        if (result && result.found) {
+          const flags: string[] = [];
+          if (result.requires_backup) flags.push('BACKUP');
+          if (result.officer_safety) flags.push('SAFETY');
+          if (result.ems_needed) flags.push('EMS');
+          if (result.fire_needed) flags.push('FIRE');
+          const flagStr = flags.length > 0 ? ` [${flags.join(' ')}]` : '';
+          return {
+            success: true,
+            message: `${result.code}: ${result.description} (${result.priority} / ${result.category})${flagStr}`,
+            action: {
+              type: 'lookup_code', code: codeQuery,
+              result: {
+                description: result.description || '',
+                priority: result.priority || 'P3',
+                category: result.category || 'general',
+                requires_backup: !!result.requires_backup,
+                officer_safety: !!result.officer_safety,
+                ems_needed: !!result.ems_needed,
+                fire_needed: !!result.fire_needed,
+              },
+            },
+          };
+        }
+        return { success: false, message: `Code "${codeQuery}" not found in database`, action: { type: 'lookup_code', code: codeQuery } };
+      } catch {
+        return { success: false, message: `Failed to lookup code "${codeQuery}"`, action: { type: 'none' } };
+      }
+    }
+
+    // ── Premise Alert Check ──
+    case 'PA':
+    case 'PREMISE': {
+      const address = args.join(' ');
+      if (!address) {
+        return { success: false, message: 'Usage: PA <address> (e.g., PA 123 Main St)', action: { type: 'none' } };
+      }
+      try {
+        const alerts = await apiFetch<{ id: number; title: string; alert_type: string; alert_level: string; description?: string }[]>(
+          `/dispatch/geography/premise-alerts?address=${encodeURIComponent(address)}`
+        );
+        if (alerts && alerts.length > 0) {
+          const lines = alerts.map(a => `  ${a.alert_level === 'critical' ? '🔴' : a.alert_level === 'warning' ? '🟡' : '🔵'} ${a.title} (${a.alert_type})`).join('\n');
+          return {
+            success: true,
+            message: `⚠ PREMISE ALERTS for "${address}":\n${lines}`,
+            action: { type: 'premise_alert', address, alerts },
+          };
+        }
+        return {
+          success: true,
+          message: `No premise alerts for "${address}"`,
+          action: { type: 'premise_alert', address, alerts: [] },
+        };
+      } catch {
+        return { success: false, message: `Failed to check premise alerts`, action: { type: 'none' } };
+      }
+    }
+
     // ── Help ──
     case 'HELP':
     case '?': {
@@ -667,12 +994,60 @@ export async function executeCommand(
       };
     }
 
-    default:
+    default: {
+      // Auto-detect 10-codes entered directly (e.g., "10-71")
+      if (/^10-\d+$/i.test(verb)) {
+        try {
+          const result = await apiFetch<{ found: boolean; code?: string; description?: string; priority?: string; category?: string; requires_backup?: number; officer_safety?: number; ems_needed?: number; fire_needed?: number }>(
+            `/dispatch/geography/codes/lookup/${encodeURIComponent(verb)}`
+          );
+          if (result && result.found) {
+            const flags: string[] = [];
+            if (result.requires_backup) flags.push('BACKUP');
+            if (result.officer_safety) flags.push('SAFETY');
+            if (result.ems_needed) flags.push('EMS');
+            if (result.fire_needed) flags.push('FIRE');
+            const flagStr = flags.length > 0 ? ` [${flags.join(' ')}]` : '';
+            return {
+              success: true,
+              message: `${result.code}: ${result.description} (${result.priority} / ${result.category})${flagStr}`,
+              action: {
+                type: 'lookup_code', code: verb,
+                result: {
+                  description: result.description || '',
+                  priority: result.priority || 'P3',
+                  category: result.category || 'general',
+                  requires_backup: !!result.requires_backup,
+                  officer_safety: !!result.officer_safety,
+                  ems_needed: !!result.ems_needed,
+                  fire_needed: !!result.fire_needed,
+                },
+              },
+            };
+          }
+        } catch { /* fall through to unknown */ }
+      }
+      // Also detect CODE-N format (e.g., "CODE-3")
+      if (/^CODE-\d+$/i.test(verb)) {
+        try {
+          const result = await apiFetch<{ found: boolean; code?: string; description?: string; priority?: string; category?: string }>(
+            `/dispatch/geography/codes/lookup/${encodeURIComponent(verb)}`
+          );
+          if (result && result.found) {
+            return {
+              success: true,
+              message: `${result.code}: ${result.description} (${result.priority} / ${result.category})`,
+              action: { type: 'lookup_code', code: verb, result: { description: result.description || '', priority: result.priority || 'P3', category: result.category || 'general', requires_backup: false, officer_safety: false, ems_needed: false, fire_needed: false } },
+            };
+          }
+        } catch { /* fall through */ }
+      }
       return {
         success: false,
         message: `Unknown command: ${verb}. Type HELP for commands.`,
         action: { type: 'none' },
       };
+    }
   }
 }
 

@@ -29,7 +29,7 @@ export default function ClosestUnitPanel({
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchedUnits, setDispatchedUnits] = useState<Set<string>>(new Set());
 
-  const pColor = PRIORITY_HEX[call.priority] || '#6b7280';
+  const pColor = PRIORITY_HEX[call.priority] || '#666666';
 
   const handleDispatch = async (unitId: string) => {
     setDispatchingUnitId(unitId);
@@ -41,8 +41,8 @@ export default function ClosestUnitPanel({
         body: JSON.stringify({ unit_id: Number(unitId) }),
       });
 
-      if (res && (res as any).error) {
-        setDispatchError((res as any).error);
+      if (res && typeof res === 'object' && 'error' in res && res.error) {
+        setDispatchError(String(res.error));
       } else {
         setDispatchedUnits(prev => new Set(prev).add(unitId));
         onDispatchSuccess?.();
@@ -56,13 +56,15 @@ export default function ClosestUnitPanel({
 
   return (
     <div
-      className="absolute z-[1002] flex flex-col"
+      role="complementary"
+      aria-label="Closest unit panel"
+      className="absolute z-[1002] flex flex-col transition-all duration-200 ease-out shadow-lg"
       style={{
         top: 48,
         right: 12,
         width: 320,
         maxHeight: 'calc(100% - 64px)',
-        background: '#0d1520',
+        background: '#050505',
         border: `1px solid ${pColor}40`,
         borderRadius: 2,
         boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
@@ -72,28 +74,29 @@ export default function ClosestUnitPanel({
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #1e304860' }}
+        style={{ borderBottom: '1px solid #2b2b2b60' }}
       >
-        <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: '#60a5fa' }} />
+        <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: '#aaaaaa' }} />
         <span
           className="text-[10px] font-black uppercase tracking-wider flex-1"
-          style={{ color: '#60a5fa', letterSpacing: '0.8px' }}
+          style={{ color: '#aaaaaa', letterSpacing: '0.8px' }}
         >
           Closest Units
         </span>
-        <button
+        <button type="button"
           onClick={onClose}
-          className="p-0.5 hover:bg-white/10 transition-colors"
+          aria-label="Close closest units panel"
+          className="p-0.5 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
           style={{ borderRadius: 2 }}
         >
-          <X className="w-3.5 h-3.5 text-rmpg-400 hover:text-white" />
+          <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-white" />
         </button>
       </div>
 
       {/* Call Info */}
       <div
         className="px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #1e304830', background: '#141e2b' }}
+        style={{ borderBottom: '1px solid #2b2b2b30', background: '#0a0a0a' }}
       >
         <div className="flex items-center gap-2 mb-1">
           <span
@@ -111,29 +114,30 @@ export default function ClosestUnitPanel({
             {call.call_number}
           </span>
         </div>
-        <div className="text-[9px] font-semibold" style={{ color: '#e5e7eb' }}>
+        <div className="text-[9px] font-semibold" style={{ color: '#e0e0e0' }}>
           {formatIncidentType(call.incident_type)}
         </div>
-        <div className="text-[8px] mt-0.5" style={{ color: '#9ca3af' }}>
+        <div className="text-[8px] mt-0.5" style={{ color: '#999999' }}>
           {call.location_address}
         </div>
       </div>
 
       {/* Results List */}
-      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e3048 transparent' }}>
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         {results.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="text-[10px] font-bold" style={{ color: '#5a6e80' }}>
-              No available units with GPS
+          <div className="flex flex-col items-center text-center py-8 gap-2">
+            <Navigation className="w-6 h-6" style={{ color: '#666666', opacity: 0.4 }} />
+            <div className="text-[10px] font-bold" style={{ color: '#666666' }}>
+              No available units found
             </div>
-            <div className="text-[8px] mt-1" style={{ color: '#5a6e80' }}>
+            <div className="text-[8px]" style={{ color: '#666666' }}>
               All units are currently assigned or have no position data
             </div>
           </div>
         ) : (
           results.map((result, idx) => {
             const { unit, distanceMiles, estimatedMinutes } = result;
-            const statusColor = UNIT_STATUS_HEX[unit.status] || '#6b7280';
+            const statusColor = UNIT_STATUS_HEX[unit.status] || '#666666';
             const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status;
             const isDispatching = dispatchingUnitId === unit.id;
             const isDispatched = dispatchedUnits.has(unit.id);
@@ -141,16 +145,17 @@ export default function ClosestUnitPanel({
             return (
               <div
                 key={unit.id}
-                className="px-3 py-2"
+                className="px-3 py-2 hover:bg-[#181818]/30 transition-colors duration-100"
                 style={{
-                  borderBottom: idx < results.length - 1 ? '1px solid #1e304820' : undefined,
+                  borderBottom: idx < results.length - 1 ? '1px solid #2b2b2b20' : undefined,
+                  background: idx % 2 === 0 ? '#050505' : '#191919',
                 }}
               >
                 <div className="flex items-center gap-2">
                   {/* Rank */}
                   <span
                     className="text-[8px] font-black w-4 text-center shrink-0"
-                    style={{ color: '#5a6e80' }}
+                    style={{ color: '#666666' }}
                   >
                     #{idx + 1}
                   </span>
@@ -160,11 +165,12 @@ export default function ClosestUnitPanel({
                     className="shrink-0"
                     style={{
                       display: 'inline-block',
-                      width: 8,
-                      height: 8,
+                      width: 10,
+                      height: 10,
                       borderRadius: '50%',
                       background: statusColor,
-                      boxShadow: `0 0 6px ${statusColor}80`,
+                      boxShadow: `0 0 8px ${statusColor}80, 0 0 3px ${statusColor}40`,
+                      border: `1px solid ${statusColor}60`,
                     }}
                   />
 
@@ -189,20 +195,20 @@ export default function ClosestUnitPanel({
                     </div>
                     <div
                       className="text-[9px] truncate"
-                      style={{ color: '#9ca3af' }}
+                      style={{ color: '#999999' }}
                     >
                       {unit.officer_name}
                     </div>
                   </div>
 
-                  {/* Distance + ETA */}
+                  {/* #42: Distance + ETA with tabular-nums for alignment */}
                   <div className="text-right shrink-0">
-                    <div className="text-[10px] font-bold" style={{ color: '#e5e7eb' }}>
+                    <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: '#aaaaaa' }}>
                       {distanceMiles < 0.1
                         ? '<0.1 mi'
                         : `${distanceMiles.toFixed(1)} mi`}
                     </div>
-                    <div className="text-[8px] font-semibold" style={{ color: '#60a5fa' }}>
+                    <div className="text-[8px] font-semibold font-mono tabular-nums" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#999999' }}>
                       ~{estimatedMinutes < 1
                         ? '<1 min'
                         : `${Math.round(estimatedMinutes)} min`}
@@ -225,14 +231,15 @@ export default function ClosestUnitPanel({
                       Dispatched
                     </span>
                   ) : (
-                    <button
+                    <button type="button"
                       onClick={() => handleDispatch(unit.id)}
                       disabled={isDispatching}
-                      className="flex items-center gap-1 px-2 py-1 transition-colors"
+                      aria-label={`Dispatch unit ${unit.call_sign}`}
+                      className="flex items-center gap-1 px-2 py-1 transition-all duration-150 active:scale-[0.97] hover:brightness-125"
                       style={{
-                        background: isDispatching ? '#1a5a9e20' : '#1a5a9e30',
-                        border: '1px solid #1a5a9e80',
-                        color: '#60a5fa',
+                        background: isDispatching ? '#88888820' : '#88888830',
+                        border: '1px solid #88888880',
+                        color: '#aaaaaa',
                         fontSize: 8,
                         fontWeight: 900,
                         fontFamily: "'Courier New','JetBrains Mono',monospace",
@@ -276,9 +283,9 @@ export default function ClosestUnitPanel({
       <div
         className="px-3 py-1.5 text-[7px] font-bold uppercase tracking-wider shrink-0"
         style={{
-          color: '#5a6e80',
-          borderTop: '1px solid #1e304830',
-          background: '#141e2b',
+          color: '#666666',
+          borderTop: '1px solid #2b2b2b30',
+          background: '#0a0a0a',
           letterSpacing: '0.8px',
         }}
       >

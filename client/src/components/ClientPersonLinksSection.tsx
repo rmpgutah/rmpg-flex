@@ -37,14 +37,14 @@ interface ClientPersonLink {
 // ── Relationship display config ─────────────────────
 
 const RELATIONSHIP_OPTIONS = [
-  { value: 'employee', label: 'Employee', color: 'bg-blue-900/40 text-blue-300 border-blue-700/40' },
+  { value: 'employee', label: 'Employee', color: 'bg-gray-900/40 text-gray-300 border-gray-700/40' },
   { value: 'contact', label: 'Contact', color: 'bg-teal-900/40 text-teal-300 border-teal-700/40' },
-  { value: 'tenant', label: 'Tenant', color: 'bg-indigo-900/40 text-indigo-300 border-indigo-700/40' },
+  { value: 'tenant', label: 'Tenant', color: 'bg-[#1f1f1f] text-gray-300 border-[#2e2e2e]' },
   { value: 'owner', label: 'Owner', color: 'bg-green-900/40 text-green-300 border-green-700/40' },
   { value: 'manager', label: 'Manager', color: 'bg-purple-900/40 text-purple-300 border-purple-700/40' },
   { value: 'subject', label: 'Subject', color: 'bg-amber-900/40 text-amber-300 border-amber-700/40' },
   { value: 'trespass_warning', label: 'Trespass Warning', color: 'bg-red-900/40 text-red-300 border-red-700/40' },
-  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-sky-900/40 text-sky-300 border-sky-700/40' },
+  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-[#141414] text-gray-300 border-[#2e2e2e]' },
   { value: 'banned', label: 'Banned', color: 'bg-red-900/60 text-red-300 border-red-600/60' },
   { value: 'other', label: 'Other', color: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40' },
 ];

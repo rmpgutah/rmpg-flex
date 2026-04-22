@@ -6,10 +6,11 @@
 // for 24 hours after initial lookup.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search, Loader2, X, User, Building2, Calendar, Hash,
-  AlertCircle, ChevronRight, Shield, FileText,
+  AlertCircle, ChevronRight, Shield, FileText, Link2, Plus, UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
@@ -47,12 +48,27 @@ function statusClass(status: string | null): string {
     return 'bg-green-900/50 text-green-400 border-green-700/50';
   if (s.includes('escape') || s.includes('abscond'))
     return 'bg-rose-900/60 text-rose-300 border-rose-600/50';
-  return 'bg-blue-900/50 text-blue-400 border-blue-700/50';
+  return 'bg-gray-900/50 text-gray-400 border-gray-700/50';
 }
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 // ── Main Component ───────────────────────────────────────────
 
 export default function ColoradoDocPage() {
+  const navigate = useNavigate();
   // Search state
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -65,6 +81,32 @@ export default function ColoradoDocPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
+
+  // Local person matching
+  const [localMatch, setLocalMatch] = useState<{ id: number; full_name: string; dob?: string } | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+
+  // When an offender is selected, check for local person match
+  useEffect(() => {
+    if (!selected) { setLocalMatch(null); return; }
+    setMatchLoading(true);
+    setLocalMatch(null);
+    const params = new URLSearchParams({ last_name: selected.last_name });
+    if (selected.first_name) params.set('first_name', selected.first_name);
+    apiFetch<any[]>(`/records/persons?${params}&limit=5`)
+      .then(persons => {
+        const match = (persons || []).find((p: any) => {
+          const nameMatch = p.last_name?.toLowerCase() === selected.last_name.toLowerCase()
+            && p.first_name?.toLowerCase() === selected.first_name.toLowerCase();
+          if (!nameMatch) return false;
+          if (selected.dob && p.dob) return p.dob === selected.dob;
+          return true;
+        });
+        setLocalMatch(match ? { id: match.id, full_name: match.full_name || `${match.first_name} ${match.last_name}`, dob: match.dob } : null);
+      })
+      .catch(() => setLocalMatch(null))
+      .finally(() => setMatchLoading(false));
+  }, [selected]);
 
   // ── Search by name ───────────────────────────────────────
   const searchByName = useCallback(async () => {
@@ -154,6 +196,9 @@ export default function ColoradoDocPage() {
     }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Colorado DOC \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
       {/* ── Header ──────────────────────────────────────────── */}
@@ -180,7 +225,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('name')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'name'
-                    ? 'bg-brand-500/30 text-blue-300 border border-brand-500/50'
+                    ? 'bg-[#888888]/30 text-gray-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -191,7 +236,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('doc')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'doc'
-                    ? 'bg-brand-500/30 text-blue-300 border border-brand-500/50'
+                    ? 'bg-[#888888]/30 text-gray-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -206,7 +251,7 @@ export default function ColoradoDocPage() {
                   placeholder="Last Name *"
                   value={lastName}
                   onChange={e => setLastName(e.target.value)}
-                  className="input-dark flex-1 text-xs"
+                  className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
                   autoFocus
                 />
                 <input
@@ -214,7 +259,7 @@ export default function ColoradoDocPage() {
                   placeholder="First Name"
                   value={firstName}
                   onChange={e => setFirstName(e.target.value)}
-                  className="input-dark flex-1 text-xs"
+                  className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
                 />
               </div>
             ) : (
@@ -223,7 +268,7 @@ export default function ColoradoDocPage() {
                 placeholder="DOC Number (e.g. 123456)"
                 value={docNumber}
                 onChange={e => setDocNumber(e.target.value)}
-                className="input-dark w-full text-xs font-mono"
+                className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none font-mono"
                 autoFocus
               />
             )}
@@ -232,7 +277,7 @@ export default function ColoradoDocPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-500/20 border border-brand-500/40 text-blue-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-brand-500/30 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888]/20 border border-[#888888]/40 text-gray-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#888888]/30 transition-colors disabled:opacity-40"
               >
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
                 Search
@@ -263,7 +308,7 @@ export default function ColoradoDocPage() {
             {results.length > 0 ? (
               <table className="w-full text-xs">
                 <thead className="sticky top-0 z-10">
-                  <tr className="bg-surface-base border-b border-rmpg-700">
+                  <tr className="bg-[#141414] border-b border-[#2b2b2b]">
                     <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">DOC #</th>
                     <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Name</th>
                     <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">DOB</th>
@@ -277,13 +322,13 @@ export default function ColoradoDocPage() {
                     <tr
                       key={r.doc_number}
                       onClick={() => setSelected(r)}
-                      className={`cursor-pointer border-b border-rmpg-700/50 transition-colors ${
+                      className={`cursor-pointer border-b border-[#2b2b2b]/50 transition-colors ${
                         selected?.doc_number === r.doc_number
-                          ? 'bg-brand-500/15 text-white'
-                          : 'hover:bg-surface-raised text-rmpg-200'
+                          ? 'bg-[#888888]/15 text-white'
+                          : 'hover:bg-[#181818] text-rmpg-300'
                       }`}
                     >
-                      <td className="px-2.5 py-1.5 font-mono text-blue-400">{r.doc_number}</td>
+                      <td className="px-2.5 py-1.5 font-mono text-gray-400">{r.doc_number}</td>
                       <td className="px-2.5 py-1.5 font-medium">
                         {r.last_name}, {r.first_name}
                         {r.middle_name ? ` ${r.middle_name}` : ''}
@@ -292,10 +337,10 @@ export default function ColoradoDocPage() {
                       <td className="px-2.5 py-1.5">
                         {r.status ? (
                           <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[9px] uppercase tracking-wider font-bold border ${statusClass(r.status)}`}>
-                            {r.status}
+                            {(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                           </span>
                         ) : (
-                          <span className="text-rmpg-500">--</span>
+                          <span className="text-rmpg-600">--</span>
                         )}
                       </td>
                       <td className="px-2.5 py-1.5 text-rmpg-400">{r.facility || '--'}</td>
@@ -305,22 +350,22 @@ export default function ColoradoDocPage() {
                 </tbody>
               </table>
             ) : searched && !loading && !error ? (
-              <div className="flex flex-col items-center justify-center h-full text-rmpg-500">
+              <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
                 <Search size={32} className="mb-2 opacity-30" />
                 <p className="text-xs">No results found</p>
               </div>
             ) : !searched ? (
-              <div className="flex flex-col items-center justify-center h-full text-rmpg-500">
+              <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
                 <Shield size={32} className="mb-2 opacity-20" />
                 <p className="text-xs">Enter a name or DOC number to search</p>
-                <p className="text-[10px] mt-1 text-rmpg-600">Colorado Department of Corrections public records</p>
+                <p className="text-[10px] mt-1 text-rmpg-700">Colorado Department of Corrections public records</p>
               </div>
             ) : null}
           </div>
 
           {/* Footer */}
           {results.length > 0 && (
-            <div className="mx-2 mb-2 px-2.5 py-1 bg-surface-base border border-rmpg-700 rounded-sm flex items-center justify-between text-[9px] text-rmpg-500">
+            <div className="mx-2 mb-2 px-2.5 py-1 bg-[#141414] border border-[#2b2b2b] rounded-sm flex items-center justify-between text-[9px] text-rmpg-500">
               <span>{results.length} result{results.length !== 1 ? 's' : ''}</span>
               {results[0]?.source && (
                 <span className="uppercase tracking-wider">
@@ -333,15 +378,15 @@ export default function ColoradoDocPage() {
 
         {/* ── Right: Detail Panel ──────────────────────────── */}
         {selected && (
-          <div className="w-[380px] border-l border-rmpg-700 bg-surface-base overflow-y-auto flex-shrink-0">
-            <div className="p-3 border-b border-rmpg-700 flex items-center justify-between">
+          <div className="w-[380px] border-l border-[#2b2b2b] bg-[#141414] overflow-y-auto flex-shrink-0">
+            <div className="p-3 border-b border-[#2b2b2b] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <User size={14} className="text-blue-400" />
+                <User size={14} className="text-gray-400" />
                 <span className="text-xs font-bold text-white">Offender Detail</span>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setSelected(null)}
-                className="text-rmpg-400 hover:text-white transition-colors"
+                className="text-rmpg-500 hover:text-rmpg-300 transition-colors"
               >
                 <X size={14} />
               </button>
@@ -354,7 +399,7 @@ export default function ColoradoDocPage() {
                   <img
                     src={selected.photo_url}
                     alt={`${selected.first_name} ${selected.last_name}`}
-                    className="w-24 h-28 object-cover rounded-sm border border-rmpg-700"
+                    className="w-24 h-28 object-cover rounded-sm border border-[#2b2b2b]"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                 </div>
@@ -403,15 +448,57 @@ export default function ColoradoDocPage() {
                     {parseOffenses(selected.offenses).map((offense, i) => (
                       <div
                         key={i}
-                        className="px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-200 flex items-start gap-1.5"
+                        className="px-2 py-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm text-[10px] text-rmpg-300 flex items-start gap-1.5"
                       >
-                        <ChevronRight size={10} className="text-rmpg-500 mt-0.5 flex-shrink-0" />
+                        <ChevronRight size={10} className="text-rmpg-600 mt-0.5 flex-shrink-0" />
                         <span>{offense}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
+              {/* Local Person Match */}
+              <div className="border-t border-[#2b2b2b] pt-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Link2 size={12} className="text-rmpg-500" />
+                  <span className="text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Local Records Match</span>
+                </div>
+                {matchLoading ? (
+                  <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
+                    <Loader2 size={12} className="animate-spin" /> Checking local records...
+                  </div>
+                ) : localMatch ? (
+                  <div className="px-2.5 py-2 bg-green-900/20 border border-green-700/40 rounded-sm">
+                    <div className="flex items-center gap-2">
+                      <UserCheck size={14} className="text-green-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] text-green-300 font-bold">Match Found in Local Records</div>
+                        <div className="text-[10px] text-green-400/80 mt-0.5">{localMatch.full_name} (Person #{localMatch.id})</div>
+                      </div>
+                    </div>
+                    <button type="button"
+                      onClick={() => navigate(`/records?person=${localMatch.id}`)}
+                      className="mt-2 w-full text-[10px] py-1.5 bg-green-900/40 text-green-400 border border-green-700/50 hover:bg-green-800/50 transition-colors text-center font-bold uppercase tracking-wider"
+                    >
+                      View Person Record
+                    </button>
+                  </div>
+                ) : (
+                  <div className="px-2.5 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} className="text-rmpg-500 flex-shrink-0" />
+                      <div className="text-[10px] text-rmpg-400">No local match found</div>
+                    </div>
+                    <button type="button"
+                      onClick={() => navigate(`/records?action=new-person&first_name=${encodeURIComponent(selected.first_name)}&last_name=${encodeURIComponent(selected.last_name)}${selected.dob ? `&dob=${encodeURIComponent(selected.dob)}` : ''}`)}
+                      className="mt-2 w-full text-[10px] py-1.5 bg-brand-900/30 text-brand-400 border border-brand-700/50 hover:bg-brand-800/40 transition-colors text-center font-bold uppercase tracking-wider flex items-center justify-center gap-1"
+                    >
+                      <Plus size={10} /> Create Person Record
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -433,11 +520,11 @@ function DetailRow({
 }) {
   if (!value) return null;
   return (
-    <div className="flex items-start gap-2 px-2 py-1 bg-surface-sunken/60 border border-rmpg-700/50 rounded-sm">
-      <Icon size={12} className="text-rmpg-500 mt-0.5 flex-shrink-0" />
+    <div className="flex items-start gap-2 px-2 py-1 bg-[#0c0c0c]/60 border border-[#2b2b2b]/50 rounded-sm">
+      <Icon size={12} className="text-rmpg-600 mt-0.5 flex-shrink-0" />
       <div className="min-w-0">
-        <div className="text-[8px] uppercase tracking-wider text-rmpg-500 font-bold">{label}</div>
-        <div className="text-[11px] text-rmpg-200 break-words">{value}</div>
+        <div className="text-[8px] uppercase tracking-wider text-rmpg-600 font-bold">{label}</div>
+        <div className="text-[11px] text-rmpg-300 break-words">{value}</div>
       </div>
     </div>
   );

@@ -7,7 +7,6 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { broadcast } from '../utils/websocket';
-import { localNow } from '../utils/timeUtils';
 
 // Map API path prefixes → WebSocket channel names
 // Every module gets its own channel so clients subscribe selectively
@@ -31,28 +30,23 @@ const PATH_TO_CHANNEL: Record<string, string> = {
   '/api/court': 'records',
   '/api/dar': 'admin',
   '/api/offender-registry': 'records',
-  '/api/arrests': 'arrests',
-  '/api/sex-offender-registry': 'sex_offenders',
-  '/api/process-server': 'serve',
-  '/api/forensic-lab': 'forensic',
-  '/api/reports': 'incidents',
-  '/api/company-documents': 'training',
-  '/api/skiptracer': 'skiptracer',
-  '/api/trespass-orders': 'records',
-  '/api/field-interviews': 'records',
-  '/api/evidence': 'records',
-  '/api/dl-records': 'records',
-  '/api/shift-plans': 'admin',
+  '/api/process-server': 'records',
+  '/api/hr': 'personnel',
   '/api/crm': 'admin',
-  '/api/hr': 'admin',
-  '/api/training': 'training',
-  '/api/email': 'admin',
-  '/api/security': 'admin',
-  '/api/connections': 'records',
-  '/api/dashcam-videos': 'personnel',
-  '/api/body-cameras': 'personnel',
-  '/api/system-config': 'admin',
+  '/api/forensic-lab': 'records',
   '/api/forensics': 'records',
+  '/api/field-interviews': 'records',
+  '/api/trespass-orders': 'records',
+  '/api/company-documents': 'admin',
+  '/api/user/preferences': 'admin',
+  '/api/jail-roster': 'records',
+  '/api/web-research': 'admin',
+  '/api/skiptracer': 'records',
+  '/api/skiptracer-v2': 'records',
+  '/api/connections': 'records',
+  '/api/map/safety': 'dispatch',
+  '/api/map/geofences': 'dispatch',
+  '/api/arrests': 'records',
 };
 
 // Methods that mutate data
@@ -87,11 +81,14 @@ export function liveBroadcast(req: Request, res: Response, next: NextFunction): 
 
   // Override res.json to intercept the response
   const originalJson = res.json.bind(res);
+  // [FIX 92] Track whether we've already broadcast for this response to prevent double-broadcasts
+  let broadcasted = false;
 
   res.json = function (body: any) {
     // Only broadcast on success (2xx status codes)
     const statusCode = res.statusCode;
-    if (statusCode >= 200 && statusCode < 300) {
+    if (statusCode >= 200 && statusCode < 300 && !broadcasted) {
+      broadcasted = true;
       // Find matching channel for this API path
       for (const [prefix, channel] of Object.entries(PATH_TO_CHANNEL)) {
         if (req.path.startsWith(prefix)) {
@@ -107,7 +104,7 @@ export function liveBroadcast(req: Request, res: Response, next: NextFunction): 
               path: req.path,
               id: pathParts[1] || (body?.id) || null,
               user: req.user ? { id: req.user.userId, username: req.user.username } : null,
-              timestamp: localNow(),
+              timestamp: new Date().toISOString(),
             });
           } catch (err) {
             // Never let broadcast errors break the API response

@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarDays, Shield, Star, DollarSign } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Shield, Star, DollarSign, FileText, AlertOctagon, ClipboardCheck, Heart, TrendingUp } from 'lucide-react';
 
 export const HR_TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -6,16 +6,21 @@ export const HR_TABS = [
   { key: 'disciplinary', label: 'Disciplinary', icon: Shield },
   { key: 'reviews', label: 'Reviews', icon: Star },
   { key: 'payroll', label: 'Payroll', icon: DollarSign },
+  { key: 'grievances', label: 'Grievances', icon: AlertOctagon },
+  { key: 'documents', label: 'Documents', icon: FileText },
+  { key: 'attendance', label: 'Attendance', icon: ClipboardCheck },
+  { key: 'benefits', label: 'Benefits', icon: Heart },
+  { key: 'pips', label: 'PIPs', icon: TrendingUp },
 ] as const;
 
 export type HRTab = typeof HR_TABS[number]['key'];
 
 export const LEAVE_TYPE_COLORS: Record<string, string> = {
-  vacation: '#3b82f6',   // blue
+  vacation: '#888888',   // blue
   sick: '#ef4444',       // red
   personal: '#8b5cf6',   // purple
-  bereavement: '#6b7280', // gray
-  training: '#06b6d4',   // cyan
+  bereavement: '#666666', // gray
+  training: '#22c55e',   // cyan
   unpaid: '#f59e0b',     // amber
 };
 
@@ -23,11 +28,11 @@ export const LEAVE_STATUS_COLORS: Record<string, string> = {
   pending: '#f59e0b',
   approved: '#22c55e',
   denied: '#ef4444',
-  cancelled: '#6b7280',
+  cancelled: '#666666',
 };
 
 export const SEVERITY_COLORS: Record<string, string> = {
-  minor: '#3b82f6',
+  minor: '#888888',
   moderate: '#f59e0b',
   major: '#f97316',
   critical: '#ef4444',

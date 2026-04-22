@@ -19,7 +19,7 @@ export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBad
   const severityColors: Record<string, string> = {
     felony: 'bg-red-600 text-white',
     misdemeanor: 'bg-amber-600 text-white',
-    infraction: 'bg-yellow-500 text-black',
+    infraction: 'bg-yellow-500 text-yellow-950',
     unknown: 'bg-red-500 text-white',
   };
 
@@ -27,7 +27,7 @@ export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBad
 
   return (
     <span
-      className={`inline-flex items-center gap-1 font-bold rounded ${severityColors[severity] || severityColors.unknown} ${sizeClasses} ${onClick ? 'cursor-pointer hover:brightness-110' : ''}`}
+      className={`inline-flex items-center gap-1 font-bold rounded-sm ${severityColors[severity] || severityColors.unknown} ${sizeClasses} ${onClick ? 'cursor-pointer hover:brightness-110' : ''}`}
       onClick={onClick}
       title={`${count} active warrant${count > 1 ? 's' : ''} — ${severity}`}
     >

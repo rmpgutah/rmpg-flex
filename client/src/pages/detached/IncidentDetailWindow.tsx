@@ -15,6 +15,20 @@ import type { PdfReportType } from '../../utils/caseNumbers';
 import { apiFetch } from '../../hooks/useApi';
 import { fetchEntityImages } from '../../utils/pdfImageHelpers';
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function IncidentDetailWindow() {
   const { id } = useParams<{ id: string }>();
   const [incident, setIncident] = useState<any>(null);
@@ -70,7 +84,7 @@ export default function IncidentDetailWindow() {
       domestic_violence: incident.domestic_violence,
       disposition: incident.disposition,
       zone_beat: incident.zone_beat,
-      section_id: incident.section_id,
+      sector_id: incident.sector_id,
       zone_id: incident.zone_id,
       beat_id: incident.beat_id,
       dispatch_code: incident.dispatch_code,
@@ -150,7 +164,7 @@ export default function IncidentDetailWindow() {
     return (
       <DetachedLayout title="Loading...">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" />
+          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         </div>
       </DetachedLayout>
     );
@@ -220,7 +234,7 @@ export default function IncidentDetailWindow() {
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Section / Zone / Beat</label>
-            <p className="text-rmpg-200">{[incident.section_id, incident.zone_id, incident.beat_id].filter(Boolean).join(' / ') || 'N/A'}</p>
+            <p className="text-rmpg-200">{[incident.sector_id, incident.zone_id, incident.beat_id].filter(Boolean).join(' / ') || 'N/A'}</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Disposition</label>

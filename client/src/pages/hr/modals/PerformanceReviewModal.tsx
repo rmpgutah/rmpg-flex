@@ -58,6 +58,13 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
     apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => { console.warn('[HR] Review cycles load failed:', err); });
   }, []);
 
+  // Escape to close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [saving, onClose]);
+
   const handleSubmit = async () => {
     if (!employeeId || !reviewDate || overallRating < 1) {
       setError('Employee, review date, and rating are required.');
@@ -99,7 +106,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-xl mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
@@ -109,7 +116,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
               {review?.id ? 'Edit Performance Review' : 'Create Performance Review'}
             </h3>
           </div>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -218,10 +225,10 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={handleSubmit}
             disabled={saving}
             className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-sm hover:bg-brand-600 disabled:opacity-50"

@@ -68,14 +68,14 @@ export function useServiceWorker() {
         // Periodically check for updates (skip if already unmounted)
         if (!unmounted) {
           checkInterval = setInterval(() => {
-            reg.update().catch(() => {
-              // Network errors during update check are non-fatal
+            reg.update().catch((err) => {
+              console.warn('[useServiceWorker] Update check failed:', err);
             });
           }, UPDATE_CHECK_INTERVAL);
         }
 
-      } catch {
-        // SW registration failed (e.g., no HTTPS in production) — not critical
+      } catch (err) {
+        console.warn('[useServiceWorker] Registration failed:', err);
       }
     };
 

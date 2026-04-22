@@ -10,6 +10,8 @@ import {
   Banknote, TrendingUp, FileText, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import IconButton from '../../../components/IconButton';
+import { localToday } from '../../../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -66,13 +68,27 @@ interface PayrollEntry {
 
 interface Officer { id: number; full_name: string; }
 
-type SubTab = 'periods' | 'rates' | 'entries';
+interface OvertimeRequest {
+  id: number;
+  officer_id: number;
+  officer_name: string;
+  requested_date: string;
+  hours_requested: number;
+  reason: string | null;
+  status: string;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+}
+
+type SubTab = 'periods' | 'rates' | 'entries' | 'overtime' | 'leave';
 
 const STATUS_COLORS: Record<string, string> = {
-  open: '#3b82f6',
+  open: '#888888',
   processing: '#f59e0b',
   closed: '#22c55e',
-  draft: '#6b7280',
+  draft: '#666666',
   approved: '#22c55e',
 };
 
@@ -82,7 +98,7 @@ function formatCurrency(amount: number): string {
 
 function formatDate(d: string): string {
   if (!d) return '—';
-  const date = new Date(d + 'T00:00:00');
+  const date = new Date(d.includes('T') ? d : d + 'T00:00:00');
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -101,6 +117,19 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const [loading, setLoading] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<PayPeriod | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
+
+  // ─── Leave Balances ──────────────────────────────────────
+  interface LeaveBalance { id: number; full_name: string; badge_number?: string; hire_date?: string; pto_used: number; sick_used: number; pto_pending: number; }
+  const [leaveData, setLeaveData] = useState<LeaveBalance[]>([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const PTO_ACCRUAL_PER_PAY_PERIOD = 4; // hours per bi-weekly pay period
+  const PAY_PERIODS_PER_YEAR = 26;
+  const ANNUAL_PTO_ALLOTMENT = PTO_ACCRUAL_PER_PAY_PERIOD * PAY_PERIODS_PER_YEAR; // 104 hours/year
+
+  // ─── Overtime ─────────────────────────────────────────────
+  const [otRequests, setOtRequests] = useState<OvertimeRequest[]>([]);
+  const [showOtForm, setShowOtForm] = useState(false);
+  const [otForm, setOtForm] = useState({ requested_date: '', hours_requested: '', reason: '' });
 
   // ─── Forms ────────────────────────────────────────────────
   const [showPeriodForm, setShowPeriodForm] = useState(false);
@@ -157,6 +186,69 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     } catch { /* silent */ }
   }, []);
 
+  const fetchOtRequests = useCallback(async () => {
+    try {
+      const data = await apiFetch<OvertimeRequest[]>('/hr/payroll/overtime');
+      setOtRequests(data);
+    } catch { /* silent */ }
+  }, []);
+
+  const fetchLeaveBalances = useCallback(async () => {
+    setLeaveLoading(true);
+    try {
+      const personnel = await apiFetch<any[]>('/personnel');
+      // Calculate leave balances from payroll entries across all closed periods
+      const allEntries = await apiFetch<PayrollEntry[]>('/hr/payroll/entries?all=1').catch(() => [] as PayrollEntry[]);
+      const balances: LeaveBalance[] = (personnel || []).map((p: any) => {
+        const officerEntries = (allEntries || []).filter(e => e.user_id === p.id);
+        const ptoUsed = officerEntries.reduce((sum, e) => sum + (e.pto_hours || 0), 0);
+        const sickUsed = officerEntries.reduce((sum, e) => sum + (e.sick_hours || 0), 0);
+        // Calculate accrued PTO based on hire date
+        const hireDate = p.hire_date || p.start_date || p.created_at;
+        let accrued = ANNUAL_PTO_ALLOTMENT;
+        if (hireDate) {
+          const hire = new Date(hireDate);
+          const now = new Date();
+          const yearStart = new Date(now.getFullYear(), 0, 1);
+          const effectiveStart = hire > yearStart ? hire : yearStart;
+          const weeksWorked = Math.floor((now.getTime() - effectiveStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          const periodsWorked = Math.floor(weeksWorked / 2);
+          accrued = Math.min(ANNUAL_PTO_ALLOTMENT, periodsWorked * PTO_ACCRUAL_PER_PAY_PERIOD);
+        }
+        return {
+          id: p.id,
+          full_name: p.full_name || `${p.first_name} ${p.last_name}`,
+          badge_number: p.badge_number,
+          hire_date: hireDate,
+          pto_used: ptoUsed,
+          sick_used: sickUsed,
+          pto_pending: Math.max(0, accrued - ptoUsed),
+        };
+      });
+      setLeaveData(balances);
+    } catch { /* silent */ }
+    finally { setLeaveLoading(false); }
+  }, []);
+
+  const handleRequestOt = async () => {
+    if (!otForm.requested_date || !otForm.hours_requested) { addToast('Date and hours required', 'error'); return; }
+    try {
+      await apiFetch('/hr/payroll/overtime', { method: 'POST', body: JSON.stringify(otForm) });
+      addToast('OT request submitted', 'success');
+      setShowOtForm(false);
+      setOtForm({ requested_date: '', hours_requested: '', reason: '' });
+      fetchOtRequests();
+    } catch { addToast('Failed to submit OT request', 'error'); }
+  };
+
+  const handleOtDecision = async (id: number, status: 'approved' | 'denied') => {
+    try {
+      await apiFetch(`/hr/payroll/overtime/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+      addToast(`OT request ${status}`, 'success');
+      fetchOtRequests();
+    } catch { addToast('Failed to update OT request', 'error'); }
+  };
+
   useEffect(() => {
     fetchPeriods();
     fetchOfficers();
@@ -164,7 +256,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   useEffect(() => {
     if (subTab === 'rates') fetchRates();
-  }, [subTab, fetchRates]);
+    if (subTab === 'overtime') fetchOtRequests();
+  }, [subTab, fetchRates, fetchOtRequests]);
 
   useEffect(() => {
     if (selectedPeriod) fetchEntries(selectedPeriod.id);
@@ -314,7 +407,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const periodName = (selectedPeriod.name || 'period').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = localToday();
     const a = document.createElement('a');
     a.href = url;
     a.download = `payroll-${periodName}-${dateStr}.csv`;
@@ -330,15 +423,29 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     { key: 'periods', label: 'Pay Periods', icon: Calendar },
     { key: 'rates', label: 'Pay Rates', icon: TrendingUp },
     { key: 'entries', label: 'Timesheet', icon: Clock },
+    { key: 'overtime', label: 'Overtime', icon: AlertTriangle },
+    { key: 'leave', label: 'Leave Balances', icon: Banknote },
   ];
 
   // ─── Render ───────────────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'HR - Payroll \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingEntry(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-xs font-medium shadow-lg ${
+        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-sm text-xs font-medium shadow-lg ${
           toast.type === 'success' ? 'bg-green-600 text-white' : toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-brand-600 text-white'
         }`}>{toast.msg}</div>
       )}
@@ -348,8 +455,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
         {SUB_TABS.map(t => {
           const Icon = t.icon;
           return (
-            <button key={t.key} onClick={() => setSubTab(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded transition-colors ${
+            <button type="button" key={t.key} onClick={() => setSubTab(t.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-sm transition-colors ${
                 subTab === t.key
                   ? 'text-white bg-brand-500/20 border border-brand-500/40'
                   : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/30'
@@ -374,47 +481,47 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button onClick={() => setShowPeriodForm(!showPeriodForm)}
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded transition-colors">
+              <button type="button" onClick={() => setShowPeriodForm(!showPeriodForm)}
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> New Period
               </button>
             )}
-            <button onClick={fetchPeriods}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded transition-colors">
+            <button type="button" onClick={fetchPeriods}
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
 
           {/* Create form */}
           {showPeriodForm && (
-            <div className="bg-surface-sunken border border-rmpg-700 rounded-lg p-4 space-y-3">
+            <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-4 space-y-3">
               <h4 className="text-xs font-semibold text-white">Create Pay Period</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
                   <input value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
                   <input type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
                   <input type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
                   <input type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
-                <button onClick={handleCreatePeriod}
-                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors">Create</button>
+                <button type="button" onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={handleCreatePeriod}
+                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Create</button>
               </div>
             </div>
           )}
@@ -430,24 +537,24 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <div className="space-y-2">
               {periods.map(period => (
                 <div key={period.id}
-                  className={`border rounded-lg transition-all cursor-pointer ${
+                  className={`border rounded-sm transition-all cursor-pointer ${
                     selectedPeriod?.id === period.id
                       ? 'border-brand-500/60 bg-brand-500/5'
-                      : 'border-rmpg-700 bg-surface-base hover:border-rmpg-600'
+                      : 'border-rmpg-700 bg-surface-base hover:border-rmpg-700'
                   }`}
                   onClick={() => { setSelectedPeriod(period); setSubTab('entries'); }}
                 >
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-shrink-0">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || '#6b7280' }} />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || '#666666' }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-white truncate">{period.name}</span>
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{
-                          backgroundColor: (STATUS_COLORS[period.status] || '#6b7280') + '20',
-                          color: STATUS_COLORS[period.status] || '#6b7280'
-                        }}>{period.status}</span>
+                          backgroundColor: (STATUS_COLORS[period.status] || '#666666') + '20',
+                          color: STATUS_COLORS[period.status] || '#666666'
+                        }}>{(period.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
                         {formatDate(period.start_date)} — {formatDate(period.end_date)} • Pay: {formatDate(period.pay_date)}
@@ -461,12 +568,12 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                         {period.status === 'open' && (
                           <>
-                            <button onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
-                              className="p-1 text-rmpg-500 hover:text-cyan-400 transition-colors"><Users size={13} /></button>
-                            <button onClick={() => handleClosePeriod(period.id)} title="Close period"
-                              className="p-1 text-rmpg-500 hover:text-green-400 transition-colors"><Check size={13} /></button>
-                            <button onClick={() => handleDeletePeriod(period.id)} title="Delete"
-                              className="p-1 text-rmpg-500 hover:text-red-400 transition-colors"><Trash2 size={13} /></button>
+                            <IconButton onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
+                              className="p-1 text-rmpg-500 hover:text-gray-400 transition-colors" aria-label="Auto-populate employees"><Users size={13} /></IconButton>
+                            <IconButton onClick={() => handleClosePeriod(period.id)} title="Close period"
+                              className="p-1 text-rmpg-500 hover:text-green-400 transition-colors" aria-label="Close period"><Check size={13} /></IconButton>
+                            <IconButton onClick={() => handleDeletePeriod(period.id)} title="Delete"
+                              className="p-1 text-rmpg-500 hover:text-red-400 transition-colors" aria-label="Delete period"><Trash2 size={13} /></IconButton>
                           </>
                         )}
                         <ChevronRight size={14} className="text-rmpg-600" />
@@ -491,8 +598,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button onClick={() => setShowRateForm(!showRateForm)}
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded transition-colors">
+              <button type="button" onClick={() => setShowRateForm(!showRateForm)}
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> Set Rate
               </button>
             )}
@@ -500,13 +607,13 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
           {/* Create rate form */}
           {showRateForm && (
-            <div className="bg-surface-sunken border border-rmpg-700 rounded-lg p-4 space-y-3">
+            <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-4 space-y-3">
               <h4 className="text-xs font-semibold text-white">Set Pay Rate</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
                   <select value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="">Select employee...</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -514,7 +621,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
                   <select value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="hourly">Hourly</option>
                     <option value="salary">Salary</option>
                     <option value="contract">Contract</option>
@@ -523,28 +630,28 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
                   <input type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" placeholder="25.00" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="25.00" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
                   <input type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
                   <input type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
                   <input type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
-                <button onClick={handleCreateRate}
-                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors">Save Rate</button>
+                <button type="button" onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={handleCreateRate}
+                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Save Rate</button>
               </div>
             </div>
           )}
@@ -574,7 +681,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     <tr key={rate.id} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
                       <td className="px-3 py-2 text-white font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
-                        <span className="px-1.5 py-0.5 text-[9px] rounded bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
+                        <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
                       </td>
                       <td className="px-3 py-2 text-right text-green-400 font-mono">{formatCurrency(rate.rate)}</td>
                       <td className="px-3 py-2 text-right text-rmpg-300 font-mono">{rate.overtime_rate}x</td>
@@ -602,14 +709,14 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <select value={selectedPeriod?.id ?? ''} onChange={e => {
               const p = periods.find(pp => pp.id === Number(e.target.value));
               setSelectedPeriod(p || null);
-            }} className="bg-surface-base border border-rmpg-700 rounded px-2 py-1 text-xs text-white">
+            }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white">
               <option value="">Select pay period...</option>
               {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
             </select>
             {selectedPeriod && entries.length > 0 && (
-              <button
+              <button type="button"
                 onClick={handleExportCSV}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors"
               >
                 <Download size={12} /> Export CSV
               </button>
@@ -665,7 +772,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                                 <input type="number" step="0.5" min="0"
                                   value={editValues[field] ?? 0}
                                   onChange={e => setEditValues(v => ({ ...v, [field]: Number(e.target.value) }))}
-                                  className="w-16 bg-surface-sunken border border-brand-500/40 rounded px-1.5 py-0.5 text-xs text-white text-right font-mono" />
+                                  className="w-16 bg-surface-sunken border border-brand-500/40 rounded-sm px-1.5 py-0.5 text-xs text-white text-right font-mono" />
                               </td>
                             ))}
                           </>
@@ -673,7 +780,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           <>
                             <td className="px-2 py-2 text-right text-white font-mono">{entry.regular_hours}</td>
                             <td className="px-2 py-2 text-right text-amber-400 font-mono">{entry.overtime_hours || '—'}</td>
-                            <td className="px-2 py-2 text-right text-cyan-400 font-mono">{entry.holiday_hours || '—'}</td>
+                            <td className="px-2 py-2 text-right text-gray-400 font-mono">{entry.holiday_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.pto_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.sick_hours || '—'}</td>
                           </>
@@ -681,22 +788,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         <td className="px-2 py-2 text-right text-green-400 font-mono font-semibold">{formatCurrency(entry.gross_pay)}</td>
                         <td className="px-2 py-2 text-center">
                           <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium" style={{
-                            backgroundColor: (STATUS_COLORS[entry.status] || '#6b7280') + '20',
-                            color: STATUS_COLORS[entry.status] || '#6b7280'
-                          }}>{entry.status}</span>
+                            backgroundColor: (STATUS_COLORS[entry.status] || '#666666') + '20',
+                            color: STATUS_COLORS[entry.status] || '#666666'
+                          }}>{(entry.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                         </td>
                         <td className="px-2 py-2 text-center">
                           {isManager && entry.status !== 'approved' && (
                             <div className="flex items-center justify-center gap-1">
                               {isEditing ? (
                                 <>
-                                  <button onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300"><Check size={13} /></button>
-                                  <button onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white"><X size={13} /></button>
+                                  <IconButton onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300" aria-label="Save entry"><Check size={13} /></IconButton>
+                                  <IconButton onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white" aria-label="Cancel editing"><X size={13} /></IconButton>
                                 </>
                               ) : (
                                 <>
-                                  <button onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours"><Edit3 size={13} /></button>
-                                  <button onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve"><Check size={13} /></button>
+                                  <IconButton onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours" aria-label="Edit hours"><Edit3 size={13} /></IconButton>
+                                  <IconButton onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve" aria-label="Approve entry"><Check size={13} /></IconButton>
                                 </>
                               )}
                             </div>
@@ -714,7 +821,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       <td className="px-2 py-2" />
                       <td className="px-2 py-2 text-right text-white font-mono font-bold">{entries.reduce((s, e) => s + e.regular_hours, 0)}</td>
                       <td className="px-2 py-2 text-right text-amber-400 font-mono font-bold">{entries.reduce((s, e) => s + e.overtime_hours, 0) || '—'}</td>
-                      <td className="px-2 py-2 text-right text-cyan-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
+                      <td className="px-2 py-2 text-right text-gray-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.pto_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.sick_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-green-400 font-mono font-bold">{formatCurrency(entries.reduce((s, e) => s + e.gross_pay, 0))}</td>
@@ -722,6 +829,165 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     </tr>
                   </tfoot>
                 )}
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* Overtime Requests */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {subTab === 'overtime' && (
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <AlertTriangle size={15} /> Overtime Requests
+            </h3>
+            <div className="flex-1" />
+            <button type="button" onClick={() => setShowOtForm(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30 transition-colors">
+              <Plus size={13} /> Request OT
+            </button>
+          </div>
+
+          {/* OT Request Form */}
+          {showOtForm && (
+            <div className="p-3 border border-brand-500/30 bg-surface-base space-y-2">
+              <div className="text-xs font-bold text-white uppercase">New OT Request</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
+                  <input type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
+                  <input type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase">Reason</label>
+                  <input value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={handleRequestOt} className="flex items-center gap-1 px-3 py-1 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30">
+                  <Check size={12} /> Submit Request
+                </button>
+                <button type="button" onClick={() => setShowOtForm(false)} className="px-3 py-1 text-xs text-rmpg-400 hover:text-white">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* OT Requests List */}
+          {otRequests.length === 0 ? (
+            <div className="text-center py-8 text-rmpg-500 text-xs">No overtime requests</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-surface-sunken text-rmpg-500 text-[10px] uppercase">
+                    <th className="text-left px-2 py-1.5">Officer</th>
+                    <th className="text-left px-2 py-1.5">Date</th>
+                    <th className="text-left px-2 py-1.5">Hours</th>
+                    <th className="text-left px-2 py-1.5">Reason</th>
+                    <th className="text-left px-2 py-1.5">Status</th>
+                    {isManager && <th className="text-left px-2 py-1.5">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {otRequests.map(ot => (
+                    <tr key={ot.id} className="border-b border-rmpg-700 hover:bg-surface-base">
+                      <td className="px-2 py-1.5 text-white">{ot.officer_name}</td>
+                      <td className="px-2 py-1.5 text-rmpg-300">{formatDate(ot.requested_date)}</td>
+                      <td className="px-2 py-1.5 text-rmpg-300 font-mono">{ot.hours_requested}h</td>
+                      <td className="px-2 py-1.5 text-rmpg-400 max-w-[200px] truncate">{ot.reason || '-'}</td>
+                      <td className="px-2 py-1.5">
+                        <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm ${
+                          ot.status === 'approved' ? 'bg-green-900/50 text-green-400' :
+                          ot.status === 'denied' ? 'bg-red-900/50 text-red-400' :
+                          'bg-amber-900/50 text-amber-400'
+                        }`}>{(ot.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      </td>
+                      {isManager && (
+                        <td className="px-2 py-1.5">
+                          {ot.status === 'requested' && (
+                            <div className="flex gap-1">
+                              <button type="button" onClick={() => handleOtDecision(ot.id, 'approved')} className="text-green-400 hover:text-green-300 text-[10px] font-bold">Approve</button>
+                              <button type="button" onClick={() => handleOtDecision(ot.id, 'denied')} className="text-red-400 hover:text-red-300 text-[10px] font-bold">Deny</button>
+                            </div>
+                          )}
+                          {ot.status !== 'requested' && ot.reviewed_by_name && (
+                            <span className="text-[9px] text-rmpg-500">by {ot.reviewed_by_name}</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* Leave Balances */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {subTab === 'leave' && (
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Banknote size={15} className="text-brand-400" /> PTO / Leave Balances
+            </h3>
+            <span className="text-[9px] text-rmpg-500">Accrual: {PTO_ACCRUAL_PER_PAY_PERIOD} hrs/pay period ({ANNUAL_PTO_ALLOTMENT} hrs/year)</span>
+            <div className="flex-1" />
+            <button type="button" onClick={fetchLeaveBalances}
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </div>
+
+          {leaveLoading ? (
+            <div className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
+          ) : leaveData.length === 0 ? (
+            <div className="text-center py-8 text-rmpg-500 text-xs">
+              <p>No leave data loaded. Click Refresh to calculate balances.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[9px] text-rmpg-400 uppercase tracking-wider border-b border-rmpg-700">
+                    <th className="text-left py-2 px-3">Officer</th>
+                    <th className="text-left py-2 px-3">Badge</th>
+                    <th className="text-right py-2 px-3">PTO Accrued</th>
+                    <th className="text-right py-2 px-3">PTO Used</th>
+                    <th className="text-right py-2 px-3">PTO Remaining</th>
+                    <th className="text-right py-2 px-3">Sick Used</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaveData.map(lb => {
+                    const accrued = lb.pto_pending + lb.pto_used;
+                    const pctUsed = accrued > 0 ? (lb.pto_used / accrued) * 100 : 0;
+                    return (
+                      <tr key={lb.id} className="border-b border-rmpg-700/50 hover:bg-surface-raised/30">
+                        <td className="py-2 px-3 text-white font-medium">{lb.full_name}</td>
+                        <td className="py-2 px-3 text-rmpg-400 font-mono">{lb.badge_number || '—'}</td>
+                        <td className="py-2 px-3 text-right text-rmpg-300">{accrued.toFixed(1)}h</td>
+                        <td className="py-2 px-3 text-right text-amber-400">{lb.pto_used.toFixed(1)}h</td>
+                        <td className="py-2 px-3 text-right">
+                          <span className={lb.pto_pending <= 8 ? 'text-red-400 font-bold' : lb.pto_pending <= 24 ? 'text-amber-400' : 'text-green-400'}>
+                            {lb.pto_pending.toFixed(1)}h
+                          </span>
+                          <div className="w-full h-1 bg-surface-sunken rounded-full mt-0.5 overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 80 ? '#ef4444' : pctUsed > 50 ? '#f59e0b' : '#22c55e' }} />
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-right text-rmpg-300">{lb.sick_used.toFixed(1)}h</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
               </table>
             </div>
           )}

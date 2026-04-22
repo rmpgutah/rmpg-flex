@@ -9,22 +9,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { rateLimit } from '../middleware/rateLimiter';
-import { sanitizeObject } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
-import { generateIncidentNumber } from '../utils/caseNumbers';
-import { auditLog } from '../utils/auditLogger';
-import config from '../config';
-
-/**
- * Generate HMAC-SHA256 signature for offline secrets in transit.
- * Prevents tampering if TLS is somehow intercepted.
- */
-function signSecret(secret: string, userId: number): string {
-  return crypto.createHmac('sha256', config.jwt.secret)
-    .update(`${userId}:${secret}`)
-    .digest('hex');
-}
 
 const router = Router();
 
@@ -35,7 +20,7 @@ router.use(authenticateToken);
 // Maps table name → columns to SELECT (controls what the desktop app receives)
 const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limit?: number }> = {
   users: {
-    columns: 'id, username, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
+    columns: 'id, username, password_hash, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
     hasUpdatedAt: true,
   },
   clients: {
@@ -52,7 +37,7 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   units: {
-    columns: 'id, call_sign, officer_id, status, latitude, longitude, current_call_id, last_status_change, capabilities',
+    columns: 'id, call_sign, officer_id, officer_name, status, latitude, longitude, current_call_id, last_status_change, capabilities',
     hasUpdatedAt: false,
   },
   incidents: {
@@ -61,71 +46,111 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   time_entries: {
-    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, total_hours, break_minutes, status',
+    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, total_hours, break_minutes, status',
     hasUpdatedAt: false,
     limit: 200,
   },
   persons: {
-    columns: 'id, first_name, last_name, dob, gender, race, address, phone, dl_number, dl_state, ssn_last4, flags, notes, created_at, updated_at',
+    // Full PersonFormModal field set so officers see the complete record
+    // offline (previously only 14 of 166 columns synced — name + DL + a
+    // few extras, hiding SSN/ID numbers, employer, watchlist match,
+    // medical/military intel, etc.). Audit 2026-04-11.
+    columns: 'id, first_name, last_name, middle_name, alias_nickname, dob, gender, race, ' +
+      'height, height_feet, height_inches, weight, build, complexion, hair_color, eye_color, ' +
+      'scars_marks_tattoos, clothing_description, address, city, state, zip, phone, email, ' +
+      'dl_number, dl_state, dl_expiry, dl_class, ssn_last4, id_image_url, id_type, id_number, ' +
+      'id_state, id_expiry, employer, occupation, emergency_contact_name, ' +
+      'emergency_contact_phone, emergency_contact_relationship, gang_affiliation, ' +
+      'is_sex_offender, is_veteran, language, place_of_birth, citizenship, marital_status, ' +
+      'hair_length, hair_style, facial_hair, glasses, shoe_size, blood_type, phone_secondary, ' +
+      'social_media, probation_parole, probation_parole_officer, known_associates, ' +
+      'caution_flags, photo_url, ncic_number, sor_number, fbi_number, state_id_number, ' +
+      'passport_number, passport_country, immigration_status, disability_flags, ' +
+      'mental_health_flags, substance_abuse, medication_notes, education_level, ' +
+      'military_branch, military_status, tribal_affiliation, identifying_marks_location, ' +
+      'tattoo_description, scar_description, piercing_description, distinguishing_features, ' +
+      'email_secondary, date_last_seen, location_last_seen, alias_dob, home_phone, work_phone, ' +
+      'watchlist_match, watchlist_checked_at, flags, notes, created_at, updated_at',
     hasUpdatedAt: true,
     limit: 500,
   },
   vehicles_records: {
-    columns: 'id, plate_number, state, make, model, year, color, vin, owner_person_id, flags, stolen_status, created_at, updated_at',
+    // Full VehicleFormModal field set so officers see the complete vehicle
+    // record offline (previously only 13 of 137 columns synced — plate +
+    // make/model, hiding insurance, owner, tow, lien, modifications,
+    // condition, etc.). Audit 2026-04-11.
+    columns: 'id, plate_number, state, make, model, year, color, secondary_color, body_style, ' +
+      'doors, vin, owner_person_id, owner_name, owner_address, owner_phone, owner_dl_number, ' +
+      'owner_dob, registered_owner, primary_driver_name, insurance_company, insurance_policy, ' +
+      'insurance_expiry, registration_expiry, registration_state, damage_description, ' +
+      'distinguishing_features, trim, engine_type, fuel_type, transmission, drive_type, ' +
+      'tow_status, tow_company, tow_date, tow_location, plate_type, commercial_vehicle, ' +
+      'hazmat, odometer, lien_holder, stolen_status, stolen_date, recovery_date, title_status, ' +
+      'exterior_condition, interior_condition, estimated_value, window_tint, modifications, ' +
+      'equipment_notes, vehicle_use, ncic_entry_number, flags, notes, created_at, updated_at',
+    hasUpdatedAt: true,
+    limit: 500,
+  },
+  citations: {
+    columns: 'id, citation_number, type, status, person_id, person_name, person_dob, person_dl, person_address, vehicle_description, vehicle_plate, vehicle_state, statute_id, statute_citation, violation_description, offense_level, fine_amount, violation_date, violation_time, location, incident_id, call_id, issuing_officer_id, issuing_officer_name, badge_number, court_date, court_name, court_address, notes, created_at, updated_at',
+    hasUpdatedAt: true,
+    limit: 500,
+  },
+  field_interviews: {
+    columns: 'id, fi_number, person_id, subject_first_name, subject_last_name, subject_dob, subject_gender, subject_race, subject_height, subject_weight, subject_hair, subject_eye, subject_clothing, subject_description, location, latitude, longitude, property_id, contact_reason, contact_type, action_taken, narrative, vehicle_plate, vehicle_description, vehicle_id, associated_call_id, associated_incident_id, officer_id, officer_name, status, created_at, archived_at',
+    hasUpdatedAt: false,
+    limit: 500,
+  },
+  evidence: {
+    columns: 'id, evidence_number, incident_id, description, evidence_type, category, storage_location, collected_by, status, chain_of_custody, location_found, condition, quantity, collected_date, notes, created_at, updated_at',
+    hasUpdatedAt: true,
+    limit: 500,
+  },
+  criminal_history: {
+    columns: 'id, person_id, record_type, offense, offense_level, statute, case_number, agency, jurisdiction, offense_date, disposition, disposition_date, sentence, source, notes, created_by, created_at, updated_at',
+    hasUpdatedAt: true,
+    limit: 500,
+  },
+  patrol_scans: {
+    columns: 'id, checkpoint_id, officer_id, scanned_at, latitude, longitude, notes, status',
+    hasUpdatedAt: false,
+    limit: 200,
+  },
+  patrol_checkpoints: {
+    columns: 'id, property_id, name, description, latitude, longitude, qr_code, sequence_order, scan_required_interval_minutes, is_active, created_at',
+    hasUpdatedAt: false,
+    limit: 200,
+  },
+  trespass_orders: {
+    columns: 'id, order_number, person_id, subject_first_name, subject_last_name, subject_dob, subject_description, property_id, property_name, location, order_type, status, reason, conditions, duration_days, effective_date, expiration_date, served_at, served_by, originating_call_id, originating_incident_id, issued_by, issued_by_name, authorized_by, notes, archived_at, created_at, updated_at',
+    hasUpdatedAt: true,
+    limit: 500,
+  },
+  warrants: {
+    columns: 'id, warrant_number, type, status, subject_person_id, issuing_court, issuing_judge, charge_description, bail_amount, offense_level, entered_by, served_by, served_at, served_location, expires_at, notes, created_at, updated_at',
     hasUpdatedAt: true,
     limit: 500,
   },
 };
 
 // Reference tables get full replacement (small datasets)
-const REFERENCE_TABLES = ['users', 'clients', 'properties'];
-
-// ─── Table access by role ────────────────────────────────────
-// PII-heavy tables (persons, vehicles) are restricted to supervisor+ roles
-const PII_TABLES = new Set(['persons', 'vehicles_records']);
-const SYNC_ALLOWED_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
-
-// Stricter rate limit for sync endpoints — 30 requests per minute per user
-const syncRateLimit = rateLimit({
-  windowMs: 60_000,
-  maxRequests: 30,
-  keyGenerator: (req: Request) => `sync:${req.user?.userId || req.ip}`,
-  message: 'Sync rate limit exceeded — try again shortly',
-});
+const REFERENCE_TABLES = ['users', 'clients', 'properties', 'patrol_checkpoints'];
 
 // ─── POST /sync/pull ─────────────────────────────────────────
 // Returns rows from a table, optionally filtered by updated_at > since
-router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
+router.post('/sync/pull', (req: Request, res: Response) => {
   try {
     const { table, since, limit: reqLimit } = req.body;
     const db = getDb();
-    const role = req.user?.role;
 
-    // Only field roles can sync
-    if (!role || !SYNC_ALLOWED_ROLES.has(role)) {
-      res.status(403).json({ error: 'Offline sync not available for your role' });
-      return;
-    }
-
-    if (!table || typeof table !== 'string' || !SYNC_TABLES[table]) {
-      res.status(400).json({ error: 'Invalid or unrecognized table name' });
-      return;
-    }
-
-    if (since && (typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(since))) {
-      res.status(400).json({ error: 'Invalid since parameter — expected ISO date string' });
-      return;
-    }
-
-    // PII-heavy tables restricted to supervisor+ roles
-    if (PII_TABLES.has(table) && !['admin', 'manager', 'supervisor'].includes(role)) {
-      res.status(403).json({ error: `Access to ${table} sync requires supervisor or higher role` });
+    if (!table || !SYNC_TABLES[table]) {
+      res.status(400).json({ error: `Invalid table: ${table}. Allowed: ${Object.keys(SYNC_TABLES).join(', ')}`, code: 'INVALID_TABLE' });
       return;
     }
 
     const config = SYNC_TABLES[table];
     const isReference = REFERENCE_TABLES.includes(table);
-    const maxRows = Math.min(reqLimit || config.limit || 1000, 5000);
+    const maxRows = reqLimit || config.limit || 1000;
 
     let sql: string;
     let params: any[];
@@ -142,9 +167,6 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
 
     const rows = db.prepare(sql).all(...params);
 
-    auditLog(req, 'offline_sync_pull', 'offline_sync', 0,
-      `Pulled ${rows.length} rows from ${table}${since ? ` (since ${since})` : ' (full)'}`);
-
     res.json({
       table,
       rows,
@@ -153,33 +175,21 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
       pulledAt: localNow(),
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Pull sync error:', error?.message);
-    res.status(500).json({ error: 'Failed to pull sync data' });
+    console.error('[OFFLINE] Pull sync error:', error.message);
+    res.status(500).json({ error: 'Failed to pull sync data', code: 'FAILED_TO_PULL_SYNC' });
   }
 });
 
 // ─── POST /sync/push ─────────────────────────────────────────
 // Accepts a batch of locally-created records, inserts them, returns
 // the mapping of local_id → server-assigned id
-router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
+router.post('/sync/push', (req: Request, res: Response) => {
   try {
     const { items } = req.body; // Array of { method, endpoint, body, local_id, table_name }
     const db = getDb();
-    const role = req.user?.role;
-
-    // Only field roles can push
-    if (!role || !SYNC_ALLOWED_ROLES.has(role)) {
-      res.status(403).json({ error: 'Offline sync not available for your role' });
-      return;
-    }
 
     if (!Array.isArray(items) || items.length === 0) {
-      res.status(400).json({ error: 'No items to push' });
-      return;
-    }
-
-    if (items.length > 100) {
-      res.status(400).json({ error: 'Batch size exceeds maximum of 100 items' });
+      res.status(400).json({ error: 'No items to push', code: 'NO_ITEMS_TO_PUSH' });
       return;
     }
 
@@ -187,35 +197,73 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
 
     for (const item of items) {
       try {
-        // Parse and re-sanitize decoded bodies — the global middleware only sanitized
-        // the outer JSON string, not the inner fields after JSON.parse()
-        const parsedBody = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
-        const body = parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)
-          ? sanitizeObject(parsedBody as Record<string, unknown>)
-          : parsedBody;
-
         if (item.table_name === 'calls_for_service' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushCallForService(db, body, req.user!.userId);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'incidents' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushIncident(db, body, req.user!.userId);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'time_entries' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushTimeEntry(db, body);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'gps_breadcrumbs' && item.method === 'POST') {
-          // GPS body is an array — sanitize each point individually
-          const sanitizedGps = Array.isArray(body)
-            ? body.map((pt: any) => pt && typeof pt === 'object' ? sanitizeObject(pt) : pt)
-            : body;
-          pushGpsBreadcrumbs(db, sanitizedGps);
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          pushGpsBreadcrumbs(db, body);
           results.push({ local_id: item.local_id, success: true });
+
+        } else if (item.table_name === 'citations' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushCitation(db, body, req.user!.userId);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'field_interviews' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushFieldInterview(db, body, req.user!.userId);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'evidence' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushEvidence(db, body, req.user!.userId);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'criminal_history' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushCriminalHistory(db, body, req.user!.userId);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'patrol_scans' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushPatrolScan(db, body, req.user!.userId);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'trespass_orders' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushTrespassOrder(db, body, req.user!.userId);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'persons' && item.method === 'POST') {
+          // Persons records created offline (audit 2026-04-11 — previously
+          // returned "Unsupported operation" so the entire offline person
+          // intake workflow was broken).
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushPerson(db, body);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
+
+        } else if (item.table_name === 'vehicles_records' && item.method === 'POST') {
+          // Vehicles records created offline (audit 2026-04-11 — same fix).
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          const result = pushVehicle(db, body);
+          results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.method === 'PUT') {
           // Generic update — parse the endpoint to get table and id
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           pushUpdate(db, item.endpoint, body);
           results.push({ local_id: item.local_id, success: true });
 
@@ -223,20 +271,18 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
           results.push({ local_id: item.local_id, success: false, error: 'Unsupported operation' });
         }
       } catch (err: any) {
-        results.push({ local_id: item.local_id, success: false, error: 'Operation failed' });
+        results.push({ local_id: item.local_id, success: false, error: err.message });
       }
     }
 
-    const pushed = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
-
-    auditLog(req, 'offline_sync_push', 'offline_sync', 0,
-      `Pushed ${pushed} records (${failed} failed) from offline client`);
-
-    res.json({ pushed, failed, results });
+    res.json({
+      pushed: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results,
+    });
   } catch (error: any) {
-    console.error('[OFFLINE] Push sync error:', error?.message);
-    res.status(500).json({ error: 'Failed to push sync data' });
+    console.error('[OFFLINE] Push sync error:', error.message);
+    res.status(500).json({ error: 'Failed to push sync data', code: 'FAILED_TO_PUSH_SYNC' });
   }
 });
 
@@ -244,16 +290,11 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
 
 function pushCallForService(db: any, body: any, userId: number) {
   // Generate a proper call number
-  const year = parseInt(new Date().toISOString().slice(0, 4), 10); // UTC is acceptable for offline push CFS numbers
+  const year = new Date().getFullYear();
   const last = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
   ).get(`CFS-${year}-%`);
-  let seq = 1;
-  if (last) {
-    const parts = last.call_number.split('-');
-    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-    if (!isNaN(parsed)) seq = parsed + 1;
-  }
+  const seq = last ? parseInt(last.call_number.split('-')[2], 10) + 1 : 1;
   const callNumber = `CFS-${year}-${String(seq).padStart(5, '0')}`;
   const now = localNow();
 
@@ -271,48 +312,196 @@ function pushCallForService(db: any, body: any, userId: number) {
     body.dispatcher_id || userId, now, now
   );
 
-  return { id: Number(result.lastInsertRowid), call_number: callNumber };
+  return { id: result.lastInsertRowid, call_number: callNumber };
 }
 
 function pushIncident(db: any, body: any, userId: number) {
   const now = localNow();
-  const incidentNumber = generateIncidentNumber(db, body.incident_type || 'general');
+  // Propagate ALL operational flags — previously silent-dropped (audit 2026-04-10)
   const result = db.prepare(`
-    INSERT INTO incidents (incident_number, incident_type, priority, status, location_address, property_id,
-      narrative, officer_id, supervisor_id, call_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO incidents (incident_type, priority, status, location_address, property_id,
+      narrative, officer_id, supervisor_id, call_id,
+      alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
+      injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+      officer_safety_caution, k9_requested, ems_requested, fire_requested,
+      hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
+      trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
+      created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?)
   `).run(
-    incidentNumber, body.incident_type, body.priority || 'P3', body.status || 'draft',
+    body.incident_type, body.priority || 'P3', body.status || 'draft',
     body.location_address, body.property_id, body.narrative,
-    body.officer_id || userId, body.supervisor_id, body.call_id, now, now
+    body.officer_id || userId, body.supervisor_id, body.call_id,
+    body.alcohol_involved ? 1 : 0, body.drugs_involved ? 1 : 0,
+    body.domestic_violence ? 1 : 0, body.weapons_involved || null,
+    body.injuries_reported ? 1 : 0, body.mental_health_crisis ? 1 : 0,
+    body.juvenile_involved ? 1 : 0, body.felony_in_progress ? 1 : 0,
+    body.officer_safety_caution ? 1 : 0, body.k9_requested ? 1 : 0,
+    body.ems_requested ? 1 : 0, body.fire_requested ? 1 : 0,
+    body.hazmat ? 1 : 0, body.gang_related ? 1 : 0,
+    body.evidence_collected ? 1 : 0, body.body_camera_active ? 1 : 0,
+    body.photos_taken ? 1 : 0,
+    body.trespass_issued ? 1 : 0, body.vehicle_pursuit ? 1 : 0,
+    body.foot_pursuit ? 1 : 0, body.le_notified ? 1 : 0,
+    body.supervisor_notified ? 1 : 0,
+    now, now
   );
 
-  return { id: Number(result.lastInsertRowid), incident_number: incidentNumber };
+  return { id: result.lastInsertRowid };
+}
+
+// Whitelist of person columns the offline sync push handler will accept.
+// Mirrors PersonFormModal so an officer creating a person record offline
+// gets the full set persisted, not just first/last name. Audit 2026-04-11.
+const PUSH_PERSON_COLUMNS = [
+  'first_name', 'last_name', 'middle_name', 'alias_nickname', 'dob', 'gender', 'race',
+  'height', 'height_feet', 'height_inches', 'weight', 'build', 'complexion',
+  'hair_color', 'eye_color', 'scars_marks_tattoos', 'clothing_description',
+  'address', 'city', 'state', 'zip', 'phone', 'email',
+  'dl_number', 'dl_state', 'dl_expiry', 'dl_class', 'ssn_last4', 'ssn_full',
+  'id_image_url', 'id_type', 'id_number', 'id_state', 'id_expiry',
+  'employer', 'occupation', 'emergency_contact_name', 'emergency_contact_phone',
+  'emergency_contact_relationship', 'gang_affiliation', 'language',
+  'place_of_birth', 'citizenship', 'marital_status',
+  'hair_length', 'hair_style', 'facial_hair', 'glasses', 'shoe_size', 'blood_type',
+  'phone_secondary', 'social_media', 'probation_parole', 'probation_parole_officer',
+  'known_associates', 'caution_flags', 'photo_url',
+  'ncic_number', 'sor_number', 'fbi_number', 'state_id_number',
+  'passport_number', 'passport_country', 'immigration_status',
+  'disability_flags', 'mental_health_flags', 'substance_abuse', 'medication_notes',
+  'education_level', 'military_branch', 'military_status', 'tribal_affiliation',
+  'identifying_marks_location', 'tattoo_description', 'scar_description',
+  'piercing_description', 'distinguishing_features',
+  'email_secondary', 'date_last_seen', 'location_last_seen', 'alias_dob',
+  'home_phone', 'work_phone', 'notes',
+];
+
+const PUSH_PERSON_BOOL_COLUMNS = new Set(['is_sex_offender', 'is_veteran']);
+
+function pushPerson(db: any, body: any) {
+  if (!body.first_name || !body.last_name) {
+    throw new Error('first_name and last_name are required');
+  }
+
+  const now = localNow();
+  const columns: string[] = [];
+  const placeholders: string[] = [];
+  const values: any[] = [];
+
+  for (const col of PUSH_PERSON_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] === '' ? null : body[col]);
+    }
+  }
+  for (const col of PUSH_PERSON_BOOL_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] ? 1 : 0);
+    }
+  }
+  // flags column is JSON
+  columns.push('flags');
+  placeholders.push('?');
+  values.push(JSON.stringify(body.flags || []));
+
+  columns.push('created_at');
+  placeholders.push('?');
+  values.push(now);
+  columns.push('updated_at');
+  placeholders.push('?');
+  values.push(now);
+
+  const result = db.prepare(
+    `INSERT INTO persons (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+  ).run(...values);
+
+  return { id: result.lastInsertRowid };
+}
+
+// Whitelist of vehicles_records columns the offline sync push handler
+// will accept. Mirrors VehicleFormModal. Audit 2026-04-11.
+const PUSH_VEHICLE_COLUMNS = [
+  'plate_number', 'state', 'make', 'model', 'year', 'color', 'secondary_color',
+  'body_style', 'doors', 'vin', 'owner_person_id', 'owner_name', 'owner_address',
+  'owner_phone', 'owner_dl_number', 'owner_dob', 'registered_owner',
+  'primary_driver_name', 'insurance_company', 'insurance_policy', 'insurance_expiry',
+  'registration_expiry', 'registration_state', 'damage_description',
+  'distinguishing_features', 'trim', 'engine_type', 'fuel_type', 'transmission',
+  'drive_type', 'tow_status', 'tow_company', 'tow_date', 'tow_location', 'plate_type',
+  'odometer', 'lien_holder', 'stolen_status', 'stolen_date', 'recovery_date',
+  'title_status', 'exterior_condition', 'interior_condition', 'estimated_value',
+  'window_tint', 'modifications', 'equipment_notes', 'vehicle_use',
+  'ncic_entry_number', 'notes',
+];
+
+const PUSH_VEHICLE_BOOL_COLUMNS = new Set(['commercial_vehicle', 'hazmat']);
+
+function pushVehicle(db: any, body: any) {
+  const now = localNow();
+  const columns: string[] = [];
+  const placeholders: string[] = [];
+  const values: any[] = [];
+
+  for (const col of PUSH_VEHICLE_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] === '' ? null : body[col]);
+    }
+  }
+  for (const col of PUSH_VEHICLE_BOOL_COLUMNS) {
+    if (body[col] !== undefined) {
+      columns.push(col);
+      placeholders.push('?');
+      values.push(body[col] ? 1 : 0);
+    }
+  }
+  columns.push('flags');
+  placeholders.push('?');
+  values.push(JSON.stringify(body.flags || []));
+
+  columns.push('created_at');
+  placeholders.push('?');
+  values.push(now);
+  columns.push('updated_at');
+  placeholders.push('?');
+  values.push(now);
+
+  const result = db.prepare(
+    `INSERT INTO vehicles_records (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+  ).run(...values);
+
+  return { id: result.lastInsertRowid };
 }
 
 function pushTimeEntry(db: any, body: any) {
   const result = db.prepare(`
     INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_out,
-      clock_in_latitude, clock_in_longitude,
+      clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude,
       total_hours, break_minutes, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     body.officer_id, body.schedule_id, body.clock_in, body.clock_out,
     body.clock_in_latitude, body.clock_in_longitude,
-    body.total_hours, body.break_minutes ?? 0, body.status || 'active'
+    body.clock_out_latitude, body.clock_out_longitude,
+    body.total_hours, body.break_minutes || 0, body.status || 'active'
   );
 
-  return { id: Number(result.lastInsertRowid) };
+  return { id: result.lastInsertRowid };
 }
 
 function pushGpsBreadcrumbs(db: any, body: any) {
   // Body is an array of GPS points
   const points = Array.isArray(body) ? body : (body.points || [body]);
-
-  // Limit GPS batch size to prevent abuse
-  if (points.length > 500) {
-    throw new Error('GPS batch exceeds maximum of 500 points');
-  }
   const stmt = db.prepare(`
     INSERT INTO gps_breadcrumbs (unit_id, officer_id, call_sign, latitude, longitude,
       accuracy, heading, speed, unit_status, recorded_at)
@@ -335,11 +524,6 @@ function pushUpdate(db: any, endpoint: string, body: any) {
   if (parts.length < 3) return;
 
   const entityId = parts[parts.length - 1];
-
-  // Validate entityId is a positive integer to prevent injection
-  if (!/^\d+$/.test(entityId)) {
-    throw new Error('Invalid entity ID');
-  }
 
   if (parts[0] === 'dispatch' && parts[1] === 'calls') {
     const sets: string[] = [];
@@ -373,7 +557,213 @@ function pushUpdate(db: any, endpoint: string, body: any) {
       vals.push(entityId);
       db.prepare(`UPDATE units SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     }
+
+  } else if (parts[0] === 'records' && parts[1] === 'persons') {
+    // Persons edited offline (audit 2026-04-11 — previously this branch
+    // didn't exist, so the entire offline person edit workflow was a
+    // silent no-op).
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const col of PUSH_PERSON_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] === '' ? null : body[col]);
+      }
+    }
+    for (const col of PUSH_PERSON_BOOL_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] ? 1 : 0);
+      }
+    }
+    if (body.flags !== undefined) {
+      sets.push('flags = ?');
+      vals.push(JSON.stringify(body.flags || []));
+    }
+    if (sets.length > 0) {
+      sets.push('updated_at = ?');
+      vals.push(localNow());
+      vals.push(entityId);
+      db.prepare(`UPDATE persons SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    }
+
+  } else if (parts[0] === 'records' && parts[1] === 'vehicles') {
+    // Vehicles edited offline (audit 2026-04-11 — same fix as persons).
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const col of PUSH_VEHICLE_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] === '' ? null : body[col]);
+      }
+    }
+    for (const col of PUSH_VEHICLE_BOOL_COLUMNS) {
+      if (body[col] !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(body[col] ? 1 : 0);
+      }
+    }
+    if (body.flags !== undefined) {
+      sets.push('flags = ?');
+      vals.push(JSON.stringify(body.flags || []));
+    }
+    if (sets.length > 0) {
+      sets.push('updated_at = ?');
+      vals.push(localNow());
+      vals.push(entityId);
+      db.prepare(`UPDATE vehicles_records SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    }
   }
+}
+
+function pushCitation(db: any, body: any, userId: number) {
+  const year = new Date().getFullYear();
+  const last = db.prepare(
+    `SELECT citation_number FROM citations WHERE citation_number LIKE ? ORDER BY id DESC LIMIT 1`
+  ).get(`CIT-${year}-%`);
+  const seq = last ? parseInt(last.citation_number.split('-')[2], 10) + 1 : 1;
+  const citationNumber = `CIT-${year}-${String(seq).padStart(5, '0')}`;
+  const now = localNow();
+
+  const result = db.prepare(`
+    INSERT INTO citations (citation_number, type, status, person_id, person_name, person_dob, person_dl,
+      person_address, vehicle_description, vehicle_plate, vehicle_state, statute_id, statute_citation,
+      violation_description, offense_level, fine_amount, violation_date, violation_time, location,
+      incident_id, call_id, issuing_officer_id, issuing_officer_name, badge_number,
+      court_date, court_name, court_address, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    citationNumber, body.type || 'traffic', body.status || 'issued',
+    body.person_id, body.person_name, body.person_dob, body.person_dl,
+    body.person_address, body.vehicle_description, body.vehicle_plate, body.vehicle_state,
+    body.statute_id, body.statute_citation, body.violation_description, body.offense_level,
+    body.fine_amount, body.violation_date || now, body.violation_time, body.location,
+    body.incident_id, body.call_id, body.issuing_officer_id || userId,
+    body.issuing_officer_name, body.badge_number,
+    body.court_date, body.court_name, body.court_address, body.notes, now, now
+  );
+
+  return { id: result.lastInsertRowid, citation_number: citationNumber };
+}
+
+function pushFieldInterview(db: any, body: any, userId: number) {
+  const year = new Date().getFullYear();
+  const last = db.prepare(
+    `SELECT fi_number FROM field_interviews WHERE fi_number LIKE ? ORDER BY id DESC LIMIT 1`
+  ).get(`FI-${year}-%`);
+  const seq = last ? parseInt(last.fi_number.split('-')[2], 10) + 1 : 1;
+  const fiNumber = `FI-${year}-${String(seq).padStart(5, '0')}`;
+  const now = localNow();
+
+  const result = db.prepare(`
+    INSERT INTO field_interviews (fi_number, person_id, subject_first_name, subject_last_name,
+      subject_dob, subject_gender, subject_race, subject_height, subject_weight, subject_hair,
+      subject_eye, subject_clothing, subject_description, location, latitude, longitude,
+      property_id, contact_reason, contact_type, action_taken, narrative,
+      vehicle_plate, vehicle_description, vehicle_id, associated_call_id, associated_incident_id,
+      officer_id, officer_name, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    fiNumber, body.person_id, body.subject_first_name, body.subject_last_name,
+    body.subject_dob, body.subject_gender, body.subject_race, body.subject_height,
+    body.subject_weight, body.subject_hair, body.subject_eye, body.subject_clothing,
+    body.subject_description, body.location, body.latitude, body.longitude,
+    body.property_id, body.contact_reason || 'other', body.contact_type || 'field',
+    body.action_taken || 'none', body.narrative,
+    body.vehicle_plate, body.vehicle_description, body.vehicle_id,
+    body.associated_call_id, body.associated_incident_id,
+    body.officer_id || userId, body.officer_name, body.status || 'active', now
+  );
+
+  return { id: result.lastInsertRowid, fi_number: fiNumber };
+}
+
+function pushEvidence(db: any, body: any, userId: number) {
+  const year = new Date().getFullYear();
+  const last = db.prepare(
+    `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
+  ).get(`EV-${year}-%`);
+  const seq = last ? parseInt(last.evidence_number.split('-')[2], 10) + 1 : 1;
+  const evidenceNumber = `EV-${year}-${String(seq).padStart(5, '0')}`;
+  const now = localNow();
+
+  const result = db.prepare(`
+    INSERT INTO evidence (evidence_number, incident_id, description, evidence_type, category,
+      storage_location, collected_by, status, chain_of_custody, location_found, condition,
+      quantity, collected_date, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    evidenceNumber, body.incident_id, body.description, body.evidence_type, body.category,
+    body.storage_location, body.collected_by || userId, body.status || 'received',
+    body.chain_of_custody ? JSON.stringify(body.chain_of_custody) : '[]',
+    body.location_found, body.condition, body.quantity || 1,
+    body.collected_date || now, body.notes, now, now
+  );
+
+  return { id: result.lastInsertRowid, evidence_number: evidenceNumber };
+}
+
+function pushCriminalHistory(db: any, body: any, userId: number) {
+  const now = localNow();
+
+  const result = db.prepare(`
+    INSERT INTO criminal_history (person_id, record_type, offense, offense_level, statute,
+      case_number, agency, jurisdiction, offense_date, disposition, disposition_date,
+      sentence, source, notes, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    body.person_id, body.record_type || 'arrest', body.offense, body.offense_level,
+    body.statute, body.case_number, body.agency || 'RMPG', body.jurisdiction,
+    body.offense_date || now, body.disposition, body.disposition_date,
+    body.sentence, body.source || 'field', body.notes,
+    body.created_by || userId, now, now
+  );
+
+  return { id: result.lastInsertRowid };
+}
+
+function pushPatrolScan(db: any, body: any, userId: number) {
+  const now = localNow();
+
+  const result = db.prepare(`
+    INSERT INTO patrol_scans (checkpoint_id, officer_id, scanned_at, latitude, longitude, notes, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    body.checkpoint_id, body.officer_id || userId, body.scanned_at || now,
+    body.latitude, body.longitude, body.notes, body.status || 'on_time'
+  );
+
+  return { id: result.lastInsertRowid };
+}
+
+function pushTrespassOrder(db: any, body: any, userId: number) {
+  const year = new Date().getFullYear();
+  const last = db.prepare(
+    `SELECT order_number FROM trespass_orders WHERE order_number LIKE ? ORDER BY id DESC LIMIT 1`
+  ).get(`TO-${year}-%`);
+  const seq = last ? parseInt(last.order_number.split('-')[2], 10) + 1 : 1;
+  const orderNumber = `TO-${year}-${String(seq).padStart(5, '0')}`;
+  const now = localNow();
+
+  const result = db.prepare(`
+    INSERT INTO trespass_orders (order_number, person_id, subject_first_name, subject_last_name,
+      subject_dob, subject_description, property_id, property_name, location, order_type, status,
+      reason, conditions, duration_days, effective_date, expiration_date, served_at, served_by,
+      originating_call_id, originating_incident_id, issued_by, issued_by_name, authorized_by,
+      notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    orderNumber, body.person_id, body.subject_first_name, body.subject_last_name,
+    body.subject_dob, body.subject_description, body.property_id, body.property_name,
+    body.location, body.order_type || 'trespass_warning', body.status || 'active',
+    body.reason, body.conditions, body.duration_days,
+    body.effective_date || now, body.expiration_date, body.served_at, body.served_by,
+    body.originating_call_id, body.originating_incident_id,
+    body.issued_by || userId, body.issued_by_name, body.authorized_by,
+    body.notes, now, now
+  );
+
+  return { id: result.lastInsertRowid, order_number: orderNumber };
 }
 
 // ─── GET /secrets (admin only) ───────────────────────────────
@@ -386,6 +776,8 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
       FROM offline_pin_secrets ops
       JOIN users u ON u.id = ops.user_id
       WHERE u.status = 'active'
+    
+      LIMIT 1000
     `).all();
 
     // Also include the admin_secret (stored under the admin's own user_id)
@@ -398,32 +790,35 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
       admin_secret: adminSecret ? adminSecret.secret : null,
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Get secrets error:', error?.message);
-    res.status(500).json({ error: 'Failed to get offline secrets' });
+    console.error('[OFFLINE] Get secrets error:', error.message);
+    res.status(500).json({ error: 'Failed to get offline secrets', code: 'FAILED_TO_GET_OFFLINE' });
   }
 });
 
 // ─── GET /my-secret ──────────────────────────────────────────
-// Returns ONLY the requesting user's own offline secret.
-// Admin secret removed — it lives in admin-only /secrets endpoint.
-router.get('/my-secret', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+// Returns the requesting user's own offline secret
+router.get('/my-secret', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(
       'SELECT secret FROM offline_pin_secrets WHERE user_id = ?'
     ).get(req.user!.userId);
 
-    auditLog(req, 'offline_secret_accessed', 'offline_secret', req.user!.userId,
-      'User accessed their own offline secret');
+    // Also get the admin secret (needed for local PIN validation)
+    const adminUser = db.prepare(
+      `SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`
+    ).get() as any;
+    const adminSecret = adminUser
+      ? db.prepare('SELECT secret FROM offline_pin_secrets WHERE user_id = ?').get(adminUser.id)
+      : null;
 
-    const secret = row ? (row as any).secret : null;
     res.json({
-      secret,
-      signature: secret ? signSecret(secret, req.user!.userId) : null,
+      secret: row ? (row as any).secret : null,
+      admin_secret: adminSecret ? (adminSecret as any).secret : null,
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Get my-secret error:', error?.message);
-    res.status(500).json({ error: 'Failed to get offline secret' });
+    console.error('[OFFLINE] Get my-secret error:', error.message);
+    res.status(500).json({ error: 'Failed to get offline secret', code: 'FAILED_TO_GET_OFFLINE' });
   }
 });
 
@@ -435,14 +830,14 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
     const db = getDb();
 
     if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+      res.status(400).json({ error: 'userId is required', code: 'USERID_IS_REQUIRED' });
       return;
     }
 
     // Verify user exists
     const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -456,13 +851,10 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
       ON CONFLICT(user_id) DO UPDATE SET secret = excluded.secret, rotated_at = ?
     `).run(userId, secret, now, now);
 
-    auditLog(req, 'offline_secret_generated', 'offline_secret', userId,
-      `Generated/rotated offline secret for user ${userId}`);
-
-    res.json({ userId, secret, signature: signSecret(secret, userId), generated_at: now });
+    res.json({ userId, secret, generated_at: now });
   } catch (error: any) {
-    console.error('[OFFLINE] Generate secret error:', error?.message);
-    res.status(500).json({ error: 'Failed to generate offline secret' });
+    console.error('[OFFLINE] Generate secret error:', error.message);
+    res.status(500).json({ error: 'Failed to generate offline secret', code: 'FAILED_TO_GENERATE_OFFLINE' });
   }
 });
 
@@ -488,13 +880,10 @@ router.post('/secrets/generate-all', requireRole('admin'), (req: Request, res: R
     });
     tx();
 
-    auditLog(req, 'offline_secrets_bulk_generated', 'offline_secret', 0,
-      `Bulk-generated offline secrets for ${users.length} users`);
-
     res.json({ generated: users.length });
   } catch (error: any) {
-    console.error('[OFFLINE] Generate-all error:', error?.message);
-    res.status(500).json({ error: 'Failed to generate offline secrets' });
+    console.error('[OFFLINE] Generate-all error:', error.message);
+    res.status(500).json({ error: 'Failed to generate offline secrets', code: 'FAILED_TO_GENERATE_OFFLINE' });
   }
 });
 

@@ -92,6 +92,8 @@ export default function SupplementFormModal({
             onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
             placeholder="Brief subject of this supplement"
             required
+            autoFocus
+            maxLength={200}
           />
         </div>
         <div>
@@ -103,7 +105,9 @@ export default function SupplementFormModal({
             onChange={(e) => setForm((prev) => ({ ...prev, narrative: e.target.value }))}
             placeholder="Enter detailed narrative..."
             required
+            maxLength={10000}
           />
+          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.narrative.length}/10000</div>
         </div>
       </div>
     </FormModal>

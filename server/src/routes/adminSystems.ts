@@ -1,59 +1,24 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
-import { rateLimit } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
-import { sendNotificationEmail } from '../utils/emailSender';
-import { auditLog } from '../utils/auditLogger';
-import { sendCsv } from '../utils/csvExport';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { getAppVersion } from '../utils/appVersion';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = Router();
 
-// Safe table name mapping for retention policy operations.
-// Maps entity_type values to hardcoded SQL identifiers — prevents SQL injection
-// even if database values are compromised, since only these literal strings are used.
-const RETENTION_TABLE_MAP: Record<string, string> = {
-  'calls_for_service': 'calls_for_service',
-  'incidents': 'incidents',
-  'persons': 'persons',
-  'vehicles': 'vehicles',
-  'warrants': 'warrants',
-  'evidence': 'evidence',
-  'arrests': 'arrests',
-  'citations': 'citations',
-  'audit_log': 'audit_log',
-  'activity_log': 'activity_log',
-  'fleet_vehicles': 'fleet_vehicles',
-  'fleet_fuel_logs': 'fleet_fuel_logs',
-  'fleet_maintenance_logs': 'fleet_maintenance_logs',
-  'attachments': 'attachments',
-  'notifications': 'notifications',
-  'patrol_breadcrumbs': 'patrol_breadcrumbs',
-};
-
 // All routes require authentication
 router.use(authenticateToken);
-// Validate :id params as positive integers
-router.param('id', (req: Request, res: Response, next: Function) => {
-  const raw = String(req.params.id);
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
-    return;
-  }
-  next();
-});
 
 // ============================================================
 // Initialize tables for this module
@@ -121,39 +86,6 @@ function initTables(): void {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
-
-  // ── Seed default notification rules (idempotent — skips existing trigger events) ──
-  const adminId = (db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any)?.id || 1;
-  const now = localNow();
-  const existingEvents = new Set(
-    (db.prepare('SELECT trigger_event FROM notification_rules').all() as any[]).map(r => r.trigger_event)
-  );
-  const seed = db.prepare(`
-    INSERT INTO notification_rules (name, description, trigger_event, target_roles, notification_type, is_active, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
-  `);
-  const rules = [
-    ['New Call for Service', 'Notify dispatch/supervisors when a new call is created', 'dispatch.call_created', '["admin","manager","supervisor","dispatcher"]', 'in_app'],
-    ['P1 Emergency Call', 'Critical alert for P1 emergency calls', 'dispatch.call_priority_p1', '["admin","manager","supervisor","officer","dispatcher"]', 'both'],
-    ['Unit Dispatched', 'Notify officer when dispatched to a call', 'dispatch.unit_dispatched', '["officer"]', 'in_app'],
-    ['Call Cleared', 'Notify supervisors when a call is cleared', 'dispatch.call_cleared', '["admin","manager","supervisor"]', 'in_app'],
-    ['Warrant Created', 'Alert sworn personnel of new warrants', 'warrant.created', '["admin","manager","supervisor","officer"]', 'in_app'],
-    ['Warrant Served', 'Notify supervisors when a warrant is served', 'warrant.served', '["admin","manager","supervisor"]', 'in_app'],
-    ['Incident Created', 'Notify supervisors of new incident reports', 'incident.created', '["admin","manager","supervisor"]', 'in_app'],
-    ['Citation Issued', 'Notify supervisors of citations issued', 'citation.issued', '["admin","manager","supervisor"]', 'in_app'],
-    ['Trespass Order Issued', 'Notify supervisors of new trespass orders', 'trespass.created', '["admin","manager","supervisor"]', 'in_app'],
-    ['Field Interview Recorded', 'Notify supervisors of new field interviews', 'fi.created', '["admin","manager","supervisor"]', 'in_app'],
-    ['New IP Login', 'Alert user when login from unrecognized IP', 'auth.new_ip_login', '["admin","manager","supervisor","officer","dispatcher"]', 'both'],
-    ['Patrol Checkpoint Missed', 'Alert when a patrol checkpoint scan is overdue', 'patrol.checkpoint_missed', '["admin","manager","supervisor","officer"]', 'both'],
-  ];
-  let seeded = 0;
-  for (const [name, desc, event, roles, type] of rules) {
-    if (!existingEvents.has(event)) {
-      seed.run(name, desc, event, roles, type, adminId, now, now);
-      seeded++;
-    }
-  }
-  if (seeded > 0) console.log(`[AdminSystems] Seeded ${seeded} new notification rules`);
 }
 
 // Run table init on import (may fail if DB not yet initialized)
@@ -171,70 +103,11 @@ router.use((_req, _res, next) => {
     try {
       initTables();
       tablesInitialized = true;
-    } catch (err: any) {
-      console.error('adminSystems initTables retry failed:', err?.message || 'Unknown error');
+    } catch (err) {
+      console.error('adminSystems initTables retry failed:', err);
     }
   }
   next();
-});
-
-// ============================================================
-// 0. USER & TRAINING LOOKUPS (used by AdminTrainingTab, ShiftPlans)
-// ============================================================
-
-// GET /users — List all users (for admin panels that need user dropdowns)
-router.get('/users', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT id, username, full_name, badge_number, role, status, email, phone,
-             hire_date, department, created_at, updated_at
-      FROM users
-      ORDER BY full_name ASC
-    `).all();
-    res.json(rows);
-  } catch (err: any) {
-    console.error('GET /admin/users error:', err?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
-
-// GET /training — List all training records (for compliance dashboard)
-router.get('/training', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT tr.*, u.full_name as officer_name, u.badge_number,
-             tr.officer_id as user_id
-      FROM training_records tr
-      LEFT JOIN users u ON tr.officer_id = u.id
-      ORDER BY tr.created_at DESC
-    `).all();
-    res.json(rows);
-  } catch (err: any) {
-    console.error('GET /admin/training error:', err?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to fetch training records' });
-  }
-});
-
-// ============================================================
-// 0. CLIENT ERROR REPORTING
-// ============================================================
-
-// POST /health/client-error — Logs client-side React errors to server log
-router.post('/health/client-error', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const { message, componentStack, url, timestamp } = req.body || {};
-    const user = req.user!;
-    console.error(
-      `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
-      `\n  message: ${message || 'unknown'}`,
-      componentStack ? `\n  components: ${String(componentStack).trim().split('\n').slice(0, 5).join(' > ')}` : '',
-    );
-    res.json({ received: true });
-  } catch {
-    res.json({ received: true });
-  }
 });
 
 // ============================================================
@@ -262,23 +135,16 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
 
     // Table row counts
     const tableCounts: Record<string, number> = {};
-    // Hardcoded table names — never from user input — prevents SQL injection
-    const SAFE_TABLE_NAMES: Record<string, string> = {
-      'users': 'users',
-      'calls_for_service': 'calls_for_service',
-      'incidents': 'incidents',
-      'persons': 'persons',
-      'vehicles_records': 'vehicles_records',
-      'warrants': 'warrants',
-      'citations': 'citations',
-      'activity_log': 'activity_log',
-    };
-    for (const [key, safeName] of Object.entries(SAFE_TABLE_NAMES)) {
+    const tables = [
+      'users', 'calls_for_service', 'incidents', 'persons',
+      'vehicles_records', 'warrants', 'citations', 'activity_log',
+    ];
+    for (const table of tables) {
       try {
-        const row = db.prepare(`SELECT COUNT(*) as count FROM "${safeName}"`).get() as any;
-        tableCounts[key] = row?.count ?? 0;
+        const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as any;
+        tableCounts[table] = row.count;
       } catch {
-        tableCounts[key] = 0;
+        tableCounts[table] = 0;
       }
     }
 
@@ -286,21 +152,21 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let activeSessions = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM sessions WHERE is_active = 1").get() as any;
-      activeSessions = row?.count ?? 0;
+      activeSessions = row.count;
     } catch { /* ignore */ }
 
     // Active units
     let activeUnits = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM units WHERE status != 'off_duty'").get() as any;
-      activeUnits = row?.count ?? 0;
+      activeUnits = row.count;
     } catch { /* ignore */ }
 
     // Pending calls
     let pendingCalls = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status NOT IN ('closed','cancelled','archived')").get() as any;
-      pendingCalls = row?.count ?? 0;
+      pendingCalls = row.count;
     } catch { /* ignore */ }
 
     // WebSocket connected clients
@@ -311,9 +177,9 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let loginFailed = 0;
     try {
       const successRow = db.prepare("SELECT COUNT(*) as count FROM login_attempts WHERE success = 1 AND created_at >= datetime('now', '-1 day')").get() as any;
-      loginSuccessful = successRow?.count ?? 0;
+      loginSuccessful = successRow.count;
       const failRow = db.prepare("SELECT COUNT(*) as count FROM login_attempts WHERE success = 0 AND created_at >= datetime('now', '-1 day')").get() as any;
-      loginFailed = failRow?.count ?? 0;
+      loginFailed = failRow.count;
     } catch { /* ignore */ }
 
     // Recent errors from activity_log
@@ -340,10 +206,8 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let diskUsed = 0;
     let diskFree = 0;
     try {
-      const dfOutput = execFileSync('df', ['-k', '/'], { encoding: 'utf-8', timeout: 3000 });
-      const dfLines = dfOutput.trim().split('\n');
-      const lastLine = dfLines[dfLines.length - 1];
-      const parts = lastLine.trim().split(/\s+/);
+      const dfOutput = execSync("df -k / | tail -1", { encoding: 'utf-8', timeout: 3000 });
+      const parts = dfOutput.trim().split(/\s+/);
       if (parts.length >= 4) {
         diskTotal = parseInt(parts[1], 10) * 1024; // KB to bytes
         diskUsed = parseInt(parts[2], 10) * 1024;
@@ -377,15 +241,12 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     try {
       // Quick single-sample via /proc/stat (Linux) or vm_stat (macOS)
       if (os.platform() === 'linux') {
-        const topOutput = execFileSync('top', ['-bn1'], { encoding: 'utf-8', timeout: 3000 });
-        const cpuLine = topOutput.split('\n').find(l => l.includes('Cpu'));
-        if (cpuLine) {
-          const idleMatch = cpuLine.match(/(\d+\.?\d*)\s*id/);
-          if (idleMatch) cpuUsagePercent = Math.round((100 - parseFloat(idleMatch[1])) * 10) / 10;
-        }
+        const topOutput = execSync("top -bn1 | head -3 | grep 'Cpu'", { encoding: 'utf-8', timeout: 3000 });
+        const idleMatch = topOutput.match(/(\d+\.?\d*)\s*id/);
+        if (idleMatch) cpuUsagePercent = Math.round((100 - parseFloat(idleMatch[1])) * 10) / 10;
       } else {
         // macOS fallback — approximate from load average vs core count
-        cpuUsagePercent = cpus.length > 0 ? Math.round((loadAvg[0] / cpus.length) * 100 * 10) / 10 : null;
+        cpuUsagePercent = Math.round((loadAvg[0] / cpus.length) * 100 * 10) / 10;
       }
     } catch { /* CPU usage unavailable */ }
 
@@ -393,11 +254,9 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let networkIO: { rxBytes: number; txBytes: number } | null = null;
     try {
       if (os.platform() === 'linux') {
-        const netDev = fs.readFileSync('/proc/net/dev', 'utf-8');
+        const netDev = execSync("cat /proc/net/dev | grep -v 'lo:' | tail -n +3", { encoding: 'utf-8', timeout: 3000 });
         let totalRx = 0, totalTx = 0;
-        // Skip header lines and loopback interface
-        const netLines = netDev.trim().split('\n').slice(2).filter(l => !l.includes('lo:'));
-        for (const line of netLines) {
+        for (const line of netDev.trim().split('\n')) {
           const parts = line.trim().split(/\s+/);
           if (parts.length >= 10) {
             totalRx += parseInt(parts[1], 10) || 0;
@@ -411,21 +270,13 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     // Process count (Linux)
     let processCount: number | null = null;
     try {
-      const psOutput = execFileSync('ps', ['aux', '--no-heading'], { encoding: 'utf-8', timeout: 3000 });
-      processCount = psOutput.trim().split('\n').filter(l => l.trim()).length || null;
+      const psOutput = execSync("ps aux --no-heading 2>/dev/null | wc -l || ps aux | wc -l", { encoding: 'utf-8', timeout: 3000 });
+      const pid = parseInt(psOutput.trim(), 10); processCount = isNaN(pid) ? null : pid;
     } catch { /* ignore */ }
-
-    // Read version from changelog
-    let appVersion = '0.0.0';
-    try {
-      const changelogPath = path.resolve(__dirname, '../../../CHANGELOG.json');
-      const changelogData = JSON.parse(fs.readFileSync(changelogPath, 'utf-8'));
-      appVersion = changelogData.version || '0.0.0';
-    } catch { /* changelog not found */ }
 
     res.json({
       timestamp: now,
-      version: appVersion,
+      version: getAppVersion(),
       server: {
         uptime: Math.round(uptime),
         memory: {
@@ -485,8 +336,8 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
       recentErrors: recentErrors,
     });
   } catch (error: any) {
-    console.error('Health detailed error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Health detailed error:', error);
+    res.status(500).json({ error: 'Failed to health detailed', code: 'HEALTH_DETAILED_ERROR' });
   }
 });
 
@@ -497,8 +348,8 @@ router.get('/changelog', requireRole('admin', 'manager'), (_req: Request, res: R
     const data = JSON.parse(fs.readFileSync(changelogPath, 'utf-8'));
     res.json(data);
   } catch (error: any) {
-    console.error('Changelog read error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Could not read changelog' });
+    console.error('Changelog read error:', error);
+    res.status(500).json({ error: 'Could not read changelog', code: 'COULD_NOT_READ_CHANGELOG' });
   }
 });
 
@@ -523,6 +374,8 @@ router.get('/announcements', (req: Request, res: Response) => {
       ORDER BY
         CASE sa.priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 END,
         sa.created_at DESC
+    
+      LIMIT 1000
     `).all(now, now) as any[];
 
     // Filter by target_roles — empty array means all roles
@@ -538,8 +391,8 @@ router.get('/announcements', (req: Request, res: Response) => {
 
     res.json(filtered);
   } catch (error: any) {
-    console.error('Get announcements error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get announcements error:', error);
+    res.status(500).json({ error: 'Failed to get announcements', code: 'GET_ANNOUNCEMENTS_ERROR' });
   }
 });
 
@@ -552,12 +405,14 @@ router.get('/announcements/all', requireRole('admin'), (req: Request, res: Respo
       FROM system_announcements sa
       LEFT JOIN users u ON sa.created_by = u.id
       ORDER BY sa.created_at DESC
+    
+      LIMIT 1000
     `).all();
 
     res.json(announcements);
   } catch (error: any) {
-    console.error('Get all announcements error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get all announcements error:', error);
+    res.status(500).json({ error: 'Failed to get all announcements', code: 'GET_ALL_ANNOUNCEMENTS_ERROR' });
   }
 });
 
@@ -568,7 +423,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
     const { title, body, type, priority, target_roles, is_active, starts_at, expires_at } = req.body;
 
     if (!title || !body) {
-      res.status(400).json({ error: 'title and body are required' });
+      res.status(400).json({ error: 'title and body are required', code: 'TITLE_AND_BODY_ARE' });
       return;
     }
 
@@ -592,29 +447,27 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
       now, now,
     );
 
-    const announcement = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(Number(result.lastInsertRowid));
+    const announcement = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created announcement: ${title}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created announcement: ${title}`);
-
-    res.status(201).json(announcement || { id: Number(result.lastInsertRowid) });
+    res.status(201).json(announcement);
   } catch (error: any) {
-    console.error('Create announcement error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Create announcement error:', error);
+    res.status(500).json({ error: 'Failed to create announcement', code: 'CREATE_ANNOUNCEMENT_ERROR' });
   }
 });
 
 // PUT /announcements/:id — Admin/manager: update announcement
-router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Announcement not found' });
+      res.status(404).json({ error: 'Announcement not found', code: 'ANNOUNCEMENT_NOT_FOUND' });
       return;
     }
 
@@ -638,7 +491,7 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
     }
 
     if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -649,23 +502,20 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
     db.prepare(`UPDATE system_announcements SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
-
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated announcement #${req.params.id}`);
-
     res.json(updated);
   } catch (error: any) {
-    console.error('Update announcement error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Update announcement error:', error);
+    res.status(500).json({ error: 'Failed to update announcement', code: 'UPDATE_ANNOUNCEMENT_ERROR' });
   }
 });
 
 // DELETE /announcements/:id — Admin only: delete announcement
-router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/announcements/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Announcement not found' });
+      res.status(404).json({ error: 'Announcement not found', code: 'ANNOUNCEMENT_NOT_FOUND' });
       return;
     }
 
@@ -676,12 +526,10 @@ router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req:
       VALUES (?, 'announcement_deleted', 'announcement', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted announcement: ${existing.title}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted announcement: ${existing.title}`);
-
     res.json({ message: 'Announcement deleted' });
   } catch (error: any) {
-    console.error('Delete announcement error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Delete announcement error:', error);
+    res.status(500).json({ error: 'Failed to delete announcement', code: 'DELETE_ANNOUNCEMENT_ERROR' });
   }
 });
 
@@ -696,18 +544,18 @@ router.get('/retention', requireRole('admin', 'manager'), (req: Request, res: Re
     const policies = db.prepare('SELECT * FROM retention_policies ORDER BY entity_type').all();
     res.json(policies);
   } catch (error: any) {
-    console.error('Get retention policies error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get retention policies error:', error);
+    res.status(500).json({ error: 'Failed to get retention policies', code: 'GET_RETENTION_POLICIES_ERROR' });
   }
 });
 
 // PUT /retention/:id — Update a retention policy
-router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/retention/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Retention policy not found' });
+      res.status(404).json({ error: 'Retention policy not found', code: 'RETENTION_POLICY_NOT_FOUND' });
       return;
     }
 
@@ -728,7 +576,7 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
     }
 
     if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -739,13 +587,10 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
     db.prepare(`UPDATE retention_policies SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id);
-
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated retention policy #${req.params.id} for ${existing.entity_type}`);
-
     res.json(updated);
   } catch (error: any) {
-    console.error('Update retention policy error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Update retention policy error:', error);
+    res.status(500).json({ error: 'Failed to update retention policy', code: 'UPDATE_RETENTION_POLICY_ERROR' });
   }
 });
 
@@ -765,23 +610,12 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
     for (const policy of policies) {
       let totalAffected = 0;
 
-      // Map entity_type to a safe hardcoded table name (defense-in-depth SQL injection prevention)
-      const safeTable = RETENTION_TABLE_MAP[policy.entity_type];
-      if (!safeTable) {
-        results.push({
-          entity_type: policy.entity_type,
-          action: 'error: table not in allowed list',
-          records_affected: 0,
-        });
-        continue;
-      }
-
       try {
         if (policy.auto_archive) {
           // Try to archive records — table must have an archived_at column
           try {
             const archiveResult = db.prepare(`
-              UPDATE "${safeTable}"
+              UPDATE ${policy.entity_type}
               SET archived_at = ?
               WHERE archived_at IS NULL
                 AND created_at < date('now', '-' || ? || ' days')
@@ -801,7 +635,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
 
         if (policy.auto_delete) {
           const deleteResult = db.prepare(`
-            DELETE FROM "${safeTable}"
+            DELETE FROM ${policy.entity_type}
             WHERE created_at < date('now', '-' || ? || ' days')
           `).run(policy.retention_days);
           totalAffected += deleteResult.changes;
@@ -819,10 +653,9 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
           UPDATE retention_policies SET last_run_at = ?, records_affected = ?, updated_at = ? WHERE id = ?
         `).run(now, totalAffected, now, policy.id);
       } catch (err: any) {
-        console.error(`[Retention] Error processing ${policy.entity_type}:`, err);
         results.push({
           entity_type: policy.entity_type,
-          action: 'error: operation failed',
+          action: `error: ${err.message}`,
           records_affected: 0,
         });
       }
@@ -833,12 +666,10 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
       VALUES (?, 'retention_run', 'system', 0, ?, ?)
     `).run(req.user!.userId, `Retention policies executed: ${results.length} actions`, req.ip || 'unknown');
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, 0, `Executed retention policies: ${results.length} actions`);
-
     res.json({ executed_at: now, results });
   } catch (error: any) {
-    console.error('Run retention policies error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Run retention policies error:', error);
+    res.status(500).json({ error: 'Failed to run retention policies', code: 'RUN_RETENTION_POLICIES_ERROR' });
   }
 });
 
@@ -862,15 +693,11 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
       let archiveCount = 0;
       let deleteCount = 0;
 
-      // Map entity_type to a safe hardcoded table name (defense-in-depth SQL injection prevention)
-      const safeTable = RETENTION_TABLE_MAP[policy.entity_type];
-      if (!safeTable) continue;
-
       try {
         if (policy.auto_archive) {
           try {
             const row = db.prepare(`
-              SELECT COUNT(*) as count FROM "${safeTable}"
+              SELECT COUNT(*) as count FROM ${policy.entity_type}
               WHERE archived_at IS NULL
                 AND created_at < date('now', '-' || ? || ' days')
             `).get(policy.retention_days) as any;
@@ -882,7 +709,7 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
 
         if (policy.auto_delete) {
           const row = db.prepare(`
-            SELECT COUNT(*) as count FROM "${safeTable}"
+            SELECT COUNT(*) as count FROM ${policy.entity_type}
             WHERE created_at < date('now', '-' || ? || ' days')
           `).get(policy.retention_days) as any;
           deleteCount = row.count;
@@ -904,8 +731,8 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
 
     res.json(previews);
   } catch (error: any) {
-    console.error('Retention preview error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Retention preview error:', error);
+    res.status(500).json({ error: 'Failed to retention preview', code: 'RETENTION_PREVIEW_ERROR' });
   }
 });
 
@@ -924,12 +751,14 @@ router.get('/departments', (req: Request, res: Response) => {
       LEFT JOIN users u ON d.manager_id = u.id
       LEFT JOIN departments pd ON d.parent_id = pd.id
       ORDER BY d.name
+    
+      LIMIT 1000
     `).all();
 
     res.json(departments);
   } catch (error: any) {
-    console.error('Get departments error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get departments error:', error);
+    res.status(500).json({ error: 'Failed to get departments', code: 'GET_DEPARTMENTS_ERROR' });
   }
 });
 
@@ -940,7 +769,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
     const { name, code, description, parent_id, manager_id, is_active } = req.body;
 
     if (!name) {
-      res.status(400).json({ error: 'name is required' });
+      res.status(400).json({ error: 'name is required', code: 'NAME_IS_REQUIRED' });
       return;
     }
 
@@ -963,33 +792,31 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       FROM departments d
       LEFT JOIN users u ON d.manager_id = u.id
       WHERE d.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'department_created', 'department', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created department: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created department: ${name}`);
-
-    res.status(201).json(department || { id: Number(result.lastInsertRowid) });
+    res.status(201).json(department);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
-      res.status(409).json({ error: 'A department with this name or code already exists' });
+      res.status(409).json({ error: 'A department with this name or code already exists', code: 'A_DEPARTMENT_WITH_THIS' });
       return;
     }
-    console.error('Create department error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Create department error:', error);
+    res.status(500).json({ error: 'Failed to create department', code: 'CREATE_DEPARTMENT_ERROR' });
   }
 });
 
 // PUT /departments/:id — Update department
-router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Department not found' });
+      res.status(404).json({ error: 'Department not found', code: 'DEPARTMENT_NOT_FOUND' });
       return;
     }
 
@@ -1008,7 +835,7 @@ router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'),
     }
 
     if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -1025,43 +852,50 @@ router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'),
       WHERE d.id = ?
     `).get(req.params.id);
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated department #${req.params.id}`);
-
     res.json(updated);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
-      res.status(409).json({ error: 'A department with this name or code already exists' });
+      res.status(409).json({ error: 'A department with this name or code already exists', code: 'A_DEPARTMENT_WITH_THIS' });
       return;
     }
-    console.error('Update department error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Update department error:', error);
+    res.status(500).json({ error: 'Failed to update department', code: 'UPDATE_DEPARTMENT_ERROR' });
   }
 });
 
 // DELETE /departments/:id — Delete department (only if no users assigned)
-router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/departments/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Department not found' });
+      res.status(404).json({ error: 'Department not found', code: 'DEPARTMENT_NOT_FOUND' });
       return;
     }
 
     // Check if any users are assigned to this department
+    // God Mode: admin bypass — reassign users to null dept, reparent children
     const userCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE department = ?").get(existing.name) as any;
-    const userCountVal = userCount?.count ?? 0;
-    if (userCountVal > 0) {
-      res.status(400).json({ error: `Cannot delete department with ${userCountVal} assigned user(s)` });
-      return;
+    if (userCount.count > 0) {
+      if (req.user?.role !== 'admin') {
+        res.status(400).json({ error: `Cannot delete department with ${userCount.count} assigned user(s)` });
+        return;
+      } else {
+        db.prepare("UPDATE users SET department = NULL WHERE department = ?").run(existing.name);
+        auditLog(req, 'ADMIN_OVERRIDE', 'department', existing.id, `Admin God Mode: reassigned ${userCount.count} user(s) to null department before deleting ${existing.name}`);
+      }
     }
 
     // Check if any child departments reference this as parent
     const childCount = db.prepare('SELECT COUNT(*) as count FROM departments WHERE parent_id = ?').get(existing.id) as any;
-    const childCountVal = childCount?.count ?? 0;
-    if (childCountVal > 0) {
-      res.status(400).json({ error: `Cannot delete department with ${childCountVal} child department(s)` });
-      return;
+    if (childCount.count > 0) {
+      if (req.user?.role !== 'admin') {
+        res.status(400).json({ error: `Cannot delete department with ${childCount.count} child department(s)` });
+        return;
+      } else {
+        db.prepare('UPDATE departments SET parent_id = NULL WHERE parent_id = ?').run(existing.id);
+        auditLog(req, 'ADMIN_OVERRIDE', 'department', existing.id, `Admin God Mode: reparented ${childCount.count} child department(s) before deleting ${existing.name}`);
+      }
     }
 
     db.prepare('DELETE FROM departments WHERE id = ?').run(existing.id);
@@ -1071,12 +905,10 @@ router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: R
       VALUES (?, 'department_deleted', 'department', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted department: ${existing.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted department: ${existing.name}`);
-
     res.json({ message: 'Department deleted' });
   } catch (error: any) {
-    console.error('Delete department error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Delete department error:', error);
+    res.status(500).json({ error: 'Failed to delete department', code: 'DELETE_DEPARTMENT_ERROR' });
   }
 });
 
@@ -1093,12 +925,14 @@ router.get('/notification-rules', requireRole('admin', 'manager'), (req: Request
       FROM notification_rules nr
       LEFT JOIN users u ON nr.created_by = u.id
       ORDER BY nr.name
+    
+      LIMIT 1000
     `).all();
 
     res.json(rules);
   } catch (error: any) {
-    console.error('Get notification rules error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Get notification rules error:', error);
+    res.status(500).json({ error: 'Failed to get notification rules', code: 'GET_NOTIFICATION_RULES_ERROR' });
   }
 });
 
@@ -1109,7 +943,7 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
     const { name, description, trigger_event, conditions, target_roles, target_user_ids, notification_type, is_active } = req.body;
 
     if (!name || !trigger_event) {
-      res.status(400).json({ error: 'name and trigger_event are required' });
+      res.status(400).json({ error: 'name and trigger_event are required', code: 'NAME_AND_TRIGGEREVENT_ARE' });
       return;
     }
 
@@ -1145,29 +979,27 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
       FROM notification_rules nr
       LEFT JOIN users u ON nr.created_by = u.id
       WHERE nr.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created notification rule: ${name}`, req.ip || 'unknown');
-
-    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created notification rule: ${name}`);
+    `).run(req.user!.userId, result.lastInsertRowid, `Created notification rule: ${name}`, req.ip || 'unknown');
 
     res.status(201).json(rule);
   } catch (error: any) {
-    console.error('Create notification rule error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Create notification rule error:', error);
+    res.status(500).json({ error: 'Failed to create notification rule', code: 'CREATE_NOTIFICATION_RULE_ERROR' });
   }
 });
 
 // PUT /notification-rules/:id — Update rule
-router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Notification rule not found' });
+      res.status(404).json({ error: 'Notification rule not found', code: 'NOTIFICATION_RULE_NOT_FOUND' });
       return;
     }
 
@@ -1189,7 +1021,7 @@ router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'man
     }
 
     if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -1206,22 +1038,20 @@ router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'man
       WHERE nr.id = ?
     `).get(req.params.id);
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated notification rule #${req.params.id}`);
-
     res.json(updated);
   } catch (error: any) {
-    console.error('Update notification rule error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Update notification rule error:', error);
+    res.status(500).json({ error: 'Failed to update notification rule', code: 'UPDATE_NOTIFICATION_RULE_ERROR' });
   }
 });
 
 // DELETE /notification-rules/:id — Delete rule
-router.delete('/notification-rules/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/notification-rules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Notification rule not found' });
+      res.status(404).json({ error: 'Notification rule not found', code: 'NOTIFICATION_RULE_NOT_FOUND' });
       return;
     }
 
@@ -1232,23 +1062,20 @@ router.delete('/notification-rules/:id', validateParamId, requireRole('admin', '
       VALUES (?, 'notification_rule_deleted', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted notification rule: ${existing.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted notification rule: ${existing.name}`);
-
     res.json({ message: 'Notification rule deleted' });
   } catch (error: any) {
-    console.error('Delete notification rule error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Delete notification rule error:', error);
+    res.status(500).json({ error: 'Failed to delete notification rule', code: 'DELETE_NOTIFICATION_RULE_ERROR' });
   }
 });
 
 // POST /notification-rules/:id/test — Send a test notification using this rule
-const testNotifRateLimit = rateLimit({ windowMs: 60_000, maxRequests: 5, message: 'Too many test notifications — try again in a minute' });
-router.post('/notification-rules/:id/test', validateParamId, requireRole('admin', 'manager'), testNotifRateLimit, (req: Request, res: Response) => {
+router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rule = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;
     if (!rule) {
-      res.status(404).json({ error: 'Notification rule not found' });
+      res.status(404).json({ error: 'Notification rule not found', code: 'NOTIFICATION_RULE_NOT_FOUND' });
       return;
     }
 
@@ -1286,9 +1113,6 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
 
     // Send test notification to each target user
     let sentCount = 0;
-    let emailSentCount = 0;
-    const shouldEmail = rule.notification_type === 'email' || rule.notification_type === 'both';
-
     for (const userId of targetUserIds) {
       try {
         createNotification(
@@ -1299,19 +1123,8 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
           'notification_rule',
           rule.id,
           'normal',
-          rule.trigger_event,
         );
         sentCount++;
-
-        // Also send test email when rule includes email delivery
-        if (shouldEmail) {
-          sendNotificationEmail(
-            userId,
-            `[TEST] ${rule.name}`,
-            `Test notification for rule: ${rule.name} (trigger: ${rule.trigger_event})`,
-          ).then(() => { emailSentCount++; })
-           .catch(err => console.error(`[AdminSystems] Test email failed for user ${userId}:`, err?.message || err));
-        }
       } catch { /* skip failed sends */ }
     }
 
@@ -1320,45 +1133,42 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
       VALUES (?, 'notification_rule_tested', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, rule.id, `Test notification sent to ${sentCount} user(s) for rule: ${rule.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, rule.id, `Tested notification rule: ${rule.name} — sent to ${sentCount} user(s)`);
-
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {
-    console.error('Test notification rule error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Test notification rule error:', error);
+    res.status(500).json({ error: 'Failed to test notification rule', code: 'TEST_NOTIFICATION_RULE_ERROR' });
   }
 });
 
-// ============================================================
-// GET /announcements/export/csv — Export announcements as CSV
-// ============================================================
-router.get('/announcements/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+// POST /api/admin/health/client-error — Log client-side errors
+router.post('/health/client-error', (req: Request, res: Response) => {
+  try {
+    const { message, stack, componentStack, url, userAgent } = req.body;
+    console.error(`[Client Error] ${message}`, { stack, url, userAgent });
+    res.json({ logged: true });
+  } catch {
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// GET /api/admin/training — Training management data
+router.get('/training', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const rows = db.prepare(`
-      SELECT sa.*, u.full_name as created_by_name
-      FROM system_announcements sa
-      LEFT JOIN users u ON sa.created_by = u.id
-      ORDER BY sa.created_at DESC
+    // Get training records from credentials table (training type)
+    const training = db.prepare(`
+      SELECT c.*, u.full_name as officer_name
+      FROM officer_credentials c
+      JOIN users u ON u.id = c.officer_id
+      WHERE c.type = 'training' OR c.type = 'certification'
+      ORDER BY c.expiry_date ASC
+    
+      LIMIT 1000
     `).all();
-
-    sendCsv(res, `announcements_export_${localNow().slice(0, 10)}.csv`, [
-      { key: 'id', header: 'ID' },
-      { key: 'title', header: 'Title' },
-      { key: 'body', header: 'Body' },
-      { key: 'type', header: 'Type' },
-      { key: 'priority', header: 'Priority' },
-      { key: 'target_roles', header: 'Target Roles' },
-      { key: 'is_active', header: 'Active' },
-      { key: 'starts_at', header: 'Starts At' },
-      { key: 'expires_at', header: 'Expires At' },
-      { key: 'created_by_name', header: 'Created By' },
-      { key: 'created_at', header: 'Created At' },
-      { key: 'updated_at', header: 'Updated At' },
-    ], rows);
+    res.json(training);
   } catch (error: any) {
-    console.error('Export announcements error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    // If table doesn't exist yet, return empty
+    res.json([]);
   }
 });
 

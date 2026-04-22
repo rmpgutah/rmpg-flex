@@ -77,7 +77,7 @@ const CLASSIFICATIONS = [
 // ── Helpers ─────────────────────────────────────────────────
 
 function formatSize(bytes: number): string {
-  if (!bytes) return '-';
+  if (bytes == null || bytes <= 0) return '-';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -189,8 +189,6 @@ export default function DashCamUploadWizard({
       thumbnailUrlsRef.current = [];
     };
   }, []);
-
-  if (!isOpen) return null;
 
   const reset = () => {
     thumbnailUrlsRef.current.forEach((url) => {
@@ -414,6 +412,8 @@ export default function DashCamUploadWizard({
     setIsUploading(false);
     setAllDone(true);
   }, [files, uploadFile]);
+  if (!isOpen) return null;
+
 
   // ── Step Indicator ────────────────────────
 
@@ -467,7 +467,7 @@ export default function DashCamUploadWizard({
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onClick={() => files.length < MAX_FILES && fileRef.current?.click()}
-        className={`border-2 border-dashed rounded-lg py-10 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
+        className={`border-2 border-dashed rounded-sm py-10 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
           files.length >= MAX_FILES
             ? 'border-rmpg-700 opacity-50 cursor-not-allowed'
             : 'border-rmpg-600 hover:border-brand-500'
@@ -514,7 +514,7 @@ export default function DashCamUploadWizard({
               className="panel-inset p-2 flex items-center gap-3"
             >
               {/* Thumbnail */}
-              <div className="w-16 h-10 flex-shrink-0 bg-surface-sunken overflow-hidden rounded">
+              <div className="w-16 h-10 flex-shrink-0 bg-surface-sunken overflow-hidden rounded-sm">
                 {entry.thumbnailUrl ? (
                   <img
                     src={entry.thumbnailUrl}
@@ -597,7 +597,7 @@ export default function DashCamUploadWizard({
                 ) : (
                   <ChevronRight className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 )}
-                <div className="w-10 h-6 flex-shrink-0 bg-surface-sunken overflow-hidden rounded">
+                <div className="w-10 h-6 flex-shrink-0 bg-surface-sunken overflow-hidden rounded-sm">
                   {entry.thumbnailUrl ? (
                     <img src={entry.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -831,7 +831,7 @@ export default function DashCamUploadWizard({
             return (
               <div key={entry.id} className="panel-inset p-2 flex items-center gap-3">
                 {/* Thumbnail */}
-                <div className="w-14 h-9 flex-shrink-0 bg-surface-sunken overflow-hidden rounded">
+                <div className="w-14 h-9 flex-shrink-0 bg-surface-sunken overflow-hidden rounded-sm">
                   {entry.thumbnailUrl ? (
                     <img src={entry.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -1002,11 +1002,10 @@ export default function DashCamUploadWizard({
             <Upload className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Upload Dash Camera Videos</h2>
           </div>
-          <button
+          <button type="button"
             onClick={handleClose}
             disabled={isUploading}
-            className="toolbar-btn p-1 disabled:opacity-30"
-          >
+            className="toolbar-btn p-1 disabled:opacity-30">
             <X className="w-4 h-4" />
           </button>
         </div>

@@ -5,6 +5,7 @@ import { useFormDirty } from '../hooks/useFormDirty';
 import type { Person } from '../types';
 import { apiUploadFiles } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 
 interface PersonFormModalProps {
   isOpen: boolean;
@@ -74,7 +75,33 @@ export interface PersonFormData {
   known_associates: string;
   emergency_contact_relationship: string;
   caution_flags: string;
+  ncic_number: string;
+  sor_number: string;
+  fbi_number: string;
+  state_id_number: string;
+  passport_number: string;
+  passport_country: string;
+  immigration_status: string;
+  disability_flags: string;
+  mental_health_flags: string;
+  substance_abuse: string;
+  medication_notes: string;
+  education_level: string;
+  military_branch: string;
+  military_status: string;
+  tribal_affiliation: string;
+  tattoo_description: string;
+  scar_description: string;
+  piercing_description: string;
+  distinguishing_features: string;
+  identifying_marks_location: string;
   notes: string;
+  email_secondary: string;
+  date_last_seen: string;
+  location_last_seen: string;
+  alias_dob: string;
+  home_phone: string;
+  work_phone: string;
 }
 
 const EMPTY_FORM: PersonFormData = {
@@ -136,7 +163,33 @@ const EMPTY_FORM: PersonFormData = {
   known_associates: '',
   emergency_contact_relationship: '',
   caution_flags: '',
+  ncic_number: '',
+  sor_number: '',
+  fbi_number: '',
+  state_id_number: '',
+  passport_number: '',
+  passport_country: '',
+  immigration_status: '',
+  disability_flags: '',
+  mental_health_flags: '',
+  substance_abuse: '',
+  medication_notes: '',
+  education_level: '',
+  military_branch: '',
+  military_status: '',
+  tribal_affiliation: '',
+  tattoo_description: '',
+  scar_description: '',
+  piercing_description: '',
+  distinguishing_features: '',
+  identifying_marks_location: '',
   notes: '',
+  email_secondary: '',
+  date_last_seen: '',
+  location_last_seen: '',
+  alias_dob: '',
+  home_phone: '',
+  work_phone: '',
 };
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-Binary', 'Other'];
@@ -157,6 +210,12 @@ const LANGUAGE_OPTIONS = ['English', 'Spanish', 'Portuguese', 'French', 'Mandari
 const CITIZENSHIP_OPTIONS = ['U.S. Citizen', 'Permanent Resident', 'Visa Holder', 'Refugee', 'Asylum Seeker', 'Undocumented', 'Foreign National', 'Dual Citizenship', 'Unknown', 'Other'];
 const OCCUPATION_OPTIONS = ['Unemployed', 'Student', 'Retired', 'Self-Employed', 'Construction', 'Food Service', 'Healthcare', 'Retail', 'Transportation', 'Manufacturing', 'Agriculture', 'Education', 'Public Safety', 'Military', 'IT / Technology', 'Finance / Banking', 'Legal', 'Sales', 'Skilled Trades', 'Government', 'Hospitality', 'Warehouse / Logistics', 'Maintenance / Janitorial', 'Security', 'Social Services', 'Other'];
 const GANG_OPTIONS = ['None', 'Sureños (13)', 'Norteños (14)', 'MS-13', 'Latin Kings', 'Bloods', 'Crips', '18th Street', 'Aryan Brotherhood', 'Hells Angels', 'Mongols MC', 'Bandidos MC', 'Vagos MC', 'Tongan Crip Gang', 'Other — See Notes'];
+const ID_TYPE_OPTIONS = ['Driver License', 'State ID', 'Passport', 'Military ID', 'Tribal ID', 'Permanent Resident Card', 'Work Permit', 'Student ID', 'Foreign National ID', 'Other'];
+const IMMIGRATION_OPTIONS = ['U.S. Citizen', 'Permanent Resident', 'Visa Holder (Work)', 'Visa Holder (Student)', 'Visa Holder (Tourist)', 'Refugee', 'Asylum Seeker', 'DACA', 'TPS', 'Undocumented', 'Unknown'];
+const EDUCATION_OPTIONS = ['None', 'Some High School', 'High School / GED', 'Some College', 'Associate Degree', 'Bachelor Degree', 'Master Degree', 'Doctorate', 'Trade/Vocational', 'Other'];
+const MILITARY_BRANCH_OPTIONS = ['None', 'Army', 'Navy', 'Air Force', 'Marines', 'Coast Guard', 'Space Force', 'National Guard', 'Reserves', 'Other'];
+const MILITARY_STATUS_OPTIONS = ['Active Duty', 'Veteran', 'Retired', 'Discharged', 'Reserves', 'National Guard', 'Deceased'];
+const DISABILITY_OPTIONS = ['None', 'Mobility Impaired', 'Hearing Impaired', 'Visually Impaired', 'Cognitive/Developmental', 'Mental Health', 'Speech Impaired', 'Chronic Illness', 'Multiple', 'Other'];
 
 export default function PersonFormModal({
   isOpen,
@@ -168,7 +227,7 @@ export default function PersonFormModal({
 }: PersonFormModalProps) {
   const [form, setForm] = useState<PersonFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
-  const [activeSection, setActiveSection] = useState<'basic' | 'physical' | 'id' | 'contact' | 'other'>('basic');
+  const [activeSection, setActiveSection] = useState<'basic' | 'physical' | 'id' | 'contact' | 'law' | 'other'>('basic');
   const [showSSN, setShowSSN] = useState(false);
   const [idImageFile, setIdImageFile] = useState<File | null>(null);
   const [idImagePreview, setIdImagePreview] = useState<string | null>(null);
@@ -237,7 +296,33 @@ export default function PersonFormModal({
           known_associates: editingPerson.known_associates || '',
           emergency_contact_relationship: editingPerson.emergency_contact_relationship || '',
           caution_flags: editingPerson.caution_flags || '',
+          ncic_number: editingPerson.ncic_number || '',
+          sor_number: editingPerson.sor_number || '',
+          fbi_number: editingPerson.fbi_number || '',
+          state_id_number: editingPerson.state_id_number || '',
+          passport_number: editingPerson.passport_number || '',
+          passport_country: editingPerson.passport_country || '',
+          immigration_status: editingPerson.immigration_status || '',
+          disability_flags: editingPerson.disability_flags || '',
+          mental_health_flags: editingPerson.mental_health_flags || '',
+          substance_abuse: editingPerson.substance_abuse || '',
+          medication_notes: editingPerson.medication_notes || '',
+          education_level: editingPerson.education_level || '',
+          military_branch: editingPerson.military_branch || '',
+          military_status: editingPerson.military_status || '',
+          tribal_affiliation: editingPerson.tribal_affiliation || '',
+          tattoo_description: editingPerson.tattoo_description || '',
+          scar_description: editingPerson.scar_description || '',
+          piercing_description: editingPerson.piercing_description || '',
+          distinguishing_features: editingPerson.distinguishing_features || '',
+          identifying_marks_location: editingPerson.identifying_marks_location || '',
           notes: editingPerson.notes || '',
+          email_secondary: (editingPerson as any).email_secondary || '',
+          date_last_seen: (editingPerson as any).date_last_seen || '',
+          location_last_seen: (editingPerson as any).location_last_seen || '',
+          alias_dob: (editingPerson as any).alias_dob || '',
+          home_phone: (editingPerson as any).home_phone || '',
+          work_phone: (editingPerson as any).work_phone || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -326,6 +411,7 @@ export default function PersonFormModal({
     { id: 'physical' as const, label: 'Physical' },
     { id: 'id' as const, label: 'Identification' },
     { id: 'contact' as const, label: 'Contact' },
+    { id: 'law' as const, label: 'Law Enforcement' },
     { id: 'other' as const, label: 'Other' },
   ];
 
@@ -393,6 +479,13 @@ export default function PersonFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date of Birth</label>
               <input name="dob" type="date" className="input-dark mt-1" value={form.dob} onChange={handleChange} />
             </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias / Alt. DOB</label>
+              <input name="alias_dob" type="date" className="input-dark mt-1" title="Alternate or reported date of birth" value={form.alias_dob} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Gender</label>
               <select name="gender" className="select-dark mt-1" value={form.gender} onChange={handleChange}>
@@ -558,6 +651,32 @@ export default function PersonFormModal({
             <textarea name="scars_marks_tattoos" rows={2} className="input-dark mt-1" placeholder="Describe location, type, and detail of any distinguishing marks" value={form.scars_marks_tattoos} onChange={handleChange} />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Description</label>
+              <textarea name="tattoo_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of tattoos — location, design, text, color" value={form.tattoo_description} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scar Description</label>
+              <textarea name="scar_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of scars — location, size, type" value={form.scar_description} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercing Description</label>
+              <textarea name="piercing_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of piercings — location, type" value={form.piercing_description} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Distinguishing Features</label>
+              <textarea name="distinguishing_features" rows={2} className="input-dark mt-1" placeholder="Any other distinguishing features — birthmarks, prosthetics, etc." value={form.distinguishing_features} onChange={handleChange} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Identifying Marks Location</label>
+            <input name="identifying_marks_location" type="text" className="input-dark mt-1" placeholder="Body location of marks (e.g. Left forearm, Right neck)" value={form.identifying_marks_location} onChange={handleChange} />
+          </div>
+
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Clothing Description</label>
             <input name="clothing_description" type="text" className="input-dark mt-1" placeholder="Last known clothing description" value={form.clothing_description} onChange={handleChange} />
@@ -638,13 +757,7 @@ export default function PersonFormModal({
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Type</label>
                 <select name="id_type" className="select-dark mt-1" value={form.id_type} onChange={handleChange}>
                   <option value="">-- Select --</option>
-                  <option value="state_id">State ID</option>
-                  <option value="passport">Passport</option>
-                  <option value="military_id">Military ID</option>
-                  <option value="tribal_id">Tribal ID</option>
-                  <option value="green_card">Green Card</option>
-                  <option value="visa">Visa</option>
-                  <option value="other">Other</option>
+                  {ID_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
@@ -658,6 +771,37 @@ export default function PersonFormModal({
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Expiry</label>
                 <input name="id_expiry" type="date" className="input-dark mt-1" value={form.id_expiry} onChange={handleChange} />
+              </div>
+            </div>
+          </div>
+
+          {/* Law Enforcement IDs */}
+          <div className="border-t border-rmpg-600 pt-3 mt-3">
+            <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">Law Enforcement Identifiers</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Number</label>
+                <input name="ncic_number" type="text" className="input-dark mt-1" value={form.ncic_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">SOR Number</label>
+                <input name="sor_number" type="text" className="input-dark mt-1" placeholder="Sex Offender Registry #" value={form.sor_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">FBI Number</label>
+                <input name="fbi_number" type="text" className="input-dark mt-1" value={form.fbi_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State ID Number</label>
+                <input name="state_id_number" type="text" className="input-dark mt-1" value={form.state_id_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Number</label>
+                <input name="passport_number" type="text" className="input-dark mt-1" value={form.passport_number} onChange={handleChange} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Country</label>
+                <input name="passport_country" type="text" className="input-dark mt-1" placeholder="Issuing country" value={form.passport_country} onChange={handleChange} />
               </div>
             </div>
           </div>
@@ -687,8 +831,7 @@ export default function PersonFormModal({
                       type="button"
                       onClick={removeIdImage}
                       className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Remove image"
-                    >
+                      title="Remove image">
                       <X className="w-3 h-3 text-white" />
                     </button>
                   </>
@@ -781,15 +924,30 @@ export default function PersonFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-              <input name="phone" type="text" className="input-dark mt-1" value={form.phone} onChange={handleChange} />
+              <input name="phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.phone} onChange={(e) => setForm(prev => ({ ...prev, phone: formatPhoneInput(e.target.value) }))} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone (Secondary)</label>
-              <input name="phone_secondary" type="text" className="input-dark mt-1" value={form.phone_secondary} onChange={handleChange} />
+              <input name="phone_secondary" type="text" inputMode="tel" className="input-dark mt-1" value={form.phone_secondary} onChange={(e) => setForm(prev => ({ ...prev, phone_secondary: formatPhoneInput(e.target.value) }))} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
-              <input name="email" type="email" className="input-dark mt-1" value={form.email} onChange={handleChange} />
+              <input name="email" type="email" inputMode="email" className="input-dark mt-1" value={form.email} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Home Phone</label>
+              <input name="home_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.home_phone} onChange={(e) => setForm(prev => ({ ...prev, home_phone: formatPhoneInput(e.target.value) }))} placeholder="Home landline" />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Work Phone</label>
+              <input name="work_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.work_phone} onChange={(e) => setForm(prev => ({ ...prev, work_phone: formatPhoneInput(e.target.value) }))} placeholder="Work number" />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Secondary Email</label>
+              <input name="email_secondary" type="email" inputMode="email" className="input-dark mt-1" value={form.email_secondary} onChange={handleChange} placeholder="Secondary / alternate email" />
             </div>
           </div>
 
@@ -802,13 +960,79 @@ export default function PersonFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Phone</label>
-                <input name="emergency_contact_phone" type="text" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={handleChange} />
+                <input name="emergency_contact_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={(e) => setForm(prev => ({ ...prev, emergency_contact_phone: formatPhoneInput(e.target.value) }))} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Relationship</label>
                 <input name="emergency_contact_relationship" type="text" className="input-dark mt-1" placeholder="e.g. Spouse, Parent" value={form.emergency_contact_relationship} onChange={handleChange} />
               </div>
             </div>
+          </div>
+        </>
+      )}
+
+      {/* ── LAW ENFORCEMENT ── */}
+      {activeSection === 'law' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Immigration Status</label>
+              <select name="immigration_status" className="select-dark mt-1" value={form.immigration_status} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {IMMIGRATION_OPTIONS.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Disability Flags</label>
+              <select name="disability_flags" className="select-dark mt-1" value={form.disability_flags} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {DISABILITY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Mental Health Flags</label>
+              <input name="mental_health_flags" type="text" className="input-dark mt-1" placeholder="Known mental health conditions" value={form.mental_health_flags} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Substance Abuse</label>
+              <input name="substance_abuse" type="text" className="input-dark mt-1" placeholder="Known substance abuse history" value={form.substance_abuse} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Education Level</label>
+              <select name="education_level" className="select-dark mt-1" value={form.education_level} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {EDUCATION_OPTIONS.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tribal Affiliation</label>
+              <input name="tribal_affiliation" type="text" className="input-dark mt-1" placeholder="Tribal name or nation" value={form.tribal_affiliation} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Military Branch</label>
+              <select name="military_branch" className="select-dark mt-1" value={form.military_branch} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {MILITARY_BRANCH_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Military Status</label>
+              <select name="military_status" className="select-dark mt-1" value={form.military_status} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {MILITARY_STATUS_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes</label>
+            <textarea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
           </div>
         </>
       )}
@@ -861,6 +1085,17 @@ export default function PersonFormModal({
           <div>
             <label className="text-[10px] text-red-400 uppercase font-semibold">Officer Safety / Caution Flags</label>
             <textarea name="caution_flags" rows={2} className="input-dark mt-1" placeholder="Any officer safety concerns, violent history, weapons, etc." value={form.caution_flags} onChange={handleChange} />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date Last Seen</label>
+              <input name="date_last_seen" type="date" className="input-dark mt-1" value={form.date_last_seen} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location Last Seen</label>
+              <input name="location_last_seen" type="text" className="input-dark mt-1" placeholder="Address or description of last known location" value={form.location_last_seen} onChange={handleChange} />
+            </div>
           </div>
 
           <div>

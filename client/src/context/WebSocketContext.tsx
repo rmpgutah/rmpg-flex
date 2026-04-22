@@ -2,6 +2,26 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
+import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import { registerRules } from '../utils/dispatcherRules/registry';
+import { EVENT_RULES } from '../utils/dispatcherRules/events';
+import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
+
+// Register the Dispatcher Brain rule catalog once at module load.
+// - EVENT_RULES: Phase 2 event fan-in (citations, incidents, warrants,
+//   evidence, arrests, HR).
+// - COACHING_RULES: Phase 3 proactive guidance (DV approach, felony
+//   backup, MH protocol, geofence breach, overdue-status timer).
+// Registry is a module-level array that only grows at boot; duplicates
+// from hot-reload are harmless because ruleId+entityKey cooldown in
+// speakQueue dedupes them.
+registerRules(EVENT_RULES);
+registerRules(COACHING_RULES);
+
+// Start the Dispatcher Brain 30s tick so timer-triggered rules
+// (e.g. overdue-status-check) have a pulse. tickTimers() is itself
+// flag-gated so this is a no-op for users who haven't opted in.
+startBrainTimer();
 
 type MessageHandler = (message: WSMessage) => void;
 
@@ -64,7 +84,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
-      const ws = new WebSocket(`${protocol}//${host}/ws?token=${token}`);
+      // Message-based auth: connect without URL token, then send authenticate
+      // frame on open. URL-token auth was deprecated 2026-04-15 to prevent JWT
+      // leakage via server logs, browser history, and referrer headers.
+      const ws = new WebSocket(`${protocol}//${host}/ws`);
 
       // Connection timeout — if the socket hasn't opened in 10s, kill it and retry.
       // Without this, a stalled TCP handshake can hang the socket indefinitely.
@@ -93,6 +116,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         setConnectionLost(false);
         reconnectDelayRef.current = WS_RECONNECT_DELAY;
         retryCountRef.current = 0; // reset on successful connection
+
+        // Message-based authentication: send the JWT as the first frame.
+        // Server expects { type: 'authenticate', token } and will close the
+        // socket after a short timeout if this doesn't arrive.
+        try {
+          ws.send(JSON.stringify({ type: 'authenticate', token }));
+        } catch (err) {
+          devWarn('[WS] Failed to send auth frame:', err);
+        }
 
         // Start heartbeat ping/pong
         if (heartbeatRef.current) clearInterval(heartbeatRef.current);
@@ -133,6 +165,54 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             // Reconnect will use fresh token
             ws.close();
             return;
+          }
+
+          // Play alert tone for high-priority calls (P1/P2)
+          if ((message.type as string) === 'calls:created' || (message.type as string) === 'calls:updated') {
+            const payload = (message as any).data || (message as any).call || message;
+            const priority = payload?.priority;
+            if (priority === 'P1' || priority === 'P2') {
+              try {
+                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = priority === 'P1' ? 'square' : 'triangle';
+                osc.frequency.setValueAtTime(priority === 'P1' ? 880 : 660, ctx.currentTime);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.5);
+                if (priority === 'P1') {
+                  const osc2 = ctx.createOscillator();
+                  const gain2 = ctx.createGain();
+                  osc2.connect(gain2);
+                  gain2.connect(ctx.destination);
+                  osc2.type = 'square';
+                  osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
+                  gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.15);
+                  gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+                  osc2.start(ctx.currentTime + 0.15);
+                  osc2.stop(ctx.currentTime + 0.6);
+                }
+              } catch { /* Audio not available */ }
+            }
+          }
+
+          // Dispatcher Brain fan-in: any dispatch_update carries an
+          // action discriminator the brain uses to match rules. No-op
+          // when the per-user brain flag is off, so this is safe to
+          // wire unconditionally.
+          if ((message.type as string) === 'dispatch_update') {
+            const data = (message as any).data;
+            if (data && typeof data.action === 'string') {
+              try {
+                handleDispatchEvent(data.action, data);
+              } catch (err) {
+                console.error('[Brain] handleDispatchEvent error:', err);
+              }
+            }
           }
 
           // Broadcast to type-specific subscribers only — no global state update
@@ -190,8 +270,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       };
 
       wsRef.current = ws;
-    } catch {
-      // WebSocket creation failed (e.g., invalid URL)
+    } catch (err) {
+      console.warn('[WebSocket] Connection creation failed:', err);
       setIsConnected(false);
     }
   }, [isAuthenticated, token]);

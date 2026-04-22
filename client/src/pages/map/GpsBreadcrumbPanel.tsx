@@ -13,9 +13,10 @@ import {
   MapPin,
   Gauge,
   Navigation2,
+  AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { localToday } from '../../utils/dateUtils';
+import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
 import { escapeHtml } from '../../utils/sanitize';
 
 // ============================================================
@@ -68,24 +69,51 @@ interface Props {
 
 const TRAIL_COLOR = '#f59e0b'; // amber for history trail (distinct from live cyan trails)
 
-const speedToColor = (mps: number | null): string => {
-  if (mps == null || mps < 0.5) return '#6b7280';
-  const mph = mps * 2.237;
-  if (mph < 15) return '#22c55e';
-  if (mph < 35) return '#eab308';
-  if (mph < 55) return '#f97316';
-  return '#ef4444';
+const MPS_TO_MPH = 2.23694;
+
+const speedToColor = (speedMps: number | null): string => {
+  if (speedMps == null || speedMps < 0.2) return '#666666';
+  const mph = speedMps * MPS_TO_MPH;
+  if (mph < 3)   return '#999999';
+  if (mph < 10)  return '#22c55e';
+  if (mph < 25)  return '#22c55e';
+  if (mph < 35)  return '#84cc16';
+  if (mph < 45)  return '#eab308';
+  if (mph < 55)  return '#f97316';
+  if (mph < 75)  return '#ef4444';
+  return '#dc2626';
 };
+
+const speedToWeight = (speedMps: number | null): number => {
+  if (speedMps == null || speedMps < 0.2) return 1;
+  const mph = speedMps * MPS_TO_MPH;
+  if (mph < 3)  return 2;
+  if (mph < 35) return 3;
+  if (mph < 75) return 4;
+  return 5;
+};
+
+const SPEED_LEGEND_BANDS = [
+  { color: '#666666', label: 'Stationary', range: '0 mph' },
+  { color: '#999999', label: 'Walking', range: '<3 mph' },
+  { color: '#22c55e', label: 'Slow Drive', range: '3-10 mph' },
+  { color: '#22c55e', label: 'Residential', range: '10-25 mph' },
+  { color: '#84cc16', label: 'City Street', range: '25-35 mph' },
+  { color: '#eab308', label: 'Arterial', range: '35-45 mph' },
+  { color: '#f97316', label: 'Highway', range: '45-55 mph' },
+  { color: '#ef4444', label: 'Freeway', range: '55-75 mph' },
+  { color: '#dc2626', label: 'Pursuit', range: '75+ mph' },
+];
 
 const statusToColor = (status: string): string => {
   switch (status) {
     case 'dispatched': return '#f59e0b';
-    case 'enroute':    return '#3b82f6';
+    case 'enroute':    return '#888888';
     case 'onscene':    return '#ef4444';
     case 'available':  return '#22c55e';
     case 'busy':       return '#8b5cf6';
-    case 'off_duty':   return '#6b7280';
-    default:           return '#5a6e80';
+    case 'off_duty':   return '#666666';
+    default:           return '#666666';
   }
 };
 
@@ -104,6 +132,20 @@ const formatHeadingDir = (deg: number | null) => {
 // ============================================================
 // Component
 // ============================================================
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }: Props) {
   // Unit list
@@ -131,6 +173,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const polyLinesRef = useRef<google.maps.Polyline[]>([]);
   const dotMarkersRef = useRef<google.maps.Circle[]>([]);
   const arrowMarkersRef = useRef<google.maps.Marker[]>([]);
+  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
@@ -153,6 +196,8 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     dotMarkersRef.current = [];
     arrowMarkersRef.current.forEach((a) => a.setMap(null));
     arrowMarkersRef.current = [];
+    speedAlertMarkersRef.current.forEach((a) => a.setMap(null));
+    speedAlertMarkersRef.current = [];
     if (playbackMarkerRef.current) {
       playbackMarkerRef.current.setMap(null);
       playbackMarkerRef.current = null;
@@ -226,15 +271,15 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
         geodesic: true,
         strokeColor: speedToColor(p1.speed),
         strokeOpacity: opacity,
-        strokeWeight: 4,
+        strokeWeight: speedToWeight(p1.speed),
         map,
       });
       polyLinesRef.current.push(seg);
     }
 
-    // Directional arrows every 8th point
+    // Directional arrows every 5th point
     pts.forEach((pt, ptIdx) => {
-      if (ptIdx % 8 !== 4 || pt.heading == null) return;
+      if (ptIdx % 5 !== 2 || pt.heading == null) return;
       const arrow = new google.maps.Marker({
         position: { lat: pt.lat, lng: pt.lng },
         map,
@@ -278,12 +323,12 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
           ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${escapeHtml(pt.road_name)}${pt.intersection ? ` @ ${escapeHtml(pt.intersection)}` : ''}</td></tr>`
           : '';
         const html = `
-          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
             <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${TRAIL_COLOR}">
               ${escapeHtml(trailData.call_sign)} \u2014 ${escapeHtml(trailData.officer_name || 'Unknown')}
             </div>
             <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trailData.badge_number || '')} \u2022 Historical Playback</div>
-            ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #1e2a3a">${escapeHtml(pt.road_name)}</div>` : ''}
+            ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
             <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
             <table style="width:100%;font-size:11px;border-collapse:collapse">
               <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
@@ -303,6 +348,39 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       });
 
       dotMarkersRef.current.push(dot);
+    });
+
+    // Speed alert markers — exclamation at 80+ mph
+    pts.forEach((pt) => {
+      if (pt.speed != null && pt.speed * MPS_TO_MPH >= 80) {
+        try {
+          const alertMarker = new google.maps.Marker({
+            position: { lat: pt.lat, lng: pt.lng },
+            map,
+            icon: {
+              path: 'M -6,-6 L 6,-6 L 0,6 Z',
+              scale: 1.8,
+              fillColor: '#dc2626',
+              fillOpacity: 0.95,
+              strokeColor: '#fbbf24',
+              strokeWeight: 2,
+              strokeOpacity: 1,
+              anchor: new google.maps.Point(0, 0),
+            },
+            label: {
+              text: '!',
+              color: '#ffffff',
+              fontWeight: '900',
+              fontSize: '11px',
+            },
+            title: `Speed Alert: ${(pt.speed * MPS_TO_MPH).toFixed(0)} mph`,
+            zIndex: 5000,
+          });
+          speedAlertMarkersRef.current.push(alertMarker);
+        } catch (err) {
+          // ignore individual marker errors
+        }
+      }
     });
 
     // Fit map to trail bounds
@@ -370,16 +448,17 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     };
   }, [isPlaying, playbackSpeed, mapLoaded, map, trail]);
 
-  // Cleanup playback marker when playback stops
-  useEffect(() => {
-    if (!isPlaying && playbackMarkerRef.current) {
-      // Keep marker visible at final position when paused
-    }
-  }, [isPlaying]);
+
+  const currentPt = trail?.points[playbackIdx];
+  const totalPts = trail?.points.length || 0;
+
+  // Set document title
+  useEffect(() => { document.title = 'GPS Breadcrumb \u2014 RMPG Flex'; }, []);
+
 
   if (!isOpen) {
     return (
-      <button
+      <button type="button"
         onClick={onToggle}
         className="absolute top-[70px] left-2 z-[500] panel-beveled bg-surface-raised px-2 py-1.5 flex items-center gap-1.5 hover:bg-surface-base transition-colors"
         title="GPS History Playback"
@@ -391,13 +470,10 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     );
   }
 
-  const currentPt = trail?.points[playbackIdx];
-  const totalPts = trail?.points.length || 0;
-
   return (
     <div
-      className="absolute top-[70px] left-2 z-[500] panel-beveled bg-surface-raised w-[300px] flex flex-col"
-      style={{ borderRadius: 2, maxHeight: 'calc(100vh - 180px)' }}
+      className="absolute top-[70px] left-2 z-[500] panel-beveled bg-surface-raised w-[300px] flex flex-col transition-all duration-200"
+      style={{ borderRadius: 2, maxHeight: 'calc(100dvh -180px)' }}
     >
       {/* Header */}
       <div className="panel-title-bar flex items-center justify-between px-3 py-1.5">
@@ -405,19 +481,20 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
           <History className="w-3.5 h-3.5 text-amber-400" />
           <span className="text-[11px] font-mono font-bold text-white tracking-wide">GPS HISTORY</span>
         </div>
-        <button onClick={onToggle} className="p-0.5 hover:bg-white/10 rounded transition-colors">
+        <button type="button" onClick={onToggle} className="p-0.5 hover:bg-white/10 rounded-sm transition-colors" aria-label="Close" title="Close">
           <X className="w-3.5 h-3.5 text-rmpg-400" />
         </button>
       </div>
 
-      <div className="p-2.5 space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+      <div className="p-2.5 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b]" style={{ maxHeight: 'calc(100dvh -240px)' }}>
         {/* Unit selector */}
         <div className="space-y-1">
           <label className="text-[9px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Unit / Officer</label>
           <select
             value={selectedUnit ?? ''}
             onChange={(e) => setSelectedUnit(e.target.value ? Number(e.target.value) : null)}
-            className="w-full input-dark text-[11px] font-mono px-2 py-1.5"
+            aria-label="Select unit for trail playback"
+            className="w-full input-dark text-[11px] font-mono px-2 py-1.5 min-h-[36px] bg-[#0c0c0c] border-[#2b2b2b] rounded-sm"
             style={{ borderRadius: 2 }}
           >
             <option value="">Select unit...</option>
@@ -438,7 +515,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
@@ -448,7 +525,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="time"
               value={timeFrom}
               onChange={(e) => setTimeFrom(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
@@ -458,7 +535,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
@@ -468,21 +545,21 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="time"
               value={timeTo}
               onChange={(e) => setTimeTo(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
         </div>
 
         {/* Load button */}
-        <button
+        <button type="button"
           onClick={loadTrail}
           disabled={loading || selectedUnit == null}
           className="w-full btn-primary flex items-center justify-center gap-1.5 text-[11px] font-mono font-bold py-1.5 disabled:opacity-40"
           style={{ borderRadius: 2 }}
         >
           {loading ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" />
           ) : (
             <Search className="w-3.5 h-3.5" />
           )}
@@ -503,34 +580,44 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             <div className="panel-inset bg-surface-deep px-2 py-1.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold text-amber-400">{trail.call_sign}</span>
-                <span className="text-[9px] font-mono text-rmpg-400">{trail.points.length.toLocaleString()} points</span>
+                {/* #48: Point count with tabular-nums */}
+                <span className="text-[9px] font-mono text-rmpg-400 tabular-nums">{trail.points.length.toLocaleString()} points</span>
               </div>
               {trail.officer_name && (
                 <div className="text-[10px] font-mono text-rmpg-300">{trail.officer_name} {trail.badge_number ? `(${trail.badge_number})` : ''}</div>
               )}
               {trail.points.length > 0 && (
                 <div className="text-[9px] font-mono text-rmpg-500">
-                  {new Date(trail.points[0].time).toLocaleString()} &rarr; {new Date(trail.points[trail.points.length - 1].time).toLocaleString()}
+                  {safeDateTimeStr(trail.points[0]?.time)} &rarr; {safeDateTimeStr(trail.points[trail.points.length - 1]?.time)}
                 </div>
               )}
             </div>
 
-            {/* Speed legend */}
-            <div className="flex items-center gap-1.5 px-1">
-              <Gauge className="w-2.5 h-2.5 text-rmpg-400" />
-              {[
-                ['#6b7280', 'Stop'],
-                ['#22c55e', '<15'],
-                ['#eab308', '15-35'],
-                ['#f97316', '35-55'],
-                ['#ef4444', '55+'],
-              ].map(([color, label]) => (
-                <span key={label} className="flex items-center gap-0.5">
-                  <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-                  <span className="text-[7px] text-rmpg-400 font-mono">{label}</span>
-                </span>
-              ))}
-              <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
+            {/* Speed legend — 8 bands */}
+            <div className="panel-inset bg-surface-deep px-2 py-1.5 space-y-1">
+              <div className="flex items-center gap-1 mb-0.5">
+                <Gauge className="w-2.5 h-2.5 text-rmpg-400" />
+                <span className="text-[8px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Speed Legend</span>
+              </div>
+              <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
+                {SPEED_LEGEND_BANDS.map((band) => (
+                  <span key={band.label} className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: band.color }} />
+                    <span className="text-[7px] text-rmpg-300 font-mono truncate" title={`${band.label}: ${band.range}`}>{band.range}</span>
+                  </span>
+                ))}
+              </div>
+              {/* Gradient strip */}
+              <div className="mt-1">
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #6b7280, #9ca3af, #888888, #22c55e, #84cc16, #eab308, #f97316, #ef4444, #dc2626)', boxShadow: '0 0 4px rgba(234,179,8,0.2)' }} />
+                <div className="flex justify-between mt-0.5">
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">0</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">10</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">25</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">45</span>
+                  <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">75+</span>
+                </div>
+              </div>
             </div>
 
             {/* Start/end legend */}
@@ -545,17 +632,129 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               </span>
             </div>
 
+            {/* Speed statistics */}
+            {(() => {
+              const pts = trail.points;
+              const speeds = pts.filter(p => p.speed != null && p.speed >= 0).map(p => p.speed! * MPS_TO_MPH);
+              const avgSpeed = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+              const maxSpeedVal = speeds.length > 0 ? Math.max(...speeds) : 0;
+              const maxSpeedPt = pts.find(p => p.speed != null && p.speed * MPS_TO_MPH >= maxSpeedVal - 0.01);
+              const stationaryCount = pts.filter(p => p.speed == null || p.speed < 0.2).length;
+              const movingCount = pts.length - stationaryCount;
+              const intervalSec = 15;
+              const stationaryMins = Math.round((stationaryCount * intervalSec) / 60);
+              const movingMins = Math.round((movingCount * intervalSec) / 60);
+
+              // Total distance (haversine sum in miles)
+              let totalDistM = 0;
+              for (let i = 0; i < pts.length - 1; i++) {
+                const p1 = pts[i], p2 = pts[i + 1];
+                const R = 6371000;
+                const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+                const dLng = (p2.lng - p1.lng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+                totalDistM += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+              }
+              const totalMiles = totalDistM / 1609.34;
+
+              // Speed alert count
+              const alertCount = pts.filter(p => p.speed != null && p.speed * MPS_TO_MPH >= 80).length;
+
+              // Speed distribution (count per band)
+              const bandThresholds = [0, 3, 10, 25, 35, 45, 55, 75, Infinity];
+              const bandCounts = new Array(9).fill(0);
+              for (const pt of pts) {
+                const mph = pt.speed != null ? pt.speed * MPS_TO_MPH : -1;
+                if (mph < 0 || (pt.speed != null && pt.speed < 0.2)) { bandCounts[0]++; continue; }
+                for (let b = bandThresholds.length - 1; b >= 1; b--) {
+                  if (mph >= bandThresholds[b - 1]) { bandCounts[b]++; break; }
+                }
+              }
+              // For stationary, count those with speed < 0.2 m/s or null
+              const maxBandCount = Math.max(...bandCounts, 1);
+
+              return (
+                <div className="panel-inset bg-surface-deep px-2 py-1.5 space-y-1">
+                  <div className="text-[8px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Speed Statistics</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px] font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Avg Speed:</span>
+                      <span className="text-white font-bold">{avgSpeed.toFixed(1)} mph</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Max Speed:</span>
+                      <span className="font-bold" style={{ color: speedToColor(maxSpeedPt?.speed ?? null) }}>{maxSpeedVal.toFixed(0)} mph</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Stationary:</span>
+                      <span className="text-rmpg-300">{stationaryMins}m</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Moving:</span>
+                      <span className="text-rmpg-300">{movingMins}m</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-500">Distance:</span>
+                      <span className="text-white font-bold">{totalMiles.toFixed(2)} mi</span>
+                    </div>
+                    {maxSpeedPt && (
+                      <div className="flex justify-between">
+                        <span className="text-rmpg-500">Max at:</span>
+                        <span className="text-rmpg-300 text-[8px]">{new Date(maxSpeedPt.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                      </div>
+                    )}
+                  </div>
+                  {alertCount > 0 && (
+                    <div className="flex items-center gap-1 mt-1 px-1 py-0.5 bg-red-900/30 border border-red-800/40 rounded-sm">
+                      <AlertTriangle className="w-3 h-3 text-red-400" />
+                      <span className="text-[9px] font-mono font-bold text-red-400">{alertCount} Speed Alert{alertCount !== 1 ? 's' : ''} (80+ mph)</span>
+                    </div>
+                  )}
+                  {/* Speed distribution mini bar chart */}
+                  <div className="mt-1 space-y-0.5">
+                    <div className="text-[7px] font-mono text-rmpg-500 uppercase">Distribution</div>
+                    <div className="flex items-end gap-px h-4">
+                      {SPEED_LEGEND_BANDS.map((band, i) => (
+                        <div key={band.label} className="flex-1 flex flex-col items-center" title={`${band.label}: ${bandCounts[i]} pts`}>
+                          <div
+                            className="w-full rounded-t-sm"
+                            style={{
+                              background: band.color,
+                              height: `${Math.max((bandCounts[i] / maxBandCount) * 16, 1)}px`,
+                              opacity: bandCounts[i] > 0 ? 1 : 0.2,
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Playback controls */}
             <div className="panel-inset bg-surface-deep px-2 py-2 space-y-1.5">
               <div className="text-[8px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider mb-1">Playback</div>
 
-              {/* Progress bar */}
+              {/* #47: Progress bar with glow and smoother animation */}
               <div className="relative w-full h-1.5 bg-rmpg-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-amber-500 transition-all duration-100"
-                  style={{ width: `${totalPts > 0 ? ((playbackIdx + 1) / totalPts) * 100 : 0}%` }}
+                  className="h-full bg-gradient-to-r from-[#888888] to-[#a0a0a0] transition-all duration-150 ease-out"
+                  style={{ width: `${totalPts > 0 ? ((playbackIdx + 1) / totalPts) * 100 : 0}%`, boxShadow: '0 0 6px rgba(160, 160, 160,0.4)' }}
                 />
               </div>
+
+              {/* Timeline time range labels */}
+              {trail.points.length > 1 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[7px] font-mono text-rmpg-500">
+                    {new Date(trail.points[0].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                  </span>
+                  <span className="text-[7px] font-mono text-rmpg-500">
+                    {new Date(trail.points[trail.points.length - 1].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                  </span>
+                </div>
+              )}
 
               {/* Scrub slider */}
               <input
@@ -603,20 +802,20 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
               {/* Controls row */}
               <div className="flex items-center gap-1">
-                <button
+                <button type="button"
                   onClick={() => {
                     setPlaybackIdx(0);
                     if (trail.points[0] && playbackMarkerRef.current) {
                       playbackMarkerRef.current.setPosition({ lat: trail.points[0].lat, lng: trail.points[0].lng });
                     }
                   }}
-                  className="p-1 rounded hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1.5 rounded-sm hover:bg-[#181818] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
                   title="Go to start"
                 >
                   <SkipBack className="w-3 h-3 text-rmpg-300" />
                 </button>
 
-                <button
+                <button type="button"
                   onClick={() => {
                     if (isPlaying) {
                       setIsPlaying(false);
@@ -626,7 +825,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       setIsPlaying(true);
                     }
                   }}
-                  className="p-1 rounded hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1.5 rounded-sm hover:bg-[#181818] transition-colors duration-150 active:scale-[0.95] w-8 h-8 flex items-center justify-center"
                   title={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? (
@@ -636,7 +835,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                   )}
                 </button>
 
-                <button
+                <button type="button"
                   onClick={() => {
                     const lastIdx = totalPts - 1;
                     setPlaybackIdx(lastIdx);
@@ -645,22 +844,42 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
                     }
                   }}
-                  className="p-1 rounded hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1.5 rounded-sm hover:bg-[#181818] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
                   title="Go to end"
                 >
                   <SkipForward className="w-3 h-3 text-rmpg-300" />
                 </button>
 
+                {/* Jump to end (now) */}
+                <button type="button"
+                  onClick={() => {
+                    const lastIdx = totalPts - 1;
+                    setPlaybackIdx(lastIdx);
+                    setIsPlaying(false);
+                    if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
+                    if (trail.points[lastIdx] && playbackMarkerRef.current) {
+                      playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
+                    }
+                    if (trail.points[lastIdx] && map) {
+                      map.panTo({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
+                    }
+                  }}
+                  className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors text-amber-400 hover:bg-amber-900/30 border border-amber-700/30"
+                  title="Jump to latest point"
+                >
+                  NOW
+                </button>
+
                 {/* Speed buttons */}
                 <div className="flex items-center gap-0.5 ml-auto">
-                  {[1, 2, 4, 8].map((s) => (
-                    <button
+                  {[0.5, 1, 2, 4, 8].map((s) => (
+                    <button type="button"
                       key={s}
                       onClick={() => setPlaybackSpeed(s)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         playbackSpeed === s
-                          ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
+                          ? 'bg-[#0c0c0c] text-amber-400 border border-[#2b2b2b]'
+                          : 'text-rmpg-500 hover:text-rmpg-300 bg-[#0c0c0c]/50 border border-transparent'
                       }`}
                     >
                       {s}x
@@ -674,7 +893,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 <div className="text-[9px] font-mono text-rmpg-300 space-y-0.5 pt-1 border-t border-rmpg-700/50">
                   <div className="flex justify-between">
                     <span className="text-rmpg-500">Time:</span>
-                    <span className="text-white font-bold">{new Date(currentPt.time).toLocaleString()}</span>
+                    <span className="text-white font-bold">{safeDateTimeStr(currentPt.time)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-rmpg-500">Speed:</span>
@@ -703,7 +922,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             </div>
 
             {/* Clear button */}
-            <button
+            <button type="button"
               onClick={() => {
                 clearMapObjects();
                 setTrail(null);

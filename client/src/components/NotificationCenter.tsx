@@ -6,10 +6,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin, Filter, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import type { Notification, NotificationType } from '../types';
+import { isNotificationSoundEnabled, playNotificationTone } from '../utils/notificationTones';
 
 // ============================================================
 // Types
@@ -33,7 +34,7 @@ const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig>
   dispatch:          { icon: Radio,          ledColor: 'led-red',   iconColor: 'text-red-400' },
   warrant:           { icon: Shield,         ledColor: 'led-amber', iconColor: 'text-amber-400' },
   bolo:              { icon: AlertTriangle,  ledColor: 'led-red',   iconColor: 'text-red-400' },
-  message:           { icon: Mail,           ledColor: 'led-green', iconColor: 'text-blue-400' },
+  message:           { icon: Mail,           ledColor: 'led-green', iconColor: 'text-gray-400' },
   system:            { icon: Bell,           ledColor: 'led-green', iconColor: 'text-green-400' },
   credential_expiry: { icon: Clock,          ledColor: 'led-amber', iconColor: 'text-amber-400' },
   patrol_missed:     { icon: MapPin,         ledColor: 'led-red',   iconColor: 'text-red-400' },
@@ -44,7 +45,7 @@ const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig>
 // ============================================================
 
 function formatTimestamp(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   if (isNaN(date.getTime())) return 'UNKNOWN';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -125,6 +126,10 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       setNotifications((prev) => [incoming, ...prev]);
       if (!incoming.is_read) {
         setUnreadCount((prev) => prev + 1);
+        // Play notification sound based on priority
+        if (isNotificationSoundEnabled()) {
+          playNotificationTone((incoming as any).priority || 'normal');
+        }
       }
     });
 
@@ -311,16 +316,20 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   return (
     <div className={`relative ${className}`}>
       {/* Bell Button */}
-      <button
+      <button type="button"
         ref={buttonRef}
         onClick={toggleDropdown}
         className="toolbar-btn relative"
         title="Notifications"
+        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
       >
-        <Bell className="w-4 h-4" />
+        <Bell className="w-4 h-4" aria-hidden="true" />
+        {/* 44: Notification badge with subtle glow and tabular-nums */}
         {unreadCount > 0 && (
           <span
-            className="absolute flex items-center justify-center"
+            className="absolute flex items-center justify-center tabular-nums"
             style={{
               top: 0,
               right: 0,
@@ -328,12 +337,13 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               minWidth: '16px',
               height: '16px',
               padding: '0 4px',
-              background: '#1a5a9e',
+              background: '#888888',
               color: '#ffffff',
               fontSize: '9px',
               fontWeight: 700,
               lineHeight: 1,
               fontFamily: 'monospace',
+              boxShadow: '0 0 6px rgba(136,136,136,0.5)',
             }}
           >
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -345,15 +355,17 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       {isOpen && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed z-50 panel-beveled"
+          className="fixed z-50 panel-beveled animate-fade-in"
           style={{
             top: dropdownPos.top,
             left: dropdownPos.left,
             width: '360px',
-            maxHeight: '400px',
-            background: '#141e2b',
+            maxHeight: '420px',
+            background: '#0a0a0a',
             display: 'flex',
             flexDirection: 'column',
+            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',
+            borderTop: '2px solid #888888',
           }}
         >
           {/* Title Bar */}
@@ -363,7 +375,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             <div className="ml-auto flex items-center gap-1">
               {/* Type Filter */}
               <div className="relative">
-                <button
+                <button type="button"
                   onClick={() => setShowFilter(!showFilter)}
                   className="toolbar-btn flex items-center gap-1"
                   title="Filter by type"
@@ -380,7 +392,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                     style={{ minWidth: 140 }}
                   >
                     {['all', 'dispatch', 'warrant', 'bolo', 'message', 'system', 'credential_expiry', 'patrol_missed'].map((type) => (
-                      <button
+                      <button type="button"
                         key={type}
                         onClick={() => { setFilterType(type); setShowFilter(false); }}
                         className={`block w-full text-left px-3 py-1.5 text-[10px] hover:bg-rmpg-700/50 transition-colors ${
@@ -394,7 +406,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                 )}
               </div>
               {unreadCount > 0 && (
-                <button
+                <button type="button"
                   onClick={handleMarkAllRead}
                   className="toolbar-btn flex items-center gap-1"
                   title="Mark All Read"
@@ -407,29 +419,34 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             </div>
           </div>
 
-          {/* Notification List */}
+          {/* 58: Notification list with dark scrollbar styling */}
           <div
+            className="scrollbar-dark"
             style={{
               overflowY: 'auto',
               flex: 1,
             }}
           >
+            {/* 59: Loading state with spinner icon */}
             {isLoading && notifications.length === 0 && (
               <div
-                className="flex items-center justify-center text-rmpg-400"
+                className="flex items-center justify-center gap-2 text-rmpg-400"
                 style={{ padding: '32px 0', fontSize: '10px' }}
               >
-                Loading...
+                <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                Loading notifications...
               </div>
             )}
 
+            {/* 60: Empty notification state with softer icon and description */}
             {!isLoading && notifications.length === 0 && (
               <div
                 className="flex flex-col items-center justify-center text-rmpg-400"
                 style={{ padding: '32px 0' }}
               >
-                <Bell className="w-6 h-6 mb-2 opacity-50" />
+                <Bell className="w-6 h-6 mb-2 opacity-30" aria-hidden="true" />
                 <span style={{ fontSize: '10px' }}>No notifications</span>
+                <span className="text-rmpg-500" style={{ fontSize: '9px', marginTop: '2px' }}>You're all caught up</span>
               </div>
             )}
 
@@ -444,11 +461,15 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               return (
                 <div
                   key={notification.id}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(notification); } }}
                   onClick={() => handleNotificationClick(notification)}
-                  className="flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors hover:bg-rmpg-800/60"
+                  className="group flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors duration-150 hover:bg-rmpg-800/60"
                   style={{
                     padding: '6px 8px',
-                    background: notification.is_read ? '#141e2b' : '#1a2636',
+                    background: notification.is_read ? '#0a0a0a' : '#141414',
+                    borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #888888',
                   }}
                   title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}
                 >
@@ -468,7 +489,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         lineHeight: '14px',
                       }}
                     >
-                      {notification.title}
+                      {typeof notification.title === 'string' ? notification.title : JSON.stringify(notification.title)}
                     </div>
                     {notification.body && (
                       <div
@@ -479,7 +500,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                           marginTop: '1px',
                         }}
                       >
-                        {notification.body}
+                        {typeof notification.body === 'string' ? notification.body : JSON.stringify(notification.body)}
                       </div>
                     )}
                     <div
@@ -507,29 +528,36 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   </div>
 
                   {/* Dismiss Button */}
-                  <button
+                  {/* 61: Dismiss button visible on hover of parent row; 62: Red hover feedback */}
+                  <button type="button"
                     onClick={(e) => handleDismiss(notification.id, e)}
-                    className="toolbar-btn flex-shrink-0 opacity-0 hover:opacity-100 transition-opacity"
+                    className="toolbar-btn flex-shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all"
                     style={{
                       padding: '2px',
                       marginTop: '2px',
                     }}
                     title="Dismiss"
+                    aria-label={`Dismiss notification: ${notification.title}`}
                   >
-                    <Trash2 className="w-3 h-3 text-rmpg-400 hover:text-red-400" />
+                    <Trash2 className="w-3 h-3 text-rmpg-400 hover:text-red-400 transition-colors" />
                   </button>
                 </div>
               );
             })}
 
-            {/* Load More */}
+            {/* 47: Load More with improved loading state */}
             {hasMore && notifications.length > 0 && (
-              <button
+              <button type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="w-full py-2 text-center text-[10px] text-brand-400 hover:bg-rmpg-700/30 transition-colors font-bold uppercase tracking-wider"
+                className="w-full py-2.5 text-center text-[10px] text-brand-400 hover:bg-rmpg-700/30 transition-colors duration-150 font-bold uppercase tracking-wider border-t border-rmpg-700/30 disabled:opacity-50"
               >
-                {loadingMore ? 'Loading...' : 'Load Older Notifications'}
+                {loadingMore ? (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Loading...
+                  </span>
+                ) : 'Load Older Notifications'}
               </button>
             )}
           </div>

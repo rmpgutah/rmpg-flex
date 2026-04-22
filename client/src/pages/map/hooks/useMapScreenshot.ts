@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { getGoogleMapsApiKey } from '../../../utils/googleMapsApiKey';
 
 /**
  * Hook providing map screenshot capabilities via Google Maps Static API.
@@ -10,7 +11,7 @@ export function useMapScreenshot(
   const busyRef = useRef(false);
 
   /** Build a Google Static Maps URL from current map state */
-  const buildStaticUrl = useCallback((width = 1280, height = 720): string | null => {
+  const buildStaticUrl = useCallback(async (width = 1280, height = 720): Promise<string | null> => {
     const map = mapInstanceRef.current;
     if (!map) return null;
 
@@ -18,7 +19,7 @@ export function useMapScreenshot(
     const zoom = map.getZoom();
     if (!center || zoom == null) return null;
 
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
+    const apiKey = await getGoogleMapsApiKey().catch(() => '');
     if (!apiKey) return null;
 
     const mapType = map.getMapTypeId() || 'roadmap';
@@ -65,16 +66,17 @@ export function useMapScreenshot(
     busyRef.current = true;
 
     try {
-      const url = buildStaticUrl(1280, 720);
+      const url = await buildStaticUrl(1280, 720);
       if (!url) return null;
 
       const resp = await fetch(url);
       if (!resp.ok) return null;
 
       const blob = await resp.blob();
-      return new Promise<string>((resolve) => {
+      return new Promise<string | null>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
         reader.readAsDataURL(blob);
       });
     } catch (err) {
@@ -91,7 +93,7 @@ export function useMapScreenshot(
     busyRef.current = true;
 
     try {
-      const url = buildStaticUrl(1280, 720);
+      const url = await buildStaticUrl(1280, 720);
       if (!url) return false;
 
       const resp = await fetch(url);
@@ -108,12 +110,14 @@ export function useMapScreenshot(
       const name = filename || `map-export_${ts}${coords}${zStr}.png`;
 
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(blob);
+      a.href = objectUrl;
       a.download = name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
+      // Delay revokeObjectURL to ensure the browser has finished initiating the download
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       return true;
     } catch (err) {
       console.error('[useMapScreenshot] download failed:', err);

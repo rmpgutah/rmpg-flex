@@ -17,13 +17,7 @@ function escapeCsvValue(value: any): string {
     return '';
   }
 
-  let str = String(value);
-
-  // CSV formula injection protection — prefix dangerous characters so spreadsheets
-  // don't interpret cell values as formulas (e.g., =cmd|'/C calc'!A0)
-  if (/^[=+\-@\t\r]/.test(str)) {
-    str = `'${str}`;
-  }
+  const str = String(value);
 
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
@@ -40,24 +34,19 @@ function escapeCsvValue(value: any): string {
  * @param columns  Array of { key, header } objects defining columns
  * @param rows     Array of data objects whose properties correspond to column keys
  */
-const CSV_MAX_ROWS = 10_000;
-
 export function sendCsv(
   res: Response,
   filename: string,
   columns: CsvColumn[],
   rows: any[],
 ): void {
-  if (rows.length > CSV_MAX_ROWS) {
-    res.status(413).json({
-      error: `Export too large (${rows.length.toLocaleString()} rows). Maximum is ${CSV_MAX_ROWS.toLocaleString()}. Narrow your date range or add filters.`,
-    });
-    return;
-  }
-
+  // [FIX 99] Sanitize filename to prevent header injection (strip newlines and quotes)
+  const safeFilename = filename.replace(/[\r\n"]/g, '_');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  const safeFilename = filename.replace(/["\r\n\0]/g, '_');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+
+  // [FIX 100] Add BOM for proper UTF-8 handling in Excel
+  const bom = '\uFEFF';
 
   const headerRow = columns.map((col) => escapeCsvValue(col.header)).join(',');
 
@@ -65,7 +54,7 @@ export function sendCsv(
     columns.map((col) => escapeCsvValue(row[col.key])).join(','),
   );
 
-  const csv = [headerRow, ...dataRows].join('\r\n');
+  const csv = bom + [headerRow, ...dataRows].join('\r\n');
 
   res.send(csv);
 }

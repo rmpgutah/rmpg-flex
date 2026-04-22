@@ -32,13 +32,13 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
@@ -62,21 +62,21 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+    <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4 transition-all duration-200 hover:border-[#474747] hover:brightness-105" role="group" aria-label={`${label} leave balance`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon size={14} style={{ color }} />
-        <span className="text-xs text-rmpg-400 uppercase tracking-wide">{label}</span>
+        <Icon size={14} style={{ color }} aria-hidden="true" />
+        <span className="text-xs text-rmpg-400 uppercase tracking-wide font-medium">{label}</span>
       </div>
-      <div className="text-xl font-bold text-white mb-0.5">
-        {remaining} <span className="text-sm font-normal text-rmpg-400">of {total} hrs remaining</span>
+      <div className="text-xl font-bold text-white mb-0.5 font-mono">
+        {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">of {total} hrs remaining</span>
       </div>
-      <div className="h-2 bg-surface-sunken rounded-full overflow-hidden mt-2">
+      <div className="h-2 bg-[#0c0c0c] rounded-full overflow-hidden mt-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used, ${remaining} hours remaining`}>
         <div
-          className="h-full rounded-full transition-all duration-500"
+          className="h-full rounded-full transition-all duration-700 ease-out"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
         />
       </div>
-      <div className="text-xs text-rmpg-500 mt-1">{used} hrs used</div>
+      <div className="text-xs text-rmpg-500 mt-1.5">{used} hrs used</div>
     </div>
   );
 }
@@ -84,7 +84,7 @@ function BalanceCard({
 // ─── Status Badge ───────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const color = LEAVE_STATUS_COLORS[status] || '#6b7280';
+  const color = LEAVE_STATUS_COLORS[status] || '#666666';
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-medium uppercase tracking-wide"
@@ -98,7 +98,7 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Leave Type Pill ────────────────────────────────────────
 
 function TypePill({ type }: { type: string }) {
-  const color = LEAVE_TYPE_COLORS[type] || '#6b7280';
+  const color = LEAVE_TYPE_COLORS[type] || '#666666';
   return (
     <span
       className="inline-flex items-center gap-1.5 text-xs"
@@ -117,6 +117,7 @@ export default function LeaveTab() {
   const userRole = user?.role ?? 'officer';
   const userId = user?.id ?? '';
   const isManager = MANAGER_ROLES.includes(userRole);
+  const isGodMode = userRole === 'admin'; // Admin God Mode — unrestricted access
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -237,6 +238,18 @@ export default function LeaveTab() {
     .filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i)
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // Set document title
+  useEffect(() => { document.title = 'HR - Leave \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRequest(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // ─── Loading State ─────────────────────────────────────
 
   if (loading && requests.length === 0) {
@@ -282,7 +295,7 @@ export default function LeaveTab() {
         {/* Request Time Off Button */}
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-white">My Requests</h3>
-          <button
+          <button type="button"
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >
@@ -292,16 +305,16 @@ export default function LeaveTab() {
         </div>
 
         {/* Request History Table */}
-        <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-x-auto">
-          <table className="w-full text-xs">
+        <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm overflow-x-auto scrollbar-dark">
+          <table className="w-full text-xs" role="table" aria-label="Leave requests">
             <thead>
-              <tr className="border-b border-rmpg-700 bg-surface-sunken">
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Type</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Dates</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Hours</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Status</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Submitted</th>
-                <th className="text-right px-3 py-2 text-rmpg-400 font-medium">Actions</th>
+              <tr className="border-b border-[#2b2b2b] bg-[#0c0c0c]">
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Type</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Dates</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Hours</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Status</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Submitted</th>
+                <th scope="col" className="text-right px-3 py-2 text-rmpg-400 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -315,7 +328,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-rmpg-700 ${i % 2 === 0 ? 'bg-surface-base' : 'bg-[#121a27]'}`}
+                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white"><TypePill type={req.type} /></td>
                     <td className="px-3 py-2 text-rmpg-200">
@@ -325,16 +338,16 @@ export default function LeaveTab() {
                     <td className="px-3 py-2"><StatusBadge status={req.status} /></td>
                     <td className="px-3 py-2 text-rmpg-400">{formatDateTime(req.created_at)}</td>
                     <td className="px-3 py-2 text-right">
-                      {req.status === 'pending' && (
+                      {(req.status === 'pending' || isGodMode) && (
                         <div className="flex items-center justify-end gap-1">
-                          <button
+                          <button type="button"
                             onClick={() => { setEditRequest(req); setModalOpen(true); }}
                             className="toolbar-btn text-xs"
                             title="Edit"
                           >
                             Edit
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => handleCancel(req.id)}
                             className="toolbar-btn text-xs text-red-400 hover:text-red-300"
                             title="Cancel request"
@@ -382,7 +395,7 @@ export default function LeaveTab() {
             {pendingRequests.map(req => (
               <div
                 key={req.id}
-                className="bg-surface-base border border-rmpg-700 rounded-sm p-4 space-y-3"
+                className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4 space-y-3"
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -398,7 +411,7 @@ export default function LeaveTab() {
                   <StatusBadge status={req.status} />
                 </div>
                 {req.reason && (
-                  <p className="text-xs text-rmpg-300 bg-surface-sunken border border-rmpg-700 rounded-sm p-2">
+                  <p className="text-xs text-rmpg-300 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm p-2">
                     {req.reason}
                   </p>
                 )}
@@ -408,9 +421,9 @@ export default function LeaveTab() {
                     placeholder="Notes (optional)"
                     value={reviewNotes[req.id] || ''}
                     onChange={e => setReviewNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
-                    className="flex-1 bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+                    className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
                   />
-                  <button
+                  <button type="button"
                     onClick={() => handleApprove(req.id)}
                     className="toolbar-btn flex items-center gap-1 text-xs"
                     style={{ color: '#22c55e', borderColor: '#22c55e44' }}
@@ -418,7 +431,7 @@ export default function LeaveTab() {
                     <Check size={12} />
                     Approve
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleDeny(req.id)}
                     className="toolbar-btn flex items-center gap-1 text-xs"
                     style={{ color: '#ef4444', borderColor: '#ef444444' }}
@@ -437,13 +450,13 @@ export default function LeaveTab() {
       {balances.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <CalendarDays size={14} className="text-blue-400" />
+            <CalendarDays size={14} className="text-rmpg-300" />
             Team Balances ({new Date().getFullYear()})
           </h3>
-          <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-x-auto">
+          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-rmpg-700 bg-surface-sunken">
+                <tr className="border-b border-[#2b2b2b] bg-[#0c0c0c]">
                   <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Officer</th>
                   <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Vacation</th>
                   <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Sick</th>
@@ -454,7 +467,7 @@ export default function LeaveTab() {
                 {balances.map((bal, i) => (
                   <tr
                     key={bal.id}
-                    className={`border-b border-rmpg-700 ${i % 2 === 0 ? 'bg-surface-base' : 'bg-[#121a27]'}`}
+                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white font-medium">{bal.officer_name || `Officer #${bal.officer_id}`}</td>
                     <td className="px-3 py-2">
@@ -482,7 +495,7 @@ export default function LeaveTab() {
             All Leave Requests
           </h3>
           <ExportButton exportUrl="/api/hr/leave/export/csv" exportFilename="leave-requests.csv" />
-          <button
+          <button type="button"
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >
@@ -496,7 +509,7 @@ export default function LeaveTab() {
           <select
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Officers</option>
             {officerOptions.map(o => (
@@ -506,7 +519,7 @@ export default function LeaveTab() {
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -517,7 +530,7 @@ export default function LeaveTab() {
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Types</option>
             {Object.entries(LEAVE_TYPE_LABELS).map(([val, label]) => (
@@ -525,7 +538,7 @@ export default function LeaveTab() {
             ))}
           </select>
           {(filterOfficer || filterStatus || filterType) && (
-            <button
+            <button type="button"
               onClick={() => { setFilterOfficer(''); setFilterStatus(''); setFilterType(''); }}
               className="toolbar-btn text-xs text-rmpg-400 hover:text-white flex items-center gap-1"
             >
@@ -536,10 +549,10 @@ export default function LeaveTab() {
         </div>
 
         {/* All Requests Table */}
-        <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-x-auto">
+        <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-rmpg-700 bg-surface-sunken">
+              <tr className="border-b border-[#2b2b2b] bg-[#0c0c0c]">
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Officer</th>
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Type</th>
                 <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Dates</th>
@@ -560,7 +573,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-rmpg-700 ${i % 2 === 0 ? 'bg-surface-base' : 'bg-[#121a27]'}`}
+                    className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white">{req.officer_name || `#${req.officer_id}`}</td>
                     <td className="px-3 py-2"><TypePill type={req.type} /></td>
@@ -571,15 +584,26 @@ export default function LeaveTab() {
                     <td className="px-3 py-2"><StatusBadge status={req.status} /></td>
                     <td className="px-3 py-2 text-rmpg-400">{formatDateTime(req.created_at)}</td>
                     <td className="px-3 py-2 text-right">
-                      {req.status === 'pending' && String(req.officer_id) === String(userId) && (
-                        <button
-                          onClick={() => handleCancel(req.id)}
-                          className="toolbar-btn text-xs text-red-400 hover:text-red-300"
-                          title="Cancel request"
-                        >
-                          <X size={12} />
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {isGodMode && (
+                          <button type="button"
+                            onClick={() => { setEditRequest(req); setModalOpen(true); }}
+                            className="toolbar-btn text-xs"
+                            title="Admin: Edit leave request"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {(req.status === 'pending' && String(req.officer_id) === String(userId)) && (
+                          <button type="button"
+                            onClick={() => handleCancel(req.id)}
+                            className="toolbar-btn text-xs text-red-400 hover:text-red-300"
+                            title="Cancel request"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -608,7 +632,7 @@ function BalanceCell({ used, total, color }: { used: number; total: number; colo
       <div className="text-xs text-rmpg-200 mb-0.5">
         {used} / {total}
       </div>
-      <div className="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
+      <div className="h-1.5 bg-[#0c0c0c] rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}

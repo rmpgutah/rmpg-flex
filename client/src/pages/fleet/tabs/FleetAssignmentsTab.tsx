@@ -38,7 +38,7 @@ export default function FleetAssignmentsTab({ assignments }: Props) {
       {/* Assignment Timeline */}
       {assignments.length === 0 ? (
         <div className="text-center py-10 panel-beveled bg-surface-base">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center  bg-surface-sunken">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
             <Radio className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-[11px] text-rmpg-400 font-semibold">No Assignment History</p>
@@ -49,7 +49,7 @@ export default function FleetAssignmentsTab({ assignments }: Props) {
       ) : (
         <div className="panel-beveled p-3 bg-surface-base">
           <div className="relative">
-            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #f59e0b40, #162236)' }} />
+            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #f59e0b40, #242424)' }} />
             <div className="space-y-2">
               {assignments.map((a) => {
                 const isActive = !a.unassigned_at;

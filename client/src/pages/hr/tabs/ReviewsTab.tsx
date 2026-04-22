@@ -31,9 +31,9 @@ function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: numb
 
 // ── Badge helpers ──────────────────────────────────────────
 const TYPE_COLORS: Record<ReviewType, string> = {
-  annual: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  annual: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   probationary: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  quarterly: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  quarterly: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   improvement_plan: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -45,8 +45,8 @@ const TYPE_LABELS: Record<ReviewType, string> = {
 };
 
 const STATUS_COLORS: Record<ReviewStatus, string> = {
-  draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/30',
-  submitted: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700/30',
+  submitted: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   acknowledged: 'bg-green-500/20 text-green-400 border-green-500/30',
   completed: 'bg-green-500/20 text-green-400 border-green-500/30',
 };
@@ -60,7 +60,7 @@ const STATUS_LABELS: Record<ReviewStatus, string> = {
 
 function formatDate(d: string | null): string {
   if (!d) return '--';
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -76,6 +76,7 @@ interface ReviewsTabProps {
 
 export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const isManager = MANAGER_ROLES.includes(userRole);
+  const isGodMode = userRole === 'admin'; // Admin God Mode — unrestricted access
   const { addToast } = useToast();
 
   const [reviews, setReviews] = useState<PerformanceReview[]>([]);
@@ -92,6 +93,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   // Acknowledge state (officer only)
   const [ackComment, setAckComment] = useState<Record<number, string>>({});
   const [ackLoading, setAckLoading] = useState<number | null>(null);
+
+  // Certification expiry tracking
+  const [expiringCerts, setExpiringCerts] = useState<any[]>([]);
+  const [certsLoading, setCertsLoading] = useState(false);
 
   // ── Data fetching ─────────────────────────────────────
   const fetchReviews = useCallback(async () => {
@@ -133,6 +138,27 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   useEffect(() => {
     if (isManager) fetchOfficers();
   }, [isManager, fetchOfficers]);
+
+  // Fetch expiring certifications (manager only)
+  const fetchExpiringCerts = useCallback(async () => {
+    setCertsLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/personnel/credentials');
+      const now = new Date();
+      const ninetyDays = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+      const expiring = (data || []).filter((c: any) => {
+        if (!c.expiry_date) return false;
+        const exp = new Date(c.expiry_date);
+        return exp <= ninetyDays;
+      }).sort((a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+      setExpiringCerts(expiring);
+    } catch { setExpiringCerts([]); }
+    finally { setCertsLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (isManager) fetchExpiringCerts();
+  }, [isManager, fetchExpiringCerts]);
 
   // ── Handlers ──────────────────────────────────────────
   const handleCreate = async (data: any) => {
@@ -223,8 +249,9 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-brand-500" />
+      <div className="flex flex-col items-center justify-center h-64 gap-2">
+        <Loader2 size={24} className="animate-spin text-brand-500" role="status" aria-label="Loading performance reviews" />
+        <span className="text-xs text-rmpg-400">Loading reviews...</span>
       </div>
     );
   }
@@ -237,7 +264,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       <div className="p-4 space-y-4">
         {/* Trend indicator */}
         {trendIndicator && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-surface-base border border-rmpg-700 rounded">
+          <div className="flex items-center gap-2 px-3 py-2 bg-surface-base border border-rmpg-700 rounded-sm">
             <trendIndicator.icon size={16} className={trendIndicator.color} />
             <span className="text-xs text-rmpg-300">
               Performance trend: <span className={trendIndicator.color}>{trendIndicator.label}</span>
@@ -254,7 +281,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             {reviews.map((review) => (
               <div
                 key={review.id}
-                className="bg-surface-base border border-rmpg-700 rounded p-4 space-y-3"
+                className="bg-surface-base border border-rmpg-700 rounded-sm p-4 space-y-3"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -264,7 +291,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       {formatDate(review.review_period_end)}
                     </span>
                     <span
-                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${TYPE_COLORS[review.type]}`}
+                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${TYPE_COLORS[review.type]}`}
                     >
                       {TYPE_LABELS[review.type]}
                     </span>
@@ -321,12 +348,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       }
                       rows={2}
                       placeholder="Optional comments before acknowledging..."
-                      className="w-full bg-surface-sunken border border-rmpg-700 rounded px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
+                      className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
                     />
-                    <button
+                    <button type="button"
                       onClick={() => handleAcknowledge(review.id)}
                       disabled={ackLoading === review.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white rounded transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white rounded-sm transition-colors disabled:opacity-50"
                     >
                       {ackLoading === review.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -358,31 +385,70 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   // ════════════════════════════════════════════════════════
   // MANAGER / ADMIN VIEW
   // ════════════════════════════════════════════════════════
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={24} className="animate-spin text-brand-500" />
+      </div>
+    );
+  }
+
+
   return (
     <div className="p-4 space-y-4">
       {/* Stats bar */}
       {stats && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-center gap-3">
-            <Clock size={18} className="text-blue-400 shrink-0" />
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
+            <Clock size={18} className="text-gray-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.upcoming}</div>
               <div className="text-[10px] text-rmpg-400">Upcoming Reviews</div>
             </div>
           </div>
-          <div className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.overdue}</div>
               <div className="text-[10px] text-rmpg-400">Overdue</div>
             </div>
           </div>
-          <div className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <BarChart3 size={18} className="text-yellow-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.avgRating || '--'}</div>
               <div className="text-[10px] text-rmpg-400">Avg Rating</div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Certification Expiry Dashboard */}
+      {isManager && expiringCerts.length > 0 && (
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-hidden">
+          <div className="px-3 py-2 border-b border-rmpg-700 flex items-center gap-2 bg-surface-sunken">
+            <AlertTriangle size={13} className="text-amber-400" />
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Certification Expiry Alert</span>
+            <span className="text-[9px] text-rmpg-500 ml-auto">{expiringCerts.length} expiring within 90 days</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {expiringCerts.map((cert: any) => {
+              const now = new Date();
+              const exp = new Date(cert.expiry_date);
+              const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              const isExpired = daysLeft < 0;
+              const urgencyColor = isExpired ? 'text-red-400 bg-red-900/30' : daysLeft <= 30 ? 'text-red-400 bg-red-900/20' : daysLeft <= 60 ? 'text-amber-400 bg-amber-900/20' : 'text-yellow-400 bg-yellow-900/20';
+              return (
+                <div key={cert.id} className={`flex items-center gap-3 px-3 py-1.5 border-b border-rmpg-700/50 ${urgencyColor}`}>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-500' : daysLeft <= 30 ? 'bg-red-500 animate-pulse' : daysLeft <= 60 ? 'bg-amber-500' : 'bg-yellow-500'}`} />
+                  <span className="text-[11px] text-white font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
+                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
+                  <span className="text-[10px] font-bold flex-shrink-0">
+                    {isExpired ? `EXPIRED ${Math.abs(daysLeft)}d ago` : `${daysLeft}d remaining`}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -395,7 +461,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Officers</option>
           {officers.map((o) => (
@@ -407,7 +473,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Types</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => (
@@ -419,7 +485,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Statuses</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -432,12 +498,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <div className="flex-1" />
 
         <ExportButton exportUrl="/api/hr/reviews/export/csv" exportFilename="reviews.csv" />
-        <button
+        <button type="button"
           onClick={() => {
             setEditReview(null);
             setModalOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
         >
           <Plus size={14} />
           Create Review
@@ -454,10 +520,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           {reviews.map((review) => (
             <div
               key={review.id}
-              className="bg-surface-base border border-rmpg-700 rounded p-3 flex items-start gap-3"
+              className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-start gap-3"
             >
               {/* Avatar initial */}
-              <div className="w-8 h-8 rounded bg-brand-600/30 border border-brand-500/30 flex items-center justify-center text-xs font-bold text-brand-400 shrink-0">
+              <div className="w-8 h-8 rounded-sm bg-brand-600/30 border border-brand-500/30 flex items-center justify-center text-xs font-bold text-brand-400 shrink-0">
                 {(review.officer_name ?? '?')[0].toUpperCase()}
               </div>
 
@@ -468,12 +534,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                     {review.officer_name ?? `Officer #${review.officer_id}`}
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${TYPE_COLORS[review.type]}`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${TYPE_COLORS[review.type]}`}
                   >
                     {TYPE_LABELS[review.type]}
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${STATUS_COLORS[review.status]}`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${STATUS_COLORS[review.status]}`}
                   >
                     {STATUS_LABELS[review.status]}
                   </span>
@@ -496,20 +562,20 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
-                {(review.status === 'draft' || review.status === 'submitted') && (
-                  <button
+                {(review.status === 'draft' || review.status === 'submitted' || isGodMode) && (
+                  <button type="button"
                     onClick={() => {
                       setEditReview(review);
                       setModalOpen(true);
                     }}
                     className="p-1.5 text-rmpg-400 hover:text-white transition-colors"
-                    title="Edit"
+                    title={isGodMode ? 'Admin: Edit review (any status)' : 'Edit'}
                   >
                     <Pencil size={14} />
                   </button>
                 )}
-                {userRole === 'admin' && review.status === 'draft' && (
-                  <button
+                {userRole === 'admin' && (review.status === 'draft' || isGodMode) && (
+                  <button type="button"
                     onClick={() => handleDelete(review.id)}
                     className="p-1.5 text-rmpg-400 hover:text-red-400 transition-colors"
                     title="Delete"

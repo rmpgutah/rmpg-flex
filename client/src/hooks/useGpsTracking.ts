@@ -275,8 +275,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })
-      .catch(() => {
-        // User may not have a unit assigned — that's fine, GPS still mandatory
+      .catch((err) => {
+        console.warn('[useGpsTracking] Unit fetch failed (user may not have a unit assigned):', err);
       });
     return () => { cancelled = true; };
   }, []);
@@ -358,8 +358,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         lastSentAt: new Date().toISOString(),
         error: null,
       }));
-    } catch {
-      // Will be retried in next batch
+    } catch (err) {
+      console.warn('[useGpsTracking] Immediate GPS send failed, queuing for next batch:', err);
       queueRef.current.push(point);
     }
   }, []);
@@ -464,8 +464,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           sendImmediate(point);
         }
       }
-    } catch {
-      // IP fallback failed — degrade gracefully
+    } catch (err) {
+      console.warn('[useGpsTracking] IP geolocation fallback failed:', err);
     }
   }, [maxSpeedMs, sendImmediate]);
 
@@ -823,8 +823,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           wakeLock = await (navigator as any).wakeLock.request('screen');
           wakeLock.addEventListener('release', handleWakeLockRelease);
         }
-      } catch {
-        // WakeLock not available or permission denied — degrade gracefully
+      } catch (err) {
+        console.warn('[useGpsTracking] WakeLock request failed:', err);
       }
     };
 

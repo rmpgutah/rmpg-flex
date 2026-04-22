@@ -4,7 +4,7 @@
 // from ClearPathGPS. Sub-tabs: Devices | Events.
 // ============================================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Car, Search, Cpu, Zap, AlertTriangle, MapPin, Gauge,
   Video, Radio, Clock, RefreshCw, ExternalLink, Loader2,
@@ -40,6 +40,20 @@ interface Props {
 }
 
 // ── Component ────────────────────────────────────────────────
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function DashCameraTab({
   dashcamEvents, deviceMappings, loading = false,
@@ -107,7 +121,7 @@ export default function DashCameraTab({
 
   function formatDateTime(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleString('en-US', {
+    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -115,13 +129,13 @@ export default function DashCameraTab({
 
   function formatDate(dateStr?: string | null): string {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
     });
   }
 
   function eventLabel(eventType: string): string {
-    return eventType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return eventType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
   }
 
   function statusLedClass(isActive: boolean): string {
@@ -132,14 +146,17 @@ export default function DashCameraTab({
 
   const SUMMARY_CARDS = [
     { label: 'Devices', value: stats.totalDevices, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'Active', value: stats.activeDevices, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Events', value: stats.totalEvents, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
-    { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
-    { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-[#140a1a]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+    { label: 'Active', value: stats.activeDevices, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Events', value: stats.totalEvents, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-gray-500' },
+    { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
+    { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-surface-base', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
   ];
 
   // ── Render ───────────────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Dash Cameras \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -157,8 +174,8 @@ export default function DashCameraTab({
           <PrintButton />
           <ExportButton exportUrl="/clearpathgps/dashcam-events/export?format=csv" exportFilename="dashcam-events.csv" />
           {onRefresh && (
-            <button onClick={onRefresh} disabled={loading} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
-              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            <button type="button" onClick={onRefresh} disabled={loading} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
               Refresh
             </button>
           )}
@@ -167,7 +184,7 @@ export default function DashCameraTab({
 
       {/* ── Alert Banner — Impacts ── */}
       {stats.impacts > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-surface-base">
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <span className="text-xs text-red-400 font-semibold">
             {stats.impacts} impact event{stats.impacts !== 1 ? 's' : ''} detected — review immediately
@@ -190,7 +207,7 @@ export default function DashCameraTab({
 
       {/* ── Sub-Tabs (Devices / Events) ── */}
       <div className="flex items-center gap-0 border-b border-rmpg-700">
-        <button
+        <button type="button"
           onClick={() => setSubTab('devices')}
           className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
             subTab === 'devices'
@@ -201,7 +218,7 @@ export default function DashCameraTab({
           <Cpu className="w-3 h-3" />
           Devices ({deviceMappings.length})
         </button>
-        <button
+        <button type="button"
           onClick={() => setSubTab('events')}
           className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
             subTab === 'events'
@@ -228,14 +245,14 @@ export default function DashCameraTab({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={subTab === 'devices' ? 'Search devices, units...' : 'Search events, call signs...'}
-            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full"
+            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px]"
           />
         </div>
         {subTab === 'events' && (
           <>
             <div className="h-4 w-px bg-rmpg-700" />
             {EVENT_TYPE_FILTERS.map(f => (
-              <button
+              <button type="button"
                 key={f.value}
                 onClick={() => setEventTypeFilter(f.value)}
                 className={`text-[10px] px-2.5 py-1 ${
@@ -252,7 +269,7 @@ export default function DashCameraTab({
       {/* ── Loading overlay ── */}
       {loading && (
         <div className="flex items-center justify-center py-8 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
           <span className="text-[10px] text-rmpg-400">Loading ClearPathGPS data...</span>
         </div>
       )}

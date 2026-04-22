@@ -1,7 +1,30 @@
 import { getDb } from '../models/database';
 import { broadcastDispatchUpdate } from './websocket';
+import { resolveGoogleMapsApiKey } from './configEncryption';
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+// Lazily resolved so the DB is ready when first used
+let _cachedGoogleKey: string | undefined;
+let _cacheTime = 0;
+let _cacheResolving = false;
+const CACHE_TTL_MS = 5 * 60 * 1000; // re-check every 5 min
+
+function getGoogleMapsApiKey(): string | undefined {
+  const now = Date.now();
+  if ((!_cachedGoogleKey || now - _cacheTime > CACHE_TTL_MS) && !_cacheResolving) {
+    _cacheResolving = true;
+    _cachedGoogleKey = resolveGoogleMapsApiKey();
+    _cacheTime = Date.now();
+    _cacheResolving = false;
+  }
+  return _cachedGoogleKey;
+}
+
+// [FIX 54] Add request timeout for geocode API calls
+const GEOCODE_TIMEOUT_MS = 10_000;
+
+// [FIX 55] Simple rate limiter for geocode API calls to avoid quota exhaustion
+let lastGeocodeFetchMs = 0;
+const MIN_GEOCODE_INTERVAL_MS = 100; // 10 req/s max
 
 interface GeocodeResult {
   latitude: number;
@@ -13,21 +36,44 @@ interface GeocodeResult {
  * Returns { latitude, longitude } or null if geocoding fails.
  */
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
-  if (!GOOGLE_MAPS_API_KEY || !address.trim()) return null;
+  if (!address.trim()) return null;
+  if (address.length > 500) return null;
 
+  // Rate limit
+  const now = Date.now();
+  const wait = MIN_GEOCODE_INTERVAL_MS - (now - lastGeocodeFetchMs);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  lastGeocodeFetchMs = Date.now();
+
+  // Primary: Nominatim (free, no API key needed)
+  return geocodeWithNominatim(address);
+}
+
+/**
+ * Free geocoding fallback via OpenStreetMap Nominatim.
+ * No API key required. Rate limit: 1 req/sec (enforced by MIN_GEOCODE_INTERVAL_MS).
+ * Usage policy: https://operations.osmfoundation.org/policies/nominatim/
+ */
+async function geocodeWithNominatim(address: string): Promise<GeocodeResult | null> {
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    if (data.status === 'OK' && data.results?.length > 0) {
-      const loc = data.results[0].geometry.location;
-      return { latitude: loc.lat, longitude: loc.lng };
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=us`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'RMPG-Flex-CAD/5.7 (rmpgutah.us)' },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+        return { latitude: parseFloat(data[0].lat), longitude: parseFloat(data[0].lon) };
+      }
+      return null;
+    } finally {
+      clearTimeout(timeout);
     }
-    return null;
-  } catch (err) {
-    console.error('[geocode] Error geocoding address:', err);
+  } catch {
     return null;
   }
 }
@@ -37,20 +83,26 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
  * Returns the formatted address string or null if reverse geocoding fails.
  */
 export async function reverseGeocodeAddress(lat: number, lng: number): Promise<string | null> {
-  if (!GOOGLE_MAPS_API_KEY) return null;
+  if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
 
+  // Primary: Nominatim reverse geocoding (free)
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    if (data.status === 'OK' && data.results?.length > 0) {
-      return data.results[0].formatted_address;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'RMPG-Flex-CAD/5.7 (rmpgutah.us)' },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.display_name || null;
+    } finally {
+      clearTimeout(timeout);
     }
-    return null;
-  } catch (err) {
-    console.error('[geocode] Error reverse-geocoding:', err);
+  } catch {
     return null;
   }
 }
@@ -71,48 +123,36 @@ export interface DetailedGeocodeResult {
  * intersection data in secondary results.
  */
 export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<DetailedGeocodeResult | null> {
-  if (!GOOGLE_MAPS_API_KEY) return null;
+  if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
 
+  // Primary: Nominatim reverse geocoding with address details (free)
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address|route|intersection&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'RMPG-Flex-CAD/5.7 (rmpgutah.us)' },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.display_name) return null;
 
-    const data = await res.json();
-    if (data.status !== 'OK' || !data.results?.length) return null;
+      const addr = data.address || {};
+      const road_name = addr.road || addr.highway || addr.pedestrian || null;
+      // Nominatim doesn't provide intersection directly — approximate from nearby road
+      const nearest_intersection = addr.neighbourhood || addr.suburb || null;
 
-    const primary = data.results[0];
-    const formatted_address = primary.formatted_address || '';
-
-    // Extract road name from address_components
-    let road_name: string | null = null;
-    for (const comp of (primary.address_components || [])) {
-      if (comp.types?.includes('route')) {
-        road_name = comp.long_name;
-        break;
-      }
+      return {
+        formatted_address: data.display_name,
+        road_name,
+        nearest_intersection,
+      };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    // Look for intersection in secondary results
-    let nearest_intersection: string | null = null;
-    for (const result of data.results) {
-      if (result.types?.includes('intersection')) {
-        nearest_intersection = result.formatted_address;
-        break;
-      }
-      // Also check address_components for intersection type
-      for (const comp of (result.address_components || [])) {
-        if (comp.types?.includes('intersection')) {
-          nearest_intersection = comp.long_name;
-          break;
-        }
-      }
-      if (nearest_intersection) break;
-    }
-
-    return { formatted_address, road_name, nearest_intersection };
-  } catch (err) {
-    console.error('[geocode] Error in detailed reverse geocode:', err);
+  } catch {
     return null;
   }
 }
@@ -123,7 +163,9 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
  * After successful geocoding, broadcasts the updated call so the map updates in real-time.
  */
 export function geocodeCallIfNeeded(callId: number, address: string, lat: any, lng: any): void {
-  if ((lat != null && lng != null) || !address.trim()) return;
+  // [FIX 102] Validate callId is a positive integer
+  if (!callId || typeof callId !== 'number' || callId < 1) return;
+  if (lat || lng || !address || !address.trim()) return;
 
   geocodeAddress(address).then((result) => {
     if (!result) return;
@@ -141,7 +183,5 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
     } catch (err) {
       console.error('[geocode] Failed to update call coordinates:', err);
     }
-  }).catch(err => {
-    console.warn(`[geocode] Failed to geocode call ${callId}:`, err?.message || err);
   });
 }

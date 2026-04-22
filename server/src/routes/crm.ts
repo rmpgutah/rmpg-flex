@@ -10,7 +10,7 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamIdMiddleware, validateStr, validateEnum, requireInt, validateDateStr } from '../middleware/sanitize';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
@@ -68,7 +68,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -76,7 +76,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
 router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name, c.name as client_name
@@ -90,7 +90,7 @@ router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -128,7 +128,7 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -136,15 +136,29 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
   try {
     const db = getDb();
     const { client_id, property_id, title, description, task_type, priority, due_date, assigned_to, notes } = req.body;
-    if (!title?.trim()) { res.status(400).json({ error: 'Title is required' }); return; }
+
+    // ── Validate task inputs ──
+    const TASK_TYPES = ['follow_up', 'call', 'meeting', 'proposal', 'contract_review', 'billing', 'inspection', 'other'] as const;
+    const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+
+    const validTitle = validateStr(title, 'title', 200);
+    if (!validTitle) { res.status(400).json({ error: 'Title is required', code: 'TITLE_IS_REQUIRED' }); return; }
+    const validTaskType = validateEnum(task_type, TASK_TYPES, 'task_type') || 'follow_up';
+    const validPriority = validateEnum(priority, PRIORITIES, 'priority') || 'normal';
+    if (client_id) requireInt(client_id, 'client_id');
+    if (property_id) requireInt(property_id, 'property_id');
+    if (assigned_to) requireInt(assigned_to, 'assigned_to');
+    if (due_date) validateDateStr(due_date, 'due_date');
+    validateStr(description, 'description', 5000);
+    validateStr(notes, 'notes', 5000);
 
     const now = localNow();
     const result = db.prepare(`
       INSERT INTO crm_tasks (client_id, property_id, title, description, task_type, priority, status, due_date, assigned_to, notes, created_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
     `).run(
-      client_id || null, property_id || null, title.trim(), description || null,
-      task_type || 'follow_up', priority || 'normal', due_date || null,
+      client_id || null, property_id || null, validTitle, description || null,
+      validTaskType, validPriority, due_date || null,
       assigned_to || null, notes || null, req.user?.userId || null, now, now,
     );
 
@@ -156,24 +170,37 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
-router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'Task not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' }); return; }
 
     const { title, description, task_type, priority, status, due_date, assigned_to, notes } = req.body;
+
+    // ── Validate update fields ──
+    const TASK_UPDATE_TYPES = ['follow_up', 'call', 'meeting', 'proposal', 'contract_review', 'billing', 'inspection', 'other'] as const;
+    const TASK_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+    const TASK_STATUSES = ['pending', 'in_progress', 'completed', 'cancelled'] as const;
+
+    if (task_type !== undefined) validateEnum(task_type, TASK_UPDATE_TYPES, 'task_type');
+    if (priority !== undefined) validateEnum(priority, TASK_PRIORITIES, 'priority');
+    if (status !== undefined) validateEnum(status, TASK_STATUSES, 'status');
+    if (due_date !== undefined && due_date) validateDateStr(due_date, 'due_date');
+    if (title !== undefined) validateStr(title, 'title', 200);
+    if (assigned_to !== undefined && assigned_to) requireInt(assigned_to, 'assigned_to');
+
     const now = localNow();
 
     const updates: string[] = [];
     const params: any[] = [];
 
-    if (title !== undefined) { updates.push('title = ?'); params.push(title.trim()); }
+    if (title !== undefined) { updates.push('title = ?'); params.push(String(title).trim()); }
     if (description !== undefined) { updates.push('description = ?'); params.push(description); }
     if (task_type !== undefined) { updates.push('task_type = ?'); params.push(task_type); }
     if (priority !== undefined) { updates.push('priority = ?'); params.push(priority); }
@@ -199,16 +226,16 @@ router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contr
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
-router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'Task not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' }); return; }
 
     db.prepare('DELETE FROM crm_tasks WHERE id = ?').run(id);
     auditLog(req, 'crm_task_deleted', 'crm_task', String(id), `Deleted task: ${existing.title}`);
@@ -216,7 +243,7 @@ router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (r
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -225,7 +252,7 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
   try {
     const db = getDb();
     const { clientId } = req.params;
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name
@@ -239,7 +266,7 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -247,7 +274,14 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
   try {
     const db = getDb();
     const { client_id, activity_type, subject, details } = req.body;
-    if (!client_id || !activity_type) { res.status(400).json({ error: 'client_id and activity_type required' }); return; }
+    // ── Validate activity inputs ──
+    const validClientId = requireInt(client_id, 'client_id');
+    if (!validClientId) { res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' }); return; }
+    const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'note', 'follow_up', 'task', 'proposal', 'contract', 'billing', 'other'] as const;
+    const validActType = validateEnum(activity_type, ACTIVITY_TYPES, 'activity_type');
+    if (!validActType) { res.status(400).json({ error: 'activity_type is required', code: 'ACTIVITYTYPE_IS_REQUIRED' }); return; }
+    validateStr(subject, 'subject', 500);
+    validateStr(details, 'details', 5000);
 
     const now = localNow();
     const result = db.prepare(`
@@ -268,7 +302,7 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
     res.json(activity);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -300,7 +334,7 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -323,12 +357,14 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
         AND contract_end <= ?
         AND contract_end >= date('now')
       ORDER BY contract_end ASC
+    
+      LIMIT 1000
     `).all(future);
 
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -353,7 +389,7 @@ router.get('/reports/revenue', requireRole('admin', 'manager', 'contract_manager
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -383,7 +419,7 @@ router.get('/reports/pipeline', requireRole('admin', 'manager', 'contract_manage
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -406,7 +442,7 @@ router.get('/reports/retention', requireRole('admin', 'manager', 'contract_manag
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -433,7 +469,7 @@ router.get('/reports/lead-source-roi', requireRole('admin', 'manager', 'contract
     res.json(result);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -479,7 +515,7 @@ router.get('/reports/metrics', requireRole('admin', 'manager', 'contract_manager
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'CRM operation failed', code: 'CRM_ERROR' });
   }
 });
 
@@ -517,7 +553,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

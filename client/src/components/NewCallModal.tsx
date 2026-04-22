@@ -11,6 +11,7 @@ import {
   DIRECTION_OPTIONS,
 } from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import { formatPhoneInput } from '../utils/formatters';
 import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
@@ -43,7 +44,7 @@ export const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: stri
   { value: 'P1', label: 'P1', color: 'border-red-500 text-red-400 bg-red-900/30', desc: 'Emergency' },
   { value: 'P2', label: 'P2', color: 'border-amber-500 text-amber-400 bg-amber-900/30', desc: 'Urgent' },
   { value: 'P3', label: 'P3', color: 'border-brand-500 text-brand-400 bg-brand-900/30', desc: 'Routine' },
-  { value: 'P4', label: 'P4', color: 'border-gray-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
+  { value: 'P4', label: 'P4', color: 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
 ];
 
 export const PSO_SERVICE_TYPES: { value: string; label: string }[] = [
@@ -92,6 +93,8 @@ const DEFAULT_FORM_DATA = {
   caller_relationship: '',
   caller_address: '',
   location: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
   property_id: '',
   client_id: '',
   description: '',
@@ -101,7 +104,7 @@ const DEFAULT_FORM_DATA = {
   location_floor: '',
   location_room: '',
   zone_beat: '',
-  section_id: '',
+  sector_id: '',
   zone_id: '',
   beat_id: '',
   weapons_involved: '',
@@ -271,6 +274,45 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const onCloseRef = useRef(handleClose);
   onCloseRef.current = handleClose;
 
+  // Body scroll lock — prevent background scrolling when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.top = `-${scrollY}px`;
+    }
+    return () => {
+      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.top = '';
+      if (scrollY > 0) window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
+
+  // Adjust modal height when iOS keyboard appears
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const handleResize = () => {
+      const keyboardHeight = window.innerHeight - vv.height;
+      const modalEl = document.querySelector('[data-modal-content]');
+      if (modalEl && keyboardHeight > 100) {
+        (modalEl as HTMLElement).style.maxHeight = `${vv.height * 0.7}px`;
+      } else if (modalEl) {
+        (modalEl as HTMLElement).style.maxHeight = '';
+      }
+    };
+
+    vv.addEventListener('resize', handleResize);
+    return () => vv.removeEventListener('resize', handleResize);
+  }, [isOpen]);
+
   // Focus trap — only re-run on open/close transitions
   useEffect(() => {
     if (!isOpen) return;
@@ -340,8 +382,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         num_victims: formData.num_victims ? Number(formData.num_victims) : undefined,
         damage_estimate: formData.damage_estimate ? Number(formData.damage_estimate) : undefined,
         status: formData.is_historical ? (formData.historical_status || 'closed') : 'pending',
-        assigned_units: [],
-        notes: [],
         ...historicalFields,
       } as any);
       // Only reset form on success (parent closes the modal)
@@ -360,14 +400,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} onClick={isSubmitting ? undefined : handleClose} style={{ touchAction: 'manipulation' }}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : handleClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" role="presentation" />
 
-      {/* Modal - Blocky */}
-      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+      {/* 78: Modal with deeper shadow for elevation */}
+      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">
@@ -379,8 +419,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               onClick={() => setMode(m => m === 'quick' ? 'full' : 'quick')}
               className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border transition-colors flex items-center gap-1"
               style={{
-                borderColor: mode === 'quick' ? '#d4a017' : '#3a5070',
-                color: mode === 'quick' ? '#d4a017' : '#8899aa',
+                borderColor: mode === 'quick' ? '#d4a017' : '#383838',
+                color: mode === 'quick' ? '#d4a017' : '#888888',
                 background: mode === 'quick' ? 'rgba(212,160,23,0.1)' : 'transparent',
               }}
             >
@@ -391,11 +431,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               )}
             </button>
           </div>
-          <button
+          {/* 79: Close button with rounded-sm and aria-label; 80: Disabled during submit */}
+          <button type="button"
             onClick={handleClose}
-            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors"
-          >
-            <X className="w-4 h-4" />
+            disabled={isSubmitting}
+            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
+            style={{ touchAction: 'manipulation' }}
+            aria-label="Close">
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
 
@@ -404,14 +447,15 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/30 border-b border-amber-700/30">
             <History className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Restored pending draft</span>
-            <button onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
+            <button type="button" onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
               Discard
             </button>
           </div>
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        {/* 81: Form with dark scrollbar; 82: Increased padding for readability */}
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70dvh] sm:max-h-[70vh] overflow-y-auto scrollbar-dark" data-modal-content>
           {/* Row 1: Type + Source */}
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div>
@@ -449,7 +493,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* PSO Client Request fields — visible in both modes when PSO type is selected */}
           {formData.incident_type === 'pso_client_request' && (
-            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#1a1525' }}>
+            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#181818' }}>
               <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
 
               {/* Client / Requestor dropdown — auto-fills name, phone, address */}
@@ -534,7 +578,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Phone</label>
-                  <input type="text" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', e.target.value)} />
+                  <input type="text" inputMode="tel" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Billing Code</label>
@@ -608,10 +652,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Phone</label>
               <input
                 type="text"
+                inputMode="tel"
                 className="input-dark"
                 placeholder="(801) 555-0000"
                 value={formData.caller_phone}
-                onChange={(e) => update('caller_phone', e.target.value)}
+                onChange={(e) => update('caller_phone', formatPhoneInput(e.target.value))}
               />
             </div>
             {mode === 'full' && (
@@ -670,7 +715,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   if (district) {
                     setFormData((prev) => ({
                       ...prev,
-                      section_id: district.section_id || prev.section_id,
+                      sector_id: district.sector_id || prev.sector_id,
                       zone_id: district.zone_id || prev.zone_id,
                       beat_id: district.beat_id || prev.beat_id,
                     }));
@@ -679,6 +724,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               }}
               required
             />
+            {/* Address validation hint — zip code check */}
+            {formData.location.length > 5 && (
+              <div className="flex items-center gap-1 mt-0.5 text-[9px]">
+                {/\b\d{5}(-\d{4})?\b/.test(formData.location)
+                  ? <span className="text-green-400">&#10003; Address includes zip code</span>
+                  : <span className="text-amber-400">&#9888; No zip code detected — consider adding one</span>}
+              </div>
+            )}
             {/* Premise History — auto-checks when address has 3+ chars */}
             <PremiseHistory address={formData.location} compact />
             {/* Duplicate Call Warning — flags active calls at same address */}
@@ -753,7 +806,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Section</label>
-              <select className="select-dark" value={formData.section_id} onChange={(e) => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+              <select className="select-dark" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                 <option value="">— Select —</option>
                 {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
               </select>
@@ -762,7 +815,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone</label>
               <select className="select-dark" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">— Select —</option>
-                {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
@@ -814,9 +867,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-rmpg-500 normal-case">(search records)</span></label>
               <input type="text" className="input-dark" placeholder="Type name to search records..." value={formData.subject_description} onChange={(e) => { update('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
               {showPersonDropdown && personSearchResults.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
+                <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                   {personSearchResults.map((p: any) => (
-                    <button key={p.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                    <button type="button" key={p.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                       const desc = `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').replace(/,\s*$/, '') + (p.dob ? ` DOB:${p.dob}` : '');
                       update('subject_description', desc);
                       setShowPersonDropdown(false);
@@ -833,9 +886,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-rmpg-500 normal-case">(search records)</span></label>
               <input type="text" className="input-dark" placeholder="Type plate/make/model to search..." value={formData.vehicle_description} onChange={(e) => { update('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
               {showVehicleDropdown && vehicleSearchResults.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
+                <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                   {vehicleSearchResults.map((v: any) => (
-                    <button key={v.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                    <button type="button" key={v.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                       const desc = [v.color, v.year, v.make, v.model].filter(Boolean).join(' ') + (v.plate_number ? ` PLT:${v.plate_number}` : '') + (v.plate_state ? `/${v.plate_state}` : '');
                       update('vehicle_description', desc);
                       setShowVehicleDropdown(false);
@@ -1013,7 +1066,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           </div>
 
           {/* Historical Entry Toggle */}
-          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? '#1a1520' : 'transparent' }}>
+          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? '#181818' : 'transparent' }}>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -1121,15 +1174,17 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="toolbar-btn">
+          {/* 83: Actions bar with sticky bottom positioning */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700 sticky bottom-0 bg-surface-base pb-1" style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0.25rem))' }}>
+            {/* 84: Cancel button with explicit aria-label */}
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="toolbar-btn" aria-label="Cancel and close">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting} className="toolbar-btn toolbar-btn-primary">
+            {/* 85: Submit button with disabled cursor-not-allowed */}
+            <button type="submit" disabled={isSubmitting} className="toolbar-btn toolbar-btn-primary disabled:cursor-not-allowed">
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
                   Saving...
                 </>
               ) : (

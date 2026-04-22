@@ -1,8 +1,11 @@
 {
   "name": "rmpg-flex",
-  "version": "5.5.0",
+  "version": "5.8.0",
   "description": "RMPG Flex - CAD/RMS for Rocky Mountain Protective Group",
   "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npx tsx watch src/index.ts",
@@ -34,16 +37,26 @@
     "release:major": "bash deploy/deploy-all.sh --bump major",
     "version:major": "node scripts/bump-version.cjs major",
     "version:minor": "node scripts/bump-version.cjs minor",
-    "version:patch": "node scripts/bump-version.cjs patch"
+    "version:patch": "node scripts/bump-version.cjs patch",
+    "lint": "cd client && npx tsc --noEmit",
+    "clean": "rm -rf client/dist server/dist desktop/dist",
+    "test": "cd client && npm test && cd ../server && npm test",
+    "health": "curl -sf https://rmpgutah.us/api/health",
+    "prepare": "husky"
   },
   "dependencies": {
-    "jspdf": "^4.2.0",
+    "groq-sdk": "^1.1.2",
+    "jspdf": "^4.2.1",
     "otpauth": "^9.5.0",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
-    "concurrently": "^8.2.2"
+    "concurrently": "^9.0.0",
+    "husky": "^9.1.7"
+  },
+  "overrides": {
+    "lodash": ">=4.18.0"
   }
 }

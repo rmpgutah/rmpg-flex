@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { loadGoogleMaps as loadGoogleMapsShared } from '../utils/googleMapsLoader';
+import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 
 // ── Parsed address components returned by onSelect ───────────
 export interface ParsedAddress {
@@ -79,17 +80,18 @@ function injectAutocompleteStyles() {
   style.id = AUTOCOMPLETE_STYLE_ID;
   style.textContent = `
     .pac-container {
-      background: #141e2b !important;
+      background: #141414 !important;
       border: 1px solid #404040 !important;
-      border-radius: 4px !important;
+      /* 69: Use 2px border-radius matching design system */
+      border-radius: 2px !important;
       box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
       font-family: 'Courier New', monospace !important;
       z-index: 99999 !important;
       margin-top: 2px !important;
     }
     .pac-item {
-      background: #141e2b !important;
-      border-top: 1px solid #1e3048 !important;
+      background: #141414 !important;
+      border-top: 1px solid #2b2b2b !important;
       color: #d1d5db !important;
       padding: 6px 10px !important;
       font-size: 11px !important;
@@ -100,7 +102,7 @@ function injectAutocompleteStyles() {
       border-top: none !important;
     }
     .pac-item:hover, .pac-item-selected {
-      background: #1a2636 !important;
+      background: #181818 !important;
     }
     .pac-item-query {
       color: #e5e7eb !important;
@@ -111,7 +113,7 @@ function injectAutocompleteStyles() {
       display: none !important;
     }
     .pac-matched {
-      color: #1a5a9e !important;
+      color: #888888 !important;
       font-weight: 900 !important;
     }
     .pac-item span:last-child {
@@ -148,20 +150,25 @@ export default function AddressAutocomplete({
 
   // Load Places library on mount
   useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setLoadError(true);
-      return;
-    }
+    let cancelled = false;
+    setLoadError(false);
 
-    loadGoogleMaps(apiKey)
-      .then(() => {
+    (async () => {
+      try {
+        const apiKey = await getGoogleMapsApiKey();
+        if (cancelled) return;
+        await loadGoogleMaps(apiKey);
+        if (cancelled) return;
         setPlacesLoaded(true);
         injectAutocompleteStyles();
-      })
-      .catch(() => {
-        setLoadError(true);
-      });
+      } catch {
+        if (!cancelled) setLoadError(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Initialize Autocomplete on the input element
@@ -259,10 +266,12 @@ export default function AddressAutocomplete({
         autoFocus={autoFocus}
         autoComplete="off"
       />
+      {/* 67: MapPin indicator with brand color when loaded; 68: aria-hidden on decorative icon */}
       {placesLoaded && (
         <MapPin
-          className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
-          style={{ width: 12, height: 12, color: '#505050' }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors"
+          style={{ width: 12, height: 12, color: value ? '#888888' : '#505050' }}
+          aria-hidden="true"
         />
       )}
     </div>

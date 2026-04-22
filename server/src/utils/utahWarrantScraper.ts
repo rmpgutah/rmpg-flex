@@ -35,7 +35,7 @@ let _lastRateLimitAt = 0;
 
 /** Get current scan delay based on rate-limit history */
 export function getAdaptiveScanDelay(): number {
-  const base = 5000; // 5 second base delay (was 3s — too aggressive)
+  const base = 8000; // 8 second base delay (was 5s — CloudFront WAF still blocking)
   if (_consecutiveRateLimits === 0) return base;
   // Exponential backoff: 5s → 10s → 20s → 40s, capped at 60s
   return Math.min(base * Math.pow(2, _consecutiveRateLimits), 60_000);
@@ -89,6 +89,19 @@ export interface UtahWarrantResult {
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Compute age from DOB (YYYY-MM-DD) using month/day precision, not just year. */
+export function computeAgeFromDob(dob: string, now: Date = new Date()): number | null {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  let age = now.getFullYear() - d.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < d.getMonth() ||
+    (now.getMonth() === d.getMonth() && now.getDate() < d.getDate());
+  if (beforeBirthday) age -= 1;
+  return age;
 }
 
 // Track if our IP is blocked by CloudFront WAF
@@ -402,7 +415,7 @@ export function getUtahWarrantSyncStatus(): {
 // ══════════════════════════════════════════════════════════════
 
 /** Base delay between person searches (adaptive backoff applies on top) */
-const SCAN_DELAY_MS = 5000;
+const SCAN_DELAY_MS = 8000; // 8 second base delay between warrant checks
 
 /** Generate a unique run ID for each scan */
 function generateRunId(): string {
@@ -531,18 +544,30 @@ async function _runWarrantWatchScanImpl(): Promise<{
 
           if (!nameMatch) continue;
 
-          // DOB verification — if both records have DOB, require match to reduce false positives
+          // DOB verification — STRICT tolerance per user policy (2026-04-14)
+          // If we have DOB on our side and Utah returns age, require exact age match.
+          // This reduces false positives at the cost of rejecting valid matches near
+          // the birthday boundary. Mitigation: missed matches surface on the next scan
+          // cycle after the person's birthday passes.
           if (person.dob && r.age != null) {
-            // Utah API returns age, not DOB directly. Verify age matches ±1 year
-            const personDob = new Date(person.dob);
-            if (!isNaN(personDob.getTime())) {
-              const now = new Date();
-              const expectedAge = now.getFullYear() - personDob.getFullYear();
-              const ageDiff = Math.abs(expectedAge - r.age);
-              if (ageDiff > 1) {
-                // Age mismatch by more than 1 year — likely a different person
-                continue;
-              }
+            const expectedAge = computeAgeFromDob(person.dob);
+            if (expectedAge !== null && expectedAge !== r.age) {
+              // Log potential match for analyst review (birthday-boundary cases often
+              // appear here). Don't insert the warrant, but emit a trackable event.
+              insertLog.run(
+                person.id,
+                `${person.first_name} ${person.last_name}`,
+                'potential_match',
+                r.utah_warrant_id,
+                r.utah_person_id,
+                r.court_name,
+                r.case_id,
+                r.charges,
+                r.issue_date,
+                runId,
+                now
+              );
+              continue;
             }
           }
 
@@ -581,10 +606,11 @@ async function _runWarrantWatchScanImpl(): Promise<{
           }
         }
 
-        // Adaptive throttle — slows down when 403s are detected
+        // Adaptive throttle with jitter — avoids CloudFront WAF pattern detection
         if (personsChecked < persons.length) {
-          const delay = Math.max(SCAN_DELAY_MS, getAdaptiveScanDelay());
-          await sleep(delay);
+          const baseDelay = Math.max(SCAN_DELAY_MS, getAdaptiveScanDelay());
+          const jitter = Math.floor(Math.random() * 4000); // 0-4s random jitter
+          await sleep(baseDelay + jitter);
         }
       } catch (err: any) {
         errors++;

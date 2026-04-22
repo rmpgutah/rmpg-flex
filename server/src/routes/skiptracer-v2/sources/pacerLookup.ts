@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Federal Court PACER Public Case Locator
+// Skip Tracker 3.5 — Federal Court PACER Public Case Locator
 // ============================================================
 // Searches the PACER Public Case Locator (free, no login)
 // for federal bankruptcy, civil, and criminal case records.

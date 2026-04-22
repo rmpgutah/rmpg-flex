@@ -23,7 +23,7 @@ interface SyncStatus {
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   citation: { label: 'CITATION', color: '#d4a017' },
-  fi_card: { label: 'FI CARD', color: '#3b82f6' },
+  fi_card: { label: 'FI CARD', color: '#888888' },
   evidence: { label: 'EVIDENCE', color: '#a855f7' },
   call: { label: 'CALL', color: '#22c55e' },
 };
@@ -103,27 +103,27 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
 
       {/* Panel */}
       <div
-        className="absolute bottom-full mb-1 z-[9999] bg-surface-base border border-rmpg-700 rounded shadow-lg"
+        className="absolute bottom-full mb-1 z-[9999] bg-[#141414] border border-[#2b2b2b] rounded-sm shadow-lg"
         style={{ width: 340, maxHeight: 300, left: 0 }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
           <span className="text-[11px] font-semibold tracking-wider text-[#8ba2b8] uppercase">
             Sync Queue
           </span>
           <div className="flex items-center gap-2">
             {failedItems.length > 0 && (
-              <button
+              <button type="button"
                 onClick={handleClearFailed}
-                className="px-2 py-0.5 text-[10px] font-medium bg-[#3b1111] text-[#ef4444] border border-[#5c1a1a] rounded hover:bg-[#4a1515] transition-colors"
+                className="px-2 py-0.5 text-[10px] font-medium bg-[#3b1111] text-[#ef4444] border border-[#5c1a1a] rounded-sm hover:bg-[#4a1515] transition-colors"
               >
                 CLEAR FAILED ({failedItems.length})
               </button>
             )}
-            <button
+            <button type="button"
               onClick={handleSyncNow}
               disabled={syncing || items.length === 0}
-              className="px-2 py-0.5 text-[10px] font-medium bg-[#0d2847] text-[#4a9eed] border border-brand-500 rounded hover:bg-[#133660] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-2 py-0.5 text-[10px] font-medium bg-[#232323] text-[#4a9eed] border border-[#888888] rounded-sm hover:bg-[#303030] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {syncing ? 'SYNCING...' : 'SYNC NOW'}
             </button>
@@ -137,9 +137,9 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
               No pending sync items
             </div>
           ) : (
-            <div className="divide-y divide-rmpg-700">
+            <div className="divide-y divide-[#2b2b2b]">
               {[...pendingItems, ...failedItems].map((item) => {
-                const typeInfo = TYPE_LABELS[item.type] || { label: item.type.toUpperCase(), color: '#8ba2b8' };
+                const typeInfo = TYPE_LABELS[item.type] || { label: (item.type || 'unknown').toUpperCase(), color: '#999999' };
                 const isFailed = item.status === 'failed';
 
                 return (
@@ -149,7 +149,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
                   >
                     {/* Type badge */}
                     <span
-                      className="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded tracking-wider flex-shrink-0"
+                      className="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded-sm tracking-wider flex-shrink-0"
                       style={{
                         color: typeInfo.color,
                         background: `${typeInfo.color}15`,

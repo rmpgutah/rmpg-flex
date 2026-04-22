@@ -22,8 +22,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { WifiOff, Navigation, RefreshCw, Signal } from 'lucide-react';
-import { OFFLINE_TILE_MIN_ZOOM, OFFLINE_TILE_MAX_ZOOM } from '../utils/googleMapsLoader';
+import { Navigation } from 'lucide-react';
 
 // SLC default center
 const DEFAULT_CENTER: L.LatLngExpression = [40.7608, -111.8910];
@@ -84,10 +83,10 @@ interface OfflineMapFallbackProps {
 const STATUS_COLORS: Record<string, string> = {
   available: '#22c55e',
   dispatched: '#f59e0b',
-  enroute: '#3b82f6',
+  enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
-  off_duty: '#6b7280',
+  off_duty: '#666666',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -102,8 +101,8 @@ const STATUS_LABELS: Record<string, string> = {
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#ef4444',
   P2: '#f59e0b',
-  P3: '#3b82f6',
-  P4: '#6b7280',
+  P3: '#888888',
+  P4: '#666666',
 };
 
 export default function OfflineMapFallback({
@@ -139,33 +138,12 @@ export default function OfflineMapFallback({
         100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
       }
       @keyframes rmpg-gps-glow {
-        0%, 100% { box-shadow: 0 0 4px #3b82f6, 0 0 8px #3b82f680; }
-        50%      { box-shadow: 0 0 8px #3b82f6, 0 0 16px #3b82f680; }
+        0%, 100% { box-shadow: 0 0 4px #888888, 0 0 8px #88888880; }
+        50%      { box-shadow: 0 0 8px #888888, 0 0 16px #88888880; }
       }
     `;
     document.head.appendChild(s);
   }, []);
-
-  // ── Auto-retry: try Google Maps every 30s + on `online` event ─
-  useEffect(() => {
-    if (!onRetry) return;
-
-    // Periodic retry
-    autoRetryRef.current = setInterval(() => {
-      if (!retrying) onRetry();
-    }, AUTO_RETRY_INTERVAL);
-
-    // Immediate retry when device comes back online
-    const onOnline = () => {
-      if (!retrying) onRetry();
-    };
-    window.addEventListener('online', onOnline);
-
-    return () => {
-      if (autoRetryRef.current) clearInterval(autoRetryRef.current);
-      window.removeEventListener('online', onOnline);
-    };
-  }, [onRetry, retrying]);
 
   // ── Initialize Leaflet map ──────────────────────────────────
   useEffect(() => {
@@ -174,8 +152,8 @@ export default function OfflineMapFallback({
     const map = L.map(containerRef.current, {
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
-      minZoom: OFFLINE_TILE_MIN_ZOOM,
-      maxZoom: OFFLINE_TILE_MAX_ZOOM,
+      minZoom: 3,
+      maxZoom: 20,
       zoomControl: false,
       attributionControl: false,
       // Touch: single-finger drag (critical for in-vehicle use)
@@ -187,13 +165,31 @@ export default function OfflineMapFallback({
       keyboard: true,
     });
 
-    // Add our pre-cached offline tile layer
-    L.tileLayer('/tiles/{z}/{x}/{y}.png', {
-      minZoom: OFFLINE_TILE_MIN_ZOOM,
-      maxZoom: OFFLINE_TILE_MAX_ZOOM,
-      tileSize: 256,
-      errorTileUrl: '', // Don't show broken image icons
+    // Primary: online CartoDB dark_matter tiles (free, no API key)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 20,
+      subdomains: 'abcd',
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
     }).addTo(map);
+
+    // Restore saved center/zoom from localStorage
+    try {
+      const sc = localStorage.getItem('rmpg_map_center');
+      const sz = localStorage.getItem('rmpg_map_zoom');
+      if (sc) {
+        const center = JSON.parse(sc);
+        map.setView([center.lat, center.lng], sz ? parseInt(sz, 10) : DEFAULT_ZOOM);
+      }
+    } catch { /* use defaults */ }
+
+    // Save center/zoom on move
+    map.on('moveend', () => {
+      try {
+        const c = map.getCenter();
+        localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
+        localStorage.setItem('rmpg_map_zoom', String(map.getZoom()));
+      } catch { /* quota */ }
+    });
 
     // Zoom control in bottom-right (out of the way of sidebar)
     if (!compact) {
@@ -202,6 +198,8 @@ export default function OfflineMapFallback({
 
     mapRef.current = map;
     firstPositionRef.current = false;
+    // Leaflet needs invalidateSize after DOM attachment to calculate dimensions
+    setTimeout(() => map.invalidateSize(), 100);
     setIsReady(true);
 
     return () => {
@@ -261,8 +259,8 @@ export default function OfflineMapFallback({
       if (selfPosition.accuracy && selfPosition.accuracy < 500) {
         selfAccuracyRef.current = L.circle(latlng, {
           radius: selfPosition.accuracy,
-          color: '#3b82f6',
-          fillColor: '#3b82f6',
+          color: '#888888',
+          fillColor: '#888888',
           fillOpacity: 0.08,
           weight: 1,
           opacity: 0.25,
@@ -282,7 +280,7 @@ export default function OfflineMapFallback({
               position:absolute;top:50%;left:50%;
               width:20px;height:20px;
               background:transparent;
-              border:2px solid #3b82f6;
+              border:2px solid #888888;
               border-radius:50%;
               animation:rmpg-pulse-ring 2s ease-out infinite;
               pointer-events:none;
@@ -293,7 +291,7 @@ export default function OfflineMapFallback({
               width:0;height:0;
               border-left:9px solid transparent;
               border-right:9px solid transparent;
-              border-bottom:24px solid rgba(59,130,246,0.5);
+              border-bottom:24px solid rgba(136, 136, 136,0.5);
               transform-origin:center bottom;
               transform:rotate(${headingDeg >= 0 ? headingDeg : 0}deg);
               margin-left:-9px;margin-top:-38px;
@@ -304,7 +302,7 @@ export default function OfflineMapFallback({
             <div style="
               position:absolute;top:50%;left:50%;
               width:14px;height:14px;
-              background:#3b82f6;
+              background:#888888;
               border:2.5px solid #fff;
               border-radius:50%;
               transform:translate(-50%,-50%);
@@ -350,7 +348,7 @@ export default function OfflineMapFallback({
     // Update or create unit markers
     for (const unit of unitPositions) {
       const latlng: L.LatLngExpression = [unit.lat, unit.lng];
-      const color = STATUS_COLORS[unit.status || ''] || '#6b7280';
+      const color = STATUS_COLORS[unit.status || ''] || '#666666';
       const label = STATUS_LABELS[unit.status || ''] || '???';
       const existing = unitMarkersRef.current.get(unit.call_sign);
 
@@ -382,7 +380,7 @@ export default function OfflineMapFallback({
               "></div>
               <div style="
                 background:rgba(6,12,20,0.92);
-                border:1px solid #1e3048;
+                border:1px solid #2b2b2b;
                 padding:1px 4px;
                 display:flex;align-items:center;gap:3px;
                 border-radius:2px;
@@ -434,7 +432,7 @@ export default function OfflineMapFallback({
     for (const call of activeCalls) {
       if (call.latitude == null || call.longitude == null) continue;
       const latlng: L.LatLngExpression = [call.latitude, call.longitude];
-      const color = PRIORITY_COLORS[call.priority] || '#6b7280';
+      const color = PRIORITY_COLORS[call.priority] || '#666666';
 
       if (!callMarkersRef.current.has(call.id)) {
         const icon = L.divIcon({
@@ -467,7 +465,7 @@ export default function OfflineMapFallback({
         marker.bindTooltip(
           `<div style="text-align:center;">
             <div style="font-weight:900;font-size:9px;">${call.call_number}</div>
-            <div style="font-size:8px;opacity:0.7;">${call.incident_type}</div>
+            <div style="font-size:8px;opacity:0.7;">${(call.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
             <div style="font-size:7px;opacity:0.5;margin-top:1px;">${call.location_address || ''}</div>
           </div>`,
           { direction: 'top', offset: [0, -4], className: 'leaflet-tooltip-dark' }
@@ -502,9 +500,9 @@ export default function OfflineMapFallback({
         className: 'rmpg-prop-marker',
         html: `<div style="
           width:10px;height:10px;border-radius:50%;
-          background:radial-gradient(circle at 35% 35%, #60a5fa, #1e3a5f);
+          background:radial-gradient(circle at 35% 35%, #a0a0a0, #363636);
           border:2px solid rgba(255,255,255,0.9);
-          box-shadow:0 0 6px rgba(59,130,246,0.6), 0 1px 3px rgba(0,0,0,0.4);
+          box-shadow:0 0 6px rgba(136, 136, 136,0.6), 0 1px 3px rgba(0,0,0,0.4);
         "></div>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7],
@@ -512,7 +510,7 @@ export default function OfflineMapFallback({
 
       const marker = L.marker([prop.lat, prop.lng], { icon, zIndexOffset: 200 }).addTo(map);
       const tooltipHtml = `<div style="text-align:center;">
-        <div style="font-weight:900;font-size:9px;color:#60a5fa;">${prop.name}</div>
+        <div style="font-weight:900;font-size:9px;color:#a0a0a0;">${prop.name}</div>
         ${prop.address ? `<div style="font-size:7px;opacity:0.7;">${prop.address}</div>` : ''}
         ${prop.client_name ? `<div style="font-size:7px;color:#d4a017;">Client: ${prop.client_name}</div>` : ''}
       </div>`;
@@ -536,63 +534,43 @@ export default function OfflineMapFallback({
   }
 
   return (
-    <div className={`relative w-full h-full ${className}`} style={{ background: '#060c14' }}>
+    <div role="application" aria-label="Offline map fallback" className={`relative w-full h-full ${className}`} style={{ background: '#0b0b0b' }}>
       {/* Leaflet map container */}
       <div ref={containerRef} className="absolute inset-0 z-0" />
 
-      {/* Offline mode badge */}
+      {/* Map status badge */}
       <div
         className="absolute top-3 left-3 z-[1000] flex items-center gap-2 px-3 py-2"
         style={{
-          background: 'rgba(6, 12, 20, 0.95)',
-          border: '1px solid #f59e0b40',
+          background: 'rgba(6, 12, 20, 0.90)',
+          border: '1px solid #22c55e40',
           borderRadius: 2,
-          backdropFilter: 'blur(4px)',
         }}
       >
-        <WifiOff style={{ width: 14, height: 14, color: '#f59e0b' }} />
+        <Navigation style={{ width: 14, height: 14, color: '#22c55e' }} />
         <div className="flex flex-col">
-          <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider font-mono leading-none">
-            OFFLINE MODE
+          <span className="text-[10px] text-green-400 font-bold uppercase tracking-wider font-mono leading-none">
+            LIVE MAP
           </span>
           <span className="text-[8px] text-rmpg-400 font-mono leading-none mt-0.5">
-            Cached tiles · Auto-retrying
+            OpenStreetMap · CartoDB Dark
           </span>
         </div>
-        {onRetry && (
-          <button
-            onClick={onRetry}
-            disabled={retrying}
-            className="ml-2 flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
-            style={{
-              background: retrying ? '#1e3048' : '#1a5a9e',
-              color: retrying ? '#5a6e80' : '#fff',
-              borderRadius: 2,
-            }}
-          >
-            {retrying ? (
-              <RefreshCw style={{ width: 10, height: 10 }} className="animate-spin" />
-            ) : (
-              <Signal style={{ width: 10, height: 10 }} />
-            )}
-            {retrying ? 'RETRYING...' : 'RETRY'}
-          </button>
-        )}
       </div>
 
       {/* Center on self button */}
       {selfPosition && !compact && (
-        <button
+        <button type="button"
           onClick={centerOnSelf}
-          className="absolute bottom-20 right-3 z-[1000] p-2 transition-colors hover:border-blue-500"
+          className="absolute bottom-20 right-3 z-[1000] p-2 transition-colors hover:border-[#d4a017]"
           style={{
             background: 'rgba(6, 12, 20, 0.95)',
-            border: '1px solid #2a3e58',
+            border: '1px solid #2a2a2a',
             borderRadius: 2,
           }}
           title="Center on your position"
         >
-          <Navigation style={{ width: 18, height: 18, color: '#3b82f6' }} />
+          <Navigation style={{ width: 18, height: 18, color: '#888888' }} />
         </button>
       )}
 
@@ -601,7 +579,7 @@ export default function OfflineMapFallback({
         className="absolute bottom-3 left-3 z-[1000] flex flex-col gap-1"
         style={{
           background: 'rgba(6, 12, 20, 0.92)',
-          border: '1px solid #1e3048',
+          border: '1px solid #2b2b2b',
           borderRadius: 2,
           padding: compact ? '3px 6px' : '4px 8px',
         }}
@@ -631,13 +609,13 @@ export default function OfflineMapFallback({
                 <span
                   style={{
                     width: 6, height: 6, borderRadius: '50%',
-                    background: STATUS_COLORS[status] || '#6b7280',
+                    background: STATUS_COLORS[status] || '#666666',
                     display: 'inline-block',
                   }}
                 />
                 <span style={{
                   fontSize: 7, fontFamily: "'JetBrains Mono', monospace",
-                  fontWeight: 700, color: STATUS_COLORS[status] || '#6b7280',
+                  fontWeight: 700, color: STATUS_COLORS[status] || '#666666',
                 }}>
                   {count} {STATUS_LABELS[status] || status.toUpperCase()}
                 </span>
@@ -651,7 +629,7 @@ export default function OfflineMapFallback({
       <style>{`
         .leaflet-tooltip-dark {
           background: rgba(6, 12, 20, 0.95) !important;
-          border: 1px solid #2a3e58 !important;
+          border: 1px solid #2a2a2a !important;
           color: #fff !important;
           font-family: 'JetBrains Mono', monospace !important;
           font-size: 9px !important;
@@ -676,7 +654,7 @@ export default function OfflineMapFallback({
         /* Dark theme for Leaflet zoom controls */
         .leaflet-control-zoom a {
           background: rgba(6, 12, 20, 0.95) !important;
-          border-color: #2a3e58 !important;
+          border-color: #2a2a2a !important;
           color: #b0bcc8 !important;
           width: 30px !important;
           height: 30px !important;
@@ -684,7 +662,7 @@ export default function OfflineMapFallback({
           font-size: 16px !important;
         }
         .leaflet-control-zoom a:hover {
-          background: #1e3048 !important;
+          background: #2b2b2b !important;
           color: #fff !important;
         }
         /* Hide Leaflet's default tile error styling */
@@ -693,7 +671,7 @@ export default function OfflineMapFallback({
         }
         /* Match background to our theme */
         .leaflet-container {
-          background: #060c14 !important;
+          background: #0b0b0b !important;
           font-family: 'JetBrains Mono', monospace !important;
         }
         /* Touch-friendly: prevent 300ms click delay on mobile */

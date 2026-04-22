@@ -22,7 +22,7 @@ const DEFAULT_PSO_DATA = {
   location: '',
   latitude: null as number | null,
   longitude: null as number | null,
-  section_id: '',
+  sector_id: '',
   zone_id: '',
   beat_id: '',
   pso_requestor_name: '',
@@ -116,11 +116,11 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-purple-700/50 shadow-2xl animate-fade-in">
+      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-purple-700/50 shadow-md animate-fade-in">
         {/* Header — purple PSO theme */}
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-purple-700/50"
-          style={{ background: 'linear-gradient(180deg, #2d1b69 0%, #1a1525 100%)' }}
+          style={{ background: 'linear-gradient(180deg, #292929 0%, #181818 100%)' }}
         >
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-purple-300" />
@@ -128,10 +128,10 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               Quick PSO Client Request
             </h2>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors"
-          >
+            aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -212,7 +212,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
           {/* Location */}
           <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address</label>
+            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address *</label>
             <AddressAutocomplete
               className="input-dark"
               placeholder="123 Main St, Salt Lake City, UT"
@@ -226,7 +226,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                   if (district) {
                     setFormData((prev) => ({
                       ...prev,
-                      section_id: district.section_id || prev.section_id,
+                      sector_id: district.sector_id || prev.sector_id,
                       zone_id: district.zone_id || prev.zone_id,
                       beat_id: district.beat_id || prev.beat_id,
                     }));
@@ -379,8 +379,8 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 style={{
                   background: isSubmitting ? '#4a4a4a' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
                   borderColor: '#7c3aed',
-                  borderBottomColor: '#3b0764',
-                  borderRightColor: '#3b0764',
+                  borderBottomColor: '#212121',
+                  borderRightColor: '#212121',
                   color: '#ffffff',
                   opacity: !formData.location ? 0.5 : 1,
                 }}

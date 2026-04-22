@@ -10,6 +10,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
 import LoginHistoryTable from '../../components/security/LoginHistoryTable';
 import { useToast } from '../../components/ToastProvider';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 
 interface Session {
   id: number;
@@ -40,6 +41,20 @@ interface Props {
   error: string | null;
   setError: (e: string | null) => void;
 }
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Props) {
   const { addToast } = useToast();
@@ -77,90 +92,114 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
   const inactiveSessions = sessions.filter(s => !s.is_active || isExpired(s.expires_at));
 
   return (
-    <div className="p-4">
-      {/* Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-        <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-green-400">{activeSessions.length}</div>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Active Sessions</div>
-        </div>
-        <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-rmpg-400">{inactiveSessions.length}</div>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Inactive/Expired</div>
-        </div>
-        <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-blue-400">
-            {new Set(activeSessions.map(s => s.user_id)).size}
+    <div className="p-4 space-y-4">
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" role="group" aria-label="Session statistics">
+        <div className="panel-beveled p-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-green-900/30 border border-green-700/40 shrink-0" aria-hidden="true">
+            <Shield style={{ width: 14, height: 14 }} className="text-green-400" />
           </div>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Unique Users Online</div>
+          <div>
+            <div className="text-[18px] font-black text-green-400 tabular-nums leading-tight">{activeSessions.length}</div>
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Active Sessions</div>
+          </div>
+        </div>
+        <div className="panel-beveled p-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-rmpg-800/50 border border-rmpg-600/40 shrink-0" aria-hidden="true">
+            <Globe style={{ width: 14, height: 14 }} className="text-rmpg-400" />
+          </div>
+          <div>
+            <div className="text-[18px] font-black text-rmpg-400 tabular-nums leading-tight">{inactiveSessions.length}</div>
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Inactive / Expired</div>
+          </div>
+        </div>
+        <div className="panel-beveled p-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-gray-900/30 border border-gray-700/40 shrink-0" aria-hidden="true">
+            <Monitor style={{ width: 14, height: 14 }} className="text-gray-400" />
+          </div>
+          <div>
+            <div className="text-[18px] font-black text-gray-400 tabular-nums leading-tight">
+              {new Set(activeSessions.map(s => s.user_id)).size}
+            </div>
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Unique Users Online</div>
+          </div>
         </div>
       </div>
 
       {/* Active Sessions Table */}
-      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-2">
-        <Shield style={{ width: 10, height: 10 }} />
-        Active Sessions ({activeSessions.length})
-        <button onClick={fetchSessions} className="ml-auto text-rmpg-500 hover:text-white">
-          <RefreshCw style={{ width: 10, height: 10 }} />
+      <div className="flex items-center gap-2 mb-2 border-b border-[#242424] pb-1.5">
+        <Shield style={{ width: 11, height: 11 }} className="text-green-400" aria-hidden="true" />
+        <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Active Sessions ({activeSessions.length})</span>
+        <button type="button" onClick={fetchSessions} className="ml-auto p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised/50 transition-colors" aria-label="Refresh sessions">
+          <RefreshCw style={{ width: 11, height: 11 }} />
         </button>
       </div>
-      <table className="w-full text-[10px] mb-6">
+      <table className="w-full text-[10px] mb-6" aria-label="Active sessions">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider bg-[var(--grid-header-bg)]">
-            <th className="text-left px-3 py-1.5 font-bold">User</th>
-            <th className="text-left px-3 py-1.5 font-bold">Role</th>
-            <th className="text-left px-3 py-1.5 font-bold">Device</th>
-            <th className="text-left px-3 py-1.5 font-bold">IP Address</th>
-            <th className="text-left px-3 py-1.5 font-bold">Last Active</th>
-            <th className="text-left px-3 py-1.5 font-bold">Expires</th>
-            <th className="text-right px-3 py-1.5 font-bold">Actions</th>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-[#242424]" style={{ background: '#050505' }}>
+            <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">User</th>
+            <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Role</th>
+            <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Device</th>
+            <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">IP Address</th>
+            <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Last Active</th>
+            <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Expires</th>
+            <th className="text-right px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {activeSessions.map(s => {
+          {activeSessions.map((s, idx) => {
             const { device, icon: DeviceIcon } = parseUserAgent(s.user_agent);
             return (
-              <tr key={s.id} className="border-b border-rmpg-800/30 hover:bg-white/[0.02]">
+              <tr key={s.id} className={`border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors ${idx % 2 !== 0 ? 'bg-rmpg-800/10' : ''}`}>
                 <td className="px-3 py-2">
                   <span className="font-semibold text-white">{s.full_name}</span>
                   <span className="text-rmpg-500 ml-1">({s.username})</span>
                 </td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(s.role)}</td>
-                <td className="px-3 py-2 text-rmpg-400 flex items-center gap-1">
-                  <DeviceIcon style={{ width: 10, height: 10 }} />
-                  {device}
-                </td>
-                <td className="px-3 py-2 text-rmpg-400 font-mono">{s.ip_address || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">
+                  <span className="flex items-center gap-1">
+                    <DeviceIcon style={{ width: 10, height: 10 }} aria-hidden="true" />
+                    {device}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-rmpg-400 font-mono tabular-nums">{s.ip_address || '—'}</td>
+                <td className="px-3 py-2 text-rmpg-400 tabular-nums">
                   {s.last_used_at ? new Date(s.last_used_at).toLocaleString() : '—'}
                 </td>
-                <td className="px-3 py-2 text-rmpg-400">
-                  {new Date(s.expires_at).toLocaleString()}
+                <td className="px-3 py-2 text-rmpg-400 tabular-nums">
+                  {safeDateTimeStr(s.expires_at)}
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <button
+                  <button type="button"
                     onClick={() => handleRevoke(s.id)}
-                    className="text-rmpg-500 hover:text-red-400 transition-colors"
+                    className="p-1.5 text-rmpg-500 hover:text-red-400 hover:bg-red-900/25 transition-all duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/50"
                     title="Revoke session"
+                    aria-label={`Revoke session for ${s.full_name}`}
                   >
-                    <Trash2 style={{ width: 10, height: 10 }} />
+                    <Trash2 style={{ width: 11, height: 11 }} />
                   </button>
                 </td>
               </tr>
             );
           })}
           {activeSessions.length === 0 && (
-            <tr><td colSpan={7} className="px-3 py-6 text-center text-rmpg-500">No active sessions</td></tr>
+            <tr><td colSpan={7} className="px-3 py-10 text-center text-rmpg-500">
+              <div className="flex flex-col items-center gap-2">
+                <Shield className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[11px] text-rmpg-500">No active sessions</span>
+                <span className="text-[9px] text-rmpg-600">All user sessions have expired or been revoked</span>
+              </div>
+            </td></tr>
           )}
         </tbody>
       </table>
 
       {/* Login History */}
-      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-2">
-        <History style={{ width: 10, height: 10 }} />
-        Recent Login History
+      <div className="flex items-center gap-2 mb-2 border-b border-[#242424] pb-1.5">
+        <History style={{ width: 11, height: 11 }} className="text-gray-400" aria-hidden="true" />
+        <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Recent Login History</span>
       </div>
-      <div className="panel-beveled mb-4">
+      <div className="panel-surface mb-4">
         <LoginHistoryTable />
       </div>
     </div>

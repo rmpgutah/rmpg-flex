@@ -44,9 +44,23 @@ function calcHours(entry: TimeEntry): string {
 function leftBarColor(status: string): string {
   if (status === 'clocked_in') return 'border-l-green-500';
   if (status === 'on_break') return 'border-l-amber-500';
-  if (status === 'edited') return 'border-l-blue-500';
+  if (status === 'edited') return 'border-l-gray-500';
   return 'border-l-rmpg-500';
 }
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function TimeLogDetailTab({
   timeEntries, officerId, isClockedIn, isOnBreak,
@@ -77,22 +91,22 @@ export default function TimeLogDetailTab({
           {isActive ? (
             <>
               {isClockedIn && (
-                <button
+                <button type="button"
                   onClick={() => onStartBreak(officerId)}
-                  className="toolbar-btn flex items-center gap-1.5 text-blue-400 border-blue-700/50 hover:bg-blue-900/40"
+                  className="toolbar-btn flex items-center gap-1.5 text-gray-400 border-gray-700/50 hover:bg-gray-900/40"
                 >
                   <Coffee className="w-3 h-3" /> Start Break
                 </button>
               )}
               {isOnBreak && (
-                <button
+                <button type="button"
                   onClick={() => onEndBreak(officerId)}
                   className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
                 >
                   <Zap className="w-3 h-3" /> End Break
                 </button>
               )}
-              <button
+              <button type="button"
                 onClick={() => onClockOut(officerId)}
                 className="toolbar-btn toolbar-btn-danger flex items-center gap-1.5"
               >
@@ -100,7 +114,7 @@ export default function TimeLogDetailTab({
               </button>
             </>
           ) : (
-            <button
+            <button type="button"
               onClick={() => onClockIn(officerId)}
               className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
             >
@@ -120,7 +134,7 @@ export default function TimeLogDetailTab({
           <p className="text-lg font-bold text-brand-400 font-mono">{totalHours.toFixed(1)}</p>
           <p className="field-label">Hours</p>
         </div>
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500">
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-gray-500">
           <p className="text-lg font-bold text-rmpg-100 font-mono">{avgPerEntry.toFixed(1)}</p>
           <p className="field-label">Avg/Entry</p>
         </div>
@@ -192,7 +206,7 @@ export default function TimeLogDetailTab({
                         </span>
                       )}
                       {entry.status === 'edited' && (
-                        <span className="text-[8px] px-1 py-0.5 bg-blue-900/40 text-blue-400 border border-blue-700/50 font-bold uppercase">
+                        <span className="text-[8px] px-1 py-0.5 bg-gray-900/40 text-gray-400 border border-gray-700/50 font-bold uppercase">
                           Edited
                         </span>
                       )}
@@ -204,14 +218,14 @@ export default function TimeLogDetailTab({
                     <div className="text-right">
                       <p className="text-sm font-mono font-bold text-rmpg-100">{hours}h</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => onEditTimeEntry(entry)}
                       className="toolbar-btn p-1"
                       title="Edit time entry"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => setDeleteTarget(entry.id)}
                       className="toolbar-btn toolbar-btn-danger p-1"
                       title="Delete time entry"

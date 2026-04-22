@@ -77,13 +77,13 @@ const ENTITY_CONFIG = {
     icon: Building2,
     label: 'Properties',
     route: '/records',
-    color: 'text-blue-400',
+    color: 'text-gray-400',
   },
   personnel: {
     icon: Users,
     label: 'Personnel',
     route: '/personnel',
-    color: 'text-cyan-400',
+    color: 'text-gray-400',
   },
 };
 
@@ -98,7 +98,7 @@ export const GlobalSearch: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const navigate = useNavigate();
 
   // Load recent searches from localStorage
@@ -340,9 +340,14 @@ export const GlobalSearch: React.FC = () => {
     <div
       className="fixed inset-0 z-[9999] flex items-start justify-center pt-[20vh] bg-black/70 backdrop-blur-sm"
       onClick={handleClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Global search"
+      style={{ touchAction: 'manipulation' }}
     >
       <div
-        className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[60vh] flex flex-col"
+        className="bg-surface-base border border-rmpg-600 shadow-md w-full max-w-2xl max-h-[60vh] flex flex-col animate-scale-in"
+        style={{ borderTop: '2px solid #888888' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input */}
@@ -359,15 +364,17 @@ export const GlobalSearch: React.FC = () => {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Search persons, vehicles, incidents, warrants, personnel..."
-            className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+            aria-label="Search all records"
+            autoComplete="off"
+            className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 outline-none"
           />
           <div className="flex items-center gap-2 text-xs text-rmpg-400">
             <kbd className="px-2 py-1 bg-rmpg-700 border border-rmpg-600">
               <Command className="w-3 h-3 inline" />
               K
             </kbd>
-            <button onClick={handleClose} className="hover:text-rmpg-200">
-              <X className="w-4 h-4" />
+            <button type="button" onClick={handleClose} className="p-2 sm:p-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-rmpg-200 transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close" title="Close search">
+              <X className="w-5 h-5 sm:w-4 sm:h-4" />
             </button>
           </div>
         </div>
@@ -441,10 +448,10 @@ const ResultItem: React.FC<ResultItemProps> = ({ result, isSelected, onClick }) 
   const Icon = config.icon;
 
   return (
-    <button
+    <button type="button"
       className={`
         w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors
-        ${isSelected ? 'bg-rmpg-700' : 'hover:bg-rmpg-800'}
+        ${isSelected ? 'bg-brand-900/25 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800 border-l-2 border-l-transparent'}
       `}
       onClick={onClick}
     >

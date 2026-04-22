@@ -69,6 +69,9 @@ export default function FleetPersonnelTab({
     loadUnits();
   }, []);
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Personnel \u2014 RMPG Flex'; }, []);
+
   if (loading || !personnelData) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -115,11 +118,11 @@ export default function FleetPersonnelTab({
 
       {/* ─── A) CURRENT ASSIGNMENT BANNER ─── */}
       {isAssigned ? (
-        <div className="panel-beveled p-3  bg-surface-sunken">
+        <div className="panel-beveled p-3 bg-surface-sunken">
           <div className="flex items-center gap-3">
             {/* Avatar */}
             <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-brand-500/50 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #1a2a3a, #0a1520)' }}>
+              style={{ background: 'linear-gradient(135deg, #272727, #131313)' }}>
               <span className="text-sm font-bold font-mono text-brand-400">{getInitials(officer?.full_name)}</span>
             </div>
 
@@ -164,16 +167,16 @@ export default function FleetPersonnelTab({
 
             {/* Actions */}
             <div className="flex items-center gap-1.5">
-              <button className="toolbar-btn text-[9px]" onClick={() => setShowAssignPanel(!showAssignPanel)}>
+              <button type="button" className="toolbar-btn text-[9px]" onClick={() => setShowAssignPanel(!showAssignPanel)}>
                 <UserPlus className="w-3 h-3" /> Reassign
               </button>
-              <button
+              <button type="button"
                 className="toolbar-btn text-[9px] text-red-400 hover:text-red-300"
                 onClick={() => setConfirmUnassign(true)}
               >
                 <UserMinus className="w-3 h-3" /> Unassign
               </button>
-              <button className="toolbar-btn text-[9px]" onClick={onRefresh}>
+              <button type="button" className="toolbar-btn text-[9px]" onClick={onRefresh}>
                 <RefreshCw className="w-3 h-3" />
               </button>
             </div>
@@ -184,8 +187,8 @@ export default function FleetPersonnelTab({
             <div className="mt-2 p-2 bg-red-900/20 border border-red-700/30 flex items-center justify-between">
               <span className="text-[10px] text-red-400">Remove {officer?.full_name} from this vehicle?</span>
               <div className="flex gap-1.5">
-                <button className="toolbar-btn text-[9px]" onClick={() => setConfirmUnassign(false)}>Cancel</button>
-                <button className="toolbar-btn text-[9px] bg-red-900/50 text-red-400 border-red-700/40" onClick={handleUnassign}>
+                <button type="button" className="toolbar-btn text-[9px]" onClick={() => setConfirmUnassign(false)}>Cancel</button>
+                <button type="button" className="toolbar-btn text-[9px] bg-red-900/50 text-red-400 border-red-700/40" onClick={handleUnassign}>
                   Confirm Unassign
                 </button>
               </div>
@@ -194,14 +197,14 @@ export default function FleetPersonnelTab({
         </div>
       ) : (
         <div className="text-center py-8 panel-beveled bg-surface-base">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center  bg-surface-sunken">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
             <Users className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-[11px] text-rmpg-400 font-semibold">No Officer Assigned</p>
           <p className="text-[9px] text-rmpg-600 mt-1 max-w-[260px] mx-auto">
             This vehicle is not currently assigned to any unit or officer. Assign an officer to track personnel data.
           </p>
-          <button className="toolbar-btn toolbar-btn-primary mt-3" onClick={() => setShowAssignPanel(true)}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary mt-3" onClick={() => setShowAssignPanel(true)}>
             <UserPlus className="w-3 h-3" /> Assign Officer
           </button>
         </div>
@@ -209,13 +212,13 @@ export default function FleetPersonnelTab({
 
       {/* ─── ASSIGN PANEL ─── */}
       {showAssignPanel && (
-        <div className="panel-beveled p-3  bg-surface-sunken">
+        <div className="panel-beveled p-3 bg-surface-sunken">
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <UserPlus className="w-3 h-3" /> {isAssigned ? 'Reassign Vehicle' : 'Assign Vehicle to Unit'}
           </h4>
           <div className="flex items-center gap-2">
             <select
-              className="select-dark flex-1 text-[11px]"
+              className="select-dark flex-1 text-[11px] min-h-[36px]"
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}
             >
@@ -226,14 +229,14 @@ export default function FleetPersonnelTab({
                 </option>
               ))}
             </select>
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary text-[9px]"
               disabled={!selectedUnitId}
               onClick={handleAssign}
             >
               Assign
             </button>
-            <button className="toolbar-btn text-[9px]" onClick={() => { setShowAssignPanel(false); setSelectedUnitId(''); }}>
+            <button type="button" className="toolbar-btn text-[9px]" onClick={() => { setShowAssignPanel(false); setSelectedUnitId(''); }}>
               Cancel
             </button>
           </div>
@@ -281,8 +284,8 @@ export default function FleetPersonnelTab({
                 <div className="space-y-1">
                   {todaySchedule.map((s) => (
                     <div key={s.id} className="flex items-center gap-2 p-1.5 bg-surface-sunken border border-rmpg-700">
-                      <Clock className="w-3 h-3 text-cyan-400" />
-                      <span className="text-[10px] font-mono text-cyan-400">{s.start_time} - {s.end_time}</span>
+                      <Clock className="w-3 h-3 text-gray-400" />
+                      <span className="text-[10px] font-mono text-gray-400">{s.start_time} - {s.end_time}</span>
                       {s.property_name && (
                         <span className="text-[9px] text-rmpg-400 flex items-center gap-0.5">
                           <MapPin className="w-2.5 h-2.5" />{s.property_name}
@@ -330,7 +333,7 @@ export default function FleetPersonnelTab({
       {/* ─── C) CREDENTIALS ─── */}
       {isAssigned && officer && (
         <div className="panel-beveled bg-surface-base">
-          <div className="px-3 py-1.5 border-b border-rmpg-700 flex items-center justify-between  bg-surface-sunken">
+          <div className="px-3 py-1.5 border-b border-rmpg-700 flex items-center justify-between bg-surface-sunken">
             <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
               <Shield className="w-3 h-3" /> Credentials & Certifications
               {credentials.some(c => c.status === 'expired') && (
@@ -346,12 +349,12 @@ export default function FleetPersonnelTab({
           {officer.dl_number && (
             <div className="px-3 py-2 border-b border-rmpg-700">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded flex items-center justify-center bg-cyan-900/20 border border-cyan-700/40">
-                  <FileText className="w-4 h-4 text-cyan-400" />
+                <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
+                  <FileText className="w-4 h-4 text-gray-400" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-cyan-400">DRIVER'S LICENSE</span>
+                    <span className="text-[10px] font-bold text-gray-400">DRIVER'S LICENSE</span>
                     <span className="text-[10px] font-mono text-rmpg-300">{officer.dl_state} {officer.dl_number}</span>
                     {dlDays != null && (
                       <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${
@@ -415,7 +418,7 @@ export default function FleetPersonnelTab({
 
       {/* ─── D) NOTES ─── */}
       <div className="panel-beveled bg-surface-base">
-        <div className="px-3 py-1.5 border-b border-rmpg-700  bg-surface-sunken">
+        <div className="px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken">
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
             <FileText className="w-3 h-3" /> Vehicle Personnel Notes ({notes.length})
           </h4>
@@ -425,13 +428,13 @@ export default function FleetPersonnelTab({
         <div className="px-3 py-2 border-b border-rmpg-700">
           <div className="flex gap-2">
             <textarea
-              className="input-dark flex-1 text-[10px] h-14 resize-none"
+              className="input-dark flex-1 text-[10px] h-14 resize-none min-h-[36px]"
               placeholder="Add a note about this vehicle's personnel..."
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddNote(); } }}
             />
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary self-end text-[9px]"
               disabled={!noteText.trim()}
               onClick={handleAddNote}
@@ -460,7 +463,7 @@ export default function FleetPersonnelTab({
                   </div>
                   <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note}</p>
                 </div>
-                <button
+                <button type="button"
                   className="flex-shrink-0 p-1 text-rmpg-600 hover:text-red-400 transition-colors"
                   onClick={() => onDeleteNote(n.id)}
                   title="Delete note"
@@ -475,7 +478,7 @@ export default function FleetPersonnelTab({
 
       {/* ─── E) ASSIGNMENT HISTORY ─── */}
       <div className="panel-beveled bg-surface-base">
-        <div className="px-3 py-1.5 border-b border-rmpg-700  bg-surface-sunken">
+        <div className="px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken">
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Clock className="w-3 h-3" /> Assignment History ({assignments.length})
           </h4>
@@ -488,7 +491,7 @@ export default function FleetPersonnelTab({
         ) : (
           <div className="p-3">
             <div className="relative">
-              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #1a5a9e40, #162236)' }} />
+              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #88888840, #242424)' }} />
               <div className="space-y-1.5">
                 {assignments.slice(0, 10).map((a) => {
                   const isActive = !a.unassigned_at;

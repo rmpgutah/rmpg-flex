@@ -52,11 +52,12 @@ function safeSend(ws: WebSocket, data: string): boolean {
   return false;
 }
 
-// Authentication timeout — disconnect clients that don't authenticate within 3 seconds
-const AUTH_TIMEOUT_MS = 3_000;
+// Authentication timeout — disconnect clients that don't authenticate within 8 seconds
+// Increased from 3s to accommodate field officers on slow cellular networks
+const AUTH_TIMEOUT_MS = 8_000;
 
 // All channels every authenticated client auto-subscribes to
-const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email'];
+const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email', 'serve', 'scraper_events'];
 
 // ─── Radio State ────────────────────────────────────────────
 // Tracks which radio channel each client is on, and who is
@@ -142,7 +143,11 @@ setInterval(() => {
     const timer = audioBufferTimers.get(key);
     if (timer) { clearTimeout(timer); audioBufferTimers.delete(key); }
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
+
+// NOTE: Session revalidation (disconnect revoked sessions, deactivated accounts,
+// role changes) is handled inside initWebSocket() to avoid duplicate timers
+// and to ensure it only runs after the WS server is initialized.
 
 /** Directory where radio recordings are saved */
 const RADIO_UPLOAD_DIR = path.resolve(__ws_dirname, '../../uploads/radio');
@@ -187,23 +192,40 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     maxPayload: 1 * 1024 * 1024, // 1 MB — prevents oversized frame DoS
   });
 
-  // Periodic session re-validation — disconnects clients whose session was revoked
+  // Periodic session re-validation — disconnects clients whose session was revoked,
+  // account was deactivated, or role was changed
   const revalidationTimer = setInterval(() => {
     for (const [clientId, client] of clients) {
       if (!client.authenticated || !client.userId) continue;
       try {
         const db = database.getDb();
+
+        // Check if user still has at least one active session
+        const activeSession = db.prepare(
+          'SELECT 1 FROM sessions WHERE user_id = ? AND is_active = 1 LIMIT 1'
+        ).get(client.userId);
+        if (!activeSession) {
+          safeSend(client.ws, JSON.stringify({ type: 'session_revoked', message: 'Your session has been terminated' }));
+          client.ws.close(4003, 'Session revoked');
+          // Do NOT delete from clients here — the 'close' event handler performs
+          // the decrement of userConnectionCounts and full cleanup. Deleting early
+          // causes clients.get(clientId) to return undefined in the close handler,
+          // skipping the decrement and permanently drifting the counter upward,
+          // which eventually locks the officer out with "Too many active connections".
+          continue;
+        }
+
         // Check if user account is still active and role hasn't changed
         const user = db.prepare('SELECT status, role FROM users WHERE id = ?').get(client.userId) as { status: string; role: string } | undefined;
         if (!user || user.status !== 'active') {
           safeSend(client.ws, JSON.stringify({ type: 'error', code: 'SESSION_REVOKED', message: 'Account deactivated' }));
           client.ws.close(4002, 'Account deactivated');
-          clients.delete(clientId);
+          // Let the 'close' event handler do the cleanup and counter decrement
         } else if (client.role && user.role !== client.role) {
           // Role changed — force reconnection so client picks up new permissions
           safeSend(client.ws, JSON.stringify({ type: 'error', code: 'ROLE_CHANGED', message: 'Your role has been updated. Please refresh.' }));
           client.ws.close(4003, 'Role changed');
-          clients.delete(clientId);
+          // Let the 'close' event handler do the cleanup and counter decrement
         }
       } catch { /* DB unavailable — leave connection intact until next check */ }
     }
@@ -244,21 +266,36 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     };
     clients.set(clientId, client);
 
-    // Try to authenticate from URL query parameter (token in ?token=...)
-    // NOTE: URL tokens are less secure than header-based auth (visible in logs/history)
-    // Kept for backward compatibility — clients should migrate to message-based auth
-    // SECURITY: URL tokens are logged in server access logs and browser history
+    // URL token auth — DEPRECATED and disabled in production after 2026-04-15
+    // URL tokens are visible in server access logs and browser history, making them
+    // vulnerable to log exfiltration attacks. Use message-based auth instead.
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
+      const isProductionMode = process.env.NODE_ENV === 'production';
+      const pastDeadline = Date.now() >= new Date('2026-04-15T07:00:00Z').getTime(); // 00:00 Mountain Time (UTC-7)
+      if (isProductionMode && pastDeadline) {
+        console.warn(`[WS] Rejected URL token auth (deprecated) from ${clientIp}`);
+        safeSend(ws, JSON.stringify({
+          type: 'error',
+          code: 'URL_TOKEN_REJECTED',
+          message: 'URL token authentication has been removed. Update your client.',
+        }));
+        // Decrement IP counter before early return — close handler isn't registered yet
+        const cnt = ipConnectionCounts.get(clientIp) || 1;
+        if (cnt <= 1) ipConnectionCounts.delete(clientIp);
+        else ipConnectionCounts.set(clientIp, cnt - 1);
+        clients.delete(clientId);
+        ws.close(4010, 'URL token auth removed');
+        return;
+      }
       const token = decodeURIComponent(tokenMatch[1]);
       console.warn(`[WS] Client authenticating via URL token (deprecated) from ${clientIp}`);
       authenticateClient(client, token);
-      // Notify client to migrate away from URL token auth
       safeSend(ws, JSON.stringify({
         type: 'warning',
         code: 'URL_TOKEN_DEPRECATED',
-        message: 'URL token authentication is deprecated. Use message-based auth instead.',
+        message: 'URL token authentication is deprecated and will be removed on 2026-04-15. Use message-based auth.',
       }));
     }
 
@@ -314,6 +351,12 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
       try {
         const message = JSON.parse(data.toString());
+
+        // Validate message structure — must be an object with a string 'type'
+        if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
+          safeSend(ws, JSON.stringify({ type: 'error', code: 'INVALID_MESSAGE', message: 'Message must have a string "type" field' }));
+          return;
+        }
 
         // Per-message-type rate limiting for sensitive operations
         const msgType = message?.type;
@@ -371,6 +414,13 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       const count = ipConnectionCounts.get(clientIp) || 1;
       if (count <= 1) ipConnectionCounts.delete(clientIp);
       else ipConnectionCounts.set(clientIp, count - 1);
+      // Decrement per-user connection counter (must happen before clients.delete)
+      const errorClient = clients.get(clientId);
+      if (errorClient?.userId) {
+        const uc = userConnectionCounts.get(errorClient.userId) || 1;
+        if (uc <= 1) userConnectionCounts.delete(errorClient.userId);
+        else userConnectionCounts.set(errorClient.userId, uc - 1);
+      }
       try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
       try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
       clients.delete(clientId);
@@ -395,12 +445,22 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         ws.terminate();
         return;
       }
+      // Only ping sockets that are fully open — ping() throws synchronously on
+      // CLOSING/CLOSED sockets, which would abort the forEach and skip remaining clients
+      if (ws.readyState !== WebSocket.OPEN) return;
       (ws as any).__isAlive = false;
-      ws.ping();
+      try { ws.ping(); } catch { /* ignore — socket may have closed between readyState check and ping */ }
     });
   }, PING_INTERVAL_MS);
+  pingInterval.unref();
 
   wss.on('close', () => clearInterval(pingInterval));
+
+  // Server-level error handler — prevents unhandled 'error' events on the wss
+  // EventEmitter from falling through to the process uncaughtException handler
+  wss.on('error', (err) => {
+    console.error('[WS] WebSocketServer error:', err.message);
+  });
 
   // Mark connections alive on pong
   wss.on('connection', (ws) => {
@@ -418,14 +478,14 @@ function generateClientId(): string {
 function authenticateClient(client: WSClient, token: string): boolean {
   try {
     // Verify with iss/aud claims for consistency with main authenticateToken
-    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api' };
+    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api', algorithms: ['HS256'] as jwt.Algorithm[] };
     let decoded: JwtPayload;
     try {
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       // Legacy token backward compat — enforce strict validation after 2026-04-15
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;
       }
@@ -438,6 +498,24 @@ function authenticateClient(client: WSClient, token: string): boolean {
         message: 'Invalid token type',
       }));
       return false;
+    }
+
+    // Verify session is still active in database — reject revoked sessions
+    if (decoded.sessionId) {
+      try {
+        const db = database.getDb();
+        const session = db.prepare(
+          'SELECT is_active FROM sessions WHERE session_id = ? AND is_active = 1'
+        ).get(decoded.sessionId) as { is_active: number } | undefined;
+        if (!session) {
+          safeSend(client.ws, JSON.stringify({
+            type: 'auth_error',
+            message: 'Session has been revoked',
+            code: 'SESSION_REVOKED',
+          }));
+          return false;
+        }
+      } catch { /* DB not ready — allow through rather than blocking */ }
     }
 
     // Per-user connection limit — prevent resource abuse
@@ -462,7 +540,7 @@ function authenticateClient(client: WSClient, token: string): boolean {
     try {
       const db = database.getDb();
       const unit = db.prepare(
-        "SELECT call_sign FROM units WHERE officer_user_id = ? AND status != 'off_duty' LIMIT 1"
+        "SELECT call_sign FROM units WHERE officer_id = ? AND status != 'off_duty' LIMIT 1"
       ).get(decoded.userId) as { call_sign: string } | undefined;
       if (unit?.call_sign) {
         client.unitCallSign = unit.call_sign;
@@ -517,6 +595,10 @@ function handleClientMessage(clientId: string, message: any): void {
       break;
 
     case 'unsubscribe':
+      if (!client.authenticated) {
+        safeSend(client.ws, JSON.stringify({ type: 'error', message: 'Authentication required' }));
+        return;
+      }
       if (message.channel) {
         client.channels.delete(message.channel);
       }
@@ -530,6 +612,73 @@ function handleClientMessage(clientId: string, message: any): void {
       // Relay audio chunk from panic sender to ALL other authenticated clients
       if (!client.authenticated) return;
       broadcastPanicAudio(clientId, message.data);
+
+      // ── Server-side panic audio recording (Task 4) ──
+      // Write incoming audio chunks to disk for post-incident review
+      if (message.data?.panicId) {
+        const panicUploadDir = path.join(__ws_dirname, '../../uploads/panic');
+        try {
+          if (!fs.existsSync(panicUploadDir)) {
+            fs.mkdirSync(panicUploadDir, { recursive: true });
+          }
+        } catch (mkdirErr) {
+          console.error('[Panic Audio] Failed to create uploads/panic directory:', mkdirErr);
+        }
+
+        if (message.data.chunk === true && message.data.audio) {
+          // Append base64-decoded audio chunk to raw file
+          try {
+            const rawPath = path.join(panicUploadDir, `${message.data.panicId}_raw.webm`);
+            const audioBuffer = Buffer.from(message.data.audio, 'base64');
+            fs.appendFileSync(rawPath, audioBuffer);
+          } catch (writeErr) {
+            console.error(`[Panic Audio] Failed to write chunk for panic #${message.data.panicId}:`, writeErr);
+          }
+        }
+
+        if (message.data.end === true) {
+          // Audio stream ended — create attachment record and link to panic
+          try {
+            const panicId = message.data.panicId;
+            const rawPath = path.join(panicUploadDir, `${panicId}_raw.webm`);
+            if (fs.existsSync(rawPath)) {
+              const stats = fs.statSync(rawPath);
+              const timestamp = Date.now();
+              const fileId = `panic_${panicId}_${timestamp}`;
+              const storedName = `${panicId}_raw.webm`;
+              const db = database.getDb();
+
+              db.prepare(`
+                INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, entity_type, entity_id, uploaded_by, created_at)
+                VALUES (?, ?, ?, ?, 'audio/webm', ?, 'panic_alert', ?, ?, datetime('now','localtime'))
+              `).run(
+                fileId,
+                `panic_${panicId}_audio.webm`,
+                storedName,
+                rawPath,
+                stats.size,
+                panicId,
+                client.userId || 0
+              );
+
+              // Link audio to panic_alerts record
+              const updateFields: string[] = ['audio_file_id = ?'];
+              const updateValues: any[] = [fileId];
+              if (message.data.duration != null) {
+                updateFields.push('audio_duration_seconds = ?');
+                updateValues.push(Math.round(message.data.duration));
+              }
+              updateValues.push(panicId);
+              db.prepare(`UPDATE panic_alerts SET ${updateFields.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`)
+                .run(...updateValues);
+
+              console.log(`[Panic Audio] Saved ${stats.size} bytes for panic #${panicId} -> ${fileId}`);
+            }
+          } catch (endErr) {
+            console.error(`[Panic Audio] Failed to finalize audio for panic #${message.data.panicId}:`, endErr);
+          }
+        }
+      }
       break;
 
     case 'panic_audio_response':
@@ -620,18 +769,38 @@ function handleClientMessage(clientId: string, message: any): void {
       if (!client.authenticated) return;
       relayPrivateCallAudio(clientId, message.data);
       break;
+
+    default:
+      // Reject unknown message types — prevents abuse via crafted payloads
+      if (message.type && typeof message.type === 'string') {
+        safeSend(client.ws, JSON.stringify({
+          type: 'error',
+          code: 'UNKNOWN_MESSAGE_TYPE',
+          message: `Unknown message type: ${String(message.type).slice(0, 50)}`,
+        }));
+      }
+      break;
   }
 }
 
 // ─── Generic Broadcast / Send ─────────────────────────────────
 
 export function broadcast(channel: string, type: string, data: any): void {
-  const payload = JSON.stringify({
-    channel,
-    type,
-    data,
-    timestamp: new Date().toISOString(),
-  });
+  let payload: string;
+  try {
+    payload = JSON.stringify({
+      channel,
+      type,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    // Circular references or non-serializable values in `data` would otherwise
+    // propagate back into the calling HTTP handler and return a 500 — while
+    // silently dropping the broadcast. Log it here and bail safely.
+    console.error(`[WS] broadcast() JSON.stringify failed for type="${type}" channel="${channel}":`, err?.message ?? err);
+    return;
+  }
 
   clients.forEach((client) => {
     if (client.authenticated && client.channels.has(channel)) {
@@ -1540,6 +1709,12 @@ function handlePrivateCallAccept(receiverClientId: string, callId: string): void
 function handlePrivateCallDecline(clientId: string, callId: string, autoDecline = false): void {
   const call = activeCalls.get(callId);
   if (!call || call.status !== 'ringing') return;
+
+  // Authorization: only the intended receiver (or auto-decline timer) can decline
+  if (!autoDecline && clientId !== call.receiverClientId) {
+    console.warn(`[PrivateCall] Unauthorized decline attempt: ${clientId} tried to decline call ${callId} intended for ${call.receiverClientId}`);
+    return;
+  }
 
   // Clear auto-decline timer
   if (call.declineTimer) clearTimeout(call.declineTimer);

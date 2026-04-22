@@ -34,8 +34,8 @@ export default function SecurityStatusCard() {
 
   if (loading) {
     return (
-      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background: '#141e2b' }}>
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#6b7280' }} />
+      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background: '#0a0a0a' }}>
+        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
       </div>
     );
   }
@@ -94,7 +94,7 @@ export default function SecurityStatusCard() {
   const score = computeScore(status);
 
   return (
-    <div className="panel-beveled" style={{ background: '#141e2b' }}>
+    <div className="panel-beveled" style={{ background: '#0a0a0a' }}>
       {/* Header */}
       <div className="panel-title-bar flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -117,6 +117,8 @@ export default function SecurityStatusCard() {
         <div
           className="flex items-start gap-2 px-3 py-2"
           style={{ background: 'rgba(239, 68, 68, 0.08)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)' }}
+          role="alert"
+          aria-live="assertive"
         >
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
           <span className="text-[10px]" style={{ color: '#fca5a5' }}>{score.warning}</span>
@@ -124,20 +126,20 @@ export default function SecurityStatusCard() {
       )}
 
       {/* Status items */}
-      <div className="divide-y" style={{ borderColor: '#1e3048' }}>
+      <div className="divide-y" style={{ borderColor: '#222222' }}>
         {items.map(item => (
           <div key={item.label} className="flex items-center gap-3 px-3 py-2">
             <span className={ledClass(item.led)} />
-            <div className="flex-shrink-0" style={{ color: '#6b7280' }}>
+            <div className="flex-shrink-0" style={{ color: '#666666' }}>
               {item.icon}
             </div>
             <div className="flex-1 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#888888' }}>
                 {item.label}
               </span>
             </div>
             <div className="text-right flex-shrink-0">
-              <span className="text-[11px] font-mono" style={{ color: '#e5e7eb' }}>
+              <span className="text-[11px] font-mono" style={{ color: '#e0e0e0' }}>
                 {item.value}
               </span>
               {item.detail && (
@@ -152,7 +154,7 @@ export default function SecurityStatusCard() {
       {status.passwordChangedAt && (
         <div
           className="px-3 py-1.5 text-[9px] font-mono"
-          style={{ borderTop: '1px solid #1e3048', color: '#4b5563' }}
+          style={{ borderTop: '1px solid #2b2b2b', color: '#555555' }}
         >
           Password last changed: {status.passwordChangedAt ? new Date(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
         </div>

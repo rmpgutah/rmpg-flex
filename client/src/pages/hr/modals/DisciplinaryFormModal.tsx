@@ -113,7 +113,7 @@ export default function DisciplinaryFormModal({
   const HeaderIcon = isCommendation ? Star : Shield;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={submitting ? undefined : onClose} />
 
@@ -123,7 +123,7 @@ export default function DisciplinaryFormModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded border ${accentBorder} bg-surface-base shadow-xl`}
+        className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-sm border ${accentBorder} bg-surface-base shadow-xl`}
       >
         {/* Header */}
         <div className={`flex items-center justify-between px-4 py-3 border-b ${accentBorder} ${accentHeader}`}>
@@ -133,7 +133,7 @@ export default function DisciplinaryFormModal({
               {isEditing ? 'Edit' : 'New'} {isCommendation ? 'Commendation' : 'Disciplinary Record'}
             </h2>
           </div>
-          <button onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-white">
             <X size={16} />
           </button>
         </div>
@@ -149,7 +149,7 @@ export default function DisciplinaryFormModal({
                 value={form.officer_id}
                 onChange={handleChange}
                 required
-                className="input-dark"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
               >
                 <option value="">Select officer...</option>
                 {officers.map(o => (
@@ -168,7 +168,7 @@ export default function DisciplinaryFormModal({
                 value={form.type}
                 onChange={handleChange}
                 required
-                className="input-dark"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
               >
                 {TYPE_OPTIONS.map(t => (
                   <option key={t.value} value={t.value}>
@@ -187,7 +187,7 @@ export default function DisciplinaryFormModal({
                   value={form.severity}
                   onChange={handleChange}
                   required
-                  className="input-dark"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
                 >
                   {SEVERITY_OPTIONS.map(s => (
                     <option key={s.value} value={s.value}>
@@ -207,7 +207,7 @@ export default function DisciplinaryFormModal({
                 value={form.incident_date}
                 onChange={handleChange}
                 required
-                className="input-dark"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
               />
             </div>
 
@@ -219,7 +219,7 @@ export default function DisciplinaryFormModal({
                 name="follow_up_date"
                 value={form.follow_up_date}
                 onChange={handleChange}
-                className="input-dark"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
               />
             </div>
 
@@ -232,7 +232,7 @@ export default function DisciplinaryFormModal({
                 value={form.witness}
                 onChange={handleChange}
                 placeholder="Witness name"
-                className="input-dark"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500"
               />
             </div>
           </div>
@@ -246,9 +246,11 @@ export default function DisciplinaryFormModal({
               onChange={handleChange}
               required
               rows={3}
-              className="textarea-dark"
+              maxLength={5000}
+              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
               placeholder="Describe the incident or commendation..."
             />
+            <div className="text-[9px] text-rmpg-500 text-right">{form.description.length}/5000</div>
           </div>
 
           {/* Action taken */}
@@ -259,9 +261,11 @@ export default function DisciplinaryFormModal({
               value={form.action_taken}
               onChange={handleChange}
               rows={2}
-              className="textarea-dark"
+              maxLength={3000}
+              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
               placeholder="Corrective action or follow-up steps..."
             />
+            <div className="text-[9px] text-rmpg-500 text-right">{form.action_taken.length}/3000</div>
           </div>
 
           {/* Actions */}
@@ -270,14 +274,14 @@ export default function DisciplinaryFormModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white border border-rmpg-700 rounded"
+              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white border border-rmpg-700 rounded-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className={`px-3 py-1.5 text-xs font-medium rounded flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-sm flex items-center gap-1.5 ${
                 isCommendation
                   ? 'bg-amber-600 hover:bg-amber-500 text-white'
                   : 'bg-brand-600 hover:bg-brand-500 text-white'

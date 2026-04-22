@@ -149,14 +149,14 @@ export default function AndroidUpdateChecker() {
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.85)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}
     >
       <div
         className="mx-4 w-full max-w-sm"
         style={{
-          background: 'linear-gradient(180deg, #1a2636 0%, #0d1520 100%)',
-          border: '1px solid #1e3048',
-          borderTop: '3px solid #1a5a9e',
+          background: 'linear-gradient(180deg, #181818 0%, #0c0c0c 100%)',
+          border: '1px solid #2b2b2b',
+          borderTop: '3px solid #888888',
           boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
         }}
       >
@@ -168,7 +168,7 @@ export default function AndroidUpdateChecker() {
               Update Available
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={() => setDismissed(true)}
             className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors"
             aria-label="Dismiss"
@@ -208,17 +208,17 @@ export default function AndroidUpdateChecker() {
           )}
 
           {/* Download button */}
-          <button
+          <button type="button"
             onClick={handleDownload}
             disabled={downloading}
             className="w-full flex items-center justify-center gap-2 py-3 px-4 font-bold text-sm uppercase tracking-wider transition-all"
             style={{
               background: downloading
-                ? 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)'
-                : 'linear-gradient(180deg, #1a5a9e 0%, #124070 100%)',
-              color: downloading ? '#8a9aaa' : '#fff',
+                ? 'linear-gradient(180deg, #2b2b2b 0%, #181818 100%)'
+                : 'linear-gradient(180deg, #888888 0%, #333333 100%)',
+              color: downloading ? '#888888' : '#fff',
               border: '1px solid',
-              borderColor: downloading ? '#2a3e58' : '#d41515',
+              borderColor: downloading ? '#2e2e2e' : '#d41515',
             }}
           >
             {downloading ? (
@@ -235,7 +235,7 @@ export default function AndroidUpdateChecker() {
           </button>
 
           {/* Dismiss */}
-          <button
+          <button type="button"
             onClick={() => setDismissed(true)}
             className="w-full text-center text-xs text-rmpg-400 hover:text-rmpg-200 py-1 transition-colors"
           >

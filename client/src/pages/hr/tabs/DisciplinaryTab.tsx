@@ -15,6 +15,7 @@ import type { DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, Discip
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
 import ExportButton from '../../../components/ExportButton';
+import { safeDateStr } from '../../../utils/dateUtils';
 
 interface DisciplinaryTabProps {
   userRole: string;
@@ -22,6 +23,7 @@ interface DisciplinaryTabProps {
 }
 
 const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+const isGodModeRole = (role: string) => role === 'admin'; // Admin God Mode — unrestricted access
 
 function isManagerPlus(role: string) {
   return MANAGER_ROLES.includes(role);
@@ -41,9 +43,9 @@ function typeBadgeStyle(type: DisciplinaryType) {
     case 'termination':
       return 'bg-red-900/30 text-red-300 border-red-500/40';
     case 'counseling':
-      return 'bg-blue-900/20 text-blue-400 border-blue-600/30';
+      return 'bg-gray-900/20 text-gray-400 border-gray-600/30';
     default:
-      return 'bg-rmpg-800/50 text-rmpg-300 border-rmpg-600/30';
+      return 'bg-rmpg-800/50 text-rmpg-300 border-rmpg-700/30';
   }
 }
 
@@ -54,7 +56,7 @@ function statusBadge(status: DisciplinaryStatus) {
     case 'closed':
       return { bg: 'bg-green-900/20 text-green-400 border-green-600/30', label: 'Closed' };
     case 'appealed':
-      return { bg: 'bg-blue-900/20 text-blue-400 border-blue-600/30', label: 'Appealed' };
+      return { bg: 'bg-gray-900/20 text-gray-400 border-gray-600/30', label: 'Appealed' };
     default:
       return { bg: 'bg-rmpg-800 text-rmpg-400', label: status };
   }
@@ -72,6 +74,20 @@ function followUpStatus(date: string | null): 'none' | 'upcoming' | 'overdue' | 
 }
 
 // ─── Main component ─────────────────────────────────────────
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabProps) {
   const toast = useToast();
   const manager = isManagerPlus(userRole);
@@ -197,6 +213,18 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   };
 
   // ─── Officer read-only view ──────────────────────────────
+  // ─── Manager / Admin view ────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'HR - Disciplinary \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRecord(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (!manager) {
     const commendations = records.filter(r => r.type === 'commendation');
     const others = records.filter(r => r.type !== 'commendation');
@@ -213,7 +241,12 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             <Loader2 size={20} className="animate-spin" />
           </div>
         ) : records.length === 0 ? (
-          <div className="text-center py-12 text-rmpg-500 text-sm">No records found.</div>
+          <div className="text-center py-16" role="status">
+            <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+              <Shield className="w-7 h-7 text-rmpg-600" />
+            </div>
+            <p className="text-sm text-rmpg-400 font-medium">No records found</p>
+          </div>
         ) : (
           <>
             {/* Commendations at top */}
@@ -259,7 +292,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     );
   }
 
-  // ─── Manager / Admin view ────────────────────────────────
+
   return (
     <div className="p-4 space-y-4">
       {/* Header + actions */}
@@ -270,8 +303,8 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
         </h2>
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex border border-rmpg-700 rounded overflow-hidden">
-            <button
+          <div className="flex border border-rmpg-700 rounded-sm overflow-hidden">
+            <button type="button"
               onClick={() => setViewMode('list')}
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'list'
@@ -281,7 +314,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             >
               <List size={12} /> List
             </button>
-            <button
+            <button type="button"
               onClick={() => setViewMode('timeline')}
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'timeline'
@@ -293,9 +326,9 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             </button>
           </div>
           <ExportButton exportUrl="/api/hr/disciplinary/export/csv" exportFilename="disciplinary.csv" />
-          <button
+          <button type="button"
             onClick={handleCreate}
-            className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded flex items-center gap-1.5"
+            className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm flex items-center gap-1.5"
           >
             <Plus size={12} /> Add Record
           </button>
@@ -308,7 +341,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Officers</option>
             {officers.map(o => (
@@ -320,7 +353,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Types</option>
             {Object.entries(DISCIPLINARY_TYPE_LABELS).map(([v, l]) => (
@@ -332,7 +365,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterSeverity}
             onChange={e => setFilterSeverity(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Severities</option>
             <option value="minor">Minor</option>
@@ -343,7 +376,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Statuses</option>
             <option value="open">Open</option>
@@ -389,7 +422,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={selectedOfficerId}
             onChange={e => setSelectedOfficerId(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded px-2 py-1.5 text-sm text-white w-full sm:w-64"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white w-full sm:w-64"
           >
             <option value="">Select officer...</option>
             {officers.map(o => (
@@ -448,7 +481,7 @@ function RecordCard({
   onDelete?: () => void;
 }) {
   const isComm = rec.type === 'commendation';
-  const borderColor = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#3b82f6');
+  const borderColor = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
   const sBadge = statusBadge(rec.status);
   const fuStatus = followUpStatus(rec.follow_up_date);
 
@@ -474,7 +507,7 @@ function RecordCard({
           {/* Top row: type badge + officer + date */}
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${typeBadgeStyle(rec.type)}`}
+              className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${typeBadgeStyle(rec.type)}`}
             >
               {DISCIPLINARY_TYPE_LABELS[rec.type] ?? rec.type}
             </span>
@@ -482,10 +515,10 @@ function RecordCard({
               <span className="text-xs text-rmpg-300">{rec.officer_name}</span>
             )}
             <span className="text-[10px] text-rmpg-500">
-              {new Date(rec.incident_date).toLocaleDateString()}
+              {safeDateStr(rec.incident_date)}
             </span>
             <span
-              className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${sBadge.bg}`}
+              className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${sBadge.bg}`}
             >
               {sBadge.label}
             </span>
@@ -498,7 +531,7 @@ function RecordCard({
               : `${rec.description.slice(0, 120)}...`}
           </p>
           {rec.description.length > 120 && (
-            <button
+            <button type="button"
               onClick={onToggle}
               className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5"
             >
@@ -519,7 +552,7 @@ function RecordCard({
               }`}
             >
               <AlertTriangle size={10} />
-              Follow-up: {new Date(rec.follow_up_date).toLocaleDateString()}
+              Follow-up: {safeDateStr(rec.follow_up_date)}
               {fuStatus === 'overdue' && ' (overdue)'}
               {fuStatus === 'upcoming' && ' (upcoming)'}
             </div>
@@ -535,18 +568,18 @@ function RecordCard({
         {manager && (
           <div className="flex items-center gap-1 shrink-0">
             {onEdit && (
-              <button
+              <button type="button"
                 onClick={onEdit}
-                className="p-1 text-rmpg-400 hover:text-white rounded hover:bg-surface-raised"
+                className="p-1 text-rmpg-400 hover:text-white rounded-sm hover:bg-surface-raised"
                 title="Edit"
               >
                 <Pencil size={13} />
               </button>
             )}
             {isAdmin && onDelete && (
-              <button
+              <button type="button"
                 onClick={onDelete}
-                className="p-1 text-rmpg-400 hover:text-red-400 rounded hover:bg-surface-raised"
+                className="p-1 text-rmpg-400 hover:text-red-400 rounded-sm hover:bg-surface-raised"
                 title="Delete"
               >
                 <Trash2 size={13} />
@@ -564,11 +597,11 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
   return (
     <div className="relative pl-6 space-y-4">
       {/* Vertical line */}
-      <div className="absolute left-[11px] top-2 bottom-2 w-px bg-[#1e3048]" />
+      <div className="absolute left-[11px] top-2 bottom-2 w-px bg-rmpg-700" />
 
       {records.map(rec => {
         const isComm = rec.type === 'commendation';
-        const color = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#3b82f6');
+        const color = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
 
         return (
           <div key={rec.id} className="relative flex gap-3">
@@ -579,7 +612,7 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
             />
 
             {/* Content */}
-            <div className="flex-1 rounded border border-rmpg-700 bg-surface-sunken p-3 space-y-1">
+            <div className="flex-1 rounded-sm border border-rmpg-700 bg-surface-sunken p-3 space-y-1">
               <div className="flex items-center gap-2 text-xs">
                 {isComm ? (
                   <Star size={12} className="text-amber-400" />
@@ -590,7 +623,7 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
                   {DISCIPLINARY_TYPE_LABELS[rec.type] ?? rec.type}
                 </span>
                 <span className="text-rmpg-500">
-                  {new Date(rec.incident_date).toLocaleDateString()}
+                  {safeDateStr(rec.incident_date)}
                 </span>
               </div>
               <p className="text-xs text-rmpg-300">

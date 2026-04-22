@@ -14,13 +14,10 @@ import {
   X,
   Loader2,
   Check,
-  Clock,
-  Hash,
   FileText,
   Send,
   Ban,
   RefreshCw,
-  Calendar,
   ChevronLeft,
   ChevronRight,
   CreditCard,
@@ -30,6 +27,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import IconButton from '../components/IconButton';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { localToday, formatDate } from '../utils/dateUtils';
@@ -133,7 +131,7 @@ const STATUSES: { value: InvoiceStatus | ''; label: string }[] = [
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  sent: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
+  sent: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -153,13 +151,22 @@ const LINE_TYPE_LABELS: Record<string, string> = {
 };
 
 const PAYMENT_METHODS = [
-  { value: 'check', label: 'Check' },
-  { value: 'ach', label: 'ACH Transfer' },
-  { value: 'wire', label: 'Wire Transfer' },
-  { value: 'credit_card', label: 'Credit Card' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'other', label: 'Other' },
+  { value: 'check', label: 'Check', icon: 'CHK' },
+  { value: 'ach', label: 'ACH Transfer', icon: 'ACH' },
+  { value: 'wire', label: 'Wire Transfer', icon: 'WIR' },
+  { value: 'credit_card', label: 'Credit Card', icon: 'CC' },
+  { value: 'cash', label: 'Cash', icon: 'CSH' },
+  { value: 'other', label: 'Other', icon: 'OTH' },
 ];
+
+const PAYMENT_METHOD_COLORS: Record<string, string> = {
+  check: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  ach: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  wire: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
+  credit_card: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
+  cash: 'bg-green-900/40 text-green-400 border-green-700/50',
+  other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
+};
 
 function formatCurrency(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(Number(n))) return '$0.00';
@@ -167,8 +174,24 @@ function formatCurrency(n: number | null | undefined): string {
 }
 
 function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
+
+// ── Helpers ───────────────────────────────────────────────
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 // ── Component ──────────────────────────────────────────────
 
@@ -238,7 +261,7 @@ export default function InvoicesPage() {
   const [actionLoading, setActionLoading] = useState('');
 
   // Search timer ref
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -454,7 +477,7 @@ export default function InvoicesPage() {
     const actions: { label: string; status: string; icon: React.ElementType; cls: string }[] = [];
     const s = inv.status;
     if (s === 'draft') {
-      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-brand-600 hover:bg-brand-500' });
+      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-gray-600 hover:bg-gray-500' });
       actions.push({ label: 'Void', status: 'void', icon: Ban, cls: 'bg-red-900/60 hover:bg-red-800/60' });
     } else if (s === 'sent' || s === 'overdue') {
       actions.push({ label: 'Mark Paid', status: 'paid', icon: Check, cls: 'bg-green-700 hover:bg-green-600' });
@@ -469,7 +492,7 @@ export default function InvoicesPage() {
   // ── Render helpers ───────────────────────────────────────
 
   const StatusBadge = ({ status }: { status: string }) => (
-    <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${STATUS_BADGE[status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${STATUS_BADGE[status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40'}`} style={{ borderRadius: '2px' }}>
       {toDisplayLabel(status)}
     </span>
   );
@@ -486,13 +509,13 @@ export default function InvoicesPage() {
       { label: 'Drafts', value: stats.draft_count, color: 'text-rmpg-400' },
     ];
     return (
-      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px]">
+      <div className="flex items-center gap-4 px-3 py-1.5 bg-[#0c0c0c] border border-[#2b2b2b] text-[10px]" style={{ borderRadius: '2px' }}>
         {items.map((it, i) => (
           <React.Fragment key={it.label}>
-            {i > 0 && <div className="w-px h-3 bg-[#1e3048]" />}
+            {i > 0 && <div className="w-px h-3.5 bg-[#2b2b2b]" />}
             <div className="flex items-center gap-1.5">
-              <span className="text-rmpg-500 uppercase tracking-wider">{it.label}</span>
-              <span className={`font-mono font-bold ${it.color}`}>{it.value}</span>
+              <span className="text-rmpg-500 uppercase tracking-wider font-bold">{it.label}</span>
+              <span className={`font-mono font-bold tabular-nums ${it.color}`}>{it.value}</span>
             </div>
           </React.Fragment>
         ))}
@@ -503,12 +526,12 @@ export default function InvoicesPage() {
   // ── Create form panel ────────────────────────────────────
 
   const CreatePanel = () => (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2">
           <Plus size={14} className="text-brand-400" /> New Invoice
         </h2>
-        <button onClick={() => { setMode('list'); setSaveError(''); }} className="text-rmpg-400 hover:text-white text-xs">Cancel</button>
+        <button type="button" onClick={() => { setMode('list'); setSaveError(''); }} className="text-rmpg-400 hover:text-white text-xs">Cancel</button>
       </div>
 
       {saveError && (
@@ -524,7 +547,7 @@ export default function InvoicesPage() {
           <select
             value={createForm.client_id}
             onChange={e => setCreateForm(f => ({ ...f, client_id: e.target.value }))}
-            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           >
             <option value="">-- Select Client --</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -539,7 +562,7 @@ export default function InvoicesPage() {
               type="date"
               value={createForm.period_start}
               onChange={e => setCreateForm(f => ({ ...f, period_start: e.target.value }))}
-              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+              className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
             />
           </div>
           <div>
@@ -548,7 +571,7 @@ export default function InvoicesPage() {
               type="date"
               value={createForm.period_end}
               onChange={e => setCreateForm(f => ({ ...f, period_end: e.target.value }))}
-              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+              className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
             />
           </div>
         </div>
@@ -560,7 +583,7 @@ export default function InvoicesPage() {
             type="date"
             value={createForm.issue_date}
             onChange={e => setCreateForm(f => ({ ...f, issue_date: e.target.value }))}
-            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           />
         </div>
 
@@ -571,7 +594,7 @@ export default function InvoicesPage() {
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
             rows={2}
-            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
           />
         </div>
 
@@ -582,11 +605,11 @@ export default function InvoicesPage() {
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}
             rows={2}
-            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
           />
         </div>
 
-        <button
+        <button type="button"
           onClick={handleCreate}
           disabled={saving}
           className="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold py-2 px-4 rounded-sm disabled:opacity-50 transition-colors"
@@ -614,31 +637,31 @@ export default function InvoicesPage() {
     const statusActions = getStatusActions(inv);
 
     return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2">
               {isMobile && (
-                <button onClick={backToList} className="text-rmpg-400 hover:text-white mr-1">
+                <IconButton onClick={backToList} className="text-rmpg-400 hover:text-white mr-1" aria-label="Back to list">
                   <ChevronLeft size={16} />
-                </button>
+                </IconButton>
               )}
               <h2 className="text-sm font-bold text-white font-mono">{inv.invoice_number}</h2>
               <StatusBadge status={inv.status} />
             </div>
             <p className="text-xs text-rmpg-400 mt-0.5">{inv.client_name}</p>
           </div>
-          <button onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block">
+          <IconButton onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block" aria-label="Close">
             <X size={14} />
-          </button>
+          </IconButton>
         </div>
 
         {/* Action buttons */}
         {canEdit && statusActions.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             {statusActions.map(a => (
-              <button
+              <button type="button"
                 key={a.status}
                 onClick={() => handleStatusChange(inv.id, a.status)}
                 disabled={actionLoading === `status-${inv.id}`}
@@ -649,7 +672,7 @@ export default function InvoicesPage() {
               </button>
             ))}
             {inv.status === 'draft' && (
-              <button
+              <button type="button"
                 onClick={() => handleGenerate(inv.id)}
                 disabled={actionLoading === `generate-${inv.id}`}
                 className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-900/40 hover:bg-amber-900/60 border border-amber-700/50 rounded-sm transition-colors disabled:opacity-50"
@@ -689,10 +712,10 @@ export default function InvoicesPage() {
             {inv.late_fee_amount > 0 && (
               <div className="flex justify-between"><span className="text-rmpg-400">Late Fee</span><span className="text-amber-400 font-mono">+{formatCurrency(inv.late_fee_amount)}</span></div>
             )}
-            <div className="border-t border-rmpg-700 my-1" />
+            <div className="border-t border-[#2b2b2b] my-1" />
             <div className="flex justify-between font-bold"><span className="text-rmpg-300">Total</span><span className="text-white font-mono">{formatCurrency(inv.total)}</span></div>
             <div className="flex justify-between"><span className="text-rmpg-400">Paid</span><span className="text-green-400 font-mono">{formatCurrency(inv.amount_paid)}</span></div>
-            <div className="border-t border-rmpg-700 my-1" />
+            <div className="border-t border-[#2b2b2b] my-1" />
             <div className="flex justify-between font-bold"><span className="text-rmpg-300">Balance Due</span><span className={`font-mono ${inv.balance_due > 0 ? 'text-amber-400' : 'text-green-400'}`}>{formatCurrency(inv.balance_due)}</span></div>
           </div>
         </div>
@@ -702,7 +725,7 @@ export default function InvoicesPage() {
           <div className="flex items-center justify-between mb-2">
             <div className="text-[10px] uppercase tracking-wider text-brand-400 font-bold">Line Items ({inv.line_items?.length || 0})</div>
             {canEdit && inv.status === 'draft' && (
-              <button
+              <button type="button"
                 onClick={() => setShowLineItemForm(!showLineItemForm)}
                 className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300"
               >
@@ -713,11 +736,11 @@ export default function InvoicesPage() {
 
           {/* Add line item form */}
           {showLineItemForm && (
-            <div className="mb-3 p-2 bg-surface-sunken border border-rmpg-700 rounded-sm space-y-2">
+            <div className="mb-3 p-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm space-y-2">
               <select
                 value={lineItemForm.line_type}
                 onChange={e => setLineItemForm(f => ({ ...f, line_type: e.target.value }))}
-                className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
               >
                 <option value="custom">Custom</option>
                 <option value="service_hours">Service Hours</option>
@@ -731,7 +754,7 @@ export default function InvoicesPage() {
                 placeholder="Description"
                 value={lineItemForm.description}
                 onChange={e => setLineItemForm(f => ({ ...f, description: e.target.value }))}
-                className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -739,25 +762,25 @@ export default function InvoicesPage() {
                   placeholder="Qty"
                   value={lineItemForm.quantity}
                   onChange={e => setLineItemForm(f => ({ ...f, quantity: e.target.value }))}
-                  className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
                 <input
                   type="number"
                   placeholder="Unit Price"
                   value={lineItemForm.unit_price}
                   onChange={e => setLineItemForm(f => ({ ...f, unit_price: e.target.value }))}
-                  className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <button
+                <button type="button"
                   onClick={handleAddLineItem}
                   disabled={lineItemSaving}
                   className="flex-1 flex items-center justify-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
                 >
                   {lineItemSaving ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Add Item
                 </button>
-                <button onClick={() => setShowLineItemForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
+                <button type="button" onClick={() => setShowLineItemForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
               </div>
             </div>
           )}
@@ -766,8 +789,8 @@ export default function InvoicesPage() {
           {inv.line_items && inv.line_items.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-rmpg-700">
+                <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
+                  <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-[#2b2b2b]">
                     <th className="text-left pb-1 pr-2">Type</th>
                     <th className="text-left pb-1 pr-2">Description</th>
                     <th className="text-right pb-1 pr-2">Qty</th>
@@ -778,7 +801,7 @@ export default function InvoicesPage() {
                 </thead>
                 <tbody>
                   {inv.line_items.map(item => (
-                    <tr key={item.id} className="border-b border-rmpg-700/50 hover:bg-surface-raised/50">
+                    <tr key={item.id} className="border-b border-[#2b2b2b]/50 hover:bg-[#181818]/50 transition-colors">
                       <td className="py-1 pr-2">
                         <span className="text-[9px] text-rmpg-400">{LINE_TYPE_LABELS[item.line_type] || item.line_type}</span>
                       </td>
@@ -790,13 +813,14 @@ export default function InvoicesPage() {
                       </td>
                       {canEdit && inv.status === 'draft' && (
                         <td className="py-1 pl-1">
-                          <button
+                          <IconButton
                             onClick={() => handleDeleteLineItem(item.id)}
                             disabled={actionLoading === `delitem-${item.id}`}
                             className="text-rmpg-600 hover:text-red-400 transition-colors"
+                            aria-label="Delete line item"
                           >
                             {actionLoading === `delitem-${item.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                          </button>
+                          </IconButton>
                         </td>
                       )}
                     </tr>
@@ -805,7 +829,7 @@ export default function InvoicesPage() {
               </table>
             </div>
           ) : (
-            <p className="text-xs text-rmpg-500 italic">No line items yet.</p>
+            <p className="text-xs text-rmpg-500 text-center py-3">No line items yet. {canEdit && inv.status === 'draft' ? 'Click + Add to create one.' : ''}</p>
           )}
         </div>
 
@@ -814,7 +838,7 @@ export default function InvoicesPage() {
           <div className="flex items-center justify-between mb-2">
             <div className="text-[10px] uppercase tracking-wider text-brand-400 font-bold">Payments ({inv.payments?.length || 0})</div>
             {canEdit && inv.status !== 'draft' && inv.status !== 'void' && inv.status !== 'cancelled' && (
-              <button
+              <button type="button"
                 onClick={() => setShowPaymentForm(!showPaymentForm)}
                 className="flex items-center gap-1 text-[10px] text-green-400 hover:text-green-300"
               >
@@ -825,7 +849,7 @@ export default function InvoicesPage() {
 
           {/* Payment form */}
           {showPaymentForm && (
-            <div className="mb-3 p-2 bg-surface-sunken border border-rmpg-700 rounded-sm space-y-2">
+            <div className="mb-3 p-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="number"
@@ -833,29 +857,44 @@ export default function InvoicesPage() {
                   step="0.01"
                   value={paymentForm.amount}
                   onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
-                  className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
                 <input
                   type="date"
                   value={paymentForm.payment_date}
                   onChange={e => setPaymentForm(f => ({ ...f, payment_date: e.target.value }))}
-                  className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid ${paymentForm.payment_method === 'check' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                 <select
                   value={paymentForm.payment_method}
                   onChange={e => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
-                  className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 >
                   {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
+                {paymentForm.payment_method === 'check' && (
+                  <input
+                    type="text"
+                    placeholder="Check #"
+                    value={paymentForm.reference_number}
+                    onChange={e => setPaymentForm(f => ({ ...f, reference_number: e.target.value }))}
+                    className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  />
+                )}
                 <input
                   type="text"
-                  placeholder="Reference #"
-                  value={paymentForm.reference_number}
-                  onChange={e => setPaymentForm(f => ({ ...f, reference_number: e.target.value }))}
-                  className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                  placeholder={paymentForm.payment_method === 'check' ? 'Notes' : 'Reference #'}
+                  value={paymentForm.payment_method === 'check' ? paymentForm.notes : paymentForm.reference_number}
+                  onChange={e => {
+                    if (paymentForm.payment_method === 'check') {
+                      setPaymentForm(f => ({ ...f, notes: e.target.value }));
+                    } else {
+                      setPaymentForm(f => ({ ...f, reference_number: e.target.value }));
+                    }
+                  }}
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
               </div>
               <input
@@ -863,17 +902,17 @@ export default function InvoicesPage() {
                 placeholder="Notes (optional)"
                 value={paymentForm.notes}
                 onChange={e => setPaymentForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
               />
               <div className="flex items-center gap-2">
-                <button
+                <button type="button"
                   onClick={handleAddPayment}
                   disabled={paymentSaving}
                   className="flex-1 flex items-center justify-center gap-1 bg-green-700 hover:bg-green-600 text-white text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
                 >
                   {paymentSaving ? <Loader2 size={10} className="animate-spin" /> : <CreditCard size={10} />} Record Payment
                 </button>
-                <button onClick={() => setShowPaymentForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
+                <button type="button" onClick={() => setShowPaymentForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
               </div>
             </div>
           )}
@@ -882,30 +921,35 @@ export default function InvoicesPage() {
           {inv.payments && inv.payments.length > 0 ? (
             <div className="space-y-1">
               {inv.payments.map(pay => (
-                <div key={pay.id} className="flex items-center justify-between py-1 border-b border-rmpg-700/50 text-xs">
+                <div key={pay.id} className="flex items-center justify-between py-1 border-b border-[#2b2b2b]/50 text-xs">
                   <div className="flex items-center gap-2">
                     <span className="text-green-400 font-mono font-bold">{formatCurrency(pay.amount)}</span>
                     <span className="text-rmpg-500">{formatDate(pay.payment_date) || pay.payment_date}</span>
-                    {pay.payment_method && <span className="text-rmpg-500">{toDisplayLabel(pay.payment_method)}</span>}
+                    {pay.payment_method && (
+                      <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${PAYMENT_METHOD_COLORS[pay.payment_method] || PAYMENT_METHOD_COLORS.other}`}>
+                        {PAYMENT_METHODS.find(m => m.value === pay.payment_method)?.icon || pay.payment_method}
+                      </span>
+                    )}
                     {pay.reference_number && <span className="text-rmpg-600 font-mono">#{pay.reference_number}</span>}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-rmpg-600 text-[10px]">{pay.recorded_by_name}</span>
                     {canEdit && (
-                      <button
+                      <IconButton
                         onClick={() => handleDeletePayment(pay.id)}
                         disabled={actionLoading === `delpay-${pay.id}`}
                         className="text-rmpg-600 hover:text-red-400 transition-colors"
+                        aria-label="Delete payment"
                       >
                         {actionLoading === `delpay-${pay.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                      </button>
+                      </IconButton>
                     )}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-rmpg-500 italic">No payments recorded.</p>
+            <p className="text-xs text-rmpg-500 text-center py-3">No payments recorded yet.</p>
           )}
         </div>
 
@@ -944,17 +988,17 @@ export default function InvoicesPage() {
     return (
       <tr
         onClick={() => selectInvoice(inv)}
-        className={`cursor-pointer border-b border-rmpg-700/40 transition-colors text-xs ${
+        className={`cursor-pointer border-b border-[#2b2b2b]/40 transition-colors text-xs ${
           isSelected
             ? 'bg-brand-900/30 border-l-2 border-l-brand-500'
-            : 'hover:bg-surface-raised/60'
+            : 'hover:bg-[#181818]/60'
         }`}
       >
         <td className="py-1.5 px-2 font-mono text-brand-300 whitespace-nowrap">{inv.invoice_number}</td>
         <td className="py-1.5 px-2 text-white truncate max-w-[140px]">{inv.client_name}</td>
         <td className="py-1.5 px-2"><StatusBadge status={inv.status} /></td>
-        <td className="py-1.5 px-2 text-right font-mono text-white">{formatCurrency(inv.total)}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-rmpg-300 hidden lg:table-cell">{formatCurrency(inv.balance_due)}</td>
+        <td className="py-1.5 px-2 text-right font-mono text-white tabular-nums">{formatCurrency(inv.total)}</td>
+        <td className="py-1.5 px-2 text-right font-mono text-rmpg-300 hidden lg:table-cell tabular-nums">{formatCurrency(inv.balance_due)}</td>
         <td className="py-1.5 px-2 text-rmpg-400 whitespace-nowrap hidden md:table-cell">{inv.due_date}</td>
         <td className="py-1.5 px-2 text-rmpg-500 whitespace-nowrap hidden xl:table-cell">{inv.issue_date}</td>
       </tr>
@@ -962,6 +1006,9 @@ export default function InvoicesPage() {
   };
 
   // ── Main render ──────────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'Invoices \u2014 RMPG Flex'; }, []);
 
   // Mobile: show either list or detail
   if (isMobile) {
@@ -974,20 +1021,20 @@ export default function InvoicesPage() {
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Toolbar */}
-            <div className="p-2 space-y-2 border-b border-rmpg-700">
+            <div className="p-2 space-y-2 border-b border-[#2b2b2b]">
               <div className="flex items-center gap-2">
                 <div className="flex-1 relative">
                   <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
                   <input
                     type="text"
-                    placeholder="Search invoices..."
+                    placeholder="Search invoices..." aria-label="Search invoices..."
                     value={searchQuery}
                     onChange={e => handleSearchChange(e.target.value)}
-                    className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm pl-7 pr-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm pl-7 pr-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
                   />
                 </div>
                 {canEdit && (
-                  <button
+                  <button type="button"
                     onClick={() => setMode('create')}
                     className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm"
                   >
@@ -999,7 +1046,7 @@ export default function InvoicesPage() {
                 <select
                   value={filterStatus}
                   onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}
-                  className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 >
                   {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
@@ -1007,20 +1054,20 @@ export default function InvoicesPage() {
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
               {loading ? (
                 <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
               ) : error ? (
                 <div className="p-4 text-red-400 text-xs">{error}</div>
               ) : invoices.length === 0 ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">No invoices found.</div>
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><DollarSign size={32} className="mb-2 opacity-30" /><p className="text-xs">No invoices found</p></div>
               ) : (
-                <div className="divide-y divide-[#1e3048]/40">
+                <div className="divide-y divide-[#2b2b2b]/40">
                   {invoices.map(inv => (
                     <div
                       key={inv.id}
                       onClick={() => selectInvoice(inv)}
-                      className="p-2 hover:bg-surface-raised/60 cursor-pointer"
+                      className="p-2 hover:bg-[#181818]/60 cursor-pointer transition-colors"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-mono text-brand-300">{inv.invoice_number}</span>
@@ -1046,7 +1093,7 @@ export default function InvoicesPage() {
   return (
     <div className="app-grid-bg h-full flex flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 px-3 py-1.5 border-b border-rmpg-700 flex-shrink-0">
+      <div className="flex items-center justify-between gap-3 px-3 py-1.5 border-b border-[#2b2b2b] flex-shrink-0">
         <div className="flex items-center gap-2">
           <DollarSign size={14} className="text-brand-400" />
           <span className="text-xs font-bold text-white tracking-wide">INVOICES</span>
@@ -1059,11 +1106,11 @@ export default function InvoicesPage() {
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">
-          <button onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1" title="Refresh">
+          <IconButton onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1 transition-colors" title="Refresh" aria-label="Refresh">
             <RefreshCw size={12} />
-          </button>
+          </IconButton>
           {canEdit && (
-            <button
+            <button type="button"
               onClick={() => { setMode('create'); setSelectedInvoice(null); }}
               className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-sm transition-colors"
             >
@@ -1074,29 +1121,29 @@ export default function InvoicesPage() {
       </div>
 
       {/* Filters bar */}
-      <div className="flex items-center gap-2 px-3 py-1 border-b border-rmpg-700/60 flex-shrink-0 bg-surface-sunken/50">
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-[#2b2b2b]/60 flex-shrink-0 bg-[#0c0c0c]/50">
         <Filter size={10} className="text-rmpg-500" />
         <div className="relative flex-1 max-w-xs">
           <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search..." aria-label="Search..."
             value={searchQuery}
             onChange={e => handleSearchChange(e.target.value)}
-            className="w-full bg-surface-base border border-rmpg-700 rounded-sm pl-6 pr-2 py-1 text-[11px] text-white focus:border-brand-500 focus:outline-none"
+            className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm pl-6 pr-2 py-1 text-[11px] text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           />
         </div>
         <select
           value={filterStatus}
           onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}
-          className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors"
         >
           {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <select
           value={filterClientId}
           onChange={e => { setFilterClientId(e.target.value); setPage(1); }}
-          className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none max-w-[160px]"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors max-w-[160px]"
         >
           <option value="">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1106,21 +1153,21 @@ export default function InvoicesPage() {
           value={dateFrom}
           onChange={e => { setDateFrom(e.target.value); setPage(1); }}
           placeholder="From"
-          className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
         />
         <input
           type="date"
           value={dateTo}
           onChange={e => { setDateTo(e.target.value); setPage(1); }}
           placeholder="To"
-          className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
         />
         {(filterStatus || filterClientId || dateFrom || dateTo || searchQuery) && (
-          <button
+          <button type="button"
             onClick={() => { setFilterStatus(''); setFilterClientId(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setPage(1); }}
-            className="text-rmpg-500 hover:text-white text-[10px] flex items-center gap-0.5"
+            className="text-rmpg-500 hover:text-red-400 text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 hover:bg-red-900/20 border border-transparent hover:border-red-700/30 transition-colors"
           >
-            <X size={10} /> Clear
+            <X size={10} /> Clear All
           </button>
         )}
       </div>
@@ -1129,26 +1176,29 @@ export default function InvoicesPage() {
       {error && (
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle size={12} /> {error}
-          <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white"><X size={12} /></button>
+          <IconButton onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white" aria-label="Dismiss error"><X size={12} /></IconButton>
         </div>
       )}
 
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: invoice list */}
-        <div className="flex flex-col w-[55%] border-r border-rmpg-700 overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-col w-[55%] border-r border-[#2b2b2b] overflow-hidden">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {loading ? (
               <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
             ) : invoices.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-rmpg-500 text-xs">
-                <FileText size={20} className="mb-2 opacity-40" />
-                No invoices found.
+              <div className="flex flex-col items-center justify-center h-40 text-rmpg-500 text-xs">
+                <div className="w-12 h-12 mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                  <FileText size={20} className="text-rmpg-600" />
+                </div>
+                <p className="font-medium text-rmpg-400">No invoices found</p>
+                <p className="text-[10px] text-rmpg-600 mt-1">Try adjusting your filters</p>
               </div>
             ) : (
               <table className="w-full">
-                <thead className="sticky top-0 bg-surface-sunken z-10">
-                  <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-rmpg-700">
+                <thead className="sticky top-0 bg-[#0c0c0c] z-10">
+                  <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-[#2b2b2b]">
                     <th className="text-left py-1 px-2">Invoice #</th>
                     <th className="text-left py-1 px-2">Client</th>
                     <th className="text-left py-1 px-2">Status</th>
@@ -1167,23 +1217,25 @@ export default function InvoicesPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-3 py-1 border-t border-rmpg-700 text-[10px] text-rmpg-500 flex-shrink-0">
+            <div className="flex items-center justify-between px-3 py-1 border-t border-[#2b2b2b] text-[10px] text-rmpg-500 flex-shrink-0">
               <span>Page {page} of {totalPages}</span>
               <div className="flex items-center gap-1">
-                <button
+                <IconButton
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
                   className="p-0.5 hover:text-white disabled:opacity-30"
+                  aria-label="Previous page"
                 >
                   <ChevronLeft size={12} />
-                </button>
-                <button
+                </IconButton>
+                <IconButton
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
                   className="p-0.5 hover:text-white disabled:opacity-30"
+                  aria-label="Next page"
                 >
                   <ChevronRight size={12} />
-                </button>
+                </IconButton>
               </div>
             </div>
           )}

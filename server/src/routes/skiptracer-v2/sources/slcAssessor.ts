@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Salt Lake County Assessor Adapter
+// Skip Tracker 3.5 — Salt Lake County Assessor Adapter
 // ============================================================
 // Searches Salt Lake County property records by owner name
 // or address. Best-effort scraper — gracefully degrades if

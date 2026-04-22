@@ -4,9 +4,10 @@
 // select columns, set filters, preview results, and export CSV.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { localToday } from '../utils/dateUtils';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
@@ -15,7 +16,7 @@ import { useToast } from '../components/ToastProvider';
 const SOURCES: Record<string, { label: string; columns: string[] }> = {
   calls_for_service: {
     label: 'Calls for Service',
-    columns: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'section_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
+    columns: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'sector_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
   },
   incidents: {
     label: 'Incident Reports',
@@ -144,7 +145,7 @@ export default function CustomReportBuilder() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `custom-report-${source}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `custom-report-${source}-${localToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -156,6 +157,9 @@ export default function CustomReportBuilder() {
     { id: 'preview', label: 'Results', icon: <Play className="w-3.5 h-3.5" /> },
   ];
 
+  // Set document title
+  useEffect(() => { document.title = 'Custom Report Builder \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {!isMobile && <PanelTitleBar title="Custom Report Builder" icon={Database}>
@@ -164,7 +168,7 @@ export default function CustomReportBuilder() {
             <span className="text-[9px] text-brand-400 font-bold uppercase">{SOURCES[source]?.label}</span>
           )}
           {results.length > 0 && (
-            <button onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Download className="w-3 h-3" /> Export CSV
             </button>
           )}
@@ -172,11 +176,11 @@ export default function CustomReportBuilder() {
       </PanelTitleBar>}
 
       {/* Step indicators */}
-      <div className={`flex items-center ${isMobile ? 'px-2 py-1.5 overflow-x-auto' : 'px-4 py-2'} border-b border-rmpg-700/50 flex-shrink-0`} style={{ background: 'var(--grid-header-bg)' }}>
+      <div className={`flex items-center ${isMobile ? 'px-2 py-1.5 overflow-x-auto' : 'px-4 py-2'} border-b border-rmpg-700/50 flex-shrink-0`} style={{ background: '#080808' }}>
         {steps.map((s, i) => (
           <React.Fragment key={s.id}>
             {i > 0 && <ChevronRight className="w-3 h-3 text-rmpg-600 mx-1" />}
-            <button
+            <button type="button"
               onClick={() => { if (s.id === 'source' || source) setStep(s.id); }}
               className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
                 step === s.id ? 'text-brand-400 bg-brand-900/30 border border-brand-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
@@ -195,10 +199,10 @@ export default function CustomReportBuilder() {
             <h2 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider mb-4">Select Data Source</h2>
             <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-3'} gap-3`}>
               {Object.entries(SOURCES).map(([key, src]) => (
-                <button
+                <button type="button"
                   key={key}
                   onClick={() => handleSourceSelect(key)}
-                  className={`panel-beveled p-4 text-left hover:border-brand-500 transition-colors ${
+                  className={`panel-surface p-4 text-left hover:border-brand-500 transition-colors ${
                     source === key ? 'border-brand-500 bg-brand-900/20' : ''
                   }`}
                 >
@@ -217,13 +221,13 @@ export default function CustomReportBuilder() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Select Columns</h2>
               <div className="flex gap-2">
-                <button onClick={() => setSelectedCols(availableCols)} className="text-[9px] text-brand-400 hover:text-brand-300">Select All</button>
-                <button onClick={() => setSelectedCols([])} className="text-[9px] text-rmpg-400 hover:text-rmpg-300">Clear</button>
+                <button type="button" onClick={() => setSelectedCols(availableCols)} className="text-[9px] text-brand-400 hover:text-brand-300">Select All</button>
+                <button type="button" onClick={() => setSelectedCols([])} className="text-[9px] text-rmpg-400 hover:text-rmpg-300">Clear</button>
               </div>
             </div>
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-2`}>
               {availableCols.map(col => (
-                <label key={col} className="flex items-center gap-2 panel-beveled p-2 cursor-pointer hover:border-brand-500/50 transition-colors">
+                <label key={col} className="flex items-center gap-2 panel-surface p-2 cursor-pointer hover:border-brand-500/50 transition-colors">
                   <input
                     type="checkbox"
                     checked={selectedCols.includes(col)}
@@ -235,7 +239,7 @@ export default function CustomReportBuilder() {
               ))}
             </div>
             <div className="flex justify-end mt-4">
-              <button onClick={() => setStep('filters')} disabled={selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setStep('filters')} disabled={selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary print:hidden">
                 Next: Filters <ChevronRight className="w-3 h-3" />
               </button>
             </div>
@@ -247,11 +251,11 @@ export default function CustomReportBuilder() {
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Set Filters (Optional)</h2>
-              <button onClick={addFilter} className="toolbar-btn"><Filter className="w-3 h-3" /> Add Filter</button>
+              <button type="button" onClick={addFilter} className="toolbar-btn"><Filter className="w-3 h-3" /> Add Filter</button>
             </div>
 
             {filters.map((f, i) => (
-              <div key={`${f.column}-${f.operator}-${i}`} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-beveled p-2`}>
+              <div key={`${f.column}-${f.operator}-${i}`} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-surface p-2`}>
                 <div className="flex items-center gap-2">
                   <select className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={f.column} onChange={e => updateFilter(i, 'column', e.target.value)}>
                     {availableCols.map(c => <option key={c} value={c}>{toDisplayLabel(c)}</option>)}
@@ -262,11 +266,11 @@ export default function CustomReportBuilder() {
                     <option value="gte">≥</option>
                     <option value="lte">≤</option>
                   </select>
-                  <button onClick={() => removeFilter(i)} className="text-red-400 hover:text-red-300 text-xs">✕</button>
+                  <button type="button" onClick={() => removeFilter(i)} className="text-red-400 hover:text-red-300 text-xs">✕</button>
                 </div>
                 <input
                   type="text"
-                  className="input-dark text-[10px] flex-1"
+                  className="input-dark text-[10px] flex-1 min-h-[36px]"
                   placeholder="Value..."
                   value={f.value}
                   onChange={e => updateFilter(i, 'value', e.target.value)}
@@ -274,7 +278,7 @@ export default function CustomReportBuilder() {
               </div>
             ))}
 
-            <div className={`${isMobile ? 'flex flex-col gap-2' : 'flex items-center gap-4'} panel-beveled p-3 mt-4`}>
+            <div className={`${isMobile ? 'flex flex-col gap-2' : 'flex items-center gap-4'} panel-surface p-3 mt-4`}>
               <div className="flex items-center gap-2 flex-wrap">
                 <ArrowUpDown className="w-3 h-3 text-rmpg-400" />
                 <span className="text-[9px] text-rmpg-400 uppercase font-bold">Sort By:</span>
@@ -282,21 +286,21 @@ export default function CustomReportBuilder() {
                   <option value="">— None —</option>
                   {selectedCols.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select className="select-dark text-[10px] w-20" value={sortDir} onChange={e => setSortDir(e.target.value as any)}>
+                <select className="select-dark text-[10px] w-20 min-h-[36px]" value={sortDir} onChange={e => setSortDir(e.target.value as any)}>
                   <option value="asc">ASC</option>
                   <option value="desc">DESC</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] text-rmpg-400 uppercase font-bold">Limit:</span>
-                <select className="select-dark text-[10px] w-20" value={limit} onChange={e => setLimit(Number(e.target.value))}>
+                <select className="select-dark text-[10px] w-20 min-h-[36px]" value={limit} onChange={e => setLimit(Number(e.target.value))}>
                   {[50, 100, 200, 500, 1000].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
             </div>
 
             <div className="flex justify-end mt-4">
-              <button onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary print:hidden">
                 {loading ? 'Running...' : 'Run Query'} <Play className="w-3 h-3" />
               </button>
             </div>
@@ -312,16 +316,16 @@ export default function CustomReportBuilder() {
                 Results — {rowCount} rows
               </h2>
               <div className="flex gap-2">
-                <button onClick={() => setStep('filters')} className="toolbar-btn">Edit Query</button>
-                <button onClick={runQuery} disabled={loading} className="toolbar-btn">
+                <button type="button" onClick={() => setStep('filters')} className="toolbar-btn">Edit Query</button>
+                <button type="button" onClick={runQuery} disabled={loading} className="toolbar-btn">
                   <RefreshCw className="w-3 h-3" /> Re-run
                 </button>
-                <button onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <Download className="w-3 h-3" /> CSV
                 </button>
               </div>
             </div>
-            <div className={`overflow-auto ${isMobile ? 'max-h-[calc(100vh-200px)] -mx-3' : 'max-h-[calc(100vh-260px)]'}`}>
+            <div className={`overflow-auto ${isMobile ? 'max-h-[calc(100dvh-200px)] -mx-3' : 'max-h-[calc(100dvh-260px)]'}`}>
               <table className={`w-full text-[10px] border-collapse ${isMobile ? 'min-w-[600px]' : ''}`}>
                 <thead>
                   <tr>

@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — Social Blade / Social Stats Adapter
+// Skip Tracker 3.5 — Social Blade / Social Stats Adapter
 // ============================================================
 // Looks up public social media statistics for YouTube, TikTok,
 // and Instagram accounts using public endpoints. Returns

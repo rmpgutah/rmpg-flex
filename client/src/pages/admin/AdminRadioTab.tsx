@@ -180,35 +180,48 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
     }
   };
 
+  const activeCount = channels.filter(c => c.is_active).length;
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingId(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (loading) return <LoadingSpinner />;
 
-  const activeCount = channels.filter(c => c.is_active).length;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <Radio className="w-5 h-5 text-brand-400" />
+          <div className="w-9 h-9 flex items-center justify-center bg-green-900/30 border border-green-700/40 shrink-0" aria-hidden="true">
+            <Radio className="w-4 h-4 text-green-400" />
+          </div>
           <div>
             <h2 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">Radio Channel Administration</h2>
             <p className="text-[10px] text-rmpg-400 mt-0.5">Manage PTT radio channels available to officers</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-rmpg-400">
+          <span className="text-[10px] text-rmpg-400 tabular-nums">
             {activeCount} active / {channels.length} total
           </span>
-          <button
+          <button type="button"
             onClick={fetchChannels}
             className="p-1.5 text-rmpg-400 hover:text-brand-400 transition-colors"
-            title="Refresh"
+            title="Refresh channels"
+            aria-label="Refresh channels"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
-          <button
+          <button type="button"
             onClick={() => setShowAdd(!showAdd)}
             className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
+            aria-label="Add new radio channel"
           >
             <Plus className="w-3 h-3" />
             Add Channel
@@ -218,7 +231,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
 
       {/* Add Form */}
       {showAdd && (
-        <div className="panel-beveled border border-rmpg-600 p-4 space-y-3">
+        <div className="panel-surface border border-[#181818] p-4 space-y-3 animate-fade-in">
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">New Radio Channel</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
@@ -228,7 +241,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 value={newId}
                 onChange={(e) => setNewId(e.target.value)}
                 placeholder="e.g. tac-4"
-                className="w-full px-2 py-1.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-100 text-xs focus:border-brand-500 outline-none"
+                className="input-dark w-full text-xs min-h-[36px]"
               />
             </div>
             <div>
@@ -238,7 +251,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="e.g. TAC-4"
-                className="w-full px-2 py-1.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-100 text-xs focus:border-brand-500 outline-none"
+                className="input-dark w-full text-xs min-h-[36px]"
               />
             </div>
             <div>
@@ -248,20 +261,20 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 value={newFreq}
                 onChange={(e) => setNewFreq(e.target.value)}
                 placeholder="e.g. 156.500"
-                className="w-full px-2 py-1.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-100 text-xs focus:border-brand-500 outline-none"
+                className="input-dark w-full text-xs min-h-[36px]"
               />
             </div>
           </div>
           <div className="flex items-center gap-2 pt-1">
-            <button
+            <button type="button"
               onClick={handleAdd}
               disabled={!newId.trim() || !newLabel.trim() || saving}
               className="flex items-center gap-1 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
             >
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
               Create
             </button>
-            <button
+            <button type="button"
               onClick={() => setShowAdd(false)}
               className="px-3 py-1.5 text-rmpg-400 hover:text-rmpg-200 text-[10px] font-bold uppercase tracking-wider transition-colors"
             >
@@ -272,7 +285,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       )}
 
       {/* Channel List */}
-      <div className="panel-beveled border border-rmpg-600 overflow-hidden">
+      <div className="panel-surface border border-rmpg-600 overflow-hidden">
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-rmpg-800/50 text-rmpg-400 uppercase text-[10px] tracking-wider">
@@ -290,14 +303,14 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 {/* Order */}
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-0.5">
-                    <button
+                    <button type="button"
                       onClick={() => handleMove(ch, 'up')}
                       disabled={idx === 0}
                       className="p-0.5 text-rmpg-500 hover:text-rmpg-200 disabled:opacity-30 transition-colors"
                     >
                       <ArrowUp className="w-3 h-3" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleMove(ch, 'down')}
                       disabled={idx === channels.length - 1}
                       className="p-0.5 text-rmpg-500 hover:text-rmpg-200 disabled:opacity-30 transition-colors"
@@ -346,7 +359,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
 
                 {/* Status */}
                 <td className="px-3 py-2 text-center">
-                  <button
+                  <button type="button"
                     onClick={() => handleToggle(ch)}
                     className="inline-flex items-center gap-1 transition-colors"
                     title={ch.is_active ? 'Click to disable' : 'Click to enable'}
@@ -370,32 +383,31 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                   <div className="flex items-center justify-end gap-1">
                     {editingId === ch.id ? (
                       <>
-                        <button
+                        <button type="button"
                           onClick={saveEdit}
                           disabled={saving}
                           className="p-1 text-green-400 hover:text-green-300 transition-colors"
                           title="Save"
                         >
-                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3.5 h-3.5" />}
                         </button>
-                        <button
+                        <button type="button"
                           onClick={cancelEdit}
                           className="p-1 text-rmpg-400 hover:text-rmpg-200 transition-colors"
-                          title="Cancel"
-                        >
+                          title="Cancel">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </>
                     ) : (
                       <>
-                        <button
+                        <button type="button"
                           onClick={() => startEdit(ch)}
                           className="p-1 text-rmpg-400 hover:text-brand-400 transition-colors"
                           title="Edit"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleDelete(ch)}
                           className="p-1 text-rmpg-500 hover:text-red-400 transition-colors"
                           title="Delete"
@@ -420,7 +432,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       </div>
 
       {/* Info box */}
-      <div className="panel-beveled border border-rmpg-700 p-3 text-[10px] text-rmpg-400 space-y-1">
+      <div className="panel-surface border border-rmpg-700 p-3 text-[10px] text-rmpg-400 space-y-1">
         <p className="font-bold text-rmpg-300 uppercase tracking-wider">How Radio Channels Work</p>
         <p>Radio channels are used by the PTT (Push-to-Talk) radio system. Active channels appear in the RadioPage channel selector for all officers. The frequency field is cosmetic — actual audio is transmitted over WebSocket.</p>
         <p>Disabling a channel hides it from the selector but preserves its configuration. Officers currently on a disabled channel will not be disconnected until they switch.</p>

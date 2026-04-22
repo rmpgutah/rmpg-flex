@@ -16,7 +16,10 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import IconButton from '../components/IconButton';
+import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
+import sanitizeHtml from 'sanitize-html';
+import EnrollmentBanner from '../components/email/EnrollmentBanner';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -27,7 +30,7 @@ const FOLDER_ICONS: Record<string, React.ElementType> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -79,23 +82,23 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await apiFetch('/email/signature', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature }) }); onClose(); }
-    catch { /* ignore */ } finally { setSaving(false); }
+    try { await apiFetch('/email/signature', { method: 'PUT', body: JSON.stringify({ signature }) }); onClose(); }
+    catch (err) { console.warn('[EmailPage] save signature failed:', err); } finally { setSaving(false); }
   };
 
-  if (loading) return <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" />;
+  if (loading) return <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" role="status" aria-label="Loading" />;
 
   return (
     <div className="border-t border-border-subtle pt-2 mt-2 space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Signature</span>
-        <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+        <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
-        className="input-dark w-full text-xs font-mono resize-y" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
+        className="input-dark w-full text-xs font-mono resize-y min-h-[36px]" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
       <div className="flex justify-end gap-1.5">
-        <button onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
-        <button onClick={handleSave} disabled={saving} className="btn-primary text-[10px] px-2 py-0.5">{saving ? 'Saving...' : 'Save Signature'}</button>
+        <button type="button" onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
+        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary text-[10px] px-2 py-0.5">{saving ? 'Saving...' : 'Save Signature'}</button>
       </div>
     </div>
   );
@@ -204,12 +207,12 @@ function ContactAutocompleteInput({
         onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className="input-dark w-full text-xs"
+        className="input-dark w-full text-xs min-h-[36px]"
       />
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded shadow-lg max-h-48 overflow-y-auto py-1">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
           {suggestions.map((contact, idx) => (
-            <button
+            <button type="button"
               key={`${contact.email}-${idx}`}
               onClick={() => selectSuggestion(contact)}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
@@ -270,33 +273,33 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
   const filtered = filter ? templates.filter(t => t.category === filter) : templates;
 
   return (
-    <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded shadow-xl">
+    <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded-sm shadow-xl">
       <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Templates</span>
-        <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       {/* Category filter */}
       <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 flex-wrap">
-        <button onClick={() => setFilter('')}
-          className={`text-[9px] px-1.5 py-0.5 rounded ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>All</button>
+        <button type="button" onClick={() => setFilter('')}
+          className={`text-[9px] px-1.5 py-0.5 rounded-sm ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>All</button>
         {categories.map(cat => (
-          <button key={cat} onClick={() => setFilter(cat)}
-            className={`text-[9px] px-1.5 py-0.5 rounded capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
+          <button type="button" key={cat} onClick={() => setFilter(cat)}
+            className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
         ))}
       </div>
-      <div className="max-h-60 overflow-y-auto py-1">
+      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
         {loading ? (
-          <div className="py-4 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>
+          <div className="py-4 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
         ) : filtered.length === 0 ? (
           <div className="py-4 text-center text-[10px] text-rmpg-500">No templates found</div>
         ) : (
           filtered.map(t => (
-            <button key={t.id} onClick={() => { onSelect(t); onClose(); }}
+            <button type="button" key={t.id} onClick={() => { onSelect(t); onClose(); }}
               className="w-full text-left px-3 py-2 hover:bg-brand-500/10 transition-colors border-b border-border-subtle/30 last:border-0">
               <div className="text-[11px] text-white font-medium truncate">{t.name}</div>
               <div className="text-[9px] text-rmpg-500 truncate">{t.subject}</div>
               <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded">{t.category}</span>
+                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{(t.category || '').replace(/_/g, ' ')}</span>
                 {t.is_system ? <span className="text-[8px] text-amber-600">system</span> : null}
               </div>
             </button>
@@ -336,11 +339,11 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="bg-surface-base border border-border-subtle rounded w-80 mx-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
         <div className="p-4 space-y-3">
           {/* Quick presets */}
@@ -350,8 +353,8 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
               {presets.map(preset => {
                 const d = preset.getDate();
                 return (
-                  <button key={preset.label} onClick={() => { setDate(dateToLocalYMD(d)); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
-                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded transition-colors">
+                  <button type="button" key={preset.label} onClick={() => { setDate(dateToLocalYMD(d)); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
+                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded-sm transition-colors">
                     {preset.label}
                   </button>
                 );
@@ -362,15 +365,15 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
             <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider block mb-2">Custom Date & Time</span>
             <div className="flex items-center gap-2">
               <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="input-dark text-xs flex-1" min={localToday()} />
+                className="input-dark text-xs flex-1 min-h-[36px]" min={localToday()} />
               <input type="time" value={time} onChange={e => setTime(e.target.value)}
-                className="input-dark text-xs w-28" />
+                className="input-dark text-xs w-28 min-h-[36px]" />
             </div>
           </div>
         </div>
         <div className="px-4 py-2 border-t border-border-subtle flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary text-xs px-3 py-1">Cancel</button>
-          <button onClick={handleSchedule} disabled={!date || !time} className="btn-primary text-xs px-3 py-1 flex items-center gap-1.5 disabled:opacity-40">
+          <button type="button" onClick={onClose} className="btn-secondary text-xs px-3 py-1">Cancel</button>
+          <button type="button" onClick={handleSchedule} disabled={!date || !time} className="btn-primary text-xs px-3 py-1 flex items-center gap-1.5 disabled:opacity-40">
             <Clock className="w-3.5 h-3.5" /> Schedule
           </button>
         </div>
@@ -464,7 +467,6 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
       payload[`${linkTarget}Id`] = parseInt(linkId, 10);
       await apiFetch('/email/link', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       setShowForm(false);
@@ -505,7 +507,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
         <Link2 className="w-3 h-3 text-rmpg-500" />
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider flex-1">Case Links</span>
         <span className="text-[9px] text-rmpg-600">{links.length}</span>
-        <button onClick={() => setShowForm(!showForm)} className="p-0.5 text-brand-400 hover:text-brand-300" title="Link to case">
+        <button type="button" onClick={() => setShowForm(!showForm)} className="p-0.5 text-brand-400 hover:text-brand-300" title="Link to case">
           <Plus className="w-3 h-3" />
         </button>
       </div>
@@ -515,11 +517,11 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
           {links.map(link => {
             const Icon = getLinkIcon(link);
             return (
-              <div key={link.id} className="flex items-center gap-1 px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded text-[10px] text-rmpg-300 group">
+              <div key={link.id} className="flex items-center gap-1 px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 group">
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
                 {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
-                <button onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
+                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -532,28 +534,28 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
         <div className="px-4 pb-2 space-y-1.5">
           <div className="flex items-center gap-1.5 flex-wrap">
             <select value={linkTarget} onChange={e => setLinkTarget(e.target.value as any)}
-              className="input-dark text-[10px] px-2 py-1 w-24">
+              className="input-dark text-[10px] px-2 py-1 w-24 min-h-[36px]">
               <option value="incident">Incident</option>
               <option value="call">Call</option>
               <option value="warrant">Warrant</option>
               <option value="person">Person</option>
             </select>
             <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID #"
-              className="input-dark text-[10px] px-2 py-1 w-20" type="number" />
+              className="input-dark text-[10px] px-2 py-1 w-20 min-h-[36px]" type="number" />
             <select value={linkRelation} onChange={e => setLinkRelation(e.target.value as any)}
-              className="input-dark text-[10px] px-2 py-1 w-28">
+              className="input-dark text-[10px] px-2 py-1 w-28 min-h-[36px]">
               <option value="related">Related</option>
               <option value="evidence">Evidence</option>
               <option value="notification">Notification</option>
               <option value="correspondence">Correspondence</option>
             </select>
             <input value={linkNotes} onChange={e => setLinkNotes(e.target.value)} placeholder="Notes (optional)"
-              className="input-dark text-[10px] px-2 py-1 flex-1"
+              className="input-dark text-[10px] px-2 py-1 flex-1 min-h-[36px]"
               onKeyDown={e => { if (e.key === 'Enter') handleLink(); }} />
-            <button onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Link'}
+            <button type="button" onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : 'Link'}
             </button>
-            <button onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-white">
+            <button type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-white">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -598,7 +600,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
     } catch { onSnackbar('Failed to cancel', 'error'); }
   };
 
-  if (loading) return <div className="py-2 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>;
+  if (loading) return <div className="py-2 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>;
   if (emails.length === 0) return <div className="py-3 text-center text-[10px] text-rmpg-600">No scheduled emails</div>;
 
   return (
@@ -613,7 +615,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
               <CalendarClock className={`w-3 h-3 flex-shrink-0 ${email.status === 'sent' ? 'text-green-500' : email.status === 'failed' ? 'text-red-400' : isPast ? 'text-amber-400' : 'text-brand-400'}`} />
               <span className="text-[10px] text-rmpg-300 truncate flex-1">{email.subject || '(No subject)'}</span>
               {email.status === 'pending' && (
-                <button onClick={() => handleCancel(email.id)}
+                <button type="button" onClick={() => handleCancel(email.id)}
                   className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
                   <X className="w-3 h-3" />
                 </button>
@@ -636,6 +638,68 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 }
 
 // ============================================================
+// Email Body Frame — renders HTML email in a blob: URL iframe
+// blob: URLs inherit the parent page origin, allowing external images.
+// Scripts blocked via CSP meta tag. Images explicitly allowed.
+// ============================================================
+/** Rewrite external image URLs to go through our server-side proxy.
+ *  This bypasses referrer/origin checks on government and corporate image servers. */
+function proxyEmailImages(html: string): string {
+  const token = localStorage.getItem('rmpg_token') || '';
+  // Rewrite src="http..." on img tags to go through /api/email/image-proxy
+  return html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*["'])(https?:\/\/[^"']+)(["'])/gi,
+    (_match, before, url, after) => {
+      // Skip data: URLs and already-proxied URLs
+      if (url.startsWith('data:') || url.includes('/api/email/image-proxy')) return _match;
+      const proxyUrl = `/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
+      return `${before}${proxyUrl}${after}`;
+    }
+  );
+}
+
+const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
+  ({ bodyHtml, onLoad }, ref) => {
+    const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+    React.useEffect(() => {
+      // Use a vetted sanitizer instead of regex stripping to avoid incomplete
+      // multi-character sanitization bypasses.
+      const sanitized = sanitizeHtml(bodyHtml, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+          'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+          'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
+        ]),
+        allowedAttributes: {
+          a: ['href', 'name', 'target', 'rel'],
+          img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+          '*': ['style', 'class']
+        },
+        allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+        allowedSchemesByTag: {
+          img: ['http', 'https']
+        },
+        disallowedTagsMode: 'discard'
+      });
+      // Proxy all external images through our server
+      const proxied = proxyEmailImages(sanitized);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
+        pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
+      </style></head><body>${proxied}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }, [bodyHtml]);
+    if (!blobUrl) return null;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} sandbox="allow-same-origin allow-popups" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
+  }
+);
+EmailBodyFrame.displayName = 'EmailBodyFrame';
+
+// ============================================================
 // Print Email Helper
 // ============================================================
 
@@ -646,19 +710,19 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   const doc = printWindow.document;
   const toStr = message.toAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ');
   const ccStr = message.ccAddresses.length > 0 ? message.ccAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ') : '';
-  const dateStr = new Date(message.receivedAt).toLocaleString();
+  const dateStr = safeDateTimeStr(message.receivedAt);
 
   // Build print document using safe DOM methods
   const style = doc.createElement('style');
   style.textContent = `
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #1a1a1a; margin: 40px; line-height: 1.6; }
-    .header { border-bottom: 2px solid #1a5a9e; padding-bottom: 12px; margin-bottom: 16px; }
+    .header { border-bottom: 2px solid #888888; padding-bottom: 12px; margin-bottom: 16px; }
     .header h1 { font-size: 16pt; margin: 0 0 8px; color: #1a1a1a; }
     .meta { font-size: 10pt; color: #555; margin: 2px 0; }
     .meta strong { color: #333; min-width: 40px; display: inline-block; }
     .body-content { margin-top: 16px; }
     .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9pt; color: #999; }
-    @media print { body { margin: 20px; } a { color: #1a5a9e; text-decoration: none; } }
+    @media print { body { margin: 20px; } a { color: #888888; text-decoration: none; } }
   `;
   doc.head.appendChild(style);
   doc.title = message.subject;
@@ -694,8 +758,8 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     // This is the same HTML we already render from the email server in a sandboxed iframe
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
-    iframe.sandbox.value = '';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#1a5a9e;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
+    iframe.sandbox.value = 'allow-same-origin';
+    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');
@@ -760,32 +824,32 @@ function SearchFilterPanel({
   const handleReset = () => { onChange(EMPTY_FILTERS); onClose(); };
 
   return (
-    <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded shadow-xl p-3 space-y-2">
+    <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-xl p-3 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Search Filters</span>
-        <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
 
       <div>
         <label className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
         <input value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
-          className="input-dark w-full text-[10px] px-2 py-1" placeholder="name or email" />
+          className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" placeholder="name or email" />
       </div>
 
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
-            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+            className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Paperclip className="w-3 h-3 text-rmpg-500" /> Has attachments
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
-            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+            className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Flag className="w-3 h-3 text-rmpg-500" /> Flagged
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
-            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+            className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Mail className="w-3 h-3 text-rmpg-500" /> Unread only
         </label>
       </div>
@@ -794,20 +858,20 @@ function SearchFilterPanel({
         <div className="flex-1">
           <label className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
           <input type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
-            className="input-dark w-full text-[10px] px-2 py-1" />
+            className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
         <div className="flex-1">
           <label className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
           <input type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
-            className="input-dark w-full text-[10px] px-2 py-1" />
+            className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
       </div>
 
       <div className="flex items-center justify-between pt-1 border-t border-border-subtle">
         {hasActiveFilters(local) ? (
-          <button onClick={handleReset} className="text-[10px] text-rmpg-500 hover:text-white">Clear filters</button>
+          <button type="button" onClick={handleReset} className="text-[10px] text-rmpg-500 hover:text-white">Clear filters</button>
         ) : <div />}
-        <button onClick={handleApply} className="btn-primary text-[10px] px-3 py-0.5">Apply</button>
+        <button type="button" onClick={handleApply} className="btn-primary text-[10px] px-3 py-0.5">Apply</button>
       </div>
     </div>
   );
@@ -830,9 +894,12 @@ function setNotificationsEnabled(enabled: boolean) {
 async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
-  if (Notification.permission === 'denied') return false;
-  const result = await Notification.requestPermission();
-  return result === 'granted';
+  try {
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  } catch {
+    return (Notification.permission as string) === 'granted';
+  }
 }
 
 function showDesktopNotification(title: string, body: string) {
@@ -938,7 +1005,6 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
     try {
       await apiFetch('/email/schedule', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: to.split(',').map(s => s.trim()).filter(Boolean),
           cc: cc.trim() ? cc.split(',').map(s => s.trim()).filter(Boolean) : undefined,
@@ -951,7 +1017,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       clearDraft();
       onSent();
       onClose();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
     finally { setSending(false); setShowScheduleModal(false); }
   };
 
@@ -1020,11 +1086,11 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
-      await apiFetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
       clearDraft();
       onSent();
       onClose();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
     finally { setSending(false); }
   };
 
@@ -1054,15 +1120,15 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   const totalAttachmentSize = fileAttachments.reduce((sum, a) => sum + a.size, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-surface-base border border-rmpg-700 rounded-t-lg sm:rounded-lg w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-2xl shadow-black/50 transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
+        className={`bg-[#141414] border border-[#2b2b2b] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141414]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken rounded-t-lg">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c] rounded-t-sm">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
@@ -1072,13 +1138,13 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </h3>
           <div className="flex items-center gap-1">
             {draftStatus && <span className="text-[9px] text-green-500 italic mr-2">{draftStatus}</span>}
-            <button onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors"><X className="w-4 h-4" /></button>
+            <IconButton onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
           </div>
         </div>
 
         {/* Drag overlay */}
         {isDragOver && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-brand-500/10 border-2 border-dashed border-brand-500 rounded-lg pointer-events-none">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-brand-500/10 border-2 border-dashed border-brand-500 rounded-sm pointer-events-none">
             <div className="text-center">
               <Upload className="w-8 h-8 text-brand-400 mx-auto mb-2" />
               <p className="text-sm text-brand-400 font-semibold">Drop files to attach</p>
@@ -1089,9 +1155,9 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         {/* Recipients */}
         <div className="px-4 pt-3 space-y-1.5">
           {error && (
-            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-3 py-1.5 flex items-center gap-2">
+            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-1.5 flex items-center gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> {error}
-              <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
+              <button type="button" onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
             </div>
           )}
 
@@ -1099,8 +1165,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
             <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">To</span>
             <div className="flex-1"><ContactAutocompleteInput value={to} onChange={setTo} placeholder="Recipients..." /></div>
             <div className="flex items-center gap-1 text-[9px] flex-shrink-0">
-              <button onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Cc</button>
-              <button onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Bcc</button>
+              <button type="button" onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded-sm transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Cc</button>
+              <button type="button" onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded-sm transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Bcc</button>
             </div>
           </div>
 
@@ -1125,38 +1191,38 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </div>
         </div>
 
-        <div className="border-t border-rmpg-700 mx-4 my-0" />
+        <div className="border-t border-[#2b2b2b] mx-4 my-0" />
 
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '**', '**', 'bold text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '*', '*', 'italic text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '[', '](https://)', 'link text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
           <div className="w-px h-4 bg-rmpg-700 mx-1" />
           <button type="button" onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
-          <button type="button" onClick={handleInlineImage}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Insert inline image"><Image className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
+          <IconButton onClick={handleInlineImage}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image" aria-label="Insert inline image"><Image className="w-3.5 h-3.5" /></IconButton>
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <div className="flex-1" />
           <div className="relative">
             <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Use template">
+              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Use template">
               <FileStack className="w-3 h-3" /> Templates
             </button>
             {showTemplatePicker && <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />}
           </div>
           <button type="button" onClick={() => setShowSignatureEditor(!showSignatureEditor)}
-            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Edit signature">
+            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Edit signature">
             <Settings2 className="w-3 h-3" /> Sig
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 px-4 overflow-y-auto">
+        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
             className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
             placeholder="Write your message here...
@@ -1169,7 +1235,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
 
         {/* Reply context */}
         {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-surface-sunken border-l-2 border-l-brand-500/30 rounded p-2.5">
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0c0c0c] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <Reply className="w-3 h-3 text-brand-400" />
               <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
@@ -1187,21 +1253,21 @@ Drag & drop files to attach • Ctrl+Enter to send" />
               <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">
                 {fileAttachments.length} attachment{fileAttachments.length > 1 ? 's' : ''} ({formatSize(totalAttachmentSize)})
               </span>
-              <button onClick={() => setFileAttachments([])} className="text-[9px] text-rmpg-500 hover:text-red-400">Remove all</button>
+              <button type="button" onClick={() => setFileAttachments([])} className="text-[9px] text-rmpg-500 hover:text-red-400">Remove all</button>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {fileAttachments.map((att, idx) => {
                 const ext = att.name.split('.').pop()?.toLowerCase() || '';
                 const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext);
                 const isPdf = ext === 'pdf';
-                const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : '#8b5cf6';
+                const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-lg text-[10px] text-rmpg-300 group">
-                    <div className="w-5 h-5 rounded flex items-center justify-center text-[7px] font-bold uppercase"
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm text-[10px] text-rmpg-300 group">
+                    <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
-                    <button onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
                   </div>
                 );
               })}
@@ -1210,24 +1276,24 @@ Drag & drop files to attach • Ctrl+Enter to send" />
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-rmpg-700 bg-surface-sunken rounded-b-lg">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#2b2b2b] bg-[#0c0c0c] rounded-b-sm">
           <div className="text-[9px] text-rmpg-600">
             <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
             <span className="sm:hidden">Ctrl+Enter to send</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
               Discard
             </button>
             {mode === 'new' && (
-              <button onClick={() => setShowScheduleModal(true)} disabled={sending}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors flex items-center gap-1.5 disabled:opacity-40">
+              <button type="button" onClick={() => setShowScheduleModal(true)} disabled={sending}
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
                 <Clock className="w-3.5 h-3.5" /> Later
               </button>
             )}
-            <button onClick={handleSend} disabled={sending}
-              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors flex items-center gap-1.5 shadow-sm shadow-brand-500/30 disabled:opacity-40">
-              {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            <button type="button" onClick={handleSend} disabled={sending}
+              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-all flex items-center gap-1.5 shadow-sm shadow-brand-500/30 hover:shadow-md hover:shadow-brand-500/40 disabled:opacity-40">
+              {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-3.5 h-3.5" />}
               {sending ? 'Sending...' : 'Send'}
             </button>
           </div>
@@ -1267,13 +1333,13 @@ function MoveToFolderDropdown({ folders, currentFolder, onMove }: { folders: Ema
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-white" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
+      <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-white" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded shadow-lg py-1 max-h-60 overflow-y-auto">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
             const Icon = FOLDER_ICONS[f.displayName] || Folder;
             return (
-              <button key={f.id} onClick={() => { onMove(getFolderKey(f)); setOpen(false); }}
+              <button type="button" key={f.id} onClick={() => { onMove(getFolderKey(f)); setOpen(false); }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
                 <Icon className="w-3 h-3" /> {f.displayName}
               </button>
@@ -1320,7 +1386,7 @@ function ContextMenu({
   };
 
   const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: React.ElementType; label: string; onClick: () => void; danger?: boolean }) => (
-    <button onClick={() => { onClick(); onClose(); }}
+    <button type="button" onClick={() => { onClick(); onClose(); }}
       className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${danger ? 'text-red-400 hover:bg-red-500/10' : 'text-rmpg-300 hover:bg-brand-500/15 hover:text-white'}`}>
       <Icon className="w-3 h-3" /> {label}
     </button>
@@ -1335,7 +1401,7 @@ function ContextMenu({
   };
 
   return (
-    <div ref={ref} style={style} className="min-w-[180px] bg-surface-base border border-border-strong rounded shadow-xl py-1">
+    <div ref={ref} style={style} className="min-w-[180px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1">
       <MenuItem icon={Reply} label="Reply" onClick={onReply} />
       <MenuItem icon={ReplyAll} label="Reply All" onClick={onReplyAll} />
       <MenuItem icon={Forward} label="Forward" onClick={onForward} />
@@ -1353,11 +1419,11 @@ function ContextMenu({
           <FolderInput className="w-3 h-3" /> Move to <ChevronRightIcon className="w-3 h-3 ml-auto" />
         </div>
         {showMoveMenu && (
-          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded shadow-xl py-1 max-h-60 overflow-y-auto">
+          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
               const Icon = FOLDER_ICONS[f.displayName] || Folder;
               return (
-                <button key={f.id} onClick={() => { onMove(getFolderKey(f)); onClose(); }}
+                <button type="button" key={f.id} onClick={() => { onMove(getFolderKey(f)); onClose(); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
                   <Icon className="w-3 h-3" /> {f.displayName}
                 </button>
@@ -1377,7 +1443,7 @@ function ContextMenu({
 // Inline Quick Reply
 // ============================================================
 
-function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => void }) {
+function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent: () => void; onError?: (msg: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -1387,17 +1453,17 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
     if (!body.trim()) return;
     setSending(true);
     try {
-      await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+      await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', body: JSON.stringify({ body }) });
       setBody(''); setExpanded(false); onSent();
-    } catch { /* ignore */ } finally { setSending(false); }
+    } catch (err: any) { onError?.(err?.message || 'Failed to send reply'); } finally { setSending(false); }
   };
 
   if (!expanded) {
     return (
-      <div className="border-t border-rmpg-700 bg-surface-sunken">
+      <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
         <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-rmpg-700 rounded-lg cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
-          <Reply className="w-3.5 h-3.5 text-rmpg-600" />
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#2b2b2b] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+          <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
         </div>
       </div>
@@ -1405,19 +1471,19 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
   }
 
   return (
-    <div className="border-t border-rmpg-700 bg-surface-sunken">
-      <div className="mx-4 my-3 border border-rmpg-700 rounded-lg bg-surface-base overflow-hidden focus-within:border-brand-500/40 transition-colors">
+    <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
+      <div className="mx-4 my-3 border border-[#2b2b2b] rounded-sm bg-[#141414] overflow-hidden focus-within:border-brand-500/40 transition-colors">
         <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
-        <div className="flex items-center justify-between px-3 py-2 bg-surface-sunken/50">
-          <span className="text-[9px] text-rmpg-600">Ctrl+Enter to send • Esc to cancel</span>
+        <div className="flex items-center justify-between px-3 py-2 bg-[#0c0c0c]/50">
+          <span className="text-[9px] text-rmpg-600 font-mono">Ctrl+Enter to send &middot; Esc to cancel</span>
           <div className="flex items-center gap-1.5">
-            <button onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">Cancel</button>
-            <button onClick={handleSend} disabled={sending || !body.trim()}
-              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
-              {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Reply
+            <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
+            <button type="button" onClick={handleSend} disabled={sending || !body.trim()}
+              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
+              {sending ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-3 h-3" />} Reply
             </button>
           </div>
         </div>
@@ -1449,6 +1515,20 @@ function groupByConversation(messages: EmailMessage[]): ThreadGroup[] {
 
 interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
@@ -1456,6 +1536,25 @@ export default function EmailPage() {
 
   // Status
   const [status, setStatus] = useState<{ configured: boolean; enabled: boolean; authorized: boolean } | null>(null);
+
+  // Phase 4: per-user enrollment gate
+  const [enrolled, setEnrolled] = useState<boolean | null>(null);
+
+  // Fetch enrollment status on mount
+  useEffect(() => {
+    apiFetch<{ enrolled: boolean }>('/api/email/status')
+      .then(s => setEnrolled(s.enrolled))
+      .catch(() => setEnrolled(false));
+  }, []);
+
+  // Handle ?enrolled=1 callback after Microsoft consent
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('enrolled') === '1') {
+      setEnrolled(true);
+      window.history.replaceState({}, '', '/email');
+    }
+  }, []);
 
   // Folders
   const [folders, setFolders] = useState<EmailFolder[]>([]);
@@ -1476,6 +1575,7 @@ export default function EmailPage() {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Selected message
   const [selectedMessage, setSelectedMessage] = useState<EmailMessage | null>(null);
@@ -1487,6 +1587,11 @@ export default function EmailPage() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Task 2.4: FTS search — debounced call to /api/email/messages/search
+  // When searchResults is non-null, it replaces the folder message list
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<EmailMessage[] | null>(null);
 
   // Compose
   const [composing, setComposing] = useState<'new' | 'reply' | 'reply-all' | 'forward' | null>(null);
@@ -1513,6 +1618,33 @@ export default function EmailPage() {
   // Scheduled emails panel
   const [showScheduledPanel, setShowScheduledPanel] = useState(false);
 
+  // Feature 23: Auto-categorization
+  const [categorizing, setCategorizing] = useState(false);
+
+  // Feature 25: Thread view mode
+  const [viewMode, setViewMode] = useState<'messages' | 'threads'>('messages');
+  const [apiThreads, setApiThreads] = useState<any[]>([]);
+  const [loadingThreads, setLoadingThreads] = useState(false);
+
+  const handleAutoCategorize = useCallback(async () => {
+    setCategorizing(true);
+    try {
+      const res = await apiFetch<{ processed: number; categorized: number }>('/email/categorize/batch', { method: 'POST' });
+      addToast(`Categorized ${res.categorized} of ${res.processed} messages`, 'success');
+    } catch { addToast('Auto-categorization failed', 'error'); }
+    finally { setCategorizing(false); }
+  }, [addToast]);
+
+  const fetchThreads = useCallback(async () => {
+    setLoadingThreads(true);
+    try {
+      const params = new URLSearchParams({ folder: selectedFolder, page: '1', per_page: '25' });
+      const data = await apiFetch<{ threads: any[]; hasMore: boolean }>(`/email/threads?${params}`);
+      setApiThreads(data.threads || []);
+    } catch { setApiThreads([]); }
+    finally { setLoadingThreads(false); }
+  }, [selectedFolder]);
+
   // Resizable list panel
   const [listWidth, setListWidth] = useState(() => {
     const saved = localStorage.getItem('email_list_width');
@@ -1536,15 +1668,15 @@ export default function EmailPage() {
   // ─── Data Fetching ───
 
   const fetchStatus = useCallback(async () => {
-    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch { /* ignore */ }
+    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch (err) { console.warn('[EmailPage] fetch status failed:', err); }
   }, []);
 
   const fetchFolders = useCallback(async () => {
-    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch { /* ignore */ }
+    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch (err) { console.warn('[EmailPage] fetch folders failed:', err); }
   }, []);
 
   const fetchMessages = useCallback(async (p = 1, folder = selectedFolder, q = search) => {
-    setLoading(true);
+    if (p === 1) setLoading(true); else setLoadingMore(true);
     try {
       const params = new URLSearchParams({ folder, page: String(p), per_page: '25' });
       if (q) params.set('search', q);
@@ -1552,7 +1684,7 @@ export default function EmailPage() {
       if (p === 1) setMessages(data.messages); else setMessages(prev => [...prev, ...data.messages]);
       setHasMore(data.hasMore || false);
       setPage(p);
-    } catch (e) { console.warn('[Email] fetch messages failed:', e); } finally { setLoading(false); }
+    } catch (e) { console.warn('[Email] fetch messages failed:', e); } finally { setLoading(false); setLoadingMore(false); }
   }, [selectedFolder, search]);
 
   const fetchFullMessage = useCallback(async (id: string) => {
@@ -1562,7 +1694,7 @@ export default function EmailPage() {
       setFullMessage(msg);
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
       try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
-      catch { setAttachments([]); }
+      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 
@@ -1570,7 +1702,7 @@ export default function EmailPage() {
     try {
       const children = await apiFetch<EmailFolder[]>(`/email/folders/${parentId}/children`);
       setChildFolders(prev => new Map(prev).set(parentId, children));
-    } catch { /* ignore */ }
+    } catch (err) { console.warn('[EmailPage] fetch child folders failed:', err); }
   }, []);
 
   // ─── Effects ───
@@ -1605,6 +1737,36 @@ export default function EmailPage() {
     }, 500);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchInput, search, selectedFolder, fetchMessages]);
+
+  // Task 2.4: Debounced FTS search (300ms, ≥2 chars) — populates searchResults
+  useEffect(() => {
+    if (searchQuery.length < 2) { setSearchResults(null); return; }
+    const t = setTimeout(() => {
+      const folder = selectedFolder;
+      apiFetch<{ results: any[] }>(`/email/messages/search?q=${encodeURIComponent(searchQuery)}&folder=${encodeURIComponent(folder || '')}`)
+        .then(r => {
+          // FTS endpoint returns raw snake_case DB rows — map to EmailMessage camelCase shape
+          const mapped: EmailMessage[] = (r.results || []).map((row: any) => ({
+            id: row.graph_id || row.id,
+            conversationId: row.conversation_id,
+            subject: row.subject || '',
+            fromAddress: row.from_address || '',
+            fromName: row.from_name || '',
+            toAddresses: [],
+            ccAddresses: [],
+            bodyPreview: row.body_preview || '',
+            hasAttachments: !!row.has_attachments,
+            isRead: !!row.is_read,
+            isFlagged: !!row.is_flagged,
+            importance: 'normal',
+            receivedAt: row.received_at || '',
+          }));
+          setSearchResults(mapped);
+        })
+        .catch(() => setSearchResults([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery, selectedFolder]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1668,19 +1830,24 @@ export default function EmailPage() {
 
   const handleSelectFolder = (folderId: string) => {
     setSelectedFolder(folderId); setSelectedMessage(null); setFullMessage(null); setSelectedIds(new Set()); setPage(1);
-    fetchMessages(1, folderId, search);
+    // Task 2.4: clear FTS search on folder change — simpler & more predictable UX
+    setSearchQuery(''); setSearchInput(''); setSearch(''); setSearchResults(null);
+    fetchMessages(1, folderId, '');
   };
 
   const handleSelectMessage = (msg: EmailMessage) => {
     setSelectedMessage(msg); setMobileView('detail'); fetchFullMessage(msg.id);
   };
 
-  const handleClearSearch = () => { setSearchInput(''); setSearch(''); setPage(1); fetchMessages(1, selectedFolder, ''); };
+  const handleClearSearch = () => {
+    setSearchInput(''); setSearch(''); setSearchQuery(''); setSearchResults(null);
+    setPage(1); fetchMessages(1, selectedFolder, '');
+  };
   const handleRefresh = () => { fetchFolders(); fetchMessages(1, selectedFolder, search); };
 
   const handleToggleRead = async (msg: EmailMessage) => {
     try {
-      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isRead: !msg.isRead }) });
+      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', body: JSON.stringify({ isRead: !msg.isRead }) });
       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, isRead: !msg.isRead } : m));
       showSnackbar(msg.isRead ? 'Marked as unread' : 'Marked as read');
       debouncedFolderRefresh();
@@ -1689,7 +1856,7 @@ export default function EmailPage() {
 
   const handleToggleFlag = async (msg: EmailMessage) => {
     try {
-      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFlagged: !msg.isFlagged }) });
+      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', body: JSON.stringify({ isFlagged: !msg.isFlagged }) });
       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, isFlagged: !msg.isFlagged } : m));
       showSnackbar(msg.isFlagged ? 'Flag removed' : 'Flagged');
     } catch { showSnackbar('Failed to update', 'error'); }
@@ -1709,7 +1876,7 @@ export default function EmailPage() {
   const handleArchive = async (msg: EmailMessage) => {
     const shouldAdvance = selectedMessage?.id === msg.id;
     try {
-      await apiFetch(`/email/messages/${msg.id}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folderId: 'archive' }) });
+      await apiFetch(`/email/messages/${msg.id}/move`, { method: 'POST', body: JSON.stringify({ folderId: 'archive' }) });
       if (shouldAdvance) autoAdvance(msg.id, messages); else { setSelectedMessage(null); setFullMessage(null); }
       setMessages(prev => prev.filter(m => m.id !== msg.id));
       setSelectedIds(prev => { const n = new Set(prev); n.delete(msg.id); return n; });
@@ -1721,7 +1888,7 @@ export default function EmailPage() {
     const target = msg || selectedMessage;
     if (!target) return;
     try {
-      await apiFetch(`/email/messages/${target.id}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folderId }) });
+      await apiFetch(`/email/messages/${target.id}/move`, { method: 'POST', body: JSON.stringify({ folderId }) });
       if (selectedMessage?.id === target.id) autoAdvance(target.id, messages);
       setMessages(prev => prev.filter(m => m.id !== target.id));
       showSnackbar('Moved to folder'); debouncedFolderRefresh();
@@ -1740,7 +1907,7 @@ export default function EmailPage() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     try {
-      await apiFetch('/email/messages/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ids }) });
+      await apiFetch('/email/messages/batch', { method: 'POST', body: JSON.stringify({ action, ids }) });
       if (action === 'delete' || action === 'archive') {
         if (selectedMessage && selectedIds.has(selectedMessage.id)) {
           const remaining = messages.filter(m => !selectedIds.has(m.id));
@@ -1760,7 +1927,7 @@ export default function EmailPage() {
 
   const handleMarkAllRead = async () => {
     try {
-      await apiFetch('/email/messages/mark-all-read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: selectedFolder }) });
+      await apiFetch('/email/messages/mark-all-read', { method: 'POST', body: JSON.stringify({ folder: selectedFolder }) });
       setMessages(prev => prev.map(m => ({ ...m, isRead: true }))); showSnackbar('All messages marked as read'); debouncedFolderRefresh();
     } catch { showSnackbar('Failed to mark all as read', 'error'); }
   };
@@ -1769,7 +1936,7 @@ export default function EmailPage() {
   const handleCreateFolder = async (parentId?: string) => {
     if (!newFolderName.trim()) return;
     try {
-      await apiFetch('/email/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: newFolderName.trim(), parentFolderId: parentId }) });
+      await apiFetch('/email/folders', { method: 'POST', body: JSON.stringify({ displayName: newFolderName.trim(), parentFolderId: parentId }) });
       setNewFolderName(''); setShowNewFolder(false); fetchFolders();
       if (parentId) fetchChildFolders(parentId);
       showSnackbar('Folder created');
@@ -1779,7 +1946,7 @@ export default function EmailPage() {
   const handleRenameFolder = async (folderId: string) => {
     if (!renameValue.trim()) return;
     try {
-      await apiFetch(`/email/folders/${folderId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: renameValue.trim() }) });
+      await apiFetch(`/email/folders/${folderId}`, { method: 'PATCH', body: JSON.stringify({ displayName: renameValue.trim() }) });
       setRenamingFolder(null); setRenameValue(''); fetchFolders();
       showSnackbar('Folder renamed');
     } catch { showSnackbar('Failed to rename folder', 'error'); }
@@ -1812,16 +1979,19 @@ export default function EmailPage() {
     setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
+
   // ─── Not Configured ───
 
   if (status && !status.configured) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
             <WifiOff className="w-8 h-8 text-red-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white">Email Not Configured</h2>
+          <h2 className="text-sm font-semibold text-white tracking-wide">Email Not Configured</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft 365 email integration needs to be set up by an administrator.
           </p>
@@ -1843,10 +2013,10 @@ export default function EmailPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
             <AlertTriangle className="w-8 h-8 text-amber-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white">Authorization Required</h2>
+          <h2 className="text-sm font-semibold text-white tracking-wide">Authorization Required</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
             An administrator needs to sign in with the Microsoft 365 account.
@@ -1878,9 +2048,12 @@ export default function EmailPage() {
   // Top-level folders only (no parentFolderId, or parentFolderId points to root)
   const topLevelFolders = sortedFolders.filter(f => !f.parentFolderId || WELL_KNOWN_FOLDERS.includes(f.displayName));
 
+  // Task 2.4: When FTS search is active, searchResults replaces the folder message list
+  const displayedMessages: EmailMessage[] = searchResults ?? messages;
+
   // Apply client-side search filters
   const filteredMessages = hasActiveFilters(searchFilters)
-    ? messages.filter(msg => {
+    ? displayedMessages.filter(msg => {
         if (searchFilters.sender) {
           const s = searchFilters.sender.toLowerCase();
           if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
@@ -1892,9 +2065,9 @@ export default function EmailPage() {
         if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
         return true;
       })
-    : messages;
+    : displayedMessages;
 
-  const threads = groupByConversation(filteredMessages);
+  const conversationThreads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;
   const isWellKnown = (name: string) => WELL_KNOWN_FOLDERS.includes(name);
 
@@ -1929,7 +2102,7 @@ export default function EmailPage() {
           }}
         >
           {hasChildren && !folderCollapsed ? (
-            <button onClick={e => { e.stopPropagation(); toggleFolderExpand(f.id); }} className="p-0.5 -ml-0.5 text-rmpg-500 hover:text-white">
+            <button type="button" onClick={e => { e.stopPropagation(); toggleFolderExpand(f.id); }} className="p-0.5 -ml-0.5 text-rmpg-500 hover:text-white">
               {isExpanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
             </button>
           ) : !folderCollapsed ? <div className="w-3.5" /> : null}
@@ -1949,7 +2122,7 @@ export default function EmailPage() {
           )}
 
           {f.unreadItemCount > 0 && (
-            <span className={`text-[9px] font-bold bg-brand-500/20 text-brand-400 px-1.5 rounded-full ${folderCollapsed ? 'absolute top-0 right-0 mt-0.5 mr-0.5' : ''}`}>
+            <span className={`text-[9px] font-bold bg-brand-500/20 text-brand-400 px-1.5 rounded-full min-w-[18px] text-center ${folderCollapsed ? 'absolute top-0 right-0 mt-0.5 mr-0.5' : ''}`}>
               {f.unreadItemCount}
             </span>
           )}
@@ -1963,22 +2136,26 @@ export default function EmailPage() {
 
   // ─── Render ───
 
+  // Phase 4: per-user enrollment gate
+  if (enrolled === false) return <EnrollmentBanner />;
+  if (enrolled === null) return <div className="p-8 text-center text-xs text-gray-500">Checking enrollment...</div>;
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* ─── Folder Panel ─── */}
       <div className={`flex-shrink-0 border-r border-border-subtle bg-surface-sunken hidden md:flex flex-col transition-all ${folderCollapsed ? 'w-12' : 'w-48'}`}>
         {/* Collapse toggle + compose */}
         <div className="px-2 py-2 border-b border-border-subtle flex items-center gap-1">
-          <button onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
+          <IconButton onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'} aria-label={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
-          </button>
+          </IconButton>
           {!folderCollapsed && (
-            <button onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded transition-colors shadow-sm shadow-brand-500/20">
+            <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
           )}
           {folderCollapsed && (
-            <button onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300" title="Compose">
+            <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300" title="Compose">
               <Plus className="w-3.5 h-3.5" />
             </button>
           )}
@@ -1990,7 +2167,7 @@ export default function EmailPage() {
         )}
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto py-1">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
           {topLevelFolders.map(f => renderFolderItem(f))}
         </div>
 
@@ -2001,12 +2178,12 @@ export default function EmailPage() {
               <div className="flex items-center gap-1">
                 <input value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
-                  className="flex-1 input-dark text-[10px] px-2 py-0.5" placeholder="Folder name" autoFocus />
-                <button onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
-                <button onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                  className="flex-1 input-dark text-[10px] px-2 py-0.5 min-h-[36px]" placeholder="Folder name" autoFocus />
+                <button type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
               </div>
             ) : (
-              <button onClick={() => setShowNewFolder(true)}
+              <button type="button" onClick={() => setShowNewFolder(true)}
                 className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
                 <FolderPlus className="w-3 h-3" /> New Folder
               </button>
@@ -2017,7 +2194,7 @@ export default function EmailPage() {
         {/* Scheduled emails section */}
         {!folderCollapsed && (
           <div className="border-t border-border-subtle">
-            <button onClick={() => setShowScheduledPanel(!showScheduledPanel)}
+            <button type="button" onClick={() => setShowScheduledPanel(!showScheduledPanel)}
               className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-rmpg-400 hover:text-white transition-colors">
               <CalendarClock className="w-3 h-3" />
               <span className="flex-1 text-left">Scheduled</span>
@@ -2030,11 +2207,11 @@ export default function EmailPage() {
         {/* Notification toggle + shortcuts */}
         {!folderCollapsed && (
           <div className="px-3 py-2 border-t border-border-subtle space-y-1">
-            <button onClick={async () => {
+            <button type="button" onClick={async () => {
               const newState = !notificationsOn;
               if (newState) {
                 const granted = await requestNotificationPermission();
-                if (!granted) { showSnackbar('Notifications blocked by browser', 'error'); return; }
+                if (!granted) { showSnackbar('Notifications blocked — click the lock icon in the address bar → Allow notifications, then reload', 'error'); return; }
               }
               setNotificationsEnabled(newState);
               setNotificationsOn(newState);
@@ -2044,9 +2221,9 @@ export default function EmailPage() {
               {notificationsOn ? <Bell className="w-3 h-3 text-brand-400" /> : <BellOff className="w-3 h-3" />}
               {notificationsOn ? 'Notifications on' : 'Notifications off'}
             </button>
-            <div className="text-[8px] text-rmpg-600 space-y-0.5">
-              <div>Ctrl+N New • Ctrl+R Reply</div>
-              <div>Ctrl+F Forward • ↑↓ Navigate</div>
+            <div className="text-[8px] text-rmpg-600 space-y-0.5 font-mono">
+              <div>Ctrl+N New &middot; Ctrl+R Reply</div>
+              <div>Ctrl+F Forward &middot; &#x2191;&#x2193; Navigate</div>
             </div>
           </div>
         )}
@@ -2055,19 +2232,19 @@ export default function EmailPage() {
       {/* ─── Folder context menu ─── */}
       {folderContextMenu && (
         <div className="fixed z-[100]" style={{ left: folderContextMenu.x, top: folderContextMenu.y }}>
-          <div className="min-w-[140px] bg-surface-base border border-border-strong rounded shadow-xl py-1"
+          <div className="min-w-[140px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1"
             ref={el => {
               if (el) {
                 const handler = (e: MouseEvent) => { if (!el.contains(e.target as Node)) setFolderContextMenu(null); };
                 document.addEventListener('mousedown', handler, { once: true });
               }
             }}>
-            <button onClick={() => { setRenamingFolder(folderContextMenu.folder.id); setRenameValue(folderContextMenu.folder.displayName); setFolderContextMenu(null); }}
+            <button type="button" onClick={() => { setRenamingFolder(folderContextMenu.folder.id); setRenameValue(folderContextMenu.folder.displayName); setFolderContextMenu(null); }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Edit3 className="w-3 h-3" /> Rename</button>
-            <button onClick={() => { setShowNewFolder(true); setFolderContextMenu(null); }}
+            <button type="button" onClick={() => { setShowNewFolder(true); setFolderContextMenu(null); }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><FolderPlus className="w-3 h-3" /> New Subfolder</button>
             <div className="border-t border-border-subtle my-1" />
-            <button onClick={() => { handleDeleteFolder(folderContextMenu.folder.id); setFolderContextMenu(null); }}
+            <button type="button" onClick={() => { handleDeleteFolder(folderContextMenu.folder.id); setFolderContextMenu(null); }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
           </div>
         </div>
@@ -2082,14 +2259,14 @@ export default function EmailPage() {
           <select
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-surface-sunken border border-rmpg-700 rounded px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);
               return <option key={f.id} value={key}>{f.displayName}{f.unreadItemCount > 0 ? ` (${f.unreadItemCount})` : ''}</option>;
             })}
           </select>
-          <button onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded text-white" title="Compose">
+          <button type="button" onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded-sm text-white" title="Compose">
             <Plus className="w-4 h-4" />
           </button>
         </div>
@@ -2101,79 +2278,110 @@ export default function EmailPage() {
           }`}>
             {snackbar.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
             <span className="flex-1">{snackbar.text}</span>
-            <button onClick={dismissSnackbar} className="opacity-60 hover:opacity-100"><X className="w-3 h-3" /></button>
+            <IconButton onClick={dismissSnackbar} className="opacity-60 hover:opacity-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
           </div>
         )}
 
         {/* Batch action bar OR Search bar */}
         {selectedIds.size > 0 ? (
           <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 bg-brand-500/5">
-            <button onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all">
+            <IconButton onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all" aria-label="Toggle select all">
               {selectedIds.size === messages.length ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-            </button>
+            </IconButton>
             <span className="text-[10px] text-brand-400 font-medium">{selectedIds.size} selected</span>
             <div className="flex-1" />
-            <button onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-white" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
-            <button onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-white" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
-            <button onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-white" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
-            <button onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-            <button onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-white" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-white" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-white" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-white" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-white" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
           </div>
         ) : (
           <div className="px-2 py-1.5 border-b border-border-subtle flex flex-col gap-1">
             <div className="flex items-center gap-1.5">
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search emails..."
-                  className="input-dark w-full text-[11px] pl-7 pr-7 py-1" />
+                <input value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
+                  className="input-dark w-full text-[11px] pl-7 pr-7 py-1 min-h-[36px]" />
                 {searchInput && (
-                  <button onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+                  <IconButton onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></IconButton>
                 )}
                 {showSearchFilters && (
                   <SearchFilterPanel filters={searchFilters} onChange={setSearchFilters} onClose={() => setShowSearchFilters(false)} />
                 )}
               </div>
-              <button onClick={() => setShowSearchFilters(!showSearchFilters)}
-                className={`p-1 rounded transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+              <button type="button" onClick={() => setShowSearchFilters(!showSearchFilters)}
+                className={`p-1 rounded-sm transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
                 title="Search filters">
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
               {unreadCount > 0 && (
-                <button onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
+                <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
               )}
-              <button onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded" title="Refresh">
+              <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh" aria-label="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </IconButton>
+              {/* Feature 25: Thread View Toggle */}
+              <button type="button"
+                onClick={() => { const next = viewMode === 'messages' ? 'threads' : 'messages'; setViewMode(next); if (next === 'threads') fetchThreads(); }}
+                className={`p-1 rounded-sm transition-colors ${viewMode === 'threads' ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                title={viewMode === 'threads' ? 'Switch to messages view' : 'Switch to thread view'}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
               </button>
-              <button onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
+              {/* Feature 23: Auto-categorize */}
+              <button type="button"
+                onClick={handleAutoCategorize}
+                disabled={categorizing}
+                className="p-1 text-rmpg-500 hover:text-white rounded-sm"
+                title="Auto-categorize emails"
+              >
+                {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
+              </button>
+              <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
+            {/* Task 2.4: FTS search result count */}
+            {searchResults !== null && (
+              <div className="text-[10px] text-rmpg-500">{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</div>
+            )}
             {/* Active filter indicators */}
             {hasActiveFilters(searchFilters) && (
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-[8px] text-rmpg-500 uppercase">Filters:</span>
-                {searchFilters.sender && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">from: {searchFilters.sender}</span>}
-                {searchFilters.hasAttachments && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded flex items-center gap-0.5"><Paperclip className="w-2.5 h-2.5" /> attachments</span>}
-                {searchFilters.isFlagged && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded flex items-center gap-0.5"><Flag className="w-2.5 h-2.5" /> flagged</span>}
-                {searchFilters.unreadOnly && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">unread</span>}
-                {searchFilters.dateFrom && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">from: {searchFilters.dateFrom}</span>}
-                {searchFilters.dateTo && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">to: {searchFilters.dateTo}</span>}
-                <button onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-white ml-1">clear</button>
+                {searchFilters.sender && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">from: {searchFilters.sender}</span>}
+                {searchFilters.hasAttachments && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm flex items-center gap-0.5"><Paperclip className="w-2.5 h-2.5" /> attachments</span>}
+                {searchFilters.isFlagged && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm flex items-center gap-0.5"><Flag className="w-2.5 h-2.5" /> flagged</span>}
+                {searchFilters.unreadOnly && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">unread</span>}
+                {searchFilters.dateFrom && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">from: {searchFilters.dateFrom}</span>}
+                {searchFilters.dateTo && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">to: {searchFilters.dateTo}</span>}
+                <button type="button" onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-white ml-1">clear</button>
               </div>
             )}
           </div>
         )}
 
+        {/* Feature 25: Thread View Mode Indicator */}
+        {viewMode === 'threads' && (
+          <div className="px-2 py-1 border-b border-border-subtle bg-brand-500/5 flex items-center gap-1.5 text-[9px] text-brand-400">
+            <MessageSquare className="w-3 h-3" />
+            <span>Thread View</span>
+            <span className="text-rmpg-500">— emails grouped by conversation</span>
+            {loadingThreads && <Loader2 className="w-3 h-3 animate-spin ml-auto" role="status" aria-label="Loading" />}
+          </div>
+        )}
+
         {/* Message List (threaded) */}
-        <div className="flex-1 overflow-y-auto">
-          {loading && messages.length === 0 ? (
-            <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" /></div>
-          ) : messages.length === 0 ? (
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          {loading && displayedMessages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
+          ) : displayedMessages.length === 0 ? (
             <div className="text-center py-12 text-rmpg-500 text-xs">
-              <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              {search ? (<><div>No results for &ldquo;{search}&rdquo;</div><button onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
+              <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
+              {(search || searchQuery) ? (<><div>No results for &ldquo;{searchQuery || search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
             </div>
           ) : (
             <>
-              {threads.map(thread => {
+              {conversationThreads.map(thread => {
                 const isMulti = thread.messages.length > 1;
                 const isExpanded = expandedThreads.has(thread.conversationId);
                 const displayMessages = isMulti && !isExpanded ? [thread.latest] : thread.messages;
@@ -2181,7 +2389,7 @@ export default function EmailPage() {
                 return (
                   <div key={thread.conversationId}>
                     {isMulti && (
-                      <button onClick={() => toggleThread(thread.conversationId)}
+                      <button type="button" onClick={() => toggleThread(thread.conversationId)}
                         className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-brand-400/70 hover:text-brand-400 bg-brand-500/5 border-b border-brand-500/10 transition-colors">
                         {isExpanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
                         <MessageSquare className="w-2.5 h-2.5" />
@@ -2192,7 +2400,7 @@ export default function EmailPage() {
 
                     {displayMessages.map(msg => {
                       // Generate consistent avatar color from sender
-                      const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                      const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#888888','#14b8a6','#f97316'];
                       const senderKey = (msg.fromAddress || msg.fromName || '').toLowerCase();
                       const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
                       const avatarInitial = (msg.fromName || msg.fromAddress || '?').charAt(0).toUpperCase();
@@ -2211,19 +2419,19 @@ export default function EmailPage() {
                           {/* Avatar / Select checkbox */}
                           <div className="relative flex-shrink-0 mt-0.5">
                             {selectedIds.has(msg.id) ? (
-                              <button onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
+                              <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center">
                                 <CheckCircle className="w-4 h-4 text-white" />
                               </button>
                             ) : (
-                              <button onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
+                              <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold transition-all group-hover:ring-2 group-hover:ring-rmpg-600"
                                 style={{ backgroundColor: avatarColor + '20', color: avatarColor }}>
                                 {avatarInitial}
                               </button>
                             )}
                             {!msg.isRead && !selectedIds.has(msg.id) && (
-                              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-surface-sunken" />
+                              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-surface-sunken shadow-sm shadow-brand-400/50" />
                             )}
                           </div>
 
@@ -2233,7 +2441,7 @@ export default function EmailPage() {
                                 {msg.fromName || msg.fromAddress}
                               </span>
                               {isMulti && !isExpanded && (
-                                <span className="text-[8px] bg-brand-500/15 text-brand-400 px-1.5 py-0.5 rounded-full font-mono font-bold">{thread.messages.length}</span>
+                                <span className="text-[8px] bg-brand-500/15 text-brand-400 px-1.5 py-0.5 rounded-full font-mono font-bold min-w-[18px] text-center">{thread.messages.length}</span>
                               )}
                               <span className="text-[9px] text-rmpg-500 flex-shrink-0 tabular-nums">{formatDate(msg.receivedAt)}</span>
                             </div>
@@ -2243,17 +2451,17 @@ export default function EmailPage() {
                             {(msg.hasAttachments || msg.isFlagged || msg.importance === 'high') && (
                               <div className="flex items-center gap-1.5 mt-1">
                                 {msg.hasAttachments && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded-sm border border-rmpg-600/30">
                                     <Paperclip className="w-2.5 h-2.5" /> Attachment
                                   </span>
                                 )}
                                 {msg.isFlagged && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-yellow-400 bg-yellow-900/20 px-1.5 py-0.5 rounded">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-yellow-400 bg-yellow-900/20 px-1.5 py-0.5 rounded-sm border border-yellow-700/20">
                                     <Flag className="w-2.5 h-2.5" /> Flagged
                                   </span>
                                 )}
                                 {msg.importance === 'high' && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded-sm border border-red-700/20">
                                     <AlertTriangle className="w-2.5 h-2.5" /> Important
                                   </span>
                                 )}
@@ -2263,11 +2471,11 @@ export default function EmailPage() {
 
                           {/* Hover quick actions */}
                           <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
-                            <button onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
+                            <button type="button" onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                            <button type="button" onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
                               {msg.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                             </button>
-                            <button onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <button type="button" onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       </div>
@@ -2276,8 +2484,9 @@ export default function EmailPage() {
                   </div>
                 );
               })}
-              {hasMore && (
-                <button onClick={() => fetchMessages(page + 1, selectedFolder, search)} className="w-full py-2 text-[10px] text-brand-400 hover:text-brand-300">Load more...</button>
+              {hasMore && searchResults === null && (
+                <button type="button" onClick={() => fetchMessages(page + 1, selectedFolder, search)} disabled={loadingMore} className="w-full py-2 text-[10px] text-brand-400 hover:text-brand-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+                  {loadingMore ? <><Loader2 size={10} className="animate-spin" /> Loading...</> : 'Load more...'}</button>
               )}
             </>
           )}
@@ -2285,7 +2494,7 @@ export default function EmailPage() {
       </div>
 
       {/* ─── Resize Handle ─── */}
-      <div className="w-1 flex-shrink-0 cursor-col-resize hover:bg-brand-500/30 active:bg-brand-500/50 transition-colors hidden md:block"
+      <div className="w-1 flex-shrink-0 cursor-col-resize hover:bg-brand-500/30 active:bg-brand-500/50 transition-colors hidden md:block hover:w-1.5"
         onMouseDown={() => { resizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }} />
 
       {/* ─── Reading Pane ─── */}
@@ -2296,17 +2505,17 @@ export default function EmailPage() {
             <div className="border-b border-border-subtle bg-surface-base">
               {/* Subject + back button */}
               <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-                <button onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
                 <h2 className="text-sm font-semibold text-white flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
-                  <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded font-bold uppercase flex-shrink-0">Important</span>
+                  <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0 border border-red-700/20 tracking-wider">Important</span>
                 )}
               </div>
 
               {/* Sender info with avatar */}
               {(() => {
                 const senderKey = (fullMessage.fromAddress || '').toLowerCase();
-                const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#888888','#14b8a6','#f97316'];
                 const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
                 return (
                   <div className="flex items-start gap-3 px-4 pb-2">
@@ -2339,33 +2548,33 @@ export default function EmailPage() {
 
               {/* Action Bar */}
               <div className="flex items-center gap-1 px-4 py-1.5 border-t border-border-subtle/50 bg-surface-sunken/30">
-                <button onClick={() => setComposing('reply')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 rounded transition-colors">
+                <button type="button" onClick={() => setComposing('reply')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 rounded-sm transition-colors">
                   <Reply className="w-3 h-3" /> Reply
                 </button>
-                <button onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+                <button type="button" onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <ReplyAll className="w-3 h-3" /> Reply All
                 </button>
-                <button onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+                <button type="button" onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <Forward className="w-3 h-3" /> Forward
                 </button>
                 <div className="w-px h-4 bg-rmpg-700 mx-1" />
-                <button onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
                 <MoveToFolderDropdown folders={folders} currentFolder={selectedFolder} onMove={handleMoveToFolder} />
                 <div className="flex-1" />
-                <button onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Toggle read">
+                <button type="button" onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle read">
                   {selectedMessage?.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-                <button onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded transition-colors" title="Toggle flag">
+                <button type="button" onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle flag">
                   <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-400 hover:text-yellow-400'}`} />
                 </button>
-                <button onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
-                <button onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
 
               {/* Attachments */}
               {attachments.length > 0 && (
                 <div className="px-4 py-2 border-t border-border-subtle/50">
-                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">
+                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5" style={{ letterSpacing: '0.1em' }}>
                     Attachments ({attachments.filter(a => !a.isInline).length})
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -2375,11 +2584,11 @@ export default function EmailPage() {
                       const isPdf = ext === 'pdf';
                       const isDoc = ['doc','docx','rtf','odt'].includes(ext);
                       const isSheet = ['xls','xlsx','csv'].includes(ext);
-                      const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : isDoc ? '#3b82f6' : isSheet ? '#10b981' : '#8b5cf6';
+                      const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : isDoc ? '#888888' : isSheet ? '#10b981' : '#8b5cf6';
                       return (
                         <a key={att.id} href={`/api/email/messages/${selectedMessage!.id}/attachments/${att.id}`} target="_blank" rel="noopener"
-                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-lg text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
-                          <div className="w-8 h-8 rounded flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
+                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
+                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
                             style={{ backgroundColor: fileColor + '15', color: fileColor }}>
                             {ext.slice(0, 4)}
                           </div>
@@ -2400,18 +2609,11 @@ export default function EmailPage() {
             </div>
 
             {/* Message Body */}
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
               {loadingMessage ? (
-                <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" /></div>
+                <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (
-                <iframe ref={iframeRef} onLoad={handleIframeLoad}
-                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-                    body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0d1520; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-                    a { color: #3b82f6; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-                    td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #1e3048; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
-                    pre { background: #141e2b; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #1e3048; margin: 16px 0; }
-                  </style></head><body>${fullMessage.bodyHtml}</body></html>`}
-                  sandbox="" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
+                <EmailBodyFrame ref={iframeRef} bodyHtml={fullMessage.bodyHtml} onLoad={handleIframeLoad} />
               ) : (
                 <div className="p-4 text-xs text-rmpg-400 whitespace-pre-wrap font-mono">{fullMessage.bodyPreview}</div>
               )}
@@ -2423,14 +2625,14 @@ export default function EmailPage() {
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-3 max-w-xs">
-              <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center">
+              <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center border border-brand-500/15">
                 <Mail className="w-8 h-8 text-brand-500/40" />
               </div>
               <div>
                 <p className="text-sm text-rmpg-400 font-medium">Select an email to read</p>
                 <p className="text-[10px] text-rmpg-600 mt-1">Click any message in the list, or compose a new one</p>
               </div>
-              <button onClick={() => setComposing('new')} className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+              <button type="button" onClick={() => setComposing('new')} className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> Compose New
               </button>
               <div className="text-[9px] text-rmpg-600 space-y-0.5 pt-2">

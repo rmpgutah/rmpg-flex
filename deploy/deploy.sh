@@ -73,20 +73,37 @@ fi
 echo "    SSH connection OK"
 
 # ─── Pre-deploy Quality Gates ────────────────────────────
+# Self-heal in worktrees: if node_modules is missing, install before gating
+# so the gate fails on *code quality*, not on setup.
+ensure_deps() {
+  local dir="$1"
+  if [ ! -d "$dir/node_modules" ]; then
+    echo "    (installing $dir deps — worktree missing node_modules)"
+    (cd "$dir" && npm install --silent --no-audit --no-fund) \
+      || { echo "FAILED: npm install in $dir — fix before deploying"; exit 1; }
+  fi
+}
+
 if [ "$UPLOAD_CODE" = true ]; then
   echo ""
   echo ">>> Running pre-deploy quality gates..."
+  ensure_deps "$PROJECT_DIR/client"
+  ensure_deps "$PROJECT_DIR/server"
 
-  echo "    [1/3] Client typecheck..."
+  echo "    [1/4] Server typecheck..."
+  (cd "$PROJECT_DIR/server" && npx tsc --noEmit) || { echo "FAILED: Server typecheck errors — fix before deploying"; exit 1; }
+  echo "          ✓ Server types OK"
+
+  echo "    [2/4] Client typecheck..."
   (cd "$PROJECT_DIR/client" && npx tsc --noEmit) || { echo "FAILED: Client typecheck errors — fix before deploying"; exit 1; }
   echo "          ✓ Client types OK"
 
-  echo "    [2/3] Server tests..."
-  (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — fix before deploying"; exit 1; }
+  echo "    [3/4] Server tests (461 tests across 39 files)..."
+  (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — run 'cd server && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Server tests pass"
 
-  echo "    [3/3] Client tests..."
-  (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — fix before deploying"; exit 1; }
+  echo "    [4/4] Client tests..."
+  (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — run 'cd client && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Client tests pass"
 
   echo ""
@@ -198,6 +215,7 @@ if [ "$UPLOAD_CODE" = true ]; then
     --exclude='server/certs' \
     --exclude='server/.env' \
     --exclude='server/uploads' \
+    --exclude='client/.env' \
     --exclude='desktop' \
     --exclude='.DS_Store' \
     --exclude='.claude' \
@@ -330,21 +348,36 @@ SVCEOF
   cd "$APP_DIR"
 
   echo ">>> Installing server dependencies..."
-  cd server && npm install --production 2>&1 | tail -3 && cd ..
+  cd server
+  if [ -f package-lock.json ]; then
+    # Production still boots via `npx tsx server/src/index.ts`, so keep tsx available.
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Installing client dependencies..."
-  cd client && npm install 2>&1 | tail -3 && cd ..
+  cd client
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Building client..."
-  cd client && npx vite build 2>&1 | tail -5 && cd ..
+  cd client && npx vite build && cd ..
 
   # ── Create .env if missing ──
   if [ ! -f server/.env ]; then
     echo ">>> Generating production .env..."
     JWT_SECRET=$(openssl rand -hex 64)
+    TOTP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 
     cat > server/.env << ENVEOF
 JWT_SECRET=${JWT_SECRET}
+TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
 NODE_ENV=production

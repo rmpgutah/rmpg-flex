@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
-  Archive, RotateCcw, Trash2, Printer, ChevronDown,
+  Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -14,10 +15,15 @@ import FleetInspectionsTab from './tabs/FleetInspectionsTab';
 import FleetAssignmentsTab from './tabs/FleetAssignmentsTab';
 import FleetPersonnelTab from './tabs/FleetPersonnelTab';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
+import FleetTiresTab from './tabs/FleetTiresTab';
+import FleetDamageTab from './tabs/FleetDamageTab';
+import FleetRecallsTab from './tabs/FleetRecallsTab';
 import { formatMilitary } from './utils/fleetFormatters';
+import { generateFleetFuelReport } from './utils/fleetFuelReport';
+import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics';
+export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -29,7 +35,7 @@ const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
 };
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: '#6b7280',
+  out_of_service: '#ef4444', retired: '#666666',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
@@ -51,6 +57,9 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
+  { key: 'tires', label: 'Tires', icon: Circle },
+  { key: 'damage', label: 'Damage', icon: AlertTriangle },
+  { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
@@ -90,10 +99,11 @@ interface Props {
 }
 
 // ── Fleet Print Menu (dropdown to select report type) ──
-function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
+function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
   detail: FleetVehicle;
   fuelLogs: FleetFuelLog[];
   maintenance: FleetMaintenance[];
+  fuelSummary?: FleetFuelSummary | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -127,7 +137,22 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
       fuel_type: f.fuel_type,
       distance: f.distance,
       efficiency: f.efficiency,
+      mpg: f.mpg,
+      calc_distance: f.calc_distance,
+      cost_per_mile: f.cost_per_mile,
+      running_avg_mpg: f.running_avg_mpg,
     })),
+    fuel_summary: fuelSummary ? {
+      total_gallons: fuelSummary.total_gallons,
+      total_cost: fuelSummary.total_cost,
+      avg_mpg: fuelSummary.avg_mpg,
+      avg_cost_per_gallon: fuelSummary.avg_cost_per_gallon,
+      best_mpg: fuelSummary.best_mpg,
+      worst_mpg: fuelSummary.worst_mpg,
+      total_distance: fuelSummary.total_distance,
+      cost_per_mile: fuelSummary.cost_per_mile,
+      fuel_cost_per_day: fuelSummary.fuel_cost_per_day,
+    } : undefined,
     maintenance_logs: maintenance.map((m: any) => ({
       service_date: m.service_date,
       service_type: m.service_type,
@@ -142,11 +167,11 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
 
   return (
     <div className="relative" ref={ref}>
-      <button className="toolbar-btn" onClick={() => setOpen(!open)}>
+      <button type="button" className="toolbar-btn" onClick={() => setOpen(!open)}>
         <Printer className="w-3 h-3" /> Print <ChevronDown className="w-2.5 h-2.5" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded shadow-lg min-w-[180px]">
+        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded-sm shadow-lg min-w-[180px]">
           {reportOptions.map((opt) => (
             <PrintRecordButton
               key={opt.key}
@@ -175,13 +200,15 @@ export default function FleetDetailPanel({
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
   onClose,
 }: Props) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Detail header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200">
         <div>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded flex items-center justify-center border ${
+            <div className={`w-10 h-10 rounded-sm flex items-center justify-center border ${
               detail.status === 'in_service' ? 'bg-green-900/30 border-green-700/50' :
               detail.status === 'maintenance' ? 'bg-amber-900/30 border-amber-700/50' :
               detail.status === 'out_of_service' ? 'bg-red-900/30 border-red-700/50' :
@@ -214,6 +241,9 @@ export default function FleetDetailPanel({
                 <Radio className="w-3 h-3" /> {detail.assigned_unit_call_sign}
               </span>
             )}
+            {maintenance.length > 0 && (
+              <span className="px-2 py-0.5 text-[9px] font-bold bg-brand-900/40 text-brand-300 border border-brand-700/50">{maintenance.length} service{maintenance.length !== 1 ? 's' : ''}</span>
+            )}
             {getExpiryStatus(detail.registration_expiry) === 'expired' && (
               <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">REG EXPIRED</span>
             )}
@@ -223,6 +253,17 @@ export default function FleetDetailPanel({
             {getExpiryStatus(detail.next_service_due) === 'expired' && (
               <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE OVERDUE</span>
             )}
+            {(() => {
+              const nextMi = (detail as any).next_service_mileage;
+              const curMi = detail.current_mileage;
+              if (nextMi && curMi) {
+                const milesLeft = nextMi - curMi;
+                if (milesLeft <= 0) return <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">MILEAGE SERVICE OVERDUE</span>;
+                if (milesLeft <= 100) return <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SERVICE IN {milesLeft} MI</span>;
+                if (milesLeft <= 500) return <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE IN {milesLeft} MI</span>;
+              }
+              return null;
+            })()}
           </div>
 
           {/* Timestamps row */}
@@ -237,17 +278,17 @@ export default function FleetDetailPanel({
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5">
-          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} />
+          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} fuelSummary={fuelSummary} />
           {!isArchived && (
             <>
-              <button className="toolbar-btn" onClick={onEditVehicle}>
+              <button type="button" className="toolbar-btn" onClick={onEditVehicle}>
                 <Settings className="w-3 h-3" /> Edit
               </button>
-              <button className="toolbar-btn toolbar-btn-primary" onClick={onLogMaintenance}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onLogMaintenance}>
                 <Wrench className="w-3 h-3" /> Maintenance
               </button>
               {detail.status === 'retired' && (
-                <button className="toolbar-btn text-amber-400 hover:text-amber-300" onClick={onArchiveVehicle} title="Archive this retired vehicle">
+                <button type="button" className="toolbar-btn text-amber-400 hover:text-amber-300" onClick={onArchiveVehicle} title="Archive this retired vehicle">
                   <Archive className="w-3 h-3" /> Archive
                 </button>
               )}
@@ -255,34 +296,41 @@ export default function FleetDetailPanel({
           )}
           {isArchived && (
             <>
-              <button className="toolbar-btn text-green-400 hover:text-green-300" onClick={onUnarchiveVehicle} title="Unarchive this vehicle">
+              <button type="button" className="toolbar-btn text-green-400 hover:text-green-300" onClick={onUnarchiveVehicle} title="Unarchive this vehicle">
                 <RotateCcw className="w-3 h-3" /> Unarchive
               </button>
-              <button className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Permanently delete this vehicle">
+              <button type="button" className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Permanently delete this vehicle">
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </>
           )}
-          <button
-            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors"
+          {!isArchived && isAdmin && (
+            <button type="button" className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Admin: Delete this vehicle">
+              <Trash2 className="w-3 h-3" /> Delete
+            </button>
+          )}
+          <button type="button"
+            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
             onClick={onClose}
-          >
+            aria-label="Close vehicle details">
             <X className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       {/* Tab Bar */}
-      <div className="flex-shrink-0 flex items-center border-b border-rmpg-700 px-1 bg-surface-base overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex-shrink-0 flex items-center border-b border-rmpg-700 px-1 bg-surface-base overflow-x-auto" style={{ scrollbarWidth: 'none' }} role="tablist" aria-label="Vehicle detail tabs">
         {TABS.map(({ key, label, icon: Icon }) => {
           const isActive = activeTab === key;
           return (
-          <button
+          <button type="button"
             key={key}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider transition-colors border-b-2 ${
+            role="tab"
+            aria-selected={isActive}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider whitespace-nowrap transition-all duration-200 border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
               isActive
                 ? 'text-white border-brand-500 bg-brand-900/10'
-                : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20'
+                : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20 hover:border-rmpg-500/50'
             }`}
             onClick={() => onTabChange(key)}
           >
@@ -294,9 +342,33 @@ export default function FleetDetailPanel({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
         {activeTab === 'overview' && <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />}
-        {activeTab === 'fuel' && <FleetFuelTab fuelLogs={fuelLogs} summary={fuelSummary} onAddFuel={onLogFuel} onEditFuel={onEditFuel} onDeleteFuel={onDeleteFuel} />}
+        {activeTab === 'fuel' && (
+          <FleetFuelTab
+            fuelLogs={fuelLogs}
+            summary={fuelSummary}
+            onAddFuel={onLogFuel}
+            onEditFuel={onEditFuel}
+            onDeleteFuel={onDeleteFuel}
+            onGenerateReport={() => generateFleetFuelReport({
+              vehicle: detail,
+              fuelLogs,
+              summary: fuelSummary,
+            })}
+            onGenerateFlaggedAudit={() => generateFlaggedAuditPdf({
+              // Client-side filter to just flagged rows — avoids a server
+              // round-trip since we already have the full fuel history
+              // loaded for this vehicle.
+              logs: fuelLogs.filter((l: any) => !!l.flags),
+              scopeLabel: `#${detail.vehicle_number} ${[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}`.trim(),
+              dateRange: {
+                from: fuelLogs[fuelLogs.length - 1]?.fuel_date,
+                to:   fuelLogs[0]?.fuel_date,
+              },
+            })}
+          />
+        )}
         {activeTab === 'inspections' && <FleetInspectionsTab inspections={inspections} onNewInspection={onNewInspection} onEditInspection={onEditInspection} onDeleteInspection={onDeleteInspection} />}
         {activeTab === 'assignments' && <FleetAssignmentsTab assignments={assignments} />}
         {activeTab === 'personnel' && (
@@ -312,6 +384,9 @@ export default function FleetDetailPanel({
             onRefresh={onRefreshPersonnel}
           />
         )}
+        {activeTab === 'tires' && <FleetTiresTab vehicleId={detail.id} />}
+        {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
+        {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
       </div>
     </div>

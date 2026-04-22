@@ -108,7 +108,7 @@ function formatDuration(sec?: number): string {
 
 function formatTimestamp(isoStr: string | undefined, offsetSec: number): string {
   if (!isoStr) return '--:--:--';
-  const base = new Date(isoStr);
+  const base = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
   const d = new Date(base.getTime() + offsetSec * 1000);
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -121,7 +121,7 @@ function formatTimestamp(isoStr: string | undefined, offsetSec: number): string 
 
 function formatDate(d?: string): string {
   if (!d) return '-';
-  return new Date(d).toLocaleDateString('en-US', {
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -150,15 +150,15 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
   onSeek: (time: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  if (!track.length) return null;
   const speeds = useMemo(() => track.map(p => Math.round(p.speed * KMH_TO_MPH)), [track]);
   const maxSpeed = useMemo(() => Math.max(...speeds, 1), [speeds]);
-  const startMs = track[0].timestamp;
-  const endMs = track[track.length - 1].timestamp;
+  const startMs = track.length ? track[0].timestamp : 0;
+  const endMs = track.length ? track[track.length - 1].timestamp : 0;
   const totalMs = endMs - startMs || 1;
   const h = 24;
 
   const segments = useMemo(() => {
+    if (!track.length) return [];
     return track.map((p, i) => {
       const x = ((p.timestamp - startMs) / totalMs) * 100;
       const y = h - (speeds[i] / maxSpeed) * (h - 4);
@@ -167,6 +167,8 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       return { x, y, color };
     });
   }, [track, speeds, maxSpeed, startMs, totalMs, h]);
+
+  if (!track.length) return null;
 
   const progressX = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -199,7 +201,7 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       <line
         x1={`${progressX}%`} y1="0"
         x2={`${progressX}%`} y2={h}
-        stroke="#3b8ad4" strokeWidth="2"
+        stroke="#aaaaaa" strokeWidth="2"
         vectorEffect="non-scaling-stroke"
       />
     </svg>
@@ -218,7 +220,7 @@ function HudSection({ title, icon: Icon, children, defaultOpen = false, isOpen, 
 
   return (
     <div>
-      <button onClick={toggle} className="hud-section-header w-full">
+      <button type="button" onClick={toggle} className="hud-section-header w-full">
         <Icon className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
         <span className="flex-1 text-left">{title}</span>
         {open
@@ -238,6 +240,18 @@ export default function DashCamDetailPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
+
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to go back
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { navigate(-1); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [navigate]);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -394,7 +408,7 @@ export default function DashCamDetailPage() {
       disableDefaultUI: true,
       zoomControl: true,
       styles: DARK_MAP_STYLE,
-      backgroundColor: '#0a1220',
+      backgroundColor: '#171717',
     });
     mapRef.current = map;
 
@@ -405,9 +419,9 @@ export default function DashCamDetailPage() {
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 7,
-        fillColor: '#3b82f6',
+        fillColor: '#888888',
         fillOpacity: 1,
-        strokeColor: '#93c5fd',
+        strokeColor: '#cccccc',
         strokeWeight: 2,
       },
     });
@@ -418,7 +432,7 @@ export default function DashCamDetailPage() {
       const path = gpsTrack.map(p => ({ lat: p.latitude, lng: p.longitude }));
       const polyline = new google.maps.Polyline({
         path,
-        strokeColor: '#3b82f6',
+        strokeColor: '#888888',
         strokeOpacity: 0.5,
         strokeWeight: 2,
         map,
@@ -620,11 +634,25 @@ export default function DashCamDetailPage() {
 
   // ── Loading / Error ──────────────────────────
 
+  // ── Render ────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
         <div className="flex items-center gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-brand-400" />
+          <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" />
           <span className="text-[11px] text-rmpg-400">Loading video...</span>
         </div>
       </div>
@@ -633,11 +661,11 @@ export default function DashCamDetailPage() {
 
   if (error || !video) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
         <div className="text-center">
           <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
           <p className="text-xs text-rmpg-400 mb-3">{error || 'Video not found'}</p>
-          <button onClick={() => navigate('/dash-cameras')}
+          <button type="button" onClick={() => navigate('/dash-cameras')}
             className="toolbar-btn text-[10px] px-4 py-1.5 inline-flex items-center gap-1">
             <ChevronLeft className="w-3 h-3" /> Back to Gallery
           </button>
@@ -646,10 +674,9 @@ export default function DashCamDetailPage() {
     );
   }
 
-  // ── Render ────────────────────────────────────
 
   return (
-    <div id="hud-container" className="relative flex" style={{ height: 'calc(100vh - 120px)', background: '#000' }}>
+    <div id="hud-container" className="relative flex" style={{ height: 'calc(100dvh - 120px)', background: '#000' }}>
 
       {/* ── Video Area (fills available space) ── */}
       <div className="flex-1 flex flex-col min-w-0 relative">
@@ -685,7 +712,7 @@ export default function DashCamDetailPage() {
 
             {/* Unit call sign */}
             {video.unit_call_sign && (
-              <span className="text-blue-400 font-bold tracking-wide">
+              <span className="text-gray-400 font-bold tracking-wide">
                 {video.unit_call_sign}
               </span>
             )}
@@ -703,7 +730,7 @@ export default function DashCamDetailPage() {
             )}
 
             {/* Info panel toggle */}
-            <button onClick={() => setPanelOpen(p => !p)}
+            <button type="button" onClick={() => setPanelOpen(p => !p)}
               className="text-rmpg-400 hover:text-white transition-colors p-0.5" title="Toggle panel (I)">
               <Info className="w-4 h-4" />
             </button>
@@ -761,31 +788,31 @@ export default function DashCamDetailPage() {
         {/* ── Playback Controls ── */}
         <div className="hud-controls">
           {/* Prev video */}
-          <button onClick={() => neighbors?.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
+          <button type="button" onClick={() => neighbors?.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
             disabled={!neighbors?.prev} title="Previous video"
             style={{ opacity: neighbors?.prev ? 1 : 0.3 }}>
             <ChevronLeft className="w-4 h-4" />
           </button>
 
           {/* Skip back */}
-          <button onClick={() => skip(-10)} title="Back 10s (Left arrow)">
+          <button type="button" onClick={() => skip(-10)} title="Back 10s (Left arrow)">
             <SkipBack className="w-4 h-4" />
           </button>
 
           {/* Play/Pause */}
-          <button onClick={togglePlayPause} title="Play/Pause (Space)">
+          <button type="button" onClick={togglePlayPause} title="Play/Pause (Space)">
             {isPlaying
               ? <Pause className="w-5 h-5" />
               : <Play className="w-5 h-5" />}
           </button>
 
           {/* Skip forward */}
-          <button onClick={() => skip(10)} title="Forward 10s (Right arrow)">
+          <button type="button" onClick={() => skip(10)} title="Forward 10s (Right arrow)">
             <SkipForward className="w-4 h-4" />
           </button>
 
           {/* Next video */}
-          <button onClick={() => neighbors?.next && navigate(`/dash-cameras/${neighbors.next}`)}
+          <button type="button" onClick={() => neighbors?.next && navigate(`/dash-cameras/${neighbors.next}`)}
             disabled={!neighbors?.next} title="Next video"
             style={{ opacity: neighbors?.next ? 1 : 0.3 }}>
             <ChevronRight className="w-4 h-4" />
@@ -803,7 +830,7 @@ export default function DashCamDetailPage() {
           <div className="w-px h-4 bg-white/10 mx-1" />
 
           {/* Volume */}
-          <button onClick={toggleMute} title="Mute/Unmute">
+          <button type="button" onClick={toggleMute} title="Mute/Unmute">
             {isMuted || volume === 0
               ? <VolumeX className="w-4 h-4" />
               : <Volume2 className="w-4 h-4" />}
@@ -812,7 +839,7 @@ export default function DashCamDetailPage() {
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
             className="w-16 h-1 accent-brand-500 cursor-pointer"
-            style={{ accentColor: '#3b8ad4' }}
+            style={{ accentColor: '#aaaaaa' }}
           />
 
           {/* Separator */}
@@ -820,7 +847,7 @@ export default function DashCamDetailPage() {
 
           {/* Playback speed */}
           {[0.5, 1, 1.5, 2].map(rate => (
-            <button key={rate}
+            <button type="button" key={rate}
               onClick={() => setSpeed(rate)}
               className={playbackRate === rate ? 'active' : ''}
               title={`${rate}x speed`}>
@@ -831,7 +858,7 @@ export default function DashCamDetailPage() {
           <div className="flex-1" />
 
           {/* Fullscreen */}
-          <button onClick={toggleFullscreen} title="Fullscreen (F)">
+          <button type="button" onClick={toggleFullscreen} title="Fullscreen (F)">
             {isFullscreen
               ? <Minimize2 className="w-4 h-4" />
               : <Maximize2 className="w-4 h-4" />}
@@ -941,8 +968,8 @@ export default function DashCamDetailPage() {
             <HudSection title="GPS Map" icon={Map}
               isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
               <div ref={mapContainerRef}
-                className="w-full rounded"
-                style={{ height: 200, background: '#0d1520' }}>
+                className="w-full rounded-sm"
+                style={{ height: 200, background: '#050505' }}>
                 {!window.google?.maps && (
                   <div className="flex items-center justify-center h-full">
                     <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
@@ -976,19 +1003,19 @@ export default function DashCamDetailPage() {
                   {incidentLink.incident_type && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Type</span>
-                      <span className="text-[11px] text-rmpg-200">{incidentLink.incident_type}</span>
+                      <span className="text-[11px] text-rmpg-200">{(incidentLink.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
                   )}
                   {incidentLink.status && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Status</span>
-                      <span className="text-[11px] text-rmpg-200 capitalize">{incidentLink.status}</span>
+                      <span className="text-[11px] text-rmpg-200 capitalize">{(incidentLink.status || '').replace(/_/g, ' ')}</span>
                     </div>
                   )}
                   {incidentLink.disposition && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Disposition</span>
-                      <span className="text-[11px] text-rmpg-200">{incidentLink.disposition}</span>
+                      <span className="text-[11px] text-rmpg-200">{(incidentLink.disposition || '').replace(/_/g, ' ')}</span>
                     </div>
                   )}
                 </div>
@@ -1018,11 +1045,11 @@ export default function DashCamDetailPage() {
                     {canManage && (
                       <div className="flex gap-0.5 ml-1">
                         {(['routine', 'evidence', 'flagged', 'restricted'] as const).map(cls => (
-                          <button key={cls} onClick={() => handleClassify(cls)} disabled={classifying}
+                          <button type="button" key={cls} onClick={() => handleClassify(cls)} disabled={classifying}
                             className={`text-[8px] px-1 py-0.5 capitalize rounded-sm ${
                               video.classification === cls
                                 ? 'bg-brand-500/30 text-brand-300'
-                                : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-white/5'
+                                : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-surface-raised/50'
                             }`}>
                             {cls.slice(0, 3)}
                           </button>
@@ -1067,8 +1094,8 @@ export default function DashCamDetailPage() {
               {otherLinks.length > 0 ? (
                 <div className="space-y-1">
                   {otherLinks.map((link: any) => (
-                    <button key={`${link.entity_type}-${link.entity_id}`}
-                      className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-white/5 px-1 py-0.5 rounded-sm"
+                    <button type="button" key={`${link.entity_type}-${link.entity_id}`}
+                      className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-surface-raised/50 px-1 py-0.5 rounded-sm"
                       onClick={() => {
                         if (link.entity_type === 'warrant') navigate(`/warrants/${link.entity_id}`);
                         else if (link.entity_type === 'citation') navigate(`/citations/${link.entity_id}`);
@@ -1085,7 +1112,7 @@ export default function DashCamDetailPage() {
           </div>
 
           {/* ── Panel Bottom Actions ── */}
-          <div className="border-t border-[#1a2636] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+          <div className="border-t border-[#181818] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
             {/* File info */}
             <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
               <span>{formatSize(video.file_size)}</span>
@@ -1093,14 +1120,14 @@ export default function DashCamDetailPage() {
             </div>
 
             {canManage && (
-              <button onClick={handleBurn}
+              <button type="button" onClick={handleBurn}
                 disabled={video.burn_status === 'processing' || video.burn_status === 'pending'}
                 className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 disabled:opacity-30">
                 <Flame className="w-3.5 h-3.5" /> Burn HUD Overlay
               </button>
             )}
 
-            <button onClick={() => {
+            <button type="button" onClick={() => {
               navigator.clipboard.writeText(window.location.href);
               setLinkCopied(true);
               setTimeout(() => setLinkCopied(false), 2000);
@@ -1123,7 +1150,7 @@ export default function DashCamDetailPage() {
             )}
 
             {canManage && (
-              <button onClick={() => setEditingVideo(video)}
+              <button type="button" onClick={() => setEditingVideo(video)}
                 className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5">
                 <Edit2 className="w-3.5 h-3.5" /> Edit Details
               </button>
@@ -1132,12 +1159,12 @@ export default function DashCamDetailPage() {
             {/* Navigation */}
             {neighbors && (
               <div className="flex gap-1.5 pt-1">
-                <button disabled={!neighbors.prev}
+                <button type="button" disabled={!neighbors.prev}
                   onClick={() => neighbors.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
                   className="toolbar-btn text-[10px] flex-1 py-1 flex items-center justify-center gap-1 disabled:opacity-30">
                   <ChevronLeft className="w-3 h-3" /> Prev
                 </button>
-                <button disabled={!neighbors.next}
+                <button type="button" disabled={!neighbors.next}
                   onClick={() => neighbors.next && navigate(`/dash-cameras/${neighbors.next}`)}
                   className="toolbar-btn text-[10px] flex-1 py-1 flex items-center justify-center gap-1 disabled:opacity-30">
                   Next <ChevronRight className="w-3 h-3" />

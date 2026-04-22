@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracer v2 — People Index Background Sync
+// Skip Tracker 3.5 — People Index Background Sync
 // ============================================================
 // Saves resolved dossier profiles into the `people_index` table
 // for cross-reference and future lookups. Called automatically

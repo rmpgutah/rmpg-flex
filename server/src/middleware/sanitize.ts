@@ -1,41 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
 
-// Maximum string length for general text fields (prevents megabyte payloads)
-const MAX_STRING_LENGTH = 10_000;
-// Longer limit for fields that legitimately hold large text (notes, descriptions, config)
-const LONG_TEXT_FIELDS = new Set([
-  'notes', 'description', 'narrative', 'details', 'conditions',
-  'body', 'content', 'text', 'config_value', 'digital_signature',
-  'report_content', 'supplemental_narrative', 'profile_image',
-]);
-const MAX_LONG_TEXT_LENGTH = 100_000;
-
-// Maximum nesting depth for JSON objects — prevents stack overflow from deeply nested payloads
-const MAX_JSON_DEPTH = 10;
-
-// Maximum length for individual query parameter values
-const MAX_QUERY_PARAM_LENGTH = 1_000;
-
 // Sanitize strings to prevent XSS — only strip dangerous tag characters.
 // Do NOT encode quotes or apostrophes: they are normal data characters
 // (e.g. 6'2", O'Brien, "North" entrance) and encoding them corrupts stored data.
-function sanitizeStr(str: string, fieldName?: string): string {
-  const maxLen = fieldName && LONG_TEXT_FIELDS.has(fieldName) ? MAX_LONG_TEXT_LENGTH : MAX_STRING_LENGTH;
-  const truncated = str.length > maxLen ? str.slice(0, maxLen) : str;
-  return truncated
+function sanitizeStr(str: string): string {
+  return str
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
 
-// Recursively sanitize an object's string values (with depth limit to prevent stack overflow)
-function sanitizeValue(value: unknown, fieldName?: string, depth: number = 0): unknown {
-  if (depth > MAX_JSON_DEPTH) return undefined; // Drop excessively nested values
+// [FIX 25] Add depth limit to prevent stack overflow from deeply nested malicious payloads
+const MAX_SANITIZE_DEPTH = 20;
+
+// Recursively sanitize an object's string values
+function sanitizeValue(value: unknown, depth = 0): unknown {
+  // [FIX 26] Stop recursion at max depth to prevent stack overflow
+  if (depth > MAX_SANITIZE_DEPTH) return value;
   if (typeof value === 'string') {
-    // Trim whitespace, enforce max length, and strip dangerous HTML tag characters
-    return sanitizeStr(value.trim(), fieldName);
+    // Trim whitespace and strip dangerous HTML tag characters
+    return sanitizeStr(value.trim());
   }
   if (Array.isArray(value)) {
-    return value.slice(0, 1000).map(v => sanitizeValue(v, fieldName, depth + 1));
+    return value.map(v => sanitizeValue(v, depth + 1));
   }
   if (value !== null && typeof value === 'object') {
     return sanitizeObject(value as Record<string, unknown>, depth + 1);
@@ -43,115 +29,85 @@ function sanitizeValue(value: unknown, fieldName?: string, depth: number = 0): u
   return value;
 }
 
-function sanitizeObject(obj: Record<string, unknown>, depth: number = 0): Record<string, unknown> {
-  if (depth > MAX_JSON_DEPTH) return {}; // Refuse to recurse beyond depth limit
+function sanitizeObject(obj: Record<string, unknown>, depth = 0): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
+  // [FIX 27] Limit number of keys to prevent large payload DoS
+  let keyCount = 0;
+  const MAX_KEYS = 1000;
   for (const [key, value] of Object.entries(obj)) {
-    // Reject prototype pollution attempts — __proto__, constructor, prototype are never valid field names
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-      continue;
-    }
-    // Don't sanitize password fields (they get hashed)
-    if (key === 'password' || key === 'currentPassword' || key === 'newPassword') {
-      sanitized[key] = value;
-    } else if (key === 'config_value') {
-      // config_value is a JSON blob — sanitize string values inside it
-      if (typeof value === 'string') {
-        sanitized[key] = sanitizeStr(value, key);
-      } else if (value !== null && typeof value === 'object') {
-        sanitized[key] = sanitizeObject(value as Record<string, unknown>, depth + 1);
-      } else {
-        sanitized[key] = value;
-      }
+    if (++keyCount > MAX_KEYS) break;
+    // [FIX 28] Also sanitize keys themselves to prevent __proto__ pollution
+    const safeKey = key === '__proto__' || key === 'constructor' || key === 'prototype' ? `_${key}` : key;
+    // Don't sanitize password fields (they get hashed) or config_value (JSON blob)
+    if (safeKey === 'password' || safeKey === 'currentPassword' || safeKey === 'newPassword' || safeKey === 'config_value') {
+      sanitized[safeKey] = value;
     } else {
-      sanitized[key] = sanitizeValue(value, key, depth);
+      sanitized[safeKey] = sanitizeValue(value, depth);
     }
   }
   return sanitized;
 }
 
-// Export for use in offline sync push (where JSON.parse produces unsanitized objects)
-export { sanitizeObject };
+// ── Validation / utility helpers used by route files ──────────
 
-// Validate that a value is one of an allowed set. Returns the value if valid, or null if empty.
-// Throws an Error with a descriptive message if the value is present but not allowed.
-export function validateEnum<T extends string>(
-  value: unknown,
-  allowed: readonly T[],
-  fieldName: string,
-): T | null {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value === 'string' && (allowed as readonly string[]).includes(value)) return value as T;
-  throw new Error(`Invalid ${fieldName}. Must be one of: ${allowed.join(', ')}`);
-}
-
-// Coerce a value to an integer, returning null if empty or NaN.
-export function requireInt(value: unknown, fieldName: string): number | null {
-  if (value === undefined || value === null || value === '') return null;
-  const n = typeof value === 'number' ? value : parseInt(String(value), 10);
-  if (isNaN(n)) throw new Error(`${fieldName} must be a valid number`);
-  return n;
-}
-
-/** Escape SQL LIKE wildcard characters (%, _, \) so user input is treated literally.
- *  Use with `LIKE ? ESCAPE '\'` in your SQL queries. */
+/** Escape SQL LIKE wildcards */
 export function escapeLike(str: string): string {
-  return String(str).replace(/[%_\\]/g, '\\$&');
+  return str.replace(/[%_\\]/g, '\\$&');
 }
 
-/** Quote a SQL identifier (table/column name) by wrapping in double quotes
- *  and escaping any embedded double quotes. Prevents SQL injection via identifiers. */
-export function quoteIdent(name: string): string {
-  return `"${String(name).replace(/"/g, '""')}"`;
+/** Validate that req.params[name] is a positive integer (utility function — use in handler body) */
+export function validateParamId(req: Request, name = 'id'): number {
+  const val = Number(req.params[name]);
+  if (!Number.isInteger(val) || val < 1) throw new Error(`Invalid ${name}`);
+  return val;
 }
 
-/** Express middleware that validates req.params.id is a positive integer.
- *  Use on routes like `router.get('/:id', validateParamId, handler)` to reject
- *  non-numeric IDs before they reach DB queries or business logic. */
-export function validateParamId(req: Request, res: Response, next: NextFunction): void {
-  const id = String(req.params.id ?? '');
-  if (id) {
-    const n = parseInt(id, 10);
-    if (isNaN(n) || n < 1 || String(n) !== id) {
-      res.status(400).json({ error: 'Invalid ID parameter' });
-      return;
-    }
+/** Express middleware version of validateParamId — use in route chain before handler */
+export function validateParamIdMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const val = Number(req.params.id);
+  if (!Number.isInteger(val) || val < 1) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
   }
   next();
 }
 
-/** Express middleware factory that validates one or more named route params are positive integers.
- *  Usage: `router.get('/:personId', validateNumericParams('personId'), handler)` */
-export function validateNumericParams(...paramNames: string[]) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    for (const name of paramNames) {
-      const val = String(req.params[name] ?? '');
-      if (val) {
-        const n = parseInt(val, 10);
-        if (isNaN(n) || n < 1 || String(n) !== val) {
-          res.status(400).json({ error: `Invalid ${name} parameter` });
-          return;
-        }
-      }
-    }
-    next();
-  };
+/** Validate a required string field */
+export function validateStr(val: unknown, fieldName: string, maxLen = 1000): string {
+  if (typeof val !== 'string' || !val.trim()) throw new Error(`${fieldName} is required`);
+  const trimmed = val.trim();
+  if (trimmed.length > maxLen) throw new Error(`${fieldName} exceeds max length`);
+  return trimmed;
 }
 
-/** Safely parse pagination parameters from query string.
- *  Returns clamped, validated { page, limit, offset } values.
- *  - page: positive integer (default 1)
- *  - limit: positive integer clamped to [1, maxLimit] (default defaultLimit)
- *  - offset: computed from page and limit */
-export function safePagination(
-  query: Record<string, any>,
-  defaultLimit = 50,
-  maxLimit = 200,
-): { page: number; limit: number; offset: number } {
-  const page = Math.max(1, parseInt(String(query.page ?? query.p ?? '1'), 10) || 1);
-  const rawLimit = parseInt(String(query.limit ?? query.per_page ?? String(defaultLimit)), 10);
-  const limit = Math.min(maxLimit, Math.max(1, isNaN(rawLimit) ? defaultLimit : rawLimit));
-  return { page, limit, offset: (page - 1) * limit };
+/** Validate a date string (ISO or common formats) */
+export function validateDateStr(val: unknown, fieldName: string): string {
+  if (typeof val !== 'string' || !val.trim()) throw new Error(`${fieldName} is required`);
+  const d = new Date(val);
+  if (isNaN(d.getTime())) throw new Error(`${fieldName} is not a valid date`);
+  return val.trim();
+}
+
+/** Require a value to be an integer */
+export function requireInt(val: unknown, fieldName: string): number {
+  const n = Number(val);
+  if (!Number.isInteger(n)) throw new Error(`${fieldName} must be an integer`);
+  return n;
+}
+
+/** Require a value to be a float/number, with optional min/max bounds */
+export function requireFloat(val: unknown, fieldName: string, min?: number, max?: number): number {
+  const n = Number(val);
+  if (isNaN(n)) throw new Error(`${fieldName} must be a number`);
+  if (min !== undefined && n < min) throw new Error(`${fieldName} must be >= ${min}`);
+  if (max !== undefined && n > max) throw new Error(`${fieldName} must be <= ${max}`);
+  return n;
+}
+
+/** Validate a value is one of the allowed enum values */
+export function validateEnum<T extends string>(val: unknown, allowed: readonly T[], fieldName: string): T {
+  if (!allowed.includes(val as T)) throw new Error(`${fieldName} must be one of: ${allowed.join(', ')}`);
+  return val as T;
 }
 
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction): void {
@@ -159,23 +115,11 @@ export function sanitizeInput(req: Request, _res: Response, next: NextFunction):
     req.body = sanitizeObject(req.body);
   }
 
-  // Sanitize query params — enforce length limits and strip dangerous characters
+  // Sanitize query params
   if (req.query) {
     for (const [key, value] of Object.entries(req.query)) {
       if (typeof value === 'string') {
-        const trimmed = value.trim().slice(0, MAX_QUERY_PARAM_LENGTH);
-        (req.query as Record<string, string>)[key] = sanitizeStr(trimmed, key);
-      }
-    }
-  }
-
-  // Sanitize URL params — strip dangerous HTML tag characters from string params
-  // (numeric IDs are already validated by validateParamId, but string params like
-  // filenames, call_signs, etc. could carry XSS payloads into error messages or logs)
-  if (req.params) {
-    for (const [key, value] of Object.entries(req.params)) {
-      if (typeof value === 'string') {
-        (req.params as Record<string, string>)[key] = sanitizeStr(value.trim(), key);
+        (req.query as Record<string, string>)[key] = sanitizeStr(value.trim());
       }
     }
   }
