@@ -844,6 +844,13 @@ export default function MapPage() {
         gestureHandling: 'greedy',
       });
 
+      // Auth/quota failure can hand back a stub Map with no div — route to the
+      // existing error UI instead of crashing in monitorTileLoading.
+      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
+        setMapError('Google Maps failed to initialize — check API key / billing.');
+        return;
+      }
+
       mapInstanceRef.current = map;
       registerMapInstance(map);
 

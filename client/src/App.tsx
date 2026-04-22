@@ -16,9 +16,7 @@ import { useStandalone } from './hooks/useStandalone';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
-// MapPage (Google Maps) retired 2026-04-19 — Google API keys revoked.
-// /map redirects to /map-v2 (OpenLayers). Phase 5 will delete pages/map/.
-const MapPageV2 = lazyRetry(() => import('./pages/map-v2'));
+const MapPage = lazyRetry(() => import('./pages/map'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
@@ -227,8 +225,8 @@ function AppRoutes() {
           >
             <Route path="/" element={<HomeRedirect>{window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />}</HomeRedirect>} />
             <Route path="/dispatch" element={<DispatchPage />} />
-            <Route path="/map" element={<Navigate to="/map-v2" replace />} />
-            <Route path="/map-v2" element={<RouteErrorBoundary><MapPageV2 /></RouteErrorBoundary>} />
+            <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
+            <Route path="/map-v2" element={<Navigate to="/map" replace />} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
