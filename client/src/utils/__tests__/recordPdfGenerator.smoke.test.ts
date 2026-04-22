@@ -119,6 +119,18 @@ describe('recordPdfGenerator smoke tests', () => {
     expect(doc.getNumberOfPages()).toBeGreaterThan(0);
   });
 
+  it('generates a call PDF with serve_queue_id (QR path)', async () => {
+    const doc = await generateRecordPdf('call', { ...minCall, serve_queue_id: 42 });
+    expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a call PDF when QR key is missing (no serve_queue_id, blank call_number)', async () => {
+    const doc = await generateRecordPdf('call', { ...minCall, call_number: '' });
+    expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
   it('generates a person PDF from minimal data', async () => {
     const doc = await generateRecordPdf('person', minPerson);
     expect(doc).toBeDefined();

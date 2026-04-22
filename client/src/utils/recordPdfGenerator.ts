@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 import { isPast, isWithinDays } from './dateUtils';
 import {
   addConfidentialWatermark,
@@ -145,6 +146,8 @@ export interface CallPdfData {
   case_id?: number;
   case_number?: string;
   incident_number?: string;
+  // Serve queue linkage — enables QR code on printout for mobile status update
+  serve_queue_id?: number | string;
   // Contract ID (for PSO Client Request incidents)
   contract_id?: string;
   latitude?: number;
@@ -1562,6 +1565,35 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Signatures — full-width stacked (one on top of the other)
   y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
+
+  // ── QR code (page 1, bottom-right) — links mobile scan to serve-queue update ──
+  // Rendered last so the page-1 layout is already fully composed; we hop back
+  // to page 1 to stamp the QR above the footer. Non-fatal on any error — the
+  // printout is still valid without it.
+  try {
+    const qrKey = data.serve_queue_id != null ? String(data.serve_queue_id) : (data.call_number || '');
+    if (qrKey) {
+      const qrUrl = data.serve_queue_id != null
+        ? `https://rmpgutah.us/serve?q=${encodeURIComponent(qrKey)}`
+        : `https://rmpgutah.us/dispatch?call=${encodeURIComponent(qrKey)}`;
+      const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 120, margin: 0, errorCorrectionLevel: 'M' });
+      const prevPage = (doc as any).internal?.getCurrentPageInfo?.()?.pageNumber ?? doc.getNumberOfPages();
+      doc.setPage(1);
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const qrSize = 22; // mm
+      const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize;
+      const qrY = pageH - LAYOUT.PAGE_MARGIN - qrSize - 4; // 4mm buffer above footer
+      doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('SCAN TO UPDATE STATUS', qrX + qrSize / 2, qrY - 1, { align: 'center' });
+      doc.setPage(prevPage);
+    }
+  } catch {
+    /* QR generation is best-effort — do not block PDF output */
+  }
 }
 
 // ── Person Record ────────────────────────────────────────────
