@@ -354,14 +354,8 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - **Shift Plans**: `shift_plans`, `shift_swap_requests`
 - **Notification Rules**: `notification_rules` for custom alert automation
 
-### Map V2 (OpenLayers, beta) — `/map-v2`
-Read-only parallel map surface backed by OpenLayers + the existing CartoDB raster tile cache (`/tiles/{z}/{x}/{y}.png`, pre-cached by `sw.js` for Utah Z7-15). Production `/map` (Google Maps) remains the default; V2 is opt-in via direct URL while it's iterated to feature parity (Phases 2-5 of [docs/plans/2026-04-19-openlayers-migration-phase1.md](docs/plans/2026-04-19-openlayers-migration-phase1.md)).
-- **Page**: `client/src/pages/map-v2/MapPageV2.tsx` (66 lines — basemap + Spillman badge)
-- **Hooks**: `client/src/pages/map-v2/hooks/useOlBeatLayer.ts` (719 beat polygons from `/geojson/beat.geojson`, sector-colored via `getSectionColor` from `useGeoJsonLayers`), `client/src/pages/map-v2/hooks/useOlLiveMarkers.ts` (units + calls from `/dispatch/units` + `/dispatch/calls?limit=200`, debounced refetch on `unit_update` + `dispatch_update` WS events, click-to-popup overlay)
-- **Smoke test**: `client/src/pages/map-v2/__tests__/MapPageV2.smoke.test.ts` (4 module-load tests; render-based tests deferred until Phase 4 hook ports)
-- **Coordinate gotcha**: OL stores everything in EPSG:3857 and expects `fromLonLat([lng, lat])` at every input — note **lng-first** order, opposite of Google Maps. Beat GeoJSON is reprojected at parse time via `featureProjection: 'EPSG:3857'`.
-- **Type gotcha**: OL 9's `VectorLayer<T>` generic is the FEATURE type, not the SourceType — use `VectorLayer<Feature<Geometry>>` (or `VectorLayer<FeatureLike>`), not `VectorLayer<VectorSource>`.
-- **No drawing, no dispatch interactions, no risk** — V2 is pure visualization for now. All write paths (drag-to-dispatch, drawing tools, status changes) stay on `/map` until Phase 4 ports the feature hooks.
+### Map V2 (OpenLayers) — RETIRED 2026-04-22
+The OpenLayers parallel map surface at `/map-v2` was removed. `/map` is back to being the single Google Maps surface. `/map-v2` now 302-redirects to `/map` for any stale bookmarks. The `ol` dependency remains in `client/package.json` as unused weight; remove it on the next `npm install` pass. Dead code: `section15()` + `drawMapV2ArchDiagram()` in `dispatchGuidePdfGenerator.ts` (no longer referenced from the TOC). Original Phase 1 plan at `docs/plans/2026-04-19-openlayers-migration-phase1.md` is abandoned.
 
 ## Common Gotchas
 
