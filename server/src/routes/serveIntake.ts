@@ -20,6 +20,7 @@ import {
   buildNotesNarrative,
   computeDiligenceSchedule,
   classifyEntityType,
+  addressConfidence,
   type ParseOutput,
 } from '../utils/serveIntakeHelpers';
 import { execFile } from 'child_process';
@@ -175,6 +176,12 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     if (!parsed.defendant.last) {
       res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
       return;
+    }
+
+    // ── Address confidence cross-check (field sheet vs docket) ──
+    const addrConf = addressConfidence(parsed.address, parsed.complaintResidence || '');
+    if (addrConf > 0 && addrConf < 80 && parsed.complaintResidence) {
+      warnings.push(`Address mismatch (confidence ${addrConf}%): FieldSheet="${parsed.address}", Docket="${parsed.complaintResidence}". Verify defendant residence.`);
     }
 
     // ── Vendor lookup via fingerprint (clients table) ────────
@@ -672,6 +679,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       beat_code: beatCode || null,
       weather: weatherConditions || null,
       lighting: lightingConditions || null,
+      address_confidence: addrConf,
       warnings,
       extracted: {
         defendant: parsed.defendant,

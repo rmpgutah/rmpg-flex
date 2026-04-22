@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput, extractDocketBarcodeJobNumber, extractComplaintResidence } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput, extractDocketBarcodeJobNumber, extractComplaintResidence, addressConfidence, normalizeAddressForMatch } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -254,5 +254,27 @@ describe('extractComplaintResidence', () => {
   });
   it('returns empty when no "who resides at" pattern', () => {
     expect(extractComplaintResidence('no residence clause')).toBe('');
+  });
+});
+
+describe('addressConfidence', () => {
+  it('scores identical addresses at 100', () => {
+    expect(addressConfidence('2361 E 3395 S, Salt Lake City, UT 84109', '2361 E 3395 S, Salt Lake City, UT 84109')).toBe(100);
+  });
+  it('scores unit-only difference high', () => {
+    const score = addressConfidence('2361 E 3395 S UNIT A, SLC, UT', '2361 E 3395 S, SLC, UT');
+    expect(score).toBeGreaterThan(85);
+  });
+  it('scores completely different addresses low', () => {
+    const score = addressConfidence('2361 E 3395 S, SLC, UT', '1000 Main St, Logan, UT');
+    expect(score).toBeLessThan(60);
+  });
+  it('handles 3-way match', () => {
+    const score = addressConfidence(
+      '2361 E 3395 S, Salt Lake City, UT 84109',
+      '2361 E 3395 S, Salt Lake Cty, UT, 84109-3037',
+      '2361 E 3395 S, SALT LAKE CITY, UT 84109',
+    );
+    expect(score).toBeGreaterThan(85);
   });
 });

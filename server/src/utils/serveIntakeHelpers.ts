@@ -1,3 +1,5 @@
+import * as levenshtein from 'fast-levenshtein';
+
 export interface AddressParts {
   building: string;
   floor: string;
@@ -544,6 +546,33 @@ export function parseAddressParts(address: string): AddressParts {
 export function extractDocketBarcodeJobNumber(docketText: string): string {
   const m = docketText.match(/\*S\d+(\d{6,})\*/);
   return m ? m[1] : '';
+}
+
+/** Normalize an address for comparison — strip unit/apt/#, lowercase, punctuation off, collapse whitespace. */
+export function normalizeAddressForMatch(addr: string): string {
+  return (addr || '')
+    .toLowerCase()
+    .replace(/\b(unit|apt|apartment|ste|suite|#)\s*[a-z0-9-]+/gi, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 0–100 confidence score comparing up to 3 address strings. Higher = more similar. */
+export function addressConfidence(a: string, b: string, c?: string): number {
+  const vals = [a, b, c].filter((v): v is string => Boolean(v)).map(normalizeAddressForMatch).filter(Boolean);
+  if (vals.length < 2) return 100; // can't disagree with itself
+  const pairs: Array<[string, string]> = [];
+  for (let i = 0; i < vals.length; i++) {
+    for (let j = i + 1; j < vals.length; j++) pairs.push([vals[i], vals[j]]);
+  }
+  const ratios = pairs.map(([x, y]) => {
+    const dist = levenshtein.get(x, y);
+    const maxLen = Math.max(x.length, y.length) || 1;
+    return 1 - dist / maxLen;
+  });
+  const avg = ratios.reduce((s, r) => s + r, 0) / ratios.length;
+  return Math.round(avg * 100);
 }
 
 /** Extract the "who resides at" address from a Utah complaint paragraph 2. */
