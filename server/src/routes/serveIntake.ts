@@ -165,9 +165,13 @@ function upsertPerson(
   now: string,
   info: { first: string; middle: string; last: string; dob?: string; address?: string; phone?: string; email?: string; role: string; entityType: 'individual' | 'organization'; bar?: string; firm?: string },
 ): number {
+  // Match on name + DOB AND entity_type so an organization-entity plaintiff
+  // can't collide with an individual of a similar name, and vice versa.
+  // Pre-2026-04-21 this only matched name+DOB, which could collapse a
+  // plaintiff/attorney pair down to one persons row when they shared a name.
   const existing = db.prepare(
-    'SELECT id FROM persons WHERE first_name = ? AND last_name = ? AND (dob IS NULL OR dob = \'\' OR ? = \'\' OR dob = ?) LIMIT 1'
-  ).get(info.first, info.last, info.dob || '', info.dob || '') as any;
+    "SELECT id FROM persons WHERE first_name = ? AND last_name = ? AND (dob IS NULL OR dob = '' OR ? = '' OR dob = ?) AND (entity_type = ? OR entity_type IS NULL OR entity_type = '') LIMIT 1"
+  ).get(info.first, info.last, info.dob || '', info.dob || '', info.entityType) as any;
   if (existing) {
     if (info.dob) db.prepare("UPDATE persons SET dob = COALESCE(NULLIF(dob,''), ?) WHERE id = ?").run(info.dob, existing.id);
     if (info.address) db.prepare("UPDATE persons SET address = COALESCE(NULLIF(address,''), ?) WHERE id = ?").run(info.address, existing.id);
@@ -283,7 +287,11 @@ async function doIntake(
     const callerPhone: string = vendorClient?.caller_phone || '';
     const billingCode: string | null = vendorClient?.billing_code || null;
     const requestorEmail: string | null = vendorClient?.requestor_email || null;
-    const callerAddress: string = vendorClient?.address || '';
+    // CALLER ADDRESS is the physical origin address of the call — meaningless
+    // for electronic job intake. Leave blank rather than stamping the vendor's
+    // letterhead address, which misleads dispatchers into thinking the call
+    // originated from that location.
+    const callerAddress: string | null = null;
 
     // ── Persons: defendant (subject), plaintiff (complainant), attorney (reporting_party)
     const defendantId = upsertPerson(db, userId, now, {
@@ -401,8 +409,8 @@ async function doIntake(
                      dz.zone_code, dz.name AS zone_name,
                      ds.sector_code, ds.name AS sector_name
               FROM dispatch_beats db2
-              JOIN dispatch_zones dz ON dz.id = db2.zone_id
-              JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+              LEFT JOIN dispatch_zones dz ON dz.id = db2.zone_id
+              LEFT JOIN dispatch_sectors ds ON ds.id = dz.sector_id
               WHERE db2.beat_code = ? LIMIT 1
             `).get(beatCode) as any;
             if (district) {
@@ -413,6 +421,9 @@ async function doIntake(
               zoneName = district.zone_name || '';
               beatName = district.beat_name || '';
               dispatchCode = district.beat_code || '';
+            }
+            if (beatCode && (!sectorCode || !zoneCode)) {
+              warnings.push(`Partial geography match: beat=${beatCode} but no parent zone/sector. Dispatch geography tables may be incomplete for this beat.`);
             }
           } catch (err) {
             log.warn({ err, beatCode }, 'dispatch geography join failed');
@@ -431,7 +442,7 @@ async function doIntake(
     let lightingConditions = '';
     if (latitude && longitude) {
       try {
-        const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,cloud_cover,surface_pressure,visibility&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/Denver`;
+        const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,cloud_cover,pressure_msl,visibility&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/Denver`;
         const wxResp = await fetch(wxUrl);
         if (wxResp.ok) {
           const wx: any = await wxResp.json();
@@ -467,8 +478,17 @@ async function doIntake(
           if (typeof c.relative_humidity_2m === 'number') parts.push(`Humidity ${c.relative_humidity_2m}%`);
           if (typeof c.cloud_cover === 'number') parts.push(`Clouds ${c.cloud_cover}%`);
           if (typeof c.precipitation === 'number' && c.precipitation > 0) parts.push(`Precip ${c.precipitation.toFixed(2)}in`);
-          if (typeof c.visibility === 'number') parts.push(`Vis ${(c.visibility / 1609.34).toFixed(1)}mi`);
-          if (typeof c.surface_pressure === 'number') parts.push(`Pressure ${(c.surface_pressure * 0.02953).toFixed(2)}inHg`);
+          if (typeof c.visibility === 'number') {
+            const visMi = c.visibility / 1609.34;
+            // Open-meteo reports raw atmospheric max-range values that can exceed
+            // human-useful visibility. Cap display at "99+" and suppress anything
+            // clearly nonsensical (>150mi).
+            if (visMi > 0 && visMi < 150) parts.push(`Vis ${visMi >= 99 ? '99+' : visMi.toFixed(1)}mi`);
+          }
+          // Sea-level (MSL) pressure is the convention shown by consumer weather
+          // apps. Surface pressure at SLC's ~4200ft elevation reads ~25inHg which
+          // misleads readers. Use pressure_msl for ~29-30inHg like everywhere else.
+          if (typeof c.pressure_msl === 'number') parts.push(`Pressure ${(c.pressure_msl * 0.02953).toFixed(2)}inHg`);
           weatherConditions = parts.join(', ');
         } else {
           warnings.push('Weather API returned non-OK');
@@ -726,19 +746,26 @@ async function doIntake(
     const callId = Number(callResult.lastInsertRowid);
 
     // ── call_persons links ──────────────────────────────────
+    // Using plain INSERT (not OR IGNORE) so a silent duplicate-suppression
+    // can't drop rows unnoticed. If two parties happen to resolve to the same
+    // persons.id via upsertPerson (e.g. an org-named attorney colliding with
+    // the plaintiff org), we still want 3 link rows with distinct roles —
+    // the schema has no UNIQUE constraint on (call_id, person_id) so that
+    // is safe. Track inserts so we can warn when we persisted fewer than the
+    // parties we parsed.
+    let callPersonsInserted = 0;
     try {
-      db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
-        .run(callId, defendantId, 'subject', userId, now);
-      if (plaintiffId) {
-        db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
-          .run(callId, plaintiffId, 'complainant', userId, now);
-      }
-      if (attorneyId) {
-        db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
-          .run(callId, attorneyId, 'reporting_party', userId, now);
-      }
+      const insertLink = db.prepare('INSERT INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)');
+      insertLink.run(callId, defendantId, 'subject', userId, now); callPersonsInserted++;
+      if (plaintiffId) { insertLink.run(callId, plaintiffId, 'complainant', userId, now); callPersonsInserted++; }
+      if (attorneyId) { insertLink.run(callId, attorneyId, 'reporting_party', userId, now); callPersonsInserted++; }
     } catch (err) {
       log.warn({ err }, 'call_persons insert failed');
+      warnings.push('One or more call_persons link rows failed to persist');
+    }
+    const expectedCallPersons = 1 + (plaintiffId ? 1 : 0) + (attorneyId ? 1 : 0);
+    if (callPersonsInserted < expectedCallPersons) {
+      warnings.push(`Expected ${expectedCallPersons} call_persons rows, inserted ${callPersonsInserted}`);
     }
 
     // ── serve_queue ─────────────────────────────────────────

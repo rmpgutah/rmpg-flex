@@ -226,7 +226,7 @@ export interface CallPdfData {
   closed_at?: string;
   created_by?: string;
   // Notes / Narrative
-  notes?: { id: string; author: string; content: string; created_at: string }[];
+  notes?: { id: string; author: string; content?: string; text?: string; created_at?: string; timestamp?: string }[];
   narrative?: string;
   // OPR identifier
   dispatcher_name?: string;
@@ -912,6 +912,54 @@ function titleCase(str: string): string {
   return str.replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
+// ── Structured CFS notes renderer ─────────────────────────────
+// Parses serve-intake's 8-entry narrative (CASE --, COURT --, ATTORNEY --,
+// SERVICE RULES --, SCHEDULE --, RECOMMENDED SCHEDULE --, CLIENT HISTORY --,
+// INSTRUCTIONS --) into labeled panels. Entries from older CFS records
+// without this prefix shape are skipped; falls back gracefully.
+function renderStructuredCallNotes(
+  doc: jsPDF,
+  notes: { text?: string; content?: string }[] | undefined,
+  y: number,
+  prio?: string,
+): number {
+  if (!Array.isArray(notes) || notes.length === 0) return y;
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  try {
+    for (const entry of notes) {
+      const raw = (entry.text || entry.content || '').trim();
+      if (!raw) continue;
+      const m = raw.match(/^([A-Z][A-Z0-9 \-()\/]+?)\s*--\s*([\s\S]*)$/);
+      if (!m) continue;
+      const title = m[1].trim();
+      const body = m[2].trim();
+      if (!body) continue;
+      y = checkPageBreak(doc, y, 22, prio);
+      const sec = openAutoSection(doc, title, y);
+      y = sec.sectionY + SPACING.SECTION_HEADER_H + 1;
+      const fields = body.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      for (const f of fields) {
+        const lines = doc.splitTextToSize(f.toUpperCase(), ffw - 2);
+        for (const line of lines) {
+          y = checkPageBreak(doc, y, 4.2, prio);
+          doc.text(line, lx + 1, y);
+          y += 4;
+        }
+        y += 0.8;
+      }
+      y += 1.5;
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  } catch {
+    // malformed notes — bail gracefully
+  }
+  return y;
+}
+
 // ── Call for Service Report ──────────────────────────────────
 
 async function generateCallReport(doc: jsPDF, data: CallPdfData) {
@@ -1520,20 +1568,36 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Notes
-  if (data.notes && data.notes.length > 0) {
+  // Structured CFS narrative (serve-intake 8-entry format). Renders panels
+  // for CASE DETAILS / COURT / ATTORNEY / SERVICE RULES / SCHEDULE /
+  // RECOMMENDED SCHEDULE / CLIENT HISTORY / INSTRUCTIONS when entries match
+  // the "TITLE -- body | field1 | field2" shape. Non-matching entries (e.g.
+  // older dispatcher free-form notes) fall through to the generic Notes
+  // section below.
+  y = renderStructuredCallNotes(doc, data.notes, y, prio);
+
+  // Notes — supports both {content, created_at} (dispatch UI format) and
+  // {text, timestamp} (serve-intake format) so a CFS generated from the
+  // process-service intake pipeline renders its narrative entries.
+  // Entries already rendered above by renderStructuredCallNotes (matching
+  // "TITLE -- body" shape) are filtered out here to avoid duplication.
+  const structuredPrefix = /^([A-Z][A-Z0-9 \-()\/]+?)\s*--\s*/;
+  const unstructuredNotes = Array.isArray(data.notes)
+    ? data.notes.filter((n: any) => !structuredPrefix.test((n.text || n.content || '').trim()))
+    : [];
+  if (unstructuredNotes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
     // Render notes: DATE/TIME on left, AUTHOR on right, content below
     y += 1.5;  // Space after header bar
-    for (let ni = 0; ni < data.notes.length; ni++) {
-      const n = data.notes[ni];
+    for (let ni = 0; ni < unstructuredNotes.length; ni++) {
+      const n = unstructuredNotes[ni] as any;
       y = checkPageBreak(doc, y, 10, prio);
       // Date/time on far left, author on far right — same line
       doc.setFont(PDF_VALUE_FONT, 'bold');
       doc.setFontSize(6);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const tsText = fmtTimestamp(n.created_at).toUpperCase();
+      const tsText = fmtTimestamp(n.created_at || n.timestamp || '').toUpperCase();
       doc.text(tsText, lx, y);
       const authorName = (n.author || 'System').toUpperCase();
       const authorW = doc.getTextWidth(authorName);
@@ -1544,9 +1608,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-      y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
+      y = addFormattedText(doc, (n.content || n.text || '').toUpperCase(), lx, y, ffw);
       // Visible gap between entries (matching Resolution Details spacing)
-      if (ni < data.notes.length - 1) {
+      if (ni < unstructuredNotes.length - 1) {
         y += 2;
         // Light separator line between notes
         doc.setDrawColor(...COLOR.BORDER_TABLE);
