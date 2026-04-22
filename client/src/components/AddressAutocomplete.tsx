@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { loadGoogleMaps as loadGoogleMapsShared } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { useDistrictIdentify, type DistrictInfo } from '../hooks/useDistrictLookup';
 
 // ── Parsed address components returned by onSelect ───────────
 export interface ParsedAddress {
@@ -27,6 +28,14 @@ export interface ParsedAddress {
   latitude: number | null;
   /** Longitude (if available) */
   longitude: number | null;
+  /**
+   * Dispatch geography resolved from lat/lng via point-in-polygon lookup.
+   * Populated automatically when the picked place has coordinates AND the
+   * server's /dispatch/districts/identify endpoint returns a match.
+   * Undefined when lat/lng missing, no polygon matched, or lookup failed —
+   * callers should treat absence as "unknown", not "no coverage".
+   */
+  district?: DistrictInfo;
 }
 
 // ── Component Props ──────────────────────────────────────────
@@ -147,6 +156,7 @@ export default function AddressAutocomplete({
   const [placesLoaded, setPlacesLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const skipNextChangeRef = useRef(false);
+  const { identify } = useDistrictIdentify();
 
   // Load Places library on mount
   useEffect(() => {
@@ -181,7 +191,7 @@ export default function AddressAutocomplete({
       fields: ['address_components', 'formatted_address', 'geometry'],
     });
 
-    autocomplete.addListener('place_changed', () => {
+    autocomplete.addListener('place_changed', async () => {
       const place = autocomplete.getPlace();
       if (!place || !place.formatted_address) return;
 
@@ -191,6 +201,9 @@ export default function AddressAutocomplete({
       const streetNumber = getComponent(comps, 'street_number');
       const route = getComponent(comps, 'route');
       const street = streetNumber ? `${streetNumber} ${route}` : route;
+
+      const latitude = place.geometry?.location?.lat() ?? null;
+      const longitude = place.geometry?.location?.lng() ?? null;
 
       const parsed: ParsedAddress = {
         formatted,
@@ -202,16 +215,26 @@ export default function AddressAutocomplete({
         state: getComponent(comps, 'administrative_area_level_1', true),
         zip: getComponent(comps, 'postal_code'),
         country: getComponent(comps, 'country', true),
-        latitude: place.geometry?.location?.lat() ?? null,
-        longitude: place.geometry?.location?.lng() ?? null,
+        latitude,
+        longitude,
       };
 
       // Update the controlled value without triggering an extra onChange
       skipNextChangeRef.current = true;
       onChange(formatted);
 
-      if (onSelect) {
-        onSelect(parsed);
+      // Fire onSelect immediately with the address so forms render without waiting
+      // on the district lookup. Then, when lat/lng is available, attempt the
+      // point-in-polygon lookup and fire onSelect again with district populated.
+      // Callers that only care about address ignore the 2nd call; callers that
+      // auto-fill beat/zone/sector can read parsed.district on the 2nd call.
+      if (onSelect) onSelect(parsed);
+
+      if (latitude != null && longitude != null) {
+        const district = await identify(latitude, longitude);
+        if (district && onSelect) {
+          onSelect({ ...parsed, district });
+        }
       }
     });
 
