@@ -604,9 +604,9 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       call_number: callNumber,
       case_id: caseId,
       case_number: caseNumber,
-      defendant_id: defendantId,
-      plaintiff_id: plaintiffId,
-      attorney_id: attorneyId,
+      defendant_person_id: defendantId,
+      plaintiff_person_id: plaintiffId,
+      attorney_person_id: attorneyId,
       property_id: propertyId,
       serve_queue_id: serveQueueId,
       serve_attempt_ids: attemptIds,
@@ -618,7 +618,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       weather: weatherConditions || null,
       lighting: lightingConditions || null,
       warnings,
-      parsed: {
+      extracted: {
         defendant: parsed.defendant,
         address: parsed.address,
         plaintiff: parsed.plaintiff,
@@ -629,7 +629,13 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         jobNumber: parsed.jobNumber,
         clientJobNumber: parsed.clientJobNumber,
         dueDate: parsed.dueDate,
-        attorney: { name: parsed.attorney.name, bar: parsed.attorney.barNumber, email: parsed.attorney.email },
+        attorney: {
+          name: parsed.attorney.name,
+          firm: parsed.attorney.firm,
+          barNumber: parsed.attorney.barNumber,
+          tel: parsed.attorney.tel,
+          email: parsed.attorney.email,
+        },
       },
     });
   } catch (err: any) {
