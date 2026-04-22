@@ -128,6 +128,7 @@ import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
 import HeatmapLegend from './components/HeatmapLegend';
 import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
 import { useMapHotspots } from './hooks/useMapHotspots';
 import { useMapDimBase } from './hooks/useMapDimBase';
 import { useMapIdleZones } from './hooks/useMapIdleZones';
@@ -432,18 +433,22 @@ export default function MapPage() {
   });
 
   // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
-  // F=field interviews, D=daylight, I=incidents, E=enforcement. No-op when
-  // an input is focused or a modifier key is held.
-  useMapKeyboardShortcuts({
-    toggleHeatmap: () => setShowHeatmap((v) => !v),
-    toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
-    toggleClustering: () => setClusteringEnabled((v) => !v),
-    togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
-    toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
-    toggleDaylight: () => setShowDaylight((v) => !v),
-    toggleIncidentReports: () => setShowIncidentReports((v) => !v),
-    toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
-  });
+  // F=field interviews, D=daylight, I=incidents, E=enforcement, ?=help.
+  // No-op when an input is focused or a modifier key is held.
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  useMapKeyboardShortcuts(
+    {
+      toggleHeatmap: () => setShowHeatmap((v) => !v),
+      toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
+      toggleClustering: () => setClusteringEnabled((v) => !v),
+      togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
+      toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
+      toggleDaylight: () => setShowDaylight((v) => !v),
+      toggleIncidentReports: () => setShowIncidentReports((v) => !v),
+      toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
+    },
+    () => setShowShortcutsHelp(true),
+  );
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -5542,6 +5547,9 @@ export default function MapPage() {
             </div>
           </div>
         </div>}
+
+        {/* ── Keyboard Shortcuts Help (triggered by `?` key) ── */}
+        <KeyboardShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
 
         {/* ── Breadcrumb Status Chip + Trail Stats/Export (top-left) ── */}
         {/* Shows unit count + window + color mode; hovering reveals per-unit
