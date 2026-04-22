@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -128,5 +128,23 @@ describe('parseJobActivity', () => {
 
   it('returns [] when no Job Activity section', () => {
     expect(parseJobActivity('nothing relevant')).toEqual([]);
+  });
+});
+
+describe('computeDiligenceSchedule', () => {
+  it('returns 3 attempts with the required weekend slot across a multi-day window', () => {
+    const now = new Date('2026-04-19T07:30:00-06:00');
+    const due = new Date('2026-04-21T23:59:59-06:00');
+    const plan = computeDiligenceSchedule(due, now);
+    expect(plan).toHaveLength(3);
+    expect(plan.map(p => p.window).sort()).toEqual(['6AM-9AM', '6PM-9PM', '9AM-6PM'].sort());
+    expect(plan.some(p => { const d = p.date.getDay(); return d === 0 || d === 6; })).toBe(true);
+  });
+
+  it('fits all 3 attempts into a same-day window if that is all that is left', () => {
+    const now = new Date('2026-04-19T07:00:00-06:00');
+    const due = new Date('2026-04-19T21:00:00-06:00');
+    const plan = computeDiligenceSchedule(due, now);
+    expect(plan).toHaveLength(3);
   });
 });

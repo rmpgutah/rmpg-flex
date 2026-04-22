@@ -175,6 +175,81 @@ export function parseJobActivity(text: string): JobActivityEntry[] {
   return out;
 }
 
+export interface DiligenceSlot {
+  date: Date;
+  window: '6AM-9AM' | '9AM-6PM' | '6PM-9PM';
+  weekend: boolean;
+}
+
+export function computeDiligenceSchedule(due: Date, now: Date): DiligenceSlot[] {
+  const windows: Array<{ name: DiligenceSlot['window']; hour: number; minute: number }> = [
+    { name: '6AM-9AM', hour: 7, minute: 30 },
+    { name: '9AM-6PM', hour: 12, minute: 0 },
+    { name: '6PM-9PM', hour: 19, minute: 30 },
+  ];
+
+  const isWeekend = (d: Date) => {
+    const day = d.getDay();
+    return day === 0 || day === 6;
+  };
+
+  // Enumerate candidate (day, window) slots between now and due
+  const candidates: DiligenceSlot[] = [];
+  const cursor = new Date(now);
+  cursor.setHours(0, 0, 0, 0);
+  const endDay = new Date(due);
+  endDay.setHours(23, 59, 59, 999);
+  while (cursor.getTime() <= endDay.getTime()) {
+    for (const w of windows) {
+      const slot = new Date(cursor);
+      slot.setHours(w.hour, w.minute, 0, 0);
+      if (slot.getTime() >= now.getTime() && slot.getTime() <= due.getTime()) {
+        candidates.push({ date: slot, window: w.name, weekend: isWeekend(slot) });
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  if (candidates.length === 0) return [];
+
+  // Need 3 slots, each with a distinct window, and at least one weekend (if any candidate is weekend)
+  const hasWeekendCandidate = candidates.some(c => c.weekend);
+
+  // Try: pick one slot per distinct window, spread across days, with a weekend if possible
+  const pickByWindow = (name: DiligenceSlot['window'], preferWeekend: boolean, exclude: DiligenceSlot[]): DiligenceSlot | undefined => {
+    const pool = candidates.filter(c => c.window === name && !exclude.includes(c));
+    if (preferWeekend) {
+      const w = pool.find(c => c.weekend);
+      if (w) return w;
+    }
+    return pool[0];
+  };
+
+  const chosen: DiligenceSlot[] = [];
+  let weekendSatisfied = !hasWeekendCandidate;
+
+  for (const w of windows) {
+    const slot = pickByWindow(w.name, !weekendSatisfied, chosen);
+    if (slot) {
+      chosen.push(slot);
+      if (slot.weekend) weekendSatisfied = true;
+    }
+  }
+
+  // If we still don't have 3 (because one window had no candidates), fall back to taking any remaining candidates in time order
+  if (chosen.length < 3) {
+    const remaining = candidates.filter(c => !chosen.includes(c)).sort((a, b) => a.date.getTime() - b.date.getTime());
+    for (const r of remaining) {
+      if (chosen.length >= 3) break;
+      chosen.push(r);
+    }
+  }
+
+  // Sort by date ascending
+  chosen.sort((a, b) => a.date.getTime() - b.date.getTime());
+  return chosen.slice(0, 3);
+}
+
 export function parseAddressParts(address: string): AddressParts {
   const empty: AddressParts = { building: '', floor: '', suite: '', street: '', city: '', state: '', zip: '' };
   if (!address) return empty;
