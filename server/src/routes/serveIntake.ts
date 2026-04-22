@@ -408,9 +408,9 @@ async function doIntake(
           beatCode = (beat as any).beat_code || '';
           try {
             const district = db.prepare(`
-              SELECT db2.beat_code, db2.name AS beat_name,
-                     dz.zone_code, dz.name AS zone_name,
-                     ds.sector_code, ds.name AS sector_name
+              SELECT db2.beat_code, db2.beat_name,
+                     dz.zone_code, dz.zone_name,
+                     ds.sector_code, ds.sector_name
               FROM dispatch_beats db2
               LEFT JOIN dispatch_zones dz ON dz.id = db2.zone_id
               LEFT JOIN dispatch_sectors ds ON ds.id = dz.sector_id
