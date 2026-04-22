@@ -888,6 +888,30 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       return;
     }
 
+    // Fill geography parents from beat_id when the call was saved with only a
+    // beat selected (auto-lookup skipped because lat/lng wasn't used).
+    if (call.beat_id && (!call.sector_name || !call.zone_name || !call.beat_descriptor)) {
+      try {
+        const parents = db.prepare(`
+          SELECT db.beat_descriptor, dz.zone_name, ds.sector_name, da.area_name
+          FROM dispatch_beats db
+          LEFT JOIN dispatch_zones dz ON db.zone_id = dz.id
+          LEFT JOIN dispatch_sectors ds ON dz.sector_id = ds.id
+          LEFT JOIN dispatch_areas da ON ds.area_id = da.id
+          WHERE db.beat_code = ?
+          LIMIT 1
+        `).get(call.beat_id) as any;
+        if (parents) {
+          if (!call.sector_name) call.sector_name = parents.sector_name || '';
+          if (!call.zone_name) call.zone_name = parents.zone_name || '';
+          if (!call.beat_descriptor) call.beat_descriptor = parents.beat_descriptor || '';
+          if (!call.area_name) call.area_name = parents.area_name || '';
+        }
+      } catch (joinErr) {
+        (req as any).log?.warn?.({ err: joinErr }, 'geography parent lookup failed');
+      }
+    }
+
     // Get assigned units with officer info
     let assignedUnits: any[] = [];
     try {
