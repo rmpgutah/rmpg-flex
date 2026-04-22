@@ -1406,18 +1406,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
     for (let vi = 0; vi < data.visit_history.length; vi++) {
       const visit = data.visit_history[vi];
-      y = checkPageBreak(doc, y, 12, prio);
-      if (vi > 0) {
-        doc.setDrawColor(...COLOR.BORDER_TABLE);
-        doc.setLineWidth(BORDER.TABLE_ROW);
-        doc.line(lx, y, lx + ffw, y);
-        y += 0.3;
-      }
+      y = checkPageBreak(doc, y, 22, prio);
 
-      // Visit header line
+      // Visit header line (bold)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      y += 3.2;
       doc.text(`Visit #${visit.visit_number}`, lx, y);
 
       // Status badge
@@ -1428,7 +1423,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(statusText, lx + visitLabelW, y);
 
-      // Units on the right
+      // Units on the right (same Y as header)
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
       if (unitsList.length > 0) {
@@ -1439,25 +1434,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const unitsW = doc.getTextWidth(unitsText);
         doc.text(unitsText, lx + ffw - unitsW, y);
       }
-      y += SPACING.SM;
 
-      // Timestamps row
+      // Build body lines
+      const bodyLines: string[] = [];
+
       const timeFields: string[] = [];
       if (visit.dispatched_at) timeFields.push(`Disp: ${fmtDateTime(visit.dispatched_at)}`);
       if (visit.enroute_at) timeFields.push(`EnRt: ${fmtDateTime(visit.enroute_at)}`);
       if (visit.onscene_at) timeFields.push(`OnSc: ${fmtDateTime(visit.onscene_at)}`);
       if (visit.cleared_at) timeFields.push(`Clr: ${fmtDateTime(visit.cleared_at)}`);
       if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
+      if (timeFields.length > 0) bodyLines.push(timeFields.join('    '));
 
-      if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.SM;
-      }
-
-      // Mileage row (if present)
       const mileageFields: string[] = [];
       if (visit.responding_vehicle_id) mileageFields.push(`Vehicle: ${visit.responding_vehicle_id}`);
       if (visit.starting_mileage != null) mileageFields.push(`Start: ${visit.starting_mileage.toLocaleString()} mi`);
@@ -1465,22 +1453,36 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (visit.starting_mileage != null && visit.ending_mileage != null) {
         mileageFields.push(`Total: ${(visit.ending_mileage - visit.starting_mileage).toFixed(1)} mi`);
       }
+      if (mileageFields.length > 0) bodyLines.push(mileageFields.join('    '));
 
-      if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.SM;
+      // Render timestamp + mileage rows in normal/tertiary
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      for (const line of bodyLines) {
+        y = checkPageBreak(doc, y, 3.4, prio);
+        y += 2.8;
+        doc.text(sanitizePdfText(line), lx + SPACING.MD, y);
       }
 
-      // Disposition
+      // Disposition (italic/primary)
       if (visit.disposition) {
+        y = checkPageBreak(doc, y, 3.4, prio);
+        y += 2.8;
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
-        y += SPACING.SM;
+      }
+
+      y += 2; // trailing gap
+
+      // Separator between visits (not after last)
+      if (vi < data.visit_history.length - 1) {
+        doc.setDrawColor(...COLOR.BORDER_TABLE);
+        doc.setLineWidth(BORDER.TABLE_ROW);
+        doc.line(lx, y, lx + ffw, y);
+        y += 2;
       }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
