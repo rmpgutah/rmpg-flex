@@ -351,7 +351,47 @@ export default function MapPage() {
   const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
-  const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
+  const [playbackTrailsRaw, setPlaybackTrailsRaw] = useState<PlaybackTrail[]>([]);
+
+  // Trail scrubber — lets dispatchers narrow the rendered trails to a
+  // time sub-window without a re-fetch. Values are "hours ago relative to
+  // now": fromH is the older edge (larger), toH is the newer edge (smaller),
+  // so [fromH=8, toH=0] means "last 8h through now". Default matches
+  // breadcrumbHours so the scrubber starts showing everything and the
+  // dispatcher narrows from there.
+  const [trailWindowFromH, setTrailWindowFromH] = useState<number>(breadcrumbHours);
+  const [trailWindowToH, setTrailWindowToH] = useState<number>(0);
+
+  // Keep the scrubber's "from" handle aligned with the fetched window —
+  // if the user bumps breadcrumbHours from 8 to 24, extend the scrubber
+  // range too so they can actually see the newer data.
+  useEffect(() => {
+    setTrailWindowFromH((prev) => (prev > breadcrumbHours ? breadcrumbHours : prev));
+  }, [breadcrumbHours]);
+
+  // Derived, window-filtered view of the trails. Render effects read this;
+  // the fetch effect writes the unfiltered Raw state. Filter is cheap for
+  // typical point counts (≤2k per unit), so recomputing on every scrubber
+  // drag is fine — no debounce needed.
+  const playbackTrails = useMemo<PlaybackTrail[]>(() => {
+    if (playbackTrailsRaw.length === 0) return playbackTrailsRaw;
+    const now = Date.now();
+    const windowStart = now - trailWindowFromH * 3600 * 1000;
+    const windowEnd = now - trailWindowToH * 3600 * 1000;
+    // Fast path: default window covers everything.
+    if (trailWindowFromH >= breadcrumbHours && trailWindowToH <= 0) {
+      return playbackTrailsRaw;
+    }
+    return playbackTrailsRaw
+      .map((t) => {
+        const filtered = t.points.filter((p) => {
+          const ts = Date.parse(p.time);
+          return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
+        });
+        return { ...t, points: filtered };
+      })
+      .filter((t) => t.points.length > 0);
+  }, [playbackTrailsRaw, trailWindowFromH, trailWindowToH, breadcrumbHours]);
   const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1757,7 +1797,7 @@ export default function MapPage() {
     speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
     speedAlertMarkersRef.current = [];
 
-    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
+    if (!showBreadcrumbs) { setPlaybackTrailsRaw([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
@@ -1803,7 +1843,7 @@ export default function MapPage() {
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         if (!trails) return;
-        setPlaybackTrails(trails);
+        setPlaybackTrailsRaw(trails);
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
@@ -5625,6 +5665,83 @@ export default function MapPage() {
               title="Download each unit's trail as a GPX file"
             >
               ⇩ GPX
+            </button>
+          </div>
+        )}
+
+        {/* ── Trail Time-Window Scrubber (top-left, below chip) ── */}
+        {/* Two range inputs that narrow the rendered trail window without
+            re-fetching. fromH is the older edge, toH the newer one. The
+            filter runs in a useMemo, so drags feel live even on ≤2k points
+            per unit. Rendered only when there's something to scrub. */}
+        {showBreadcrumbs && playbackTrailsRaw.length > 0 && (
+          <div
+            className="absolute z-[999]"
+            style={{
+              top: 90,
+              left: 16,
+              background: 'rgba(6,12,20,0.92)',
+              border: '1px solid #2b2b2b',
+              padding: '4px 10px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              fontSize: 9,
+              color: '#9ca3af',
+              letterSpacing: '0.05em',
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 320,
+            }}
+          >
+            <span style={{ color: '#d4a017', fontWeight: 900 }}>WINDOW</span>
+            <span title="From (hours ago)" style={{ color: '#6b7280' }}>{trailWindowFromH.toFixed(1)}h</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowFromH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowFromH(Math.max(v, trailWindowToH + 0.1));
+              }}
+              aria-label="Trail window start (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span style={{ color: '#6b7280' }}>now</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowToH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowToH(Math.min(v, trailWindowFromH - 0.1));
+              }}
+              aria-label="Trail window end (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span title="To (hours ago)" style={{ color: '#6b7280' }}>{trailWindowToH.toFixed(1)}h</span>
+            <button
+              type="button"
+              onClick={() => { setTrailWindowFromH(breadcrumbHours); setTrailWindowToH(0); }}
+              style={{
+                padding: '1px 5px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Reset window to full fetched range"
+            >
+              RESET
             </button>
           </div>
         )}
