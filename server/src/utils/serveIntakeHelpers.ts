@@ -250,6 +250,91 @@ export function computeDiligenceSchedule(due: Date, now: Date): DiligenceSlot[] 
   return chosen.slice(0, 3);
 }
 
+export interface NotesInput {
+  plaintiff: string;
+  orderingClientRule: string;
+  clientJobNumber: string;
+  documents: string;
+  documentPages: number;
+  bilingual: boolean;
+  signedDate: string;
+  responseDeadlineDays: number;
+  court: string;
+  courtAddress: string;
+  clerkPhone: string;
+  attorney: AttorneyBlock;
+  serviceRulesSummary: string;
+  serviceWindows: string;
+  dueDate: string;
+  daysRemaining: number;
+  recommendedAttempts: Array<{ label: string; weekend: boolean }>;
+  jobActivity: JobActivityEntry[];
+  instructionsVerbatim: string;
+  timestamp: string;
+}
+
+export interface NotesEntry {
+  text: string;
+}
+
+export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
+  const up = (s: string) => (s || '').toUpperCase();
+
+  // CASE line
+  const clauses = (i.documents || '').split(/\s*;\s*/).map(s => s.trim()).filter(Boolean);
+  const docCount = clauses.length;
+  const docList = clauses.map(c => c.toUpperCase().replace(/\s+AND\s+/g, ' + ')).join(' + ');
+  const caseParts = [
+    `PLAINTIFF: ${up(i.plaintiff)}`,
+    `CASE #${i.clientJobNumber}`,
+    `${docCount} DOCS (${docList}), ${i.documentPages} PAGES${i.bilingual ? ', BILINGUAL' : ''}`,
+    `SIGNED/FILED: ${up(i.signedDate)}`,
+    `RESPONSE DEADLINE: ${i.responseDeadlineDays} DAYS AFTER SERVICE`,
+  ];
+  const caseLine = `CASE -- ${caseParts.join(' | ')}`;
+
+  // COURT line
+  const courtLine = `COURT -- ${up(i.court)} | ${up(i.courtAddress)}${i.clerkPhone ? ` | CLERK: ${i.clerkPhone}` : ''}`;
+
+  // ATTORNEY line
+  const attyParts: string[] = [];
+  attyParts.push(`${up(i.attorney.name)} (${up(i.attorney.firm)}) BAR#${i.attorney.barNumber}`);
+  const attyAddr = [i.attorney.addressLine1, i.attorney.addressLine2].filter(Boolean).map(up).join(', ');
+  if (attyAddr) attyParts.push(attyAddr);
+  if (i.attorney.tel) attyParts.push(`TEL: ${i.attorney.tel}`);
+  if (i.attorney.fax) attyParts.push(`FAX: ${i.attorney.fax}`);
+  if (i.attorney.email) attyParts.push(`EMAIL: ${up(i.attorney.email)}`);
+  const attorneyLine = `ATTORNEY -- ${attyParts.join(' | ')}`;
+
+  // SERVICE RULES
+  const serviceRulesLine = `SERVICE RULES -- ${up(i.serviceRulesSummary)}`;
+
+  // SCHEDULE
+  const scheduleLine = `SCHEDULE -- WINDOWS: ${up(i.serviceWindows)} | DUE: ${i.dueDate} | DAYS REMAINING: ${i.daysRemaining}`;
+
+  // RECOMMENDED SCHEDULE
+  const recLines = i.recommendedAttempts.map((a, idx) => `  ${idx + 1}. ${a.label}${a.weekend ? ' [WEEKEND]' : ''}`).join('\n');
+  const recommendedLine = `RECOMMENDED SCHEDULE --\n${recLines}`;
+
+  // CLIENT HISTORY
+  const historyLines = i.jobActivity.map(e => `  ${e.when} -- ${e.action}${e.detail ? ': ' + e.detail : ''}`).join('\n');
+  const clientHistoryLine = `CLIENT HISTORY --\n${historyLines}`;
+
+  // INSTRUCTIONS
+  const instructionsLine = `INSTRUCTIONS (VERBATIM) -- ${i.instructionsVerbatim}\n\n[Generated ${i.timestamp}]`;
+
+  return [
+    { text: caseLine },
+    { text: courtLine },
+    { text: attorneyLine },
+    { text: serviceRulesLine },
+    { text: scheduleLine },
+    { text: recommendedLine },
+    { text: clientHistoryLine },
+    { text: instructionsLine },
+  ];
+}
+
 export function deriveServiceType(primaryToken: string): string {
   const t = (primaryToken || '').toUpperCase();
   if (t.includes('SUBPOENA')) return 'SUBPOENA SERVICE';

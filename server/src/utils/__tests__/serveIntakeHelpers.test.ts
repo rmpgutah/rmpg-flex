@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -171,5 +171,69 @@ describe('classifyEntityType', () => {
     for (const org of ['Capital One, N.A.', 'Acme LLC', 'Foo Inc.', 'Discover Bank', 'GUGLIELMO & ASSOCIATES']) {
       expect(classifyEntityType(org)).toBe('organization');
     }
+  });
+});
+
+describe('buildNotesNarrative', () => {
+  const input: NotesInput = {
+    plaintiff: 'Capital One, N.A., successor by merger to Discover Bank',
+    orderingClientRule: 'Sub-serve on 1st attempt to any occupant 16+.',
+    clientJobNumber: '633570',
+    documents: 'Summons and Complaint; Bilingual Notice',
+    documentPages: 11,
+    bilingual: true,
+    signedDate: 'March 25, 2026',
+    responseDeadlineDays: 21,
+    court: 'THIRD JUDICIAL DISTRICT COURT',
+    courtAddress: '450 SOUTH STATE ST, P.O. BOX 1860, SALT LAKE CITY UT 84114',
+    clerkPhone: '(801) 238-7300',
+    attorney: { name: 'Heather Valerga', firm: 'GUGLIELMO & ASSOCIATES', barNumber: '14431', addressLine1: 'PO Box 41688', addressLine2: 'Tucson, AZ 85717', tel: '(877)325-5700', fax: '', email: 'Utah@guglielmolaw.com' },
+    serviceRulesSummary: 'SUB-SERVE OK TO OCCUPANT 16+. PERSONAL SERVICE ONLY AT PLACE OF EMPLOYMENT.',
+    serviceWindows: '6AM-9AM, 9AM-6PM, 6PM-9PM, WEEKEND REQUIRED',
+    dueDate: '04/21/2026',
+    daysRemaining: 2,
+    recommendedAttempts: [
+      { label: 'SUN, APR 19, 8:30 AM (6AM-9AM)', weekend: true },
+      { label: 'MON, APR 20, 12:00 PM (9AM-6PM)', weekend: false },
+      { label: 'TUE, APR 21, 7:30 PM (6PM-9PM)', weekend: false },
+    ],
+    jobActivity: [
+      { when: '4/13/26, 2:10 PM', action: 'Process server assigned', detail: 'Christopher Zamora was assigned to the job' },
+    ],
+    instructionsVerbatim: 'Sub-serve on 1st attempt to any occupant 16+.',
+    timestamp: '2026-04-19 07:30:12',
+  };
+
+  it('produces 8 entries in the documented order', () => {
+    const notes = buildNotesNarrative(input);
+    expect(notes).toHaveLength(8);
+    expect(notes[0].text).toMatch(/^CASE --/);
+    expect(notes[1].text).toMatch(/^COURT --/);
+    expect(notes[2].text).toMatch(/^ATTORNEY --/);
+    expect(notes[3].text).toMatch(/^SERVICE RULES --/);
+    expect(notes[4].text).toMatch(/^SCHEDULE --/);
+    expect(notes[5].text).toMatch(/^RECOMMENDED SCHEDULE --/);
+    expect(notes[6].text).toMatch(/^CLIENT HISTORY --/);
+    expect(notes[7].text).toMatch(/^INSTRUCTIONS \(VERBATIM\) --/);
+  });
+
+  it('CASE line contains pipe-delimited plaintiff/client/case#/documents/signed/deadline', () => {
+    const notes = buildNotesNarrative(input);
+    const caseText = notes[0].text;
+    expect(caseText).toContain('PLAINTIFF: CAPITAL ONE');
+    expect(caseText).toContain('CASE #633570');
+    expect(caseText).toContain('2 DOCS');
+    expect(caseText).toContain('11 PAGES');
+    expect(caseText).toContain('BILINGUAL');
+    expect(caseText).toContain('SIGNED/FILED: MARCH 25, 2026');
+    expect(caseText).toContain('RESPONSE DEADLINE: 21 DAYS AFTER SERVICE');
+  });
+
+  it('ATTORNEY line uses Firm parenthetical + BAR#', () => {
+    const notes = buildNotesNarrative(input);
+    expect(notes[2].text).toContain('HEATHER VALERGA (GUGLIELMO & ASSOCIATES) BAR#14431');
+    expect(notes[2].text).toContain('PO BOX 41688, TUCSON, AZ 85717');
+    expect(notes[2].text).toContain('TEL: (877)325-5700');
+    expect(notes[2].text).toContain('EMAIL: UTAH@GUGLIELMOLAW.COM');
   });
 });
