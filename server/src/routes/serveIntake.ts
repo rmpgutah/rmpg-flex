@@ -463,7 +463,51 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     );
     const caseId = Number(caseResult.lastInsertRowid);
 
+    // ── CFS fullName (used downstream + prior-serve lookup) ────
+    const fullName = `${parsed.defendant.first}${parsed.defendant.middle ? ' ' + parsed.defendant.middle : ''} ${parsed.defendant.last}`.trim();
+
+    // ── Prior-serve history lookup (last 12 months) ─────────
+    const priorServes = db.prepare(`
+      SELECT sq.id, sq.created_at, sq.status, sq.recipient_name, sq.recipient_address,
+             cfs.call_number, cfs.case_number
+      FROM serve_queue sq
+      LEFT JOIN calls_for_service cfs ON cfs.id = sq.call_id
+      WHERE (
+        (LOWER(sq.recipient_name) = LOWER(?) AND LENGTH(sq.recipient_name) > 3)
+        OR (sq.recipient_address = ? AND LENGTH(sq.recipient_address) > 10)
+      )
+      AND datetime(sq.created_at) > datetime('now','-1 year')
+      ORDER BY sq.created_at DESC
+      LIMIT 10
+    `).all(fullName, parsed.address || '') as any[];
+
+    if (priorServes.length > 0) {
+      warnings.push(`Prior-serve history: ${priorServes.length} prior serve(s) in last year for this defendant or address. Review before dispatch.`);
+    }
+
+    const priorServesOut = priorServes.map(ps => {
+      const nameMatch = (ps.recipient_name || '').toLowerCase() === fullName.toLowerCase();
+      const addrMatch = ps.recipient_address === parsed.address;
+      const match_type = nameMatch && addrMatch ? 'both' : nameMatch ? 'name' : 'address';
+      return {
+        id: ps.id,
+        call_number: ps.call_number,
+        created_at: ps.created_at,
+        status: ps.status,
+        match_type,
+      };
+    });
+
     // ── Notes narrative (8 entries) + wrap with id/author/timestamp
+    const augmentedJobActivity = [
+      ...parsed.jobActivity,
+      ...priorServes.map(ps => ({
+        when: String(ps.created_at || '').slice(0, 16),
+        action: `PRIOR SERVE (${ps.status || 'unknown'})`,
+        detail: `${ps.recipient_name} at ${ps.recipient_address} — call ${ps.call_number || 'n/a'}`,
+      })),
+    ];
+
     const narrative = buildNotesNarrative({
       plaintiff: parsed.plaintiff,
       orderingClientRule: parsed.orderingClientRule,
@@ -485,7 +529,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         label: `${s.date.toLocaleString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric' })} ${s.window}`,
         weekend: s.weekend,
       })),
-      jobActivity: parsed.jobActivity,
+      jobActivity: augmentedJobActivity,
       instructionsVerbatim: parsed.instructions,
       timestamp: now,
     });
@@ -500,7 +544,6 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     // ── CFS call ─────────────────────────────────────────────
     const callNumber = nextCallNumber(db);
-    const fullName = `${parsed.defendant.first}${parsed.defendant.middle ? ' ' + parsed.defendant.middle : ''} ${parsed.defendant.last}`.trim();
     const subjectDesc = `${fullName}${parsed.defendant.dob ? ', DOB ' + parsed.defendant.dob : ''}`;
     const descLines: string[] = [];
     descLines.push(`SERVE ${parsed.primaryDoc || 'DOCUMENTS'} TO ${fullName.toUpperCase()}`);
@@ -680,6 +723,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       weather: weatherConditions || null,
       lighting: lightingConditions || null,
       address_confidence: addrConf,
+      prior_serves: priorServesOut,
       warnings,
       extracted: {
         defendant: parsed.defendant,
