@@ -949,10 +949,32 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LIMIT 1000
     `).all(call.id);
 
-    // Attach visit history for PSO calls
+    // Attach visit history for PSO calls — traverse parent_call_id chain upward
+    // so a 2nd/3rd/Nth attempt shows all prior attempts in its Visit History section,
+    // not just its own recorded visit. For the root call, this returns just its own
+    // history (if any).
     let visit_history: any[] = [];
     if (call.incident_type === 'pso_client_request') {
-      visit_history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(call.id) as any[];
+      // Walk up the chain collecting call IDs
+      const chain: number[] = [call.id];
+      let cursorId: number | null = (call as any).parent_call_id || null;
+      while (cursorId && chain.length < 20) {
+        chain.push(cursorId);
+        const parent = db.prepare('SELECT parent_call_id FROM calls_for_service WHERE id = ?').get(cursorId) as any;
+        cursorId = parent?.parent_call_id || null;
+      }
+      const placeholders = chain.map(() => '?').join(',');
+      visit_history = db.prepare(
+        `SELECT * FROM call_visit_history WHERE call_id IN (${placeholders}) AND call_id != ? ORDER BY visit_number ASC`
+      ).all(...chain, call.id) as any[];
+      // Dedupe by (call_id, visit_number) — some rows are duplicated in the table
+      const seen = new Set<string>();
+      visit_history = visit_history.filter((v: any) => {
+        const k = `${v.call_id}|${v.visit_number}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     }
 
     // Surface the first linked incident number on the call object for display
