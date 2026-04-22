@@ -126,6 +126,7 @@ import PerimeterToolsPanel from './components/PerimeterToolsPanel';
 import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
+import HeatmapLegend from './components/HeatmapLegend';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
@@ -5482,6 +5483,47 @@ export default function MapPage() {
             </div>
           </div>
         </div>}
+
+        {/* ── Breadcrumb Status Chip (top-left) ── */}
+        {/* Quick visual confirmation that trails are tracking the expected
+            units + window. Rendered only while breadcrumbs are visible so
+            it doesn't clutter the default view. */}
+        {showBreadcrumbs && playbackTrails.length > 0 && (
+          <div
+            className="absolute z-[999]"
+            style={{
+              top: 64,
+              left: 16,
+              background: 'rgba(6,12,20,0.92)',
+              border: '1px solid #2b2b2b',
+              padding: '4px 10px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              fontSize: 10,
+              color: '#9ca3af',
+              letterSpacing: '0.08em',
+              pointerEvents: 'none',
+              borderRadius: 2,
+            }}
+          >
+            <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
+            <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
+            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
+            <span>last {breadcrumbHours}h</span>
+            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
+            <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
+          </div>
+        )}
+
+        {/* ── Heatmap Legend (bottom-right) ── */}
+        {/* Visible whenever any heatmap variant is on; swaps gradient for
+            the "risk" mode so the legend always matches what's on the map. */}
+        {showHeatmap && (
+          <HeatmapLegend
+            mode={heatmapMode === 'risk' ? 'risk' : 'calls'}
+            hint={`last ${heatmapDays} day${heatmapDays === 1 ? '' : 's'}`}
+            position="bottom-right"
+          />
+        )}
 
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
         {/* Lists one row per active unit route; colors match the polylines
