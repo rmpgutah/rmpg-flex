@@ -388,6 +388,17 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     const daysRemaining = dueDateObj ? Math.max(0, Math.ceil((dueDateObj.getTime() - Date.now()) / 86_400_000)) : 0;
 
+    // ── Priority auto-bump based on due-date tightness ───────
+    const dueMs = parsed.dueDate
+      ? (() => { const [mm, dd, yyyy] = parsed.dueDate.split('/'); return new Date(`${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T23:59:59-06:00`).getTime(); })()
+      : 0;
+    const hoursUntilDue = dueMs > 0 ? (dueMs - Date.now()) / 3_600_000 : Infinity;
+    let priority: 'P2' | 'P3' | 'P4' = 'P4';
+    let priorityScore = 4;
+    if (hoursUntilDue < 3) { priority = 'P2'; priorityScore = 2; }
+    else if (hoursUntilDue < 24) { priority = 'P3'; priorityScore = 3; }
+    if (priorityScore < 4) warnings.push(`Rush intake: ${hoursUntilDue.toFixed(1)}h until due. Priority bumped to ${priority}.`);
+
     // ── Civil case ───────────────────────────────────────────
     const caseNumber = nextCaseNumber(db);
     const linkedPersonsArr = [defendantId, plaintiffId, attorneyId].filter((x): x is number => x != null);
@@ -467,6 +478,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const tagSet: string[] = ['civil_process', 'process_service'];
     if (parsed.bilingual) tagSet.push('bilingual');
     if (parsed.primaryDoc) tagSet.push(parsed.primaryDoc.toLowerCase());
+    if (priorityScore < 4) tagSet.push('rush');
     const tagsJson = JSON.stringify(tagSet);
 
     const pso72hrDeadline = parsed.dueDate
@@ -512,7 +524,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         ?, ?
       )
     `).run(
-      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request', 'P4', 4, 'pending',
+      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request', priority, priorityScore, 'pending',
       callerName, callerPhone || null, 'client', callerAddress || null,
       parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || null, null,
       propertyId, latitude, longitude,
