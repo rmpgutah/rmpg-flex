@@ -24,11 +24,41 @@ import {
   type ParseOutput,
 } from '../utils/serveIntakeHelpers';
 import { execFile } from 'child_process';
-import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync, existsSync } from 'fs';
+import { join, resolve as pathResolve } from 'path';
 import { tmpdir } from 'os';
 import { promisify } from 'util';
+import multer from 'multer';
+import { createReadStream } from 'fs';
 const execFileAsync = promisify(execFile);
+
+const UPLOAD_ROOT = process.env.RMPG_UPLOADS_DIR || pathResolve(process.cwd(), 'uploads');
+const intakeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 6 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true);
+    else cb(new Error('Only PDF files accepted') as any, false);
+  },
+});
+
+async function pdfBufferToText(buf: Buffer): Promise<string> {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-mp-'));
+  const tmpPdf = join(tmpDir, 'input.pdf');
+  writeFileSync(tmpPdf, buf);
+  try {
+    try {
+      const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
+      return stdout;
+    } catch {
+      const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
+      return stdout;
+    }
+  } finally {
+    try { unlinkSync(tmpPdf); } catch {}
+    try { unlinkSync(tmpDir); } catch {}
+  }
+}
 
 const router = Router();
 router.use(authenticateToken);
@@ -133,8 +163,18 @@ function nextCaseNumber(db: ReturnType<typeof getDb>): string {
   return `CV-${year}-${String(seq).padStart(5, '0')}`;
 }
 
-// ── Main intake ──────────────────────────────────────────────
-router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
+// ── Core intake logic (shared by /intake and /intake-multipart) ───────────
+interface DoIntakeOpts {
+  fieldSheet: string;
+  infoSheet: string;
+  courtDocket: string;
+  saveAttachments?: (callId: number, caseId: number) => Promise<number[]>;
+}
+
+async function doIntake(
+  req: Request,
+  { fieldSheet, infoSheet, courtDocket, saveAttachments }: DoIntakeOpts,
+): Promise<{ status: number; body: any }> {
   const log = getLogger(req);
   const warnings: string[] = [];
   try {
@@ -142,40 +182,10 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const userId = req.user!.userId as number;
     const now = localNow();
 
-    const { documents } = req.body;
-    if (!documents || !Array.isArray(documents) || documents.length === 0) {
-      res.status(400).json({ error: 'documents array required with at least one document' });
-      return;
-    }
-
-    // Bin each document by type (explicit > auto-detect)
-    let fieldSheet = '';
-    let courtDocket = '';
-    let infoSheet = '';
-    for (const d of documents) {
-      const txt = (d?.text || '') as string;
-      if (!txt) continue;
-      let kind = d.type as string | undefined;
-      if (!kind || kind === 'unknown') kind = detectDocType(txt);
-      // Accept legacy "court_filing" / "info_page" aliases from older clients
-      if (kind === 'court_filing') kind = 'court_docket';
-      if (kind === 'info_page') kind = 'info_sheet';
-      if (kind === 'field_sheet' && !fieldSheet) fieldSheet = txt;
-      else if (kind === 'court_docket' && !courtDocket) courtDocket = txt;
-      else if (kind === 'info_sheet' && !infoSheet) infoSheet = txt;
-      else {
-        // Unknown — fall back to whatever slot is empty
-        if (!fieldSheet) fieldSheet = txt;
-        else if (!courtDocket) courtDocket = txt;
-        else if (!infoSheet) infoSheet = txt;
-      }
-    }
-
     const parsed: ParseOutput = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
 
     if (!parsed.defendant.last) {
-      res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
-      return;
+      return { status: 400, body: { error: 'Could not extract defendant/recipient name from documents' } };
     }
 
     // ── Address confidence cross-check (field sheet vs docket) ──
@@ -703,8 +713,25 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     }));
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 
-    res.json({
+    // ── Save original PDFs as call_attachments (multipart path only) ──
+    let attachmentIds: number[] = [];
+    if (saveAttachments) {
+      try {
+        attachmentIds = await saveAttachments(callId, caseId);
+      } catch (err) {
+        log.warn({ err }, 'saveAttachments callback failed');
+        warnings.push('Failed to persist one or more source PDFs');
+      }
+    }
+
+    if (parsed.additionalDefendants.length > 0) {
+      warnings.push(`Multi-defendant docket: ${parsed.additionalDefendants.length} additional party(ies) detected: ${parsed.additionalDefendants.join(', ')}. Upload separately to create jobs for them.`);
+    }
+
+    return { status: 200, body: {
       success: true,
+      attachment_ids: attachmentIds,
+      additional_defendants: parsed.additionalDefendants,
       call_id: callId,
       call_number: callNumber,
       case_id: caseId,
@@ -744,12 +771,147 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           email: parsed.attorney.email,
         },
       },
-    });
+    } };
   } catch (err: any) {
-    const log = getLogger(req);
     log.error({ err }, 'serve intake failed');
-    res.status(500).json({ error: 'Intake processing failed: ' + (err?.message || 'Unknown error') });
+    return { status: 500, body: { error: 'Intake processing failed: ' + (err?.message || 'Unknown error') } };
   }
+}
+
+// ── JSON intake (text-only; backward-compatible) ───────────────
+router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
+  const { documents } = req.body;
+  if (!documents || !Array.isArray(documents) || documents.length === 0) {
+    res.status(400).json({ error: 'documents array required with at least one document' });
+    return;
+  }
+  let fieldSheet = '';
+  let courtDocket = '';
+  let infoSheet = '';
+  for (const d of documents) {
+    const txt = (d?.text || '') as string;
+    if (!txt) continue;
+    let kind = d.type as string | undefined;
+    if (!kind || kind === 'unknown') kind = detectDocType(txt);
+    if (kind === 'court_filing') kind = 'court_docket';
+    if (kind === 'info_page') kind = 'info_sheet';
+    if (kind === 'field_sheet' && !fieldSheet) fieldSheet = txt;
+    else if (kind === 'court_docket' && !courtDocket) courtDocket = txt;
+    else if (kind === 'info_sheet' && !infoSheet) infoSheet = txt;
+    else {
+      if (!fieldSheet) fieldSheet = txt;
+      else if (!courtDocket) courtDocket = txt;
+      else if (!infoSheet) infoSheet = txt;
+    }
+  }
+  const { status, body } = await doIntake(req, { fieldSheet, infoSheet, courtDocket });
+  res.status(status).json(body);
 });
+
+// ── Multipart intake: accepts original PDF files, extracts text, persists originals ──
+router.post(
+  '/intake-multipart',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  intakeUpload.fields([
+    { name: 'field_sheet', maxCount: 1 },
+    { name: 'court_docket', maxCount: 1 },
+    { name: 'info_sheet', maxCount: 1 },
+  ]),
+  async (req: Request, res: Response) => {
+    const log = getLogger(req);
+    try {
+      const userId = req.user!.userId as number;
+      const filesMap = (req.files || {}) as Record<string, Express.Multer.File[]>;
+      const getBuf = (k: string): Buffer | null => (filesMap[k]?.[0]?.buffer || null);
+      const getFile = (k: string): Express.Multer.File | null => (filesMap[k]?.[0] || null);
+      const fsBuf = getBuf('field_sheet');
+      const cdBuf = getBuf('court_docket');
+      const isBuf = getBuf('info_sheet');
+      if (!fsBuf && !cdBuf && !isBuf) {
+        res.status(400).json({ error: 'At least one PDF file required (field_sheet, court_docket, info_sheet)' });
+        return;
+      }
+      const [fieldSheet, courtDocket, infoSheet] = await Promise.all([
+        fsBuf ? pdfBufferToText(fsBuf) : Promise.resolve(''),
+        cdBuf ? pdfBufferToText(cdBuf) : Promise.resolve(''),
+        isBuf ? pdfBufferToText(isBuf) : Promise.resolve(''),
+      ]);
+
+      // Deferred attachment writer — called once we know callId/caseId and callNumber
+      const saveAttachments = async (callId: number, caseId: number): Promise<number[]> => {
+        const db = getDb();
+        const row = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+        const callNumber = (row?.call_number || `call_${callId}`).replace(/[^A-Za-z0-9_-]/g, '_');
+        const destDir = join(UPLOAD_ROOT, 'serve-intake', callNumber);
+        if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+        const ids: number[] = [];
+        const entries: Array<[string, Express.Multer.File | null]> = [
+          ['field_sheet', getFile('field_sheet')],
+          ['court_docket', getFile('court_docket')],
+          ['info_sheet', getFile('info_sheet')],
+        ];
+        for (const [docType, f] of entries) {
+          if (!f) continue;
+          const filename = `${docType}.pdf`;
+          const absPath = join(destDir, filename);
+          writeFileSync(absPath, f.buffer);
+          // Store relative to CWD so sendFile can resolve it consistently
+          const relPath = pathResolve(absPath).replace(pathResolve(process.cwd()) + '/', '');
+          const result = db.prepare(`
+            INSERT INTO call_attachments (
+              call_id, case_id, filename, relative_path, doc_type, mime_type, byte_size, uploaded_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            callId, caseId,
+            f.originalname || filename,
+            relPath,
+            docType,
+            f.mimetype || 'application/pdf',
+            f.size || f.buffer.length,
+            userId,
+          );
+          ids.push(Number(result.lastInsertRowid));
+        }
+        return ids;
+      };
+
+      const { status, body } = await doIntake(req, { fieldSheet, infoSheet, courtDocket, saveAttachments });
+      res.status(status).json(body);
+    } catch (err: any) {
+      log.error({ err }, 'intake-multipart failed');
+      res.status(500).json({ error: 'Multipart intake failed: ' + (err?.message || 'Unknown error') });
+    }
+  },
+);
+
+// ── Download an attachment ────────────────────────────────────────────────
+router.get(
+  '/calls/:callId/attachments/:attachmentId/download',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const callId = parseInt(String(req.params.callId), 10);
+      const attId = parseInt(String(req.params.attachmentId), 10);
+      if (!callId || !attId) { res.status(400).json({ error: 'invalid id' }); return; }
+      const att = db.prepare('SELECT * FROM call_attachments WHERE id = ? AND call_id = ?').get(attId, callId) as any;
+      if (!att) { res.status(404).json({ error: 'not found' }); return; }
+      const abs = pathResolve(process.cwd(), att.relative_path);
+      // Guard against path traversal — the persisted relative_path should always resolve under UPLOAD_ROOT
+      const expectedRoot = pathResolve(UPLOAD_ROOT);
+      if (!abs.startsWith(expectedRoot) && !abs.startsWith(pathResolve(process.cwd(), 'uploads'))) {
+        res.status(403).json({ error: 'forbidden path' });
+        return;
+      }
+      if (!existsSync(abs)) { res.status(404).json({ error: 'file missing on disk' }); return; }
+      res.setHeader('Content-Type', att.mime_type || 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${att.filename}"`);
+      createReadStream(abs).pipe(res);
+    } catch (err: any) {
+      getLogger(req).error({ err }, 'attachment download failed');
+      res.status(500).json({ error: 'download failed' });
+    }
+  },
+);
 
 export default router;

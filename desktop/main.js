@@ -1361,6 +1361,40 @@ ipcMain.handle('recon:check-binary', async (_event, { binary } = {}) => {
   return { installed: false };
 });
 
+// Run a registered RECON_TOOLS tool in a visible Terminal window — same
+// command, same args, but with a TTY so sudo prompts, interactive CLI
+// tools, or color-aware outputs that require a terminal work properly.
+ipcMain.handle('recon:tool-terminal', async (_event, { toolId, args = {} } = {}) => {
+  const { spawn } = require('child_process');
+  const tool = RECON_TOOLS[toolId];
+  if (!tool) return { ok: false, error: `Unknown tool: ${toolId}` };
+  let argv;
+  try { argv = tool.buildArgs(args); } catch (err) { return { ok: false, error: err.message || 'Invalid args' }; }
+
+  // Reassemble an interactive shell command that mirrors what the embedded
+  // spawn would run. Quote each argv element for shell safety.
+  const shellQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+  const fullCmd = `${shellQuote(tool.command)} ${argv.map(shellQuote).join(' ')}`;
+
+  if (process.platform === 'darwin') {
+    const script = `echo "${tool.title}"; echo; ${fullCmd}; echo; echo "[done — press enter to close]"; read`;
+    const appleScript = `tell application "Terminal" to do script "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
+    spawn('osascript', ['-e', 'tell application "Terminal" to activate'], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true };
+  }
+  if (process.platform === 'linux') {
+    const term = process.env.TERMINAL || 'x-terminal-emulator';
+    spawn(term, ['-e', 'bash', '-c', `${fullCmd}; echo; read -p "Press enter to close"`], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true };
+  }
+  if (process.platform === 'win32') {
+    spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', fullCmd], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true };
+  }
+  return { ok: false, error: `Unsupported platform: ${process.platform}` };
+});
+
 // Open Terminal.app with a catalog command that needs interactive sudo.
 // The command is resolved from the bundled catalog by (category, className, kind, index),
 // same guardrails as recon:catalog-run.
@@ -1520,6 +1554,65 @@ ipcMain.handle('recon:term-kill', async (_event, { sessionId }) => {
   } catch { /* ignore */ }
   reconSessions.delete(sessionId);
   return { ok: true };
+});
+
+// Detailed Recon Connect install state (path + whether hackingtool.py is present)
+ipcMain.handle('recon:install-state', async () => {
+  const os = require('os');
+  const fs = require('fs');
+  const home = os.homedir();
+  if (process.platform === 'linux') {
+    const linuxBin = fs.existsSync('/usr/bin/hackingtool') ? '/usr/bin/hackingtool'
+      : fs.existsSync('/usr/local/bin/hackingtool') ? '/usr/local/bin/hackingtool' : null;
+    return { installed: !!linuxBin, path: linuxBin, repoDir: linuxBin ? null : undefined };
+  }
+  const dir = path.join(home, 'recon-connect');
+  const dotGit = path.join(dir, '.git');
+  const entry = ['hackingtool.py', 'recon connect.py'].find((f) => fs.existsSync(path.join(dir, f)));
+  return {
+    installed: Boolean(entry),
+    path: entry ? path.join(dir, entry) : null,
+    repoDir: fs.existsSync(dotGit) ? dir : null,
+    entry: entry || null,
+  };
+});
+
+// Pull latest changes from the Recon Connect repo
+ipcMain.handle('recon:update', async (event) => {
+  const { spawn } = require('child_process');
+  const crypto = require('crypto');
+  const os = require('os');
+  const fs = require('fs');
+  const dir = path.join(os.homedir(), 'recon-connect');
+  if (!fs.existsSync(path.join(dir, '.git'))) {
+    return { ok: false, error: 'Recon Connect is not a git checkout — cannot update.' };
+  }
+  const child = spawn('bash', ['-c', `cd "${dir}" && git pull --ff-only --no-rebase`], {
+    env: { ...process.env, PATH: ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH || ''].filter(Boolean).join(':') },
+  });
+  const sessionId = crypto.randomUUID();
+  toolSessions.set(sessionId, child);
+  child.stdout.on('data', (b) => event.sender.isDestroyed() || event.sender.send('recon:term-data', { sessionId, data: b.toString('utf8') }));
+  child.stderr.on('data', (b) => event.sender.isDestroyed() || event.sender.send('recon:term-data', { sessionId, data: b.toString('utf8') }));
+  child.on('exit', (code) => {
+    toolSessions.delete(sessionId);
+    if (!event.sender.isDestroyed()) event.sender.send('recon:term-exit', { sessionId, code });
+  });
+  return { ok: true, sessionId };
+});
+
+// Emergency kill-all — stops every child process this module has spawned
+ipcMain.handle('recon:kill-all', async () => {
+  let killed = 0;
+  for (const [, child] of toolSessions) {
+    try { child.kill('SIGTERM'); killed++; } catch { /* ignore */ }
+  }
+  toolSessions.clear();
+  for (const [, child] of reconSessions) {
+    try { child.kill('SIGTERM'); killed++; } catch { /* ignore */ }
+  }
+  reconSessions.clear();
+  return { ok: true, killed };
 });
 
 // Quick install-state check so the UI can show the right button.

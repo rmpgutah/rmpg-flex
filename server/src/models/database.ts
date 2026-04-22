@@ -5463,6 +5463,28 @@ function migrateSchema(): void {
   addCol('field_interviews', 'zone_beat', 'TEXT');
   addCol('field_interviews', 'updated_at', 'TEXT');
 
+  // Call attachments — original PDFs uploaded via serve-intake multipart path
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS call_attachments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        call_id INTEGER NOT NULL,
+        case_id INTEGER,
+        filename TEXT NOT NULL,
+        relative_path TEXT NOT NULL,
+        doc_type TEXT,
+        mime_type TEXT DEFAULT 'application/pdf',
+        byte_size INTEGER,
+        uploaded_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
+        FOREIGN KEY (case_id) REFERENCES cases(id)
+      )
+    `).run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_call_attachments_call ON call_attachments(call_id)').run();
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_call_attachments_case ON call_attachments(case_id)').run();
+  } catch { /* table already exists */ }
+
   console.log('Schema migration completed.');
 }
 

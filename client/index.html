@@ -12,6 +12,31 @@
     <meta name="description" content="Rocky Mountain Protective Group — CAD/RMS Dispatch Console" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script>
+      // One-shot Service Worker kill-switch (2026-04-22).
+      // Pre-v410 SWs were caching stale bundles that redirected /map to the
+      // retired /map-v2 OpenLayers surface. skipWaiting + clients.claim wasn't
+      // enough to displace them because the cached index.html was still served
+      // from the old SW. Runs BEFORE any bundle loads; nukes all registrations
+      // and caches on first visit post-deploy, then reloads from a clean slate.
+      (function () {
+        var RESET_KEY = 'rmpg_sw_reset_v410';
+        try { if (localStorage.getItem(RESET_KEY)) return; } catch (e) { return; }
+        if (!('serviceWorker' in navigator)) return;
+        try { localStorage.setItem(RESET_KEY, String(Date.now())); } catch (e) {}
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          if (regs.length === 0) return;
+          Promise.all(regs.map(function (r) { return r.unregister(); })).then(function () {
+            var cleared = window.caches
+              ? caches.keys().then(function (keys) {
+                  return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                })
+              : Promise.resolve();
+            cleared.then(function () { window.location.reload(); });
+          });
+        }).catch(function () { /* proceed — React will still load from network */ });
+      })();
+    </script>
+    <script>
       // Synchronously apply theme before React loads to prevent flash-of-wrong-theme.
       // Keep storage key + valid values in sync with client/src/utils/theme.ts.
       (function () {

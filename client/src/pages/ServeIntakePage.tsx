@@ -7,7 +7,6 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -15,8 +14,15 @@ import IconButton from '../components/IconButton';
 interface UploadedFile {
   name: string;
   type: string;
+  file: File;
   text: string;
   status: 'pending' | 'extracted' | 'error';
+}
+
+interface IntakeAttachment {
+  id: number;
+  filename: string;
+  doc_type: string;
 }
 
 interface IntakeResult {
@@ -35,6 +41,8 @@ interface IntakeResult {
   weather: string | null;
   lighting: string | null;
   warnings: string[];
+  attachment_ids?: number[];
+  additional_defendants?: string[];
   extracted: {
     defendant: { first: string; middle: string; last: string; dob: string };
     address: string;
@@ -88,7 +96,7 @@ export default function ServeIntakePage() {
       const type = file.name.toLowerCase().includes('court') ? 'court_filing'
         : file.name.toLowerCase().includes('field') ? 'field_sheet'
         : 'info_page';
-      newFiles.push({ name: file.name, type, text, status: text.length > 50 ? 'extracted' : 'error' });
+      newFiles.push({ name: file.name, type, file, text, status: text.length > 50 ? 'extracted' : 'error' });
     }
     setFiles(prev => [...prev, ...newFiles]);
     setError(null);
@@ -114,15 +122,23 @@ export default function ServeIntakePage() {
     setError(null);
     setResult(null);
     try {
-      const documents = files.map(f => ({ type: f.type, text: f.text }));
-      const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
+      const form = new FormData();
+      for (const f of files) {
+        const docType = f.type === 'court_filing' ? 'court_docket'
+          : f.type === 'info_page' ? 'info_sheet'
+          : f.type; // field_sheet
+        form.append(docType, f.file, f.name);
+      }
+      const resp = await fetch('/api/serve-intake/intake-multipart', {
         method: 'POST',
-        body: JSON.stringify({ documents }),
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('rmpg_token')}` },
+        body: form,
       });
-      if (resp && resp.success) {
-        setResult(resp);
+      const data: IntakeResult | { error?: string } = await resp.json();
+      if (resp.ok && (data as IntakeResult).success) {
+        setResult(data as IntakeResult);
       } else {
-        setError('Intake processing failed');
+        setError((data as any).error || 'Intake processing failed');
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to process documents');
@@ -292,6 +308,47 @@ export default function ServeIntakePage() {
               <div className="bg-amber-900/20 border border-amber-700/40 rounded-sm p-2 text-[10px] text-amber-300 mt-2">
                 <AlertTriangle className="w-3 h-3 inline mr-1" /> Warnings:
                 <ul className="list-disc list-inside">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+              </div>
+            )}
+
+            {result.additional_defendants && result.additional_defendants.length > 0 && (
+              <div className="bg-amber-900/20 border border-amber-700/40 rounded-sm p-2 text-[10px] text-amber-300 mt-2">
+                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                Multi-defendant detected ({result.additional_defendants.length}): {result.additional_defendants.join(', ')}.
+                <p className="mt-1">To create separate serve jobs for them, re-upload with modified Field Sheet (change Party to Serve) or use bulk intake (PR-2 scope).</p>
+              </div>
+            )}
+
+            {result.attachment_ids && result.attachment_ids.length > 0 && (
+              <div className="panel-beveled bg-surface-raised p-3 mt-2">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <FileText className="w-3.5 h-3.5 text-rmpg-400" />
+                  <span className="text-[10px] text-rmpg-400 uppercase font-bold">Attachments Saved ({result.attachment_ids.length})</span>
+                </div>
+                <ul className="space-y-1">
+                  {result.attachment_ids.map(id => (
+                    <li key={id} className="text-[10px]">
+                      <button
+                        type="button"
+                        className="text-brand-400 hover:underline"
+                        onClick={async () => {
+                          try {
+                            const r = await fetch(`/api/serve-intake/calls/${result.call_id}/attachments/${id}/download`, {
+                              headers: { 'Authorization': `Bearer ${localStorage.getItem('rmpg_token')}` },
+                            });
+                            if (!r.ok) { alert('Download failed'); return; }
+                            const blob = await r.blob();
+                            const url = URL.createObjectURL(blob);
+                            window.open(url, '_blank');
+                            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                          } catch { alert('Download failed'); }
+                        }}
+                      >
+                        View attachment #{id}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
