@@ -26,7 +26,11 @@
         var chrome = theme === 'light' ? '#0d2a4d' : '#000000';
         var html = document.documentElement;
         html.classList.add('theme-' + theme);
-        html.style.colorScheme = theme;
+        // Both themes are dark-on-dark (saturated-blue "Light Mode" is still
+        // a dark surface), so color-scheme stays 'dark' in both — keeps native
+        // form controls + scrollbars rendering with light-on-dark defaults.
+        // Keep in sync with client/src/utils/theme.ts.
+        html.style.colorScheme = 'dark';
         html.style.backgroundColor = chrome;
 
         var themeColor = document.querySelector('meta[name="theme-color"]');

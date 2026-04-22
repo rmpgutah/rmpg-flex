@@ -4339,9 +4339,11 @@ textarea {
   }
 }
 
-/* 24. Fix iOS dark mode color scheme */
+/* 24. iOS color-scheme pinning — both themes are dark-on-dark (saturated
+   blue or pure black), so we pin color-scheme to 'dark' in both modes to
+   keep native form controls and scrollbars readable on the dark surface. */
 @media (prefers-color-scheme: dark) {
-  html.theme-light { color-scheme: light; }
+  html.theme-light,
   html.theme-dark,
   html:not(.theme-light) { color-scheme: dark; }
 }
