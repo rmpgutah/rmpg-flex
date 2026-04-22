@@ -24,13 +24,49 @@ import {
   type ParseOutput,
 } from '../utils/serveIntakeHelpers';
 import { execFile } from 'child_process';
-import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync, existsSync, readdirSync, rmSync } from 'fs';
 import { join, resolve as pathResolve } from 'path';
 import { tmpdir } from 'os';
 import { promisify } from 'util';
 import multer from 'multer';
 import { createReadStream } from 'fs';
 const execFileAsync = promisify(execFile);
+
+// ── OCR fallback: pdftoppm → tesseract, page by page ─────────
+// TODO: apt install tesseract-ocr poppler-utils on VPS.
+// pdftoppm is already installed (poppler-utils); tesseract is NOT yet on
+// VPS as of 2026-04-22. Until it's installed, the catch() paths silently
+// return whatever (possibly empty) pdftotext output we already have, so
+// the feature is inert rather than throwing.
+async function ocrFallback(tmpPdf: string): Promise<string> {
+  const ocrDir = mkdtempSync(join(tmpdir(), 'serve-ocr-'));
+  try {
+    // PDF → 300dpi PNGs, one per page: page-1.png, page-2.png, ...
+    await execFileAsync('/usr/bin/pdftoppm', ['-r', '300', '-png', tmpPdf, join(ocrDir, 'page')]);
+    const pages = readdirSync(ocrDir)
+      .filter(f => f.startsWith('page-') && f.endsWith('.png'))
+      .sort();
+    const texts: string[] = [];
+    for (const p of pages) {
+      try {
+        const { stdout } = await execFileAsync(
+          '/usr/bin/tesseract',
+          [join(ocrDir, p), '-', '--psm', '1'],
+          { maxBuffer: 20 * 1024 * 1024 },
+        );
+        texts.push(stdout);
+      } catch {
+        // Per-page OCR failure (or tesseract missing) — skip but keep trying.
+      }
+    }
+    return texts.join('\n\n');
+  } catch {
+    // pdftoppm itself failed (rare — it is a hard dep already installed)
+    return '';
+  } finally {
+    try { rmSync(ocrDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
 
 const UPLOAD_ROOT = process.env.RMPG_UPLOADS_DIR || pathResolve(process.cwd(), 'uploads');
 const intakeUpload = multer({
@@ -47,13 +83,21 @@ async function pdfBufferToText(buf: Buffer): Promise<string> {
   const tmpPdf = join(tmpDir, 'input.pdf');
   writeFileSync(tmpPdf, buf);
   try {
+    let text = '';
     try {
       const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
-      return stdout;
+      text = stdout;
     } catch {
-      const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
-      return stdout;
+      try {
+        const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
+        text = stdout;
+      } catch { /* fall through to OCR */ }
     }
+    if (!text || text.trim().length < 50) {
+      const ocr = await ocrFallback(tmpPdf);
+      if (ocr.trim().length > text.trim().length) text = ocr;
+    }
+    return text;
   } finally {
     try { unlinkSync(tmpPdf); } catch {}
     try { unlinkSync(tmpDir); } catch {}
@@ -86,20 +130,27 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
       const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
       const tmpPdf = join(tmpDir, 'input.pdf');
       writeFileSync(tmpPdf, body);
+      let text = '';
       try {
         const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
-        res.json({ text: stdout, length: stdout.length });
+        text = stdout;
       } catch {
         try {
           const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
-          res.json({ text: stdout, length: stdout.length });
-        } catch {
-          res.json({ text: '', length: 0 });
-        }
-      } finally {
-        try { unlinkSync(tmpPdf); } catch {}
-        try { unlinkSync(tmpDir); } catch {}
+          text = stdout;
+        } catch { /* fall through to OCR */ }
       }
+      // OCR fallback for scanned PDFs: if pdftotext returned near-nothing,
+      // try pdftoppm + tesseract (see ocrFallback above).
+      try {
+        if (!text || text.trim().length < 50) {
+          const ocr = await ocrFallback(tmpPdf);
+          if (ocr.trim().length > text.trim().length) text = ocr;
+        }
+      } catch { /* best-effort */ }
+      res.json({ text, length: text.length });
+      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+      try { unlinkSync(tmpDir); } catch { /* ignore */ }
     } catch {
       res.status(500).json({ error: 'Text extraction failed', text: '' });
     }
