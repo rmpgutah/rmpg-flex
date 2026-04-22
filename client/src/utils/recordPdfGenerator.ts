@@ -950,16 +950,16 @@ function renderStructuredCallNotes(
       for (const f of fields) {
         const lines = doc.splitTextToSize(f.toUpperCase(), maxWidth);
         for (const line of lines) {
-          y = checkPageBreak(doc, y, 4.2, prio);
-          y += 3.2; // advance to baseline before drawing (text extends up from baseline)
+          y = checkPageBreak(doc, y, 3.4, prio);
+          y += 2.8; // baseline advance — single line-height for body text
           doc.text(line, lx + 2, y);
-          y += 0.8;
+          y += 0.1;
         }
-        y += 1.2; // field separator gap
+        y += 0.4; // field separator gap (|-delimited sub-fields)
       }
-      y += 2; // trailing pad before border
+      y += 0.5; // trailing pad before border
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-      y += 3; // explicit gap between structured sections so next header never sits flush on prior content
+      y += 1.2; // inter-section gap — tight but avoids header bar flush on prior content
     }
   } catch {
     // malformed notes — bail gracefully
