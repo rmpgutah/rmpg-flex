@@ -79,6 +79,8 @@ import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } fr
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
+import { usePersistedState } from '../../hooks/usePersistedState';
+import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
@@ -289,9 +291,10 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Heat map state
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [showTrackingLines, setShowTrackingLines] = useState(true);
+  // Heat map state — overlay toggles persist across sessions so officers
+  // don't have to re-enable their usual layers every shift.
+  const [showHeatmap, setShowHeatmap] = usePersistedState<boolean>('rmpg_map_showHeatmap', false);
+  const [showTrackingLines, setShowTrackingLines] = usePersistedState<boolean>('rmpg_map_showTrackingLines', true);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
@@ -369,6 +372,12 @@ export default function MapPage() {
 
   // Routing
   const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
+
+  // Auto-pan the map to newly-dispatched P1 calls so dispatchers don't miss
+  // high-priority events while looking at another part of the map. Existing
+  // P1s at page-load do NOT trigger a pan — only calls that arrive after
+  // this mount. No-op until the Map instance is ready.
+  useAutoPanToP1(mapInstanceRef.current, calls);
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -465,7 +474,7 @@ export default function MapPage() {
   const [showGeofences, setShowGeofences] = useState(false);
   const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
-  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+  const [clusteringEnabled, setClusteringEnabled] = usePersistedState<boolean>('rmpg_map_clusteringEnabled', false);
 
   // Separate marker tracking for clustering & drag dispatch
   const unitMarkersMapRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
@@ -478,13 +487,14 @@ export default function MapPage() {
     setIntelLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   };
 
-  // New tactical layer toggles
-  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
-  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
+  // New tactical layer toggles — persist across reload so officers don't
+  // have to re-enable their usual layers every shift.
+  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = usePersistedState<boolean>('rmpg_map_showPatrolCheckpoints', false);
+  const [showFieldInterviews, setShowFieldInterviews] = usePersistedState<boolean>('rmpg_map_showFieldInterviews', false);
   const [fiDays, setFiDays] = useState(30);
-  const [showDwellTime, setShowDwellTime] = useState(false);
-  const [showResponseRadius, setShowResponseRadius] = useState(false);
-  const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
+  const [showDwellTime, setShowDwellTime] = usePersistedState<boolean>('rmpg_map_showDwellTime', false);
+  const [showResponseRadius, setShowResponseRadius] = usePersistedState<boolean>('rmpg_map_showResponseRadius', false);
+  const [showEnforcementClusters, setShowEnforcementClusters] = usePersistedState<boolean>('rmpg_map_showEnforcementClusters', false);
   const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
   const [enforcementDays, setEnforcementDays] = useState(90);
   const [showCoverage, setShowCoverage] = useState(false);
@@ -494,7 +504,7 @@ export default function MapPage() {
   const [repeatDays, setRepeatDays] = useState(30);
   const [repeatMinCount, setRepeatMinCount] = useState(3);
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
-  const [showDaylight, setShowDaylight] = useState(false);
+  const [showDaylight, setShowDaylight] = usePersistedState<boolean>('rmpg_map_showDaylight', false);
 
   // Historical call & incident report layers
   const [showCallHistory, setShowCallHistory] = useState(false);
@@ -502,7 +512,7 @@ export default function MapPage() {
   const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
   const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
   const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
-  const [showIncidentReports, setShowIncidentReports] = useState(false);
+  const [showIncidentReports, setShowIncidentReports] = usePersistedState<boolean>('rmpg_map_showIncidentReports', false);
   const [incidentDays, setIncidentDays] = useState(30);
   const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
   const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
