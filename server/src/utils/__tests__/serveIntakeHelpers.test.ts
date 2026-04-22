@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -146,5 +146,30 @@ describe('computeDiligenceSchedule', () => {
     const due = new Date('2026-04-19T21:00:00-06:00');
     const plan = computeDiligenceSchedule(due, now);
     expect(plan).toHaveLength(3);
+  });
+});
+
+describe('deriveServiceType', () => {
+  it('maps SUMMONS → SUMMONS SERVICE', () => { expect(deriveServiceType('SUMMONS')).toBe('SUMMONS SERVICE'); });
+  it('maps SUBPOENA', () => { expect(deriveServiceType('SUBPOENA')).toBe('SUBPOENA SERVICE'); });
+  it('maps UNLAWFUL DETAINER → EVICTION SERVICE', () => { expect(deriveServiceType('UNLAWFUL DETAINER')).toBe('EVICTION SERVICE'); });
+  it('defaults to PROCESS SERVICE', () => { expect(deriveServiceType('RANDOM')).toBe('PROCESS SERVICE'); });
+});
+
+describe('primaryDocToken', () => {
+  it('takes the first meaningful token of a semi-colon-separated docs list', () => {
+    expect(primaryDocToken('Summons and Complaint; Bilingual Notice')).toBe('SUMMONS');
+  });
+  it('strips " and " joiners', () => {
+    expect(primaryDocToken('Summons and Complaint')).toBe('SUMMONS');
+  });
+});
+
+describe('classifyEntityType', () => {
+  it('individuals', () => { expect(classifyEntityType('Abbey Armstrong')).toBe('individual'); });
+  it('orgs by suffix', () => {
+    for (const org of ['Capital One, N.A.', 'Acme LLC', 'Foo Inc.', 'Discover Bank', 'GUGLIELMO & ASSOCIATES']) {
+      expect(classifyEntityType(org)).toBe('organization');
+    }
   });
 });

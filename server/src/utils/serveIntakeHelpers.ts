@@ -250,6 +250,46 @@ export function computeDiligenceSchedule(due: Date, now: Date): DiligenceSlot[] 
   return chosen.slice(0, 3);
 }
 
+export function deriveServiceType(primaryToken: string): string {
+  const t = (primaryToken || '').toUpperCase();
+  if (t.includes('SUBPOENA')) return 'SUBPOENA SERVICE';
+  if (t.includes('UNLAWFUL DETAINER') || t.includes('EVICTION')) return 'EVICTION SERVICE';
+  if (t.includes('SUMMONS')) return 'SUMMONS SERVICE';
+  if (t.includes('COMPLAINT')) return 'COMPLAINT SERVICE';
+  return 'PROCESS SERVICE';
+}
+
+export function primaryDocToken(documents: string): string {
+  if (!documents) return '';
+  const firstClause = documents.split(/[;,]/)[0].trim();
+  const firstToken = firstClause.split(/\s+and\s+/i)[0].trim();
+  const word = firstToken.split(/\s+/)[0] || '';
+  return word.toUpperCase();
+}
+
+export function classifyEntityType(name: string): 'individual' | 'organization' {
+  if (!name) return 'individual';
+  const orgPatterns = [
+    /\bLLC\b/i,
+    /\bINC\.?\b/i,
+    /\bCORP\.?\b/i,
+    /\bCO\.?\b/i,
+    /\bCOMPANY\b/i,
+    /\bLP\b/i,
+    /\bLLP\b/i,
+    /\bN\.A\.?\b/i,
+    /\bBANK\b/i,
+    /\bTRUST\b/i,
+    /\bASSOCIATES\b/i,
+    /\bASSOCIATION\b/i,
+    /&/,
+  ];
+  for (const re of orgPatterns) {
+    if (re.test(name)) return 'organization';
+  }
+  return 'individual';
+}
+
 export function parseAddressParts(address: string): AddressParts {
   const empty: AddressParts = { building: '', floor: '', suite: '', street: '', city: '', state: '', zip: '' };
   if (!address) return empty;
