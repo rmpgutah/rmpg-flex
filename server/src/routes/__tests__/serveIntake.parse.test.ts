@@ -59,4 +59,12 @@ describe('parseAllDocuments — Armstrong case', () => {
   it('extracts clerk phone', () => {
     expect(out.clerkPhone).toBe('(801) 238-7300');
   });
+
+  it('extracts docket barcode job number', () => {
+    expect(out.docketBarcodeJobNumber).toBe('633570');
+  });
+
+  it('extracts complaint residence for cross-check', () => {
+    expect(out.complaintResidence).toMatch(/2361 E 3395 S/);
+  });
 });

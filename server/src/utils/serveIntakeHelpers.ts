@@ -419,6 +419,8 @@ export interface ParseOutput {
   jobActivity: JobActivityEntry[];
   courtCaseNumber: string;
   vendorFingerprint: string;
+  docketBarcodeJobNumber: string;
+  complaintResidence: string;
 }
 
 export function parseAllDocuments(src: ParseInput): ParseOutput {
@@ -498,6 +500,8 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const jobActivity = parseJobActivity(infoSheet);
   const courtCaseNumber = (courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1] || '').trim();
   const vendorFingerprint = info.createdBy || (fieldSheet.match(/(ICU\s+Investigations[^,\n]*)/i)?.[1] || '');
+  const docketBarcodeJobNumber = extractDocketBarcodeJobNumber(courtDocket);
+  const complaintResidence = extractComplaintResidence(courtDocket);
 
   return {
     defendant, address, addressParts, plaintiff, court, courtAddress, county: info.county,
@@ -505,6 +509,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     jobNumber, clientJobNumber, dueDate, signedDate, responseDeadlineDays, clerkPhone,
     documentPages, bilingual, orderingClientRule, serviceWindows, serviceRulesSummary,
     jobActivity, courtCaseNumber, vendorFingerprint,
+    docketBarcodeJobNumber, complaintResidence,
   };
 }
 
@@ -533,4 +538,19 @@ export function parseAddressParts(address: string): AddressParts {
   const suite = unitMatch ? unitMatch[1].toUpperCase() : 'NOT APPLICABLE';
   const floor = '1ST';
   return { building, floor, suite, street, city: city.toUpperCase(), state, zip };
+}
+
+/** Extract Code39 barcode from Utah court docket bottom-of-page-1 — embeds client job number. */
+export function extractDocketBarcodeJobNumber(docketText: string): string {
+  const m = docketText.match(/\*S\d+(\d{6,})\*/);
+  return m ? m[1] : '';
+}
+
+/** Extract the "who resides at" address from a Utah complaint paragraph 2. */
+export function extractComplaintResidence(docketText: string): string {
+  // Collapse blank-line wraps so the "resides at ... in X County" phrase matches on one logical line.
+  const normalized = docketText.replace(/\n\s*\n/g, ' ').replace(/\n/g, ' ');
+  const m = normalized.match(/who\s+resides\s+at\s+(.+?),?\s+in\s+([A-Z]+\s+County|[A-Z\s]+COUNTY)/i);
+  if (!m) return '';
+  return m[1].replace(/\s+/g, ' ').trim();
 }

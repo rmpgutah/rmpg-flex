@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput, extractDocketBarcodeJobNumber, extractComplaintResidence } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -235,5 +235,24 @@ describe('buildNotesNarrative', () => {
     expect(notes[2].text).toContain('PO BOX 41688, TUCSON, AZ 85717');
     expect(notes[2].text).toContain('TEL: (877)325-5700');
     expect(notes[2].text).toContain('EMAIL: UTAH@GUGLIELMOLAW.COM');
+  });
+});
+
+describe('extractDocketBarcodeJobNumber', () => {
+  it('extracts 6-digit job number from asterisk-delimited Code39', () => {
+    expect(extractDocketBarcodeJobNumber('SCC\n\n*S10000633570*\n\n633570')).toBe('633570');
+  });
+  it('returns empty when no barcode present', () => {
+    expect(extractDocketBarcodeJobNumber('no barcode here')).toBe('');
+  });
+});
+
+describe('extractComplaintResidence', () => {
+  it('extracts residence from Utah complaint paragraph 2', () => {
+    const text = 'Defendant Abbey Armstrong is an individual, who resides at 2361 E 3395 S Salt Lake Cty, UT, 84109-3037, in SALT LAKE County, this court has jurisdiction.';
+    expect(extractComplaintResidence(text)).toMatch(/2361 E 3395 S Salt Lake Cty, UT, 84109-3037/);
+  });
+  it('returns empty when no "who resides at" pattern', () => {
+    expect(extractComplaintResidence('no residence clause')).toBe('');
   });
 });

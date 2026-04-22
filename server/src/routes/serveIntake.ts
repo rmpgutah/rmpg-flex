@@ -399,6 +399,11 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     else if (hoursUntilDue < 24) { priority = 'P3'; priorityScore = 3; }
     if (priorityScore < 4) warnings.push(`Rush intake: ${hoursUntilDue.toFixed(1)}h until due. Priority bumped to ${priority}.`);
 
+    // ── Barcode cross-check ─────────────────────────────────
+    if (parsed.docketBarcodeJobNumber && parsed.clientJobNumber && parsed.docketBarcodeJobNumber !== parsed.clientJobNumber) {
+      warnings.push(`Barcode mismatch: docket barcode=${parsed.docketBarcodeJobNumber}, field-sheet=${parsed.clientJobNumber}. Verify PDFs belong to same job.`);
+    }
+
     // ── Civil case ───────────────────────────────────────────
     const caseNumber = nextCaseNumber(db);
 
