@@ -127,6 +127,8 @@ import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
 import HeatmapLegend from './components/HeatmapLegend';
+import { useMapHotspots } from './hooks/useMapHotspots';
+import { computeTrailStats, formatTrailStats, downloadTrailAsGpx } from './utils/trailStats';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
@@ -394,6 +396,17 @@ export default function MapPage() {
   // user can toggle via localStorage key `rmpg_map_p1AudioEnabled`.
   const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
   useP1AudioAlert(calls, { enabled: p1AudioEnabled });
+
+  // Hotspot markers — numbered red pins at the top-5 heatmap peaks. Only
+  // rendered when the basic heatmap layer is on (Advanced heatmap has its
+  // own built-in cluster overlay). Reuses heatmapData — no extra fetch.
+  useMapHotspots({
+    mapInstanceRef,
+    data: heatmapData,
+    enabled: showHeatmap && !advancedHeatmapEnabled,
+    mode: heatmapMode === 'risk' ? 'risk' : 'calls',
+    topN: 5,
+  });
 
   // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
   // F=field interviews, D=daylight, I=incidents, E=enforcement. No-op when
@@ -5484,10 +5497,11 @@ export default function MapPage() {
           </div>
         </div>}
 
-        {/* ── Breadcrumb Status Chip (top-left) ── */}
-        {/* Quick visual confirmation that trails are tracking the expected
-            units + window. Rendered only while breadcrumbs are visible so
-            it doesn't clutter the default view. */}
+        {/* ── Breadcrumb Status Chip + Trail Stats/Export (top-left) ── */}
+        {/* Shows unit count + window + color mode; hovering reveals per-unit
+            stats (miles/duration/max-mph). Clicking EXPORT downloads one
+            .gpx file per trail into the browser downloads folder — good for
+            shift reports or legal discovery. */}
         {showBreadcrumbs && playbackTrails.length > 0 && (
           <div
             className="absolute z-[999]"
@@ -5501,9 +5515,14 @@ export default function MapPage() {
               fontSize: 10,
               color: '#9ca3af',
               letterSpacing: '0.08em',
-              pointerEvents: 'none',
               borderRadius: 2,
             }}
+            title={playbackTrails
+              .map((t) => {
+                const stats = computeTrailStats(t);
+                return `${t.call_sign}: ${formatTrailStats(stats)}`;
+              })
+              .join('\n')}
           >
             <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
             <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
@@ -5511,6 +5530,28 @@ export default function MapPage() {
             <span>last {breadcrumbHours}h</span>
             <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
             <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
+            <button
+              type="button"
+              onClick={() => {
+                for (const trail of playbackTrails) downloadTrailAsGpx(trail);
+              }}
+              style={{
+                marginLeft: 8,
+                padding: '1px 6px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Download each unit's trail as a GPX file"
+            >
+              ⇩ GPX
+            </button>
           </div>
         )}
 
