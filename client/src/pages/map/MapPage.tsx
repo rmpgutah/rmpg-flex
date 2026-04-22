@@ -127,6 +127,13 @@ import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
 import HeatmapLegend from './components/HeatmapLegend';
+import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
+import RouteComparePanel from './components/RouteComparePanel';
+import { useMapHotspots } from './hooks/useMapHotspots';
+import { useMapDimBase } from './hooks/useMapDimBase';
+import { useMapIdleZones } from './hooks/useMapIdleZones';
+import { computeTrailStats, formatTrailStats, downloadTrailAsGpx } from './utils/trailStats';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
@@ -335,7 +342,7 @@ export default function MapPage() {
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
-  const [breadcrumbHours, setBreadcrumbHours] = useState(8);
+  const [breadcrumbHours, setBreadcrumbHours] = useState(24);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
@@ -345,7 +352,62 @@ export default function MapPage() {
   const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
-  const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
+  const [playbackTrailsRaw, setPlaybackTrailsRaw] = useState<PlaybackTrail[]>([]);
+
+  // Breadcrumb fetch-window presets. Labels are compact per operator request
+  // (24h / 48h / 7d / 14d / 21d / 1mo / 3mo / 1y). Values are hours — the
+  // server /dispatch/gps/trails endpoint still takes ?hours= so upstream
+  // doesn't need to change. Month = 30d, year = 365d rounded in hours.
+  const BREADCRUMB_HOUR_PRESETS: ReadonlyArray<{ hours: number; label: string }> = [
+    { hours: 24,   label: '24h' },
+    { hours: 48,   label: '48h' },
+    { hours: 168,  label: '7d' },
+    { hours: 336,  label: '14d' },
+    { hours: 504,  label: '21d' },
+    { hours: 720,  label: '1mo' },
+    { hours: 2160, label: '3mo' },
+    { hours: 8760, label: '1y' },
+  ];
+
+  // Trail scrubber — lets dispatchers narrow the rendered trails to a
+  // time sub-window without a re-fetch. Values are "hours ago relative to
+  // now": fromH is the older edge (larger), toH is the newer edge (smaller),
+  // so [fromH=8, toH=0] means "last 8h through now". Default matches
+  // breadcrumbHours so the scrubber starts showing everything and the
+  // dispatcher narrows from there.
+  const [trailWindowFromH, setTrailWindowFromH] = useState<number>(breadcrumbHours);
+  const [trailWindowToH, setTrailWindowToH] = useState<number>(0);
+
+  // Keep the scrubber's "from" handle aligned with the fetched window —
+  // if the user bumps breadcrumbHours from 8 to 24, extend the scrubber
+  // range too so they can actually see the newer data.
+  useEffect(() => {
+    setTrailWindowFromH((prev) => (prev > breadcrumbHours ? breadcrumbHours : prev));
+  }, [breadcrumbHours]);
+
+  // Derived, window-filtered view of the trails. Render effects read this;
+  // the fetch effect writes the unfiltered Raw state. Filter is cheap for
+  // typical point counts (≤2k per unit), so recomputing on every scrubber
+  // drag is fine — no debounce needed.
+  const playbackTrails = useMemo<PlaybackTrail[]>(() => {
+    if (playbackTrailsRaw.length === 0) return playbackTrailsRaw;
+    const now = Date.now();
+    const windowStart = now - trailWindowFromH * 3600 * 1000;
+    const windowEnd = now - trailWindowToH * 3600 * 1000;
+    // Fast path: default window covers everything.
+    if (trailWindowFromH >= breadcrumbHours && trailWindowToH <= 0) {
+      return playbackTrailsRaw;
+    }
+    return playbackTrailsRaw
+      .map((t) => {
+        const filtered = t.points.filter((p) => {
+          const ts = Date.parse(p.time);
+          return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
+        });
+        return { ...t, points: filtered };
+      })
+      .filter((t) => t.points.length > 0);
+  }, [playbackTrailsRaw, trailWindowFromH, trailWindowToH, breadcrumbHours]);
   const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -395,19 +457,61 @@ export default function MapPage() {
   const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
   useP1AudioAlert(calls, { enabled: p1AudioEnabled });
 
-  // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
-  // F=field interviews, D=daylight, I=incidents, E=enforcement. No-op when
-  // an input is focused or a modifier key is held.
-  useMapKeyboardShortcuts({
-    toggleHeatmap: () => setShowHeatmap((v) => !v),
-    toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
-    toggleClustering: () => setClusteringEnabled((v) => !v),
-    togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
-    toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
-    toggleDaylight: () => setShowDaylight((v) => !v),
-    toggleIncidentReports: () => setShowIncidentReports((v) => !v),
-    toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
+  // Hotspot markers — numbered red pins at the top-5 heatmap peaks. Only
+  // rendered when the basic heatmap layer is on (Advanced heatmap has its
+  // own built-in cluster overlay). Reuses heatmapData — no extra fetch.
+  useMapHotspots({
+    mapInstanceRef,
+    data: heatmapData,
+    enabled: showHeatmap && !advancedHeatmapEnabled,
+    mode: heatmapMode === 'risk' ? 'risk' : 'calls',
+    topN: 5,
   });
+
+  // Dim-base mode: slightly darken the base tiles when the heatmap is on
+  // so hot peaks pop without muting our own marker colors. Toggle persists.
+  const [dimBaseEnabled, setDimBaseEnabled] = usePersistedState<boolean>('rmpg_map_dimBaseEnabled', true);
+  useMapDimBase({
+    mapInstanceRef,
+    enabled: dimBaseEnabled && showHeatmap,
+    opacity: 0.35,
+  });
+
+  // Idle-zone detection: highlight stretches >=10min where a unit stayed
+  // within ~50m as orange circles. Reuses playbackTrails — pure client-side.
+  const [showIdleZones, setShowIdleZones] = usePersistedState<boolean>('rmpg_map_showIdleZones', false);
+
+  // Route comparison — pick two units from the active breadcrumb set and see
+  // side-by-side stats. Visibility is session-only; IDs are not persisted
+  // because their meaning depends on who's on shift right now.
+  const [showRouteCompare, setShowRouteCompare] = useState(false);
+  const [compareUnitA, setCompareUnitA] = useState<string | number | null>(null);
+  const [compareUnitB, setCompareUnitB] = useState<string | number | null>(null);
+  useMapIdleZones({
+    mapInstanceRef,
+    trails: playbackTrails,
+    enabled: showIdleZones && showBreadcrumbs,
+    minIdleSec: 600,
+    clusterRadiusM: 50,
+  });
+
+  // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
+  // F=field interviews, D=daylight, I=incidents, E=enforcement, ?=help.
+  // No-op when an input is focused or a modifier key is held.
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  useMapKeyboardShortcuts(
+    {
+      toggleHeatmap: () => setShowHeatmap((v) => !v),
+      toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
+      toggleClustering: () => setClusteringEnabled((v) => !v),
+      togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
+      toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
+      toggleDaylight: () => setShowDaylight((v) => !v),
+      toggleIncidentReports: () => setShowIncidentReports((v) => !v),
+      toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
+    },
+    () => setShowShortcutsHelp(true),
+  );
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -1716,7 +1820,7 @@ export default function MapPage() {
     speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
     speedAlertMarkersRef.current = [];
 
-    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
+    if (!showBreadcrumbs) { setPlaybackTrailsRaw([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
@@ -1762,7 +1866,7 @@ export default function MapPage() {
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         if (!trails) return;
-        setPlaybackTrails(trails);
+        setPlaybackTrailsRaw(trails);
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
@@ -2974,6 +3078,29 @@ export default function MapPage() {
                     ))}
                   </div>
 
+                  {/* Dim base map toggle — darkens base tiles so heat pops */}
+                  <button
+                    onClick={() => setDimBaseEnabled(!dimBaseEnabled)}
+                    className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                      dimBaseEnabled ? 'text-red-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                    }`}
+                  >
+                    <span className="flex-1 text-left">Dim Base Map</span>
+                    {dimBaseEnabled && <span className="led-dot led-red" style={{ width: 5, height: 5 }} />}
+                  </button>
+
+                  {/* Saved filter presets */}
+                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
+                    <HeatmapPresets
+                      current={{ days: heatmapDays, mode: heatmapMode, typeFilter: heatmapTypeFilter }}
+                      onApply={(p: HeatmapPresetValue) => {
+                        setHeatmapDays(p.days);
+                        setHeatmapMode(p.mode);
+                        setHeatmapTypeFilter(p.typeFilter);
+                      }}
+                    />
+                  </div>
+
                   {/* Advanced mode toggle */}
                   <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
@@ -3461,9 +3588,10 @@ export default function MapPage() {
               </button>
               {showBreadcrumbs && (
                 <div className="px-3 py-1 space-y-1">
-                  {/* Hours selector */}
-                  <div className="flex items-center gap-1">
-                    {[2, 4, 8, 12, 24].map((h) => (
+                  {/* Hours selector — presets extend from 24h to 1y per
+                      operator request. Label abbreviates days/months/years. */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                       <button
                         key={h}
                         onClick={() => setBreadcrumbHours(h)}
@@ -3473,7 +3601,7 @@ export default function MapPage() {
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        {h}h
+                        {label}
                       </button>
                     ))}
                     <button
@@ -5484,10 +5612,14 @@ export default function MapPage() {
           </div>
         </div>}
 
-        {/* ── Breadcrumb Status Chip (top-left) ── */}
-        {/* Quick visual confirmation that trails are tracking the expected
-            units + window. Rendered only while breadcrumbs are visible so
-            it doesn't clutter the default view. */}
+        {/* ── Keyboard Shortcuts Help (triggered by `?` key) ── */}
+        <KeyboardShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
+
+        {/* ── Breadcrumb Status Chip + Trail Stats/Export (top-left) ── */}
+        {/* Shows unit count + window + color mode; hovering reveals per-unit
+            stats (miles/duration/max-mph). Clicking EXPORT downloads one
+            .gpx file per trail into the browser downloads folder — good for
+            shift reports or legal discovery. */}
         {showBreadcrumbs && playbackTrails.length > 0 && (
           <div
             className="absolute z-[999]"
@@ -5501,16 +5633,172 @@ export default function MapPage() {
               fontSize: 10,
               color: '#9ca3af',
               letterSpacing: '0.08em',
-              pointerEvents: 'none',
               borderRadius: 2,
             }}
+            title={playbackTrails
+              .map((t) => {
+                const stats = computeTrailStats(t);
+                return `${t.call_sign}: ${formatTrailStats(stats)}`;
+              })
+              .join('\n')}
           >
             <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
             <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
             <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
-            <span>last {breadcrumbHours}h</span>
+            <span>last {BREADCRUMB_HOUR_PRESETS.find((p) => p.hours === breadcrumbHours)?.label || `${breadcrumbHours}h`}</span>
             <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
             <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
+            <button
+              type="button"
+              onClick={() => setShowIdleZones(!showIdleZones)}
+              style={{
+                marginLeft: 8,
+                padding: '1px 6px',
+                background: showIdleZones ? '#f59e0b30' : '#88888820',
+                border: showIdleZones ? '1px solid #f59e0b80' : '1px solid #88888850',
+                color: showIdleZones ? '#f59e0b' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Highlight stretches where a unit was stationary >10min"
+            >
+              IDLE
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                for (const trail of playbackTrails) downloadTrailAsGpx(trail);
+              }}
+              style={{
+                marginLeft: 4,
+                padding: '1px 6px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Download each unit's trail as a GPX file"
+            >
+              ⇩ GPX
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowRouteCompare((v) => !v)}
+              style={{
+                marginLeft: 4,
+                padding: '1px 6px',
+                background: showRouteCompare ? '#d4a01730' : '#88888820',
+                border: showRouteCompare ? '1px solid #d4a01780' : '1px solid #88888850',
+                color: showRouteCompare ? '#d4a017' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Compare two units' trail stats side-by-side"
+            >
+              ⇆ COMPARE
+            </button>
+          </div>
+        )}
+
+        {/* ── Route Comparison Panel (bottom-right, when toggled) ── */}
+        {showBreadcrumbs && showRouteCompare && (
+          <RouteComparePanel
+            trails={playbackTrails}
+            unitAId={compareUnitA}
+            unitBId={compareUnitB}
+            onChangeA={setCompareUnitA}
+            onChangeB={setCompareUnitB}
+            onClose={() => setShowRouteCompare(false)}
+          />
+        )}
+
+        {/* ── Trail Time-Window Scrubber (top-left, below chip) ── */}
+        {/* Two range inputs that narrow the rendered trail window without
+            re-fetching. fromH is the older edge, toH the newer one. The
+            filter runs in a useMemo, so drags feel live even on ≤2k points
+            per unit. Rendered only when there's something to scrub. */}
+        {showBreadcrumbs && playbackTrailsRaw.length > 0 && (
+          <div
+            className="absolute z-[999]"
+            style={{
+              top: 90,
+              left: 16,
+              background: 'rgba(6,12,20,0.92)',
+              border: '1px solid #2b2b2b',
+              padding: '4px 10px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              fontSize: 9,
+              color: '#9ca3af',
+              letterSpacing: '0.05em',
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 320,
+            }}
+          >
+            <span style={{ color: '#d4a017', fontWeight: 900 }}>WINDOW</span>
+            <span title="From (hours ago)" style={{ color: '#6b7280' }}>{trailWindowFromH.toFixed(1)}h</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowFromH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowFromH(Math.max(v, trailWindowToH + 0.1));
+              }}
+              aria-label="Trail window start (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span style={{ color: '#6b7280' }}>now</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowToH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowToH(Math.min(v, trailWindowFromH - 0.1));
+              }}
+              aria-label="Trail window end (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span title="To (hours ago)" style={{ color: '#6b7280' }}>{trailWindowToH.toFixed(1)}h</span>
+            <button
+              type="button"
+              onClick={() => { setTrailWindowFromH(breadcrumbHours); setTrailWindowToH(0); }}
+              style={{
+                padding: '1px 5px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Reset window to full fetched range"
+            >
+              RESET
+            </button>
           </div>
         )}
 
@@ -6036,18 +6324,18 @@ export default function MapPage() {
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
                   <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
-                    <div className="flex gap-1">
-                      {[2, 4, 8, 12, 24].map((h) => (
+                    <div className="flex gap-1 flex-wrap">
+                      {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                         <button
                           key={h}
                           onClick={() => setBreadcrumbHours(h)}
-                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
+                          className={`flex-1 min-w-[44px] py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
                               ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
-                          {h}h
+                          {label}
                         </button>
                       ))}
                     </div>
