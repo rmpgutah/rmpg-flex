@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput, extractDocketBarcodeJobNumber, extractComplaintResidence, addressConfidence, normalizeAddressForMatch } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput, extractDocketBarcodeJobNumber, extractComplaintResidence, addressConfidence, normalizeAddressForMatch, extractAllDefendants } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -278,3 +278,26 @@ describe('addressConfidence', () => {
     expect(score).toBeGreaterThan(85);
   });
 });
+
+describe('extractAllDefendants', () => {
+  it('extracts a single defendant from caption', () => {
+    const text = 'Capital One,\n Plaintiff,\n vs.\n Abbey Armstrong, an individual,\n Defendant';
+    expect(extractAllDefendants(text)).toEqual(['Abbey Armstrong']);
+  });
+  it('extracts two defendants joined by "and"', () => {
+    const text = 'Capital One,\n Plaintiff,\n vs.\n Abbey Armstrong and John Doe, an individuals,\n Defendants';
+    const r = extractAllDefendants(text);
+    expect(r).toEqual(['Abbey Armstrong', 'John Doe']);
+  });
+  it('extracts three+ defendants with mixed separators', () => {
+    const text = 'X, P,\n v.\n Jane Smith, John Doe, and Jim Roe, Defendants';
+    const r = extractAllDefendants(text);
+    expect(r).toContain('Jane Smith');
+    expect(r).toContain('John Doe');
+    expect(r).toContain('Jim Roe');
+  });
+  it('returns [] when no caption found', () => {
+    expect(extractAllDefendants('no caption here')).toEqual([]);
+  });
+});
+

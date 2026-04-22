@@ -423,6 +423,7 @@ export interface ParseOutput {
   vendorFingerprint: string;
   docketBarcodeJobNumber: string;
   complaintResidence: string;
+  additionalDefendants: string[];
 }
 
 export function parseAllDocuments(src: ParseInput): ParseOutput {
@@ -505,13 +506,24 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const docketBarcodeJobNumber = extractDocketBarcodeJobNumber(courtDocket);
   const complaintResidence = extractComplaintResidence(courtDocket);
 
+  // Additional defendants — anything in the caption that isn't the primary Party-to-Serve
+  const allDefendants = extractAllDefendants(courtDocket);
+  const primaryFull = `${defendant.first} ${defendant.last}`.toLowerCase().trim();
+  const primaryLast = (defendant.last || '').toLowerCase().trim();
+  const additionalDefendants = allDefendants.filter(n => {
+    const nl = n.toLowerCase();
+    if (nl === primaryFull) return false;
+    if (primaryLast && nl.includes(primaryLast)) return false;
+    return true;
+  });
+
   return {
     defendant, address, addressParts, plaintiff, court, courtAddress, county: info.county,
     attorney, documents, primaryDoc, serviceType, instructions,
     jobNumber, clientJobNumber, dueDate, signedDate, responseDeadlineDays, clerkPhone,
     documentPages, bilingual, orderingClientRule, serviceWindows, serviceRulesSummary,
     jobActivity, courtCaseNumber, vendorFingerprint,
-    docketBarcodeJobNumber, complaintResidence,
+    docketBarcodeJobNumber, complaintResidence, additionalDefendants,
   };
 }
 
@@ -573,6 +585,25 @@ export function addressConfidence(a: string, b: string, c?: string): number {
   });
   const avg = ratios.reduce((s, r) => s + r, 0) / ratios.length;
   return Math.round(avg * 100);
+}
+
+/** Extract all defendants from a court-docket caption (between "vs."/"v." and "Defendant[s]"). */
+export function extractAllDefendants(docketText: string): string[] {
+  if (!docketText) return [];
+  const m = docketText.match(/(?:vs?\.|versus)\s*([\s\S]{5,300}?),?\s*Defendants?\b/i);
+  if (!m) return [];
+  const block = m[1];
+  const parts = block
+    .split(/,|\band\b/i)
+    .map(s => s.trim().replace(/^an\s+individuals?$/i, '').replace(/[,.\s]+$/, ''))
+    .filter(p => p.length > 3 && !/^an\s+individuals?$/i.test(p) && /[A-Za-z]/.test(p) && !/plaintiff/i.test(p));
+  const seen = new Set<string>();
+  return parts.filter(p => {
+    const k = p.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 /** Extract the "who resides at" address from a Utah complaint paragraph 2. */
