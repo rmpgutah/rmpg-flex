@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -35,5 +35,38 @@ describe('parseAddressParts', () => {
     const r = parseAddressParts('gibberish');
     expect(r.building).toBe('');
     expect(r.city).toBe('');
+  });
+});
+
+describe('extractAttorneyBlock', () => {
+  const armstrongDocket = `
+                                                             This document requires you to
+                                                     respond. Please see the Notice to Responding Party
+    GUGLIELMO & ASSOCIATES
+    Heather Valerga, (Utah Attorney Bar#  14431)
+    PO Box 41688
+    Tucson, AZ 85717
+    Tel: (877)325-5700
+    FAX: (520)325-2480
+    Utah@guglielmolaw.com
+    Attorney for Plaintiff
+  `;
+
+  it('extracts the Utah attorney block anchored on Bar#', () => {
+    const r = extractAttorneyBlock(armstrongDocket);
+    expect(r.name).toBe('Heather Valerga');
+    expect(r.barNumber).toBe('14431');
+    expect(r.firm).toBe('GUGLIELMO & ASSOCIATES');
+    expect(r.addressLine1).toBe('PO Box 41688');
+    expect(r.addressLine2).toBe('Tucson, AZ 85717');
+    expect(r.tel).toBe('8773255700');
+    expect(r.fax).toBe('5203252480');
+    expect(r.email).toBe('Utah@guglielmolaw.com');
+  });
+
+  it('returns empty struct when no Bar# token present', () => {
+    const r = extractAttorneyBlock('unrelated pdf text with no bar number');
+    expect(r.barNumber).toBe('');
+    expect(r.name).toBe('');
   });
 });
