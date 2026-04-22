@@ -1930,69 +1930,86 @@ export default function DispatchPage() {
   };
 
   // ── Inline Editing ────────────────────────────────────────
-  const startEditing = () => {
+  // Refetch the full call fresh from /dispatch/calls/:id before populating
+  // the edit form. Guards against stale in-memory data from list-endpoint
+  // caching / older client bundles that silently dropped fields. The fetched
+  // row also replaces selectedCall so the non-edit view re-renders correctly.
+  const startEditing = async () => {
     if (!selectedCall) return;
+    let source: any = selectedCall;
+    try {
+      const fresh = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`);
+      if (fresh && (fresh.id != null || fresh.call_number)) {
+        const mapped = mapDbCall(fresh);
+        setSelectedCall(mapped);
+        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
+        source = mapped;
+      }
+    } catch (err) {
+      console.warn('[DispatchPage] Failed to refetch call before edit; using cached copy', err);
+    }
+    const selectedCallForEdit: any = source;
     setEditData({
-      incident_type: selectedCall.incident_type,
-      priority: selectedCall.priority,
-      client_id: selectedCall.client_id || '',
-      caller_name: selectedCall.caller_name || '',
-      caller_phone: selectedCall.caller_phone || '',
-      caller_relationship: selectedCall.caller_relationship || '',
-      caller_address: selectedCall.caller_address || '',
-      location: selectedCall.location || '',
-      latitude: selectedCall.latitude ?? null,
-      longitude: selectedCall.longitude ?? null,
-      property_id: selectedCall.property_id ?? null,
-      description: selectedCall.description || '',
-      source: selectedCall.source || 'phone',
-      disposition: selectedCall.disposition || '',
-      cross_street: selectedCall.cross_street || '',
-      location_building: selectedCall.location_building || '',
-      location_floor: selectedCall.location_floor || '',
-      location_room: selectedCall.location_room || '',
-      zone_beat: selectedCall.zone_beat || '',
-      sector_id: selectedCall.sector_id || '',
-      zone_id: selectedCall.zone_id || '',
-      beat_id: selectedCall.beat_id || '',
-      weapons_involved: selectedCall.weapons_involved || '',
-      injuries_reported: !!selectedCall.injuries_reported,
-      num_subjects: selectedCall.num_subjects || '',
-      num_victims: selectedCall.num_victims || '',
-      subject_description: selectedCall.subject_description || '',
-      vehicle_description: selectedCall.vehicle_description || '',
-      direction_of_travel: selectedCall.direction_of_travel || '',
-      scene_safety: selectedCall.scene_safety || '',
-      weather_conditions: selectedCall.weather_conditions || '',
-      lighting_conditions: selectedCall.lighting_conditions || '',
-      alcohol_involved: !!selectedCall.alcohol_involved,
-      drugs_involved: !!selectedCall.drugs_involved,
-      domestic_violence: !!selectedCall.domestic_violence,
-      supervisor_notified: !!selectedCall.supervisor_notified,
-      le_notified: !!selectedCall.le_notified,
-      le_agency: selectedCall.le_agency || '',
-      le_case_number: selectedCall.le_case_number || '',
-      damage_estimate: selectedCall.damage_estimate ?? '',
-      damage_description: selectedCall.damage_description || '',
-      action_taken: selectedCall.action_taken || '',
-      responding_officer: selectedCall.responding_officer || '',
-      starting_mileage: selectedCall.starting_mileage || '',
-      ending_mileage: selectedCall.ending_mileage || '',
-      dispatch_code: selectedCall.dispatch_code || '',
-      pso_requestor_name: selectedCall.pso_requestor_name || '',
-      pso_requestor_phone: selectedCall.pso_requestor_phone || '',
-      pso_requestor_email: selectedCall.pso_requestor_email || '',
-      pso_service_type: selectedCall.pso_service_type || '',
-      pso_billing_code: selectedCall.pso_billing_code || '',
-      pso_authorization: selectedCall.pso_authorization || '',
-      contract_id: selectedCall.contract_id || '',
+      incident_type: selectedCallForEdit.incident_type,
+      priority: selectedCallForEdit.priority,
+      client_id: selectedCallForEdit.client_id || '',
+      caller_name: selectedCallForEdit.caller_name || '',
+      caller_phone: selectedCallForEdit.caller_phone || '',
+      caller_relationship: selectedCallForEdit.caller_relationship || '',
+      caller_address: selectedCallForEdit.caller_address || '',
+      location: selectedCallForEdit.location || '',
+      latitude: selectedCallForEdit.latitude ?? null,
+      longitude: selectedCallForEdit.longitude ?? null,
+      property_id: selectedCallForEdit.property_id ?? null,
+      description: selectedCallForEdit.description || '',
+      source: selectedCallForEdit.source || 'phone',
+      disposition: selectedCallForEdit.disposition || '',
+      cross_street: selectedCallForEdit.cross_street || '',
+      location_building: selectedCallForEdit.location_building || '',
+      location_floor: selectedCallForEdit.location_floor || '',
+      location_room: selectedCallForEdit.location_room || '',
+      zone_beat: selectedCallForEdit.zone_beat || '',
+      sector_id: selectedCallForEdit.sector_id || '',
+      zone_id: selectedCallForEdit.zone_id || '',
+      beat_id: selectedCallForEdit.beat_id || '',
+      weapons_involved: selectedCallForEdit.weapons_involved || '',
+      injuries_reported: !!selectedCallForEdit.injuries_reported,
+      num_subjects: selectedCallForEdit.num_subjects || '',
+      num_victims: selectedCallForEdit.num_victims || '',
+      subject_description: selectedCallForEdit.subject_description || '',
+      vehicle_description: selectedCallForEdit.vehicle_description || '',
+      direction_of_travel: selectedCallForEdit.direction_of_travel || '',
+      scene_safety: selectedCallForEdit.scene_safety || '',
+      weather_conditions: selectedCallForEdit.weather_conditions || '',
+      lighting_conditions: selectedCallForEdit.lighting_conditions || '',
+      alcohol_involved: !!selectedCallForEdit.alcohol_involved,
+      drugs_involved: !!selectedCallForEdit.drugs_involved,
+      domestic_violence: !!selectedCallForEdit.domestic_violence,
+      supervisor_notified: !!selectedCallForEdit.supervisor_notified,
+      le_notified: !!selectedCallForEdit.le_notified,
+      le_agency: selectedCallForEdit.le_agency || '',
+      le_case_number: selectedCallForEdit.le_case_number || '',
+      damage_estimate: selectedCallForEdit.damage_estimate ?? '',
+      damage_description: selectedCallForEdit.damage_description || '',
+      action_taken: selectedCallForEdit.action_taken || '',
+      responding_officer: selectedCallForEdit.responding_officer || '',
+      starting_mileage: selectedCallForEdit.starting_mileage || '',
+      ending_mileage: selectedCallForEdit.ending_mileage || '',
+      dispatch_code: selectedCallForEdit.dispatch_code || '',
+      pso_requestor_name: selectedCallForEdit.pso_requestor_name || '',
+      pso_requestor_phone: selectedCallForEdit.pso_requestor_phone || '',
+      pso_requestor_email: selectedCallForEdit.pso_requestor_email || '',
+      pso_service_type: selectedCallForEdit.pso_service_type || '',
+      pso_billing_code: selectedCallForEdit.pso_billing_code || '',
+      pso_authorization: selectedCallForEdit.pso_authorization || '',
+      contract_id: selectedCallForEdit.contract_id || '',
       // Process Service fields
-      process_service_type: selectedCall.process_service_type || '',
-      process_served_to: selectedCall.process_served_to || '',
-      process_served_address: selectedCall.process_served_address || '',
-      process_attempts: selectedCall.process_attempts ?? 0,
-      process_served_at: selectedCall.process_served_at || '',
-      process_service_result: selectedCall.process_service_result || '',
+      process_service_type: selectedCallForEdit.process_service_type || '',
+      process_served_to: selectedCallForEdit.process_served_to || '',
+      process_served_address: selectedCallForEdit.process_served_address || '',
+      process_attempts: selectedCallForEdit.process_attempts ?? 0,
+      process_served_at: selectedCallForEdit.process_served_at || '',
+      process_service_result: selectedCallForEdit.process_service_result || '',
     });
     setIsEditing(true);
   };
