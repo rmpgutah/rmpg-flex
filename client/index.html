@@ -12,25 +12,43 @@
     <meta name="description" content="Rocky Mountain Protective Group — CAD/RMS Dispatch Console" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script>
+      // Synchronously apply theme before React loads to prevent flash-of-wrong-theme.
+      // Keep storage key + valid values in sync with client/src/utils/theme.ts.
       (function () {
         var theme = 'dark';
         try {
           theme = localStorage.getItem('rmpg_theme_preference') === 'light' ? 'light' : 'dark';
         } catch {}
 
-        var chrome = theme === 'light' ? '#f0f2f5' : '#000000';
+        // Chrome color: deep black for dark, saturated navy blue for "Light Mode"
+        // (which is actually a brighter blue variant, not a true light background).
+        // Keep in sync with --surface-base values in client/src/index.css.
+        var chrome = theme === 'light' ? '#0d2a4d' : '#000000';
         var html = document.documentElement;
         html.classList.add('theme-' + theme);
-        html.style.colorScheme = theme;
+        // Both themes are dark-on-dark (saturated-blue "Light Mode" is still
+        // a dark surface), so color-scheme stays 'dark' in both — keeps native
+        // form controls + scrollbars rendering with light-on-dark defaults.
+        // Keep in sync with client/src/utils/theme.ts.
+        html.style.colorScheme = 'dark';
         html.style.backgroundColor = chrome;
 
         var themeColor = document.querySelector('meta[name="theme-color"]');
         if (themeColor) themeColor.setAttribute('content', chrome);
 
         var statusBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-        if (statusBar) statusBar.setAttribute('content', theme === 'light' ? 'default' : 'black-translucent');
+        if (statusBar) statusBar.setAttribute('content', 'black-translucent');
       })();
     </script>
+    <style>
+      /* Theme-aware pre-splash background — must be in <head> so it's parsed
+         before the pre-splash <div> paints. The boot script above has already
+         added theme-dark / theme-light classes to <html>, so the correct rule
+         wins from first paint with no FOUC. Kept in sync with --surface-base
+         values in client/src/index.css. */
+      #pre-splash { background: #000000; }
+      html.theme-light #pre-splash { background: #0d2a4d; }
+    </style>
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:
       1. Vite dev mode injects inline scripts/styles for HMR
@@ -47,10 +65,10 @@
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
-  <body class="bg-[#0a0a0a] text-white">
+  <body class="text-white">
     <div id="root">
       <!-- Pre-React branded splash — hidden once React hydrates -->
-      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0a0a">
+      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh">
         <div style="display:flex;flex-direction:column;align-items:center">
           <img src="/rmpg flex.png" alt="RMPG Flex" width="88" height="88"
                style="filter:drop-shadow(0 0 18px rgba(167,177,188,0.22));object-fit:contain" draggable="false" />
