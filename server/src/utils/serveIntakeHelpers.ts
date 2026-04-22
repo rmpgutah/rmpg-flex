@@ -137,6 +137,44 @@ export function parseInfoSheetLabels(text: string): InfoSheetLabels {
   return out;
 }
 
+export interface JobActivityEntry {
+  when: string;
+  action: string;
+  detail: string;
+}
+
+export function parseJobActivity(text: string): JobActivityEntry[] {
+  if (!text) return [];
+  const startMatch = text.match(/Job Activity/i);
+  if (!startMatch) return [];
+  const startIdx = (startMatch.index ?? 0) + startMatch[0].length;
+  const body = text.slice(startIdx);
+
+  const out: JobActivityEntry[] = [];
+  const lines = body.split(/\r?\n/);
+  // Line pattern: M/D/YY, H:MM (am|pm) <spaces> action <spaces> detail...
+  const lineRe = /^\s*(\d{1,2}\/\d{1,2}\/\d{2,4},\s*\d{1,2}:\d{2}\s*(?:am|pm|AM|PM))\s{2,}(.+)$/;
+  for (const raw of lines) {
+    const m = raw.match(lineRe);
+    if (!m) {
+      // If we hit a non-activity line after finding some entries, stop
+      if (out.length > 0 && raw.trim() && !/^\s*$/.test(raw)) {
+        // only stop on clearly structural breaks (section header with label-value pattern)
+        if (/^\s*[A-Z][A-Za-z ]+\s{2,}/.test(raw)) break;
+      }
+      continue;
+    }
+    const when = m[1].trim();
+    const rest = m[2];
+    // Split rest by 2+ spaces — first chunk is action, remainder joined is detail
+    const parts = rest.split(/\s{2,}/).map(p => p.trim()).filter(Boolean);
+    const action = parts[0] || '';
+    const detail = parts.slice(1).join(' ');
+    out.push({ when, action, detail });
+  }
+  return out;
+}
+
 export function parseAddressParts(address: string): AddressParts {
   const empty: AddressParts = { building: '', floor: '', suite: '', street: '', city: '', state: '', zip: '' };
   if (!address) return empty;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
@@ -103,5 +103,30 @@ describe('parseInfoSheetLabels', () => {
   it('returns empty strings when sheet is blank', () => {
     const r = parseInfoSheetLabels('');
     expect(r.plaintiff).toBe('');
+  });
+});
+
+describe('parseJobActivity', () => {
+  const infoSheet = `
+    Job Activity
+    4/13/26, 2:10 pm   Process server assigned   Christopher Zamora was assigned to the job   Jason Currie
+    4/7/26, 12:12 pm   Due Date Changed          Due date was changed from Apr 15, 2026 to Apr 21, 2026
+    4/2/26, 6:07 am    Job Data Updated          David Blake
+    4/1/26, 12:01 pm   Due Date Changed          Due date was set to Apr 15, 2026
+
+    Job Type           G&A Service Type
+  `;
+
+  it('parses timestamped activity entries', () => {
+    const r = parseJobActivity(infoSheet);
+    expect(r).toHaveLength(4);
+    expect(r[0].when).toBe('4/13/26, 2:10 pm');
+    expect(r[0].action).toBe('Process server assigned');
+    expect(r[1].action).toBe('Due Date Changed');
+    expect(r[1].detail).toContain('Apr 15, 2026 to Apr 21, 2026');
+  });
+
+  it('returns [] when no Job Activity section', () => {
+    expect(parseJobActivity('nothing relevant')).toEqual([]);
   });
 });
