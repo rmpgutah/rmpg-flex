@@ -82,6 +82,7 @@ import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
 import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
+import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
@@ -392,6 +393,20 @@ export default function MapPage() {
   // user can toggle via localStorage key `rmpg_map_p1AudioEnabled`.
   const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
   useP1AudioAlert(calls, { enabled: p1AudioEnabled });
+
+  // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
+  // F=field interviews, D=daylight, I=incidents, E=enforcement. No-op when
+  // an input is focused or a modifier key is held.
+  useMapKeyboardShortcuts({
+    toggleHeatmap: () => setShowHeatmap((v) => !v),
+    toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
+    toggleClustering: () => setClusteringEnabled((v) => !v),
+    togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
+    toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
+    toggleDaylight: () => setShowDaylight((v) => !v),
+    toggleIncidentReports: () => setShowIncidentReports((v) => !v),
+    toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
+  });
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -1222,6 +1237,57 @@ export default function MapPage() {
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
             onClick: () => {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
+              // Compute the 3 nearest units with GPS that are NOT already
+              // assigned to this call. Straight-line haversine — cheap enough
+              // to recompute on every info-window open (unit count is small).
+              // This intentionally ignores unit status: the dispatcher can see
+              // the status dot and make their own call on whether an on-break
+              // unit can roll. "Closest by road" would require Directions
+              // calls per unit — too expensive for a tap-to-preview panel.
+              const assignedIds = new Set(assignedUnits.map(u => String(u.id)));
+              const nearestUnits = (call.latitude != null && call.longitude != null)
+                ? units
+                    .filter(u => !assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null)
+                    .map(u => {
+                      const dLat = ((u.latitude! - call.latitude!) * Math.PI) / 180;
+                      const dLng = ((u.longitude! - call.longitude!) * Math.PI) / 180;
+                      const a = Math.sin(dLat / 2) ** 2
+                        + Math.cos((u.latitude! * Math.PI) / 180)
+                        * Math.cos((call.latitude! * Math.PI) / 180)
+                        * Math.sin(dLng / 2) ** 2;
+                      const meters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                      return { unit: u, meters };
+                    })
+                    .sort((a, b) => a.meters - b.meters)
+                    .slice(0, 3)
+                : [];
+
+              let nearestHtml = '';
+              if (nearestUnits.length > 0) {
+                nearestHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
+                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">NEAREST UNITS</div>
+                  ${nearestUnits.map(({ unit: u, meters }) => {
+                    const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
+                    const miles = (meters / 1609.344).toFixed(1);
+                    const routeBtn = (call.latitude != null && call.longitude != null)
+                      ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
+                           data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
+                           data-route-clat="${call.latitude}" data-route-clng="${call.longitude}"
+                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#a0a0a0;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           ▶ ROUTE
+                         </button>`
+                      : '';
+                    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                      <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
+                      <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
+                      <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name || '')}</span>
+                      <span style="font-size:9px;color:#6b7280;">${miles} mi</span>
+                      ${routeBtn}
+                    </div>`;
+                  }).join('')}
+                </div>`;
+              }
+
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
@@ -1268,6 +1334,7 @@ export default function MapPage() {
                   ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
                   <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
                   ${unitsHtml}
+                  ${nearestHtml}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
