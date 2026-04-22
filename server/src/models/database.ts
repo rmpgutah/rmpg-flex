@@ -1906,6 +1906,42 @@ function migrateSchema(): void {
   addCol('clients', 'priority_client', 'INTEGER DEFAULT 0');
   addCol('clients', 'client_since', 'TEXT');
 
+  // ── SERVE INTAKE: vendor lookup columns ──────────────────
+  addCol('clients', 'billing_code', 'TEXT');
+  addCol('clients', 'requestor_email', 'TEXT');
+  addCol('clients', 'vendor_fingerprint', 'TEXT');
+  addCol('clients', 'caller_phone', 'TEXT');
+
+  // ── SERVE INTAKE: role-tagged persons for legal parties ──
+  addCol('persons', 'role_tag', 'TEXT');        // 'defendant' | 'plaintiff' | 'attorney' | 'resident'
+  addCol('persons', 'entity_type', 'TEXT');     // 'individual' | 'organization'
+  addCol('persons', 'bar_number', 'TEXT');
+  addCol('persons', 'firm_name', 'TEXT');
+
+  // ── SERVE INTAKE: pre-planned attempt windows ─────────────
+  addCol('serve_attempts', 'planned_at', 'TEXT');
+  addCol('serve_attempts', 'window', 'TEXT');
+  addCol('serve_attempts', 'status', 'TEXT');   // 'planned' | 'attempted' | 'served' | 'failed'
+
+  // Seed ICU Investigations vendor fingerprint (idempotent — only fills null/empty fields)
+  try {
+    const existing = db.prepare("SELECT id FROM clients WHERE name LIKE 'ICU Investigations%' OR vendor_fingerprint = ? LIMIT 1").get('ICU Investigations, LLC') as any;
+    if (existing) {
+      db.prepare(`UPDATE clients SET
+        billing_code = COALESCE(NULLIF(billing_code, ''), '0175'),
+        requestor_email = COALESCE(NULLIF(requestor_email, ''), 'a1processserver@gmail.com'),
+        vendor_fingerprint = COALESCE(NULLIF(vendor_fingerprint, ''), 'ICU Investigations, LLC'),
+        caller_phone = COALESCE(NULLIF(caller_phone, ''), '(435) 986-1200')
+        WHERE id = ?`).run(existing.id);
+    } else {
+      db.prepare(`INSERT INTO clients (name, billing_code, requestor_email, vendor_fingerprint, caller_phone, status)
+        VALUES (?, ?, ?, ?, ?, 'active')`).run(
+        'ICU Investigations, LLC', '0175', 'a1processserver@gmail.com', 'ICU Investigations, LLC', '(435) 986-1200');
+    }
+  } catch (err) {
+    // Non-fatal on first run before addCol() has completed
+  }
+
   // ── UNITS — missing columns ────────────────────────────
   addCol('units', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
 
@@ -3826,6 +3862,17 @@ function migrateSchema(): void {
   addCol('cases', 'assigned_employees', "TEXT DEFAULT '[]'");
   addCol('cases', 'deadline', 'TEXT');
   addCol('cases', 'sla_hours', 'INTEGER');
+
+  // ── SERVE INTAKE: civil-case metadata ─────────────────────
+  addCol('cases', 'court_case_number', 'TEXT');
+  addCol('cases', 'court_id', 'INTEGER');
+  addCol('cases', 'plaintiff_person_id', 'INTEGER');
+  addCol('cases', 'defendant_person_id', 'INTEGER');
+  addCol('cases', 'attorney_person_id', 'INTEGER');
+  addCol('cases', 'signed_filed_date', 'TEXT');
+  addCol('cases', 'response_deadline_days', 'INTEGER');
+  addCol('cases', 'amount_demanded', 'REAL');
+  addCol('cases', 'cause_of_action', 'TEXT');
 
   // ── USERS/EMPLOYEES — territory + performance fields ──────
   addCol('users', 'photo', 'TEXT');
