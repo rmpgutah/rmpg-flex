@@ -1,16 +1,13 @@
-// ============================================================
-// RMPG Flex — Patrol Tracking PDF Report Generator
-// Generates a detailed patrol tracking report from GPS breadcrumb
-// data, including cover page, detail table, response time segments,
-// and per-unit summary statistics.
-// All headers use black text on white/light backgrounds.
-// ============================================================
+// ═══════════════════════════════════════════════════════════════
+// Patrol Tracking Report — clean, Fuel-Report-style PDF generator
+//
+// Rewritten 2026-04-22 to match fleetFuelReport.ts visual style:
+// stock Helvetica, no crest, no accent bars, no watermark, no
+// barcode, no dark header bars. Letter-landscape so the wide
+// breadcrumb table fits without cramming.
+// ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
-import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
-import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark, finalizePoliceReport } from './pdfGenerator';
-import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT } from './pdfTokens';
-import { localToday } from './dateUtils';
 
 // ── Types matching the server patrol-tracking response ──────
 
@@ -83,582 +80,206 @@ export interface PatrolTrackingReportData {
   total_points: number;
 }
 
-// ── Helpers ──────────────────────────────────────────────────
+// ── Helpers (mirroring fleetFuelReport style) ────────────────
 
-function formatDateTime(isoStr: string): string {
-  try {
-    const d = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' '
-      + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  } catch { return isoStr; }
+/** Replace Unicode dashes so jsPDF's cp1252 Helvetica renders cleanly. */
+function asciify(s: string): string {
+  return s.replace(/→/g, ' to ').replace(/—/g, ' - ').replace(/–/g, ' - ');
 }
 
-function formatTime(isoStr: string): string {
-  try {
-    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  } catch { return isoStr; }
+/** "MM/DD HH:MM:SS" for a breadcrumb timestamp. */
+function formatPointTime(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function formatDate(isoStr: string | null): string {
-  if (!isoStr) return 'N/A';
-  try {
-    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch { return isoStr; }
+/** "YYYY-MM-DD" or pass-through. */
+function formatDayOnly(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
+function fmtNum(n: number | null | undefined, digits = 1): string {
+  if (n == null || isNaN(Number(n))) return '-';
+  return Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  const clean = (hex || '#303030').replace('#', '');
-  return [
-    parseInt(clean.substring(0, 2), 16) || 48,
-    parseInt(clean.substring(2, 4), 16) || 48,
-    parseInt(clean.substring(4, 6), 16) || 48,
-  ];
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
-// ── PDF Generator ───────────────────────────────────────────
+function formatDuration(minutes: number): string {
+  if (!minutes || minutes < 0) return '-';
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+// ── Generator ────────────────────────────────────────────────
 
 export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData): Promise<void> {
-  try {
-  const branding = await fetchPdfBranding();
-  const primaryRgb = hexToRgb(branding.primary_color || DEFAULT_PDF_BRANDING.primary_color);
-  const accentRgb = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
-  const headerBgRgb = hexToRgb(branding.header_bg_color || DEFAULT_PDF_BRANDING.header_bg_color);
-  const logoB64 = await loadLogoDarkBase64();
-
-  const doc = new jsPDF('landscape', 'mm', 'letter');
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = LAYOUT.PAGE_MARGIN;
-  const contentW = pageW - margin * 2;
-  const reportDate = new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  });
-  const formNum = FORM_NUMBERS['patrol_tracking'] || 'FORM PS-210';
 
-  let yPos: number = margin;
+  // One PDF per generate call; when multiple units are selected we emit
+  // one per unit as page groups — simplest flow is: loop trails, each
+  // trail gets its own header/summary/breadcrumb section with addPage()
+  // between them. For a single unit the filename uses that unit; for
+  // multi-unit we use "multi".
+  const firstTrail = data.trails[0];
 
-  // Add watermark to the first page (newPage() handles subsequent pages)
-  addConfidentialWatermark(doc);
-  // @ts-expect-error jsPDF GState — safety reset after watermark
-  doc.setGState(new doc.GState({ opacity: 1.0 }));
+  for (let ti = 0; ti < data.trails.length; ti++) {
+    const trail = data.trails[ti];
+    if (ti > 0) doc.addPage();
+    let y = 40;
 
-  // ── Utility: add header/footer to each page ──────────
-  // Page 1 = cover (no top header bar — it has its own centered layout)
-  // Pages 2+ = dark header bar with logo + text
-  function addHeaderFooter(pageNum: number, totalPages: number) {
-    // Only draw the top header bar on pages 2+
-    if (pageNum > 1) {
-      // Dark gray header bar
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(0, 0, pageW, 14, 'F');
-
-      // Logo in header
-      if (logoB64) {
-        try {
-          doc.addImage(logoB64, 'PNG', margin, 2, 12, 10);
-        } catch { /* ignore */ }
-      }
-
-      const textX = logoB64 ? margin + 14 : margin;
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
-      doc.setFont('helvetica', 'bold');
-      doc.text(sanitizePdfText(branding.report_header_text).toUpperCase(), textX, 6);
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setFont('helvetica', 'normal');
-      doc.text('PATROL DIVISION', textX, 10);
-      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-      doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
-
-      // Accent strip
-      doc.setFillColor(...primaryRgb);
-      doc.rect(0, 14, pageW / 2, 1, 'F');
-      doc.setFillColor(...accentRgb);
-      doc.rect(pageW / 2, 14, pageW / 2, 1, 'F');
-    }
-
-    // Footer on ALL pages. Pulled up 5mm from the bottom edge so the
-    // entire footer bar sits inside the printer SAFE PRINT ZONE (typical
-    // no-print margin is 3-6mm). Previous position (flush to bottom edge)
-    // was being clipped on cheaper office printers.
-    const footerH = 8;
-    const SAFE_PRINT_EDGE_BOTTOM = 5;
-    const footerY = pageH - footerH - SAFE_PRINT_EDGE_BOTTOM;
-    doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
-    doc.rect(SAFE_PRINT_EDGE_BOTTOM, footerY, pageW - 2 * SAFE_PRINT_EDGE_BOTTOM, footerH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(SAFE_PRINT_EDGE_BOTTOM, footerY, pageW - SAFE_PRINT_EDGE_BOTTOM, footerY);
-    doc.setTextColor(...COLOR.TEXT_MUTED);
-    doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
-    doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.text(sanitizePdfText(`${formNum}  |  INTERNAL USE ONLY  |  Page ${pageNum} of ${totalPages}`), margin, footerY + footerH / 2 + 0.5);
-    doc.text(sanitizePdfText(`GENERATED: ${reportDate.toUpperCase()}`), pageW - margin, footerY + footerH / 2 + 0.5, { align: 'right' });
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  }
-
-  // ── Utility: draw a section header bar. Matches the incident-report
-  // styling from pdfGenerator.ts#openAutoSection — same fill color, same
-  // text size, same content pad below the bar — so patrol tracking reads
-  // visually consistent with every other report type.
-  function drawSectionHeader(title: string) {
-    const barH = SPACING.SECTION_HEADER_H;
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(margin, yPos, contentW, barH, 'F');
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    // ── Header ────────────────────────────────────────────
     doc.setFont('helvetica', 'bold');
-    // Vertically center text using cap-height formula matching openAutoSection
-    const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET + 1, yPos + (barH + capH) / 2);
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    yPos += barH + SPACING.SECTION_CONTENT_PAD;
-  }
+    doc.setFontSize(16);
+    doc.text(asciify('RMPG FLEX — PATROL TRACKING REPORT'), marginX, y);
+    y += 22;
 
-  // ── Utility: draw table column headers. Matches the incident-report
-  // styling from pdfGenerator.ts#addTableWithShading — light slate fill
-  // with dark text, thin border matching inner dividers.
-  // Backs up yPos by SECTION_CONTENT_PAD so the column-header bar sits
-  // FLUSH against the section title bar above it (matches LINKED PERSONS
-  // / LINKED VEHICLES look). Patrol tracking always calls this
-  // immediately after drawSectionHeader so the subtraction is safe.
-  function drawColumnHeaders(cols: { label: string; w: number }[]) {
-    yPos -= SPACING.SECTION_CONTENT_PAD;
-    const hdrH = 5;
-    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
-    doc.rect(margin, yPos, contentW, hdrH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.rect(margin, yPos, contentW, hdrH);
-    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
-    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    const unitLabel = `${trail.call_sign} - ${trail.officer_name}${trail.badge_number ? ` (Badge ${trail.badge_number})` : ''}`;
+    doc.text(`Unit: ${unitLabel}`, marginX, y);
+    y += 14;
+
+    const startLabel = data.query.startDate
+      ? formatDayOnly(data.query.startDate)
+      : `Last ${data.query.hours} hours`;
+    const endLabel = data.query.endDate ? formatDayOnly(data.query.endDate) : 'now';
+    doc.text(`Period: ${startLabel} to ${endLabel}`, marginX, y);
+    y += 14;
+    doc.text(`Generated: ${new Date().toLocaleString()}`, marginX, y);
+    y += 22;
+
+    // ── Summary ───────────────────────────────────────────
     doc.setFont('helvetica', 'bold');
-    const capH = FONT.SIZE_TABLE_HEADER * 0.35;
-    const textY = yPos + (hdrH + capH) / 2;
-    let xOff = margin;
-    for (const col of cols) {
-      doc.text(col.label.toUpperCase(), xOff + 1, textY);
-      xOff += col.w;
-    }
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    yPos += hdrH + 1;
-  }
+    doc.setFontSize(11);
+    doc.text('SUMMARY', marginX, y);
+    y += 4;
+    doc.setLineWidth(0.5);
+    doc.line(marginX, y, pageW - marginX, y);
+    y += 14;
 
-  // ── Utility: new page with proper yPos ──────────────
-  function newPage() {
-    doc.addPage();
-    addConfidentialWatermark(doc);
-    // @ts-expect-error jsPDF GState — safety reset after watermark
-    doc.setGState(new doc.GState({ opacity: 1.0 }));
-    yPos = margin + 18; // after header + accent strip
-  }
-
-  // ── Utility: check space and maybe new page ────────
-  function ensureSpace(needed: number) {
-    if (yPos + needed > pageH - LAYOUT.FOOTER_HEIGHT - 5) {
-      newPage();
-    }
-  }
-
-  // ════════════════════════════════════════════════════════
-  // Cover Page — Professional centered logo + bold title
-  // ════════════════════════════════════════════════════════
-
-  // White background with accent strip at top
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, pageW, 60, 'F');
-  doc.setFillColor(...primaryRgb);
-  doc.rect(0, 0, pageW, 2, 'F');
-
-  // Centered logo — one large logo as primary header element
-  if (logoB64) {
-    try {
-      const logoSize = 30;
-      const logoX = (pageW - logoSize) / 2;
-      doc.addImage(logoB64, 'PNG', logoX, 6, logoSize, logoSize);
-    } catch { /* ignore */ }
-  }
-
-  // Bold centered agency name
-  const titleY = logoB64 ? 42 : 18;
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text(sanitizePdfText(branding.report_header_text), pageW / 2, titleY, { align: 'center' });
-
-  doc.setFontSize(10);
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(sanitizePdfText(branding.report_subheader_text), pageW / 2, titleY + 6, { align: 'center' });
-
-  // Bold report title
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...primaryRgb);
-  doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
-
-  doc.setFontSize(7);
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setTextColor(...COLOR.TEXT_MUTED);
-  doc.text(`${formNum}  |  ${FORM_REVISION}`, pageW / 2, titleY + 19, { align: 'center' });
-
-  // Accent strip divider
-  const stripY = titleY + 22;
-  doc.setFillColor(...primaryRgb);
-  doc.rect(margin, stripY, contentW / 2, 1.2, 'F');
-  doc.setFillColor(...accentRgb);
-  doc.rect(margin + contentW / 2, stripY, contentW / 2, 1.2, 'F');
-
-  yPos = stripY + 6;
-
-  // Title bar — light background with dark text
-  drawSectionHeader('Report Details');
-
-  // Report metadata
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-
-  const startLabel = data.query.startDate
-    ? formatDate(data.query.startDate)
-    : `LAST ${data.query.hours} HOURS`;
-  const endLabel = data.query.endDate
-    ? formatDate(data.query.endDate)
-    : 'NOW';
-
-  const metaLines = [
-    ['REPORT PERIOD:', `${startLabel.toUpperCase()} -- ${endLabel.toUpperCase()}`],
-    ['UNITS TRACKED:', String(data.total_units)],
-    ['TOTAL BREADCRUMBS:', String(data.total_points)],
-    ['GENERATED:', reportDate.toUpperCase()],
-  ];
-
-  for (const [label, value] of metaLines) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(label, margin + 4, yPos);
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(sanitizePdfText(value), margin + 42, yPos);
-    yPos += SPACING.FIELD_ROW_ADVANCE;
-  }
-  yPos += 6;
-
-  // ── Per-Unit Summary Cards ─────────────────────────
-  drawSectionHeader('Unit Summary');
-
-  for (const trail of data.trails) {
-    ensureSpace(25);
-
-    // Unit header line — light bg with accent left edge
-    doc.setFillColor(...primaryRgb);
-    doc.rect(margin, yPos, 2, 6, 'F');
-    doc.setFillColor(245, 245, 250);
-    doc.rect(margin + 2, yPos, contentW - 2, 6, 'F');
-    doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(0.2);
-    doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.setFontSize(8);
-    doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.text(sanitizePdfText(`${trail.call_sign}  --  ${trail.officer_name}  (BADGE: ${trail.badge_number || 'N/A'})`).toUpperCase(), margin + 5, yPos + 4.2);
-    yPos += 8;
-
-    // Stats grid
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-
-    const stats = trail.stats;
+    const s = trail.stats;
     const zonesCount = trail.zone_coverage ? Object.keys(trail.zone_coverage).length : 0;
-    const movingPct = stats.total_points > 0 ? Math.round((stats.moving_points / stats.total_points) * 100) : 0;
-    const sourceStr = stats.source_breakdown
-      ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-      : '';
-    const statItems = [
-      `DISTANCE: ${stats.total_distance_miles} MI`,
-      `DURATION: ${stats.duration_minutes} MIN`,
-      `POINTS: ${stats.total_points}`,
-      `MOVING: ${stats.moving_points} (${movingPct}%)`,
-      `MAX SPEED: ${stats.max_speed_mph} MPH`,
-      `AVG SPEED: ${stats.avg_speed_mph} MPH`,
-      `CALLS: ${trail.response_segments.length}`,
-      `ZONES: ${zonesCount}`,
-      ...(sourceStr ? [`SOURCES: ${sourceStr}`] : []),
+    const movingPct = s.total_points > 0 ? Math.round((s.moving_points / s.total_points) * 100) : 0;
+
+    const cells: [string, string][] = [
+      ['Total Points',     String(s.total_points)],
+      ['Total Miles',      fmtNum(s.total_distance_miles, 2)],
+      ['Duration',         formatDuration(s.duration_minutes)],
+      ['Max Speed',        `${fmtNum(s.max_speed_mph, 1)} mph`],
+      ['Avg Speed',        `${fmtNum(s.avg_speed_mph, 1)} mph`],
+      ['Moving %',         `${movingPct}%`],
+      ['Calls Responded',  String(trail.response_segments.length)],
+      ['Zones Covered',    String(zonesCount)],
     ];
-
-    // 4 items per row
-    const colW = contentW / 4;
-    const rowCount = Math.ceil(statItems.length / 4);
-    for (let i = 0; i < statItems.length; i++) {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      doc.text(sanitizePdfText(statItems[i]), margin + 4 + col * colW, yPos + row * 4.5);
-    }
-    yPos += rowCount * 4.5 + 3;
-  }
-
-  // ════════════════════════════════════════════════════════
-  // Detail Pages — per-unit breadcrumb table
-  // ════════════════════════════════════════════════════════
-
-  for (const trail of data.trails) {
-    newPage();
-
-    // Section header — light bg
-    drawSectionHeader(sanitizePdfText(`${trail.call_sign}  --  ${trail.officer_name}  |  Breadcrumb Detail`));
-
-    // Table headers — expanded with Date/Time, Beat, Sector, Zone, Call Type, Source
-    const cols = [
-      { label: 'Date/Time', w: 24 },
-      { label: 'Beat', w: 10 },
-      { label: 'Sector', w: 14 },
-      { label: 'Zone', w: 16 },
-      { label: 'Road', w: 22 },
-      { label: 'Cross St', w: 18 },
-      { label: 'Speed', w: 10 },
-      { label: 'Hdg', w: 8 },
-      { label: 'Src', w: 8 },
-      { label: 'Status', w: 14 },
-      { label: 'Call #', w: 14 },
-      { label: 'Call Type', w: 16 },
-      { label: 'Dist (mi)', w: 12 },
-      { label: 'Lat/Lng', w: 18 },
-    ];
-
-    // Adjust widths to fit content width
-    const totalColW = cols.reduce((s, c) => s + c.w, 0);
-    const scale = contentW / totalColW;
-    cols.forEach(c => { c.w = c.w * scale; });
-
-    function drawBreadcrumbHeaders() {
-      drawColumnHeaders(cols);
-    }
-
-    drawBreadcrumbHeaders();
-
-    // Table rows
-    doc.setFontSize(5.5);
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-
-    // Sample points for readability — if > 300 points, sample every Nth
-    const maxRows = 300;
-    const sampleRate = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
-
-    for (let i = 0; i < trail.points.length; i += sampleRate) {
-      const pt = trail.points[i];
-
-      ensureSpace(5);
-      if (yPos === margin + 18) {
-        // After page break, redraw headers
-        drawBreadcrumbHeaders();
-      }
-
-      // Zebra striping
-      const rowIdx = Math.floor(i / sampleRate);
-      if (rowIdx % 2 === 0) {
-        doc.setFillColor(...COLOR.BG_ZEBRA);
-        doc.rect(margin, yPos, contentW, 4, 'F');
-      }
-
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      let xOff = margin;
-
-      // Extract beat code and sector from zone string (e.g., "Riverton D2" → sector "D", beat "2")
-      const beatCode = pt.beat_code || 'N/A';
-      const zoneParts = pt.zone || 'N/A';
-      // beat_code is the full identifier; zone is the area label
-      const sector = beatCode !== 'N/A' ? beatCode.replace(/[0-9]/g, '') : 'N/A';
-
-      const rowData = [
-        formatDateTime(pt.time).toUpperCase(),                           // Date/Time
-        beatCode.toUpperCase(),                                          // Beat
-        sector.toUpperCase(),                                            // Sector
-        (typeof zoneParts === 'string' ? zoneParts : String(zoneParts)).toUpperCase(), // Zone
-        (pt.road_name || 'N/A').toUpperCase(),                             // Road
-        (pt.nearest_intersection || 'N/A').toUpperCase(),                  // Cross St
-        pt.speed_mph != null ? `${pt.speed_mph}` : 'N/A',                // Speed
-        (pt.heading_cardinal || 'N/A').toUpperCase(),                      // Heading
-        (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
-        (pt.status || 'N/A').replace(/_/g, ' ').toUpperCase(),            // Status
-        (pt.current_call_number || 'N/A').toUpperCase(),                   // Call #
-        (pt.current_call_type || 'N/A').replace(/_/g, ' ').toUpperCase(), // Call Type
-        pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : 'N/A',  // Dist
-        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : 'N/A',  // Lat/Lng
-      ];
-
-      for (let ci = 0; ci < cols.length; ci++) {
-        doc.text(sanitizePdfText(rowData[ci]), xOff + 0.8, yPos + 3, { maxWidth: cols[ci].w - 1.5 });
-        xOff += cols[ci].w;
-      }
-
-      yPos += 4.5;
-    }
-
-    if (sampleRate > 1) {
-      yPos += 2;
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.setFontSize(5.5);
-      doc.text(`* Showing every ${sampleRate}${sampleRate === 2 ? 'nd' : sampleRate === 3 ? 'rd' : 'th'} point (${trail.points.length} total breadcrumbs)`, margin, yPos);
-      yPos += 5;
-    }
-
-    // ── Response Time Segments ──────────────────────────
-    if (trail.response_segments.length > 0) {
-      ensureSpace(30); // header (10) + col headers (6) + at least 2 rows (10)
-      drawSectionHeader('Response Time Segments');
-
-      // Response table headers
-      const rCols = [
-        { label: 'Call #', w: 22 },
-        { label: 'Type', w: 30 },
-        { label: 'Priority', w: 14 },
-        { label: 'Dispatched', w: 22 },
-        { label: 'On Scene', w: 22 },
-        { label: 'Response Time', w: 20 },
-        { label: 'Distance', w: 16 },
-        { label: 'Breadcrumbs', w: 16 },
-      ];
-      const rTotal = rCols.reduce((s, c) => s + c.w, 0);
-      const rScale = contentW / rTotal;
-      rCols.forEach(c => { c.w = c.w * rScale; });
-
-      drawColumnHeaders(rCols);
-
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-
-      for (let si = 0; si < trail.response_segments.length; si++) {
-        const seg = trail.response_segments[si];
-        ensureSpace(5);
-
-        if (si % 2 === 0) {
-          doc.setFillColor(...COLOR.BG_ZEBRA);
-          doc.rect(margin, yPos, contentW, 4.2, 'F');
-        }
-
-        let rxOff = margin;
-        const rRowData = [
-          (seg.call_number || 'N/A').toUpperCase(),
-          (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
-          `P${seg.priority}`.toUpperCase(),
-          seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
-          seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
-          seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',
-          seg.response_distance_miles != null ? `${seg.response_distance_miles} MI` : 'N/A',
-          String(seg.breadcrumb_count || 0),
-        ];
-
-        for (let ci = 0; ci < rCols.length; ci++) {
-          doc.text(sanitizePdfText(rRowData[ci]), rxOff + 1, yPos + 3, { maxWidth: rCols[ci].w - 1.5 });
-          rxOff += rCols[ci].w;
-        }
-        yPos += 4.5;
+    if (s.source_breakdown) {
+      for (const [src, n] of Object.entries(s.source_breakdown)) {
+        cells.push([src, `${n} pts`]);
       }
     }
 
-    // ── Zone Coverage Summary ──────────────────────────
-    const zc = trail.zone_coverage || {};
-    if (Object.keys(zc).length > 0) {
-      ensureSpace(30); // header (10) + col headers (6) + at least 2 rows (10)
-      drawSectionHeader('Zone Coverage Summary');
+    doc.setFontSize(10);
+    const colW = (pageW - marginX * 2) / 2;
+    for (let i = 0; i < cells.length; i++) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = marginX + col * colW;
+      const rowY = y + row * 16;
+      doc.setFont('helvetica', 'bold');
+      doc.text(cells[i][0] + ':', x, rowY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(cells[i][1], x + 110, rowY);
+    }
+    y += Math.ceil(cells.length / 2) * 16 + 10;
 
-      const zCols = [
-        { label: 'Beat', w: 18 },
-        { label: 'Beat Code', w: 24 },
-        { label: 'Area / Zone', w: 36 },
-        { label: 'Points', w: 16 },
-        { label: 'Time Spent', w: 22 },
-        { label: '% of Shift', w: 18 },
-      ];
-      const zTotal = zCols.reduce((s, c) => s + c.w, 0);
-      const zScale = contentW / zTotal;
-      zCols.forEach(c => { c.w = c.w * zScale; });
+    // ── Breadcrumb table ──────────────────────────────────
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(`BREADCRUMBS (${trail.points.length})`, marginX, y);
+    y += 4;
+    doc.line(marginX, y, pageW - marginX, y);
+    y += 14;
 
-      drawColumnHeaders(zCols);
+    // Column layout (points; total ≈ 595pt ≤ landscape content width ~712pt)
+    const cDate   = marginX;
+    const cBeat   = marginX + 90;
+    const cRoad   = marginX + 140;
+    const cSpd    = marginX + 235;
+    const cHdg    = marginX + 270;
+    const cSrc    = marginX + 295;
+    const cStat   = marginX + 345;
+    const cCall   = marginX + 400;
+    const cDist   = marginX + 470;
+    const cLL     = marginX + 505;
 
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const drawHeader = (yy: number) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text('Date/Time', cDate, yy);
+      doc.text('Beat',      cBeat, yy);
+      doc.text('Road',      cRoad, yy);
+      doc.text('Speed',     cSpd, yy);
+      doc.text('Hdg',       cHdg, yy);
+      doc.text('Src',       cSrc, yy);
+      doc.text('Status',    cStat, yy);
+      doc.text('Call #',    cCall, yy);
+      doc.text('Dist',      cDist, yy);
+      doc.text('Lat/Lng',   cLL, yy);
+      doc.setFont('helvetica', 'normal');
+    };
+    drawHeader(y);
+    y += 12;
 
-      // Sort by time spent descending
-      const sorted = Object.entries(zc).sort(([, a], [, b]) => b.time_seconds - a.time_seconds);
-
-      for (let zi = 0; zi < sorted.length; zi++) {
-        ensureSpace(5);
-        const [beatId, zone] = sorted[zi];
-
-        if (zi % 2 === 0) {
-          doc.setFillColor(...COLOR.BG_ZEBRA);
-          doc.rect(margin, yPos, contentW, 4.2, 'F');
-        }
-
-        let zxOff = margin;
-        const zRowData = [
-          (beatId || 'N/A').toUpperCase(),
-          (zone.beat_code || 'N/A').toUpperCase(),
-          (zone.city || 'N/A').toUpperCase(),
-          String(zone.point_count || 0),
-          formatDuration(zone.time_seconds || 0).toUpperCase(),
-          `${zone.percentage || 0}%`,
-        ];
-
-        for (let ci = 0; ci < zCols.length; ci++) {
-          doc.text(sanitizePdfText(zRowData[ci]), zxOff + 1, yPos + 3, { maxWidth: zCols[ci].w - 1.5 });
-          zxOff += zCols[ci].w;
-        }
-        yPos += 4.5;
+    doc.setFontSize(8);
+    let rowsOnPage = 0;
+    for (const pt of trail.points) {
+      if (rowsOnPage >= 50 || y > pageH - 40) {
+        doc.addPage();
+        y = 40;
+        drawHeader(y);
+        y += 12;
+        rowsOnPage = 0;
       }
+
+      doc.text(formatPointTime(pt.time),                                  cDate, y);
+      doc.text((pt.beat_code || '-').toString(),                          cBeat, y);
+      doc.text(truncate(pt.road_name || '-', 20),                         cRoad, y);
+      doc.text(pt.speed_mph != null ? fmtNum(pt.speed_mph, 1) : '-',      cSpd, y);
+      doc.text((pt.heading_cardinal || '-').toString(),                   cHdg, y);
+      doc.text((pt.source || '-').toString().toUpperCase(),               cSrc, y);
+      doc.text((pt.status || '-').replace(/_/g, ' ').toUpperCase(),       cStat, y);
+      doc.text((pt.current_call_number || '-').toString(),                cCall, y);
+      doc.text(pt.cumulative_distance_miles != null ? fmtNum(pt.cumulative_distance_miles, 1) : '-', cDist, y);
+      doc.text(
+        pt.lat != null && pt.lng != null
+          ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}`
+          : '-',
+        cLL, y
+      );
+
+      y += 11;
+      rowsOnPage += 1;
     }
   }
 
-  // ── Signature Block ──────────────────────────────────
-  yPos = checkPageBreak(doc, yPos, 30);
-  yPos += 3;
-  const cw = doc.internal.pageSize.getWidth() - LAYOUT.PAGE_MARGIN * 2;
-  yPos = addSignatureBlock(doc, 'Reporting Officer', LAYOUT.PAGE_MARGIN, yPos, cw);
-
-  // ── Apply headers/footers to all pages ───────────────
-  const totalPages = doc.internal.pages.length - 1;
-  for (let p = 1; p <= totalPages; p++) {
-    doc.setPage(p);
-    addHeaderFooter(p, totalPages);
-  }
-
-  // Patrol tracking is date-based — encode rich form metadata
-  const barcodeId = `PTR-${localToday().replace(/-/g, '')}-${data.trails[0]?.call_sign || 'ALL'}`;
-  finalizePoliceReport(doc, {
-    barcode: {
-      formMetadata: {
-        form: 'PATROL-TRACKING',
-        caseNumber: barcodeId,
-        agency: 'RMPG',
-        agencyOri: 'UT0180100',
-        reportDate: localToday(),
-      },
-    },
-  });
-
-  // ── Save the PDF ─────────────────────────────────────
-  const dateStr = localToday().replace(/-/g, '');
-  const firstCallSign = data.trails[0]?.call_sign || 'ALL';
-  const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
-  doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
-  } catch (err) {
-    console.error('Patrol tracking PDF generation failed:', err);
-    throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
-  }
+  // ── Save ──────────────────────────────────────────────────
+  const today = new Date().toISOString().slice(0, 10);
+  const ident = data.total_units === 1
+    ? (firstTrail?.badge_number || firstTrail?.call_sign || 'unit')
+    : 'multi';
+  doc.save(`patrol-tracking-${ident}-${today}.pdf`);
 }
