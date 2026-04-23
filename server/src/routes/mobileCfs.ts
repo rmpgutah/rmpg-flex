@@ -103,7 +103,7 @@ router.get('/mobile/cfs/:id/challenge', (req: Request, res: Response) => {
       return;
     }
     const call = db.prepare(`
-      SELECT id, call_number, incident_type, location, pso_service_type, contract_id, status, priority, created_at
+      SELECT id, call_number, incident_type, location_address AS location, pso_service_type, contract_id, status, priority, created_at
       FROM calls_for_service WHERE id = ?
     `).get(callId) as any;
     if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
@@ -250,7 +250,7 @@ router.post('/mobile/cfs/:id/pso', authenticateMobile, (req: Request, res: Respo
       ['pso_result', 'pso_result'],
       ['process_served_to', 'process_served_to'],
       ['process_served_at', 'process_served_at'],
-      ['process_service_address', 'process_service_address'],
+      ['process_service_address', 'process_served_address'],
       ['process_service_notes', 'process_service_notes'],
     ];
     const sets: string[] = [];
