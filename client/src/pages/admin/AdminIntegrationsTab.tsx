@@ -47,6 +47,11 @@ function timeAgo(dateStr: string): string {
 // ── Third-Party API Keys Panel ──────────────────────────────
 // Lets admins set RapidAPI keys for Lead Generation, DL OCR, etc.
 const THIRD_PARTY_KEYS = [
+  {
+    key: 'google_maps_platform_api_key',
+    label: 'Google Maps Platform',
+    desc: 'Used for all enabled Google Maps Platform services, including Maps, Places, Routes, Geocoding, Weather, and related APIs',
+  },
   { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
   { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
 ] as const;
@@ -108,7 +113,7 @@ function ThirdPartyApiKeysPanel() {
     <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1c2e42]">
         <Key className="w-4 h-4 text-brand-400" />
-        <h2 className="text-sm font-semibold text-rmpg-300">Third-Party API Keys</h2>
+        <h2 className="text-sm font-semibold text-rmpg-300">API Integrations</h2>
       </div>
       <div className="p-4 space-y-4">
         {THIRD_PARTY_KEYS.map(({ key, label, desc }) => (

@@ -1789,6 +1789,7 @@ router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Resp
 // ═════════════════════════════════════════════════════════════
 
 const ALLOWED_THIRD_PARTY_KEYS = [
+  'google_maps_platform_api_key',
   'lead_gen_rapidapi_key',
   'dl_ocr_rapidapi_key',
   'plate_check_rapidapi_key',
