@@ -107,13 +107,24 @@ const toCopy = [
   latest.exe, latest.dmg, latest.blockmap_exe, latest.blockmap_dmg,
 ].filter(Boolean).map(e => e.file).concat(latest.yml);
 
+// Hyphenate spaces on copy so on-disk names match the URLs in latest.yml /
+// latest-mac.yml (electron-builder emits hyphenated URLs in the manifest
+// but writes space-separated filenames to dist/). Without this, Windows
+// auto-update 404s when fetching the .exe from the URL in the manifest.
+// YAML manifests stay as-is — their own names are already hyphen-free.
+const hyphenate = (name) => (name.endsWith('.yml') || name.endsWith('.yaml'))
+  ? name
+  : name.replace(/ /g, '-');
+
 let copied = 0;
 for (const file of toCopy) {
   const src = path.join(DIST_DIR, file);
-  const dst = path.join(DOWNLOADS_DIR, file);
+  const dstName = hyphenate(file);
+  const dst = path.join(DOWNLOADS_DIR, dstName);
   const stat = fs.statSync(src);
   fs.copyFileSync(src, dst);
-  console.log(`[DEPLOY] Copied: ${file} (${(stat.size / 1024 / 1024).toFixed(1)} MB)`);
+  const renamed = dstName !== file ? ` → ${dstName}` : '';
+  console.log(`[DEPLOY] Copied: ${file}${renamed} (${(stat.size / 1024 / 1024).toFixed(1)} MB)`);
   copied++;
 }
 
