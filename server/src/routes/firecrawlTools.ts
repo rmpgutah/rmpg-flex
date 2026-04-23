@@ -23,7 +23,14 @@ import crypto from 'crypto';
 import config from '../config';
 import multer from 'multer';
 import fs from 'fs';
-import { pathInside } from '../utils/pathSafety';
+import path from 'path';
+
+// Rebuild an upload path from filename → safe root + basename. CodeQL
+// recognizes this pattern as sanitized (js/path-injection #2732-#2734).
+function safeUploadPath(filename: string | undefined): string | null {
+  if (!filename) return null;
+  return path.join(PDF_UPLOAD_DIR, path.basename(filename));
+}
 
 // PDF upload middleware — 50MB max, temp dir
 const PDF_UPLOAD_DIR = '/tmp/rmpg-pdf-uploads';
@@ -3423,18 +3430,16 @@ router.post(
   async (req: Request, res: Response) => {
     ensureTables();
     if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
-    if (!pathInside(req.file.path, PDF_UPLOAD_DIR)) {
-      res.status(400).json({ error: 'Invalid upload path' });
-      return;
-    }
+    const safePath = safeUploadPath(req.file.filename);
+    if (!safePath) { res.status(400).json({ error: 'Invalid upload path' }); return; }
 
     try {
-      const buffer = fs.readFileSync(req.file.path);
+      const buffer = fs.readFileSync(safePath);
       const parsed = await parsePdfBuffer(buffer);
       const content = parsed.text || '';
 
       // Clean up uploaded file
-      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      try { fs.unlinkSync(safePath); } catch { /* ignore */ }
 
       const contentLower = content.toLowerCase();
       const pageCountEstimate = parsed.numpages || Math.max(1, Math.round(content.length / 3000));
@@ -6231,21 +6236,19 @@ router.post(
   async (req: Request, res: Response) => {
     ensureTables();
     if (!req.file) { res.status(400).json({ error: 'File is required' }); return; }
-    if (!pathInside(req.file.path, PDF_UPLOAD_DIR)) {
-      res.status(400).json({ error: 'Invalid upload path' });
-      return;
-    }
+    const safePath = safeUploadPath(req.file.filename);
+    if (!safePath) { res.status(400).json({ error: 'Invalid upload path' }); return; }
 
     const { output_format } = req.body as { output_format?: string };
     const format = ['markdown', 'json', 'text'].includes(output_format || '') ? output_format! : 'markdown';
 
     try {
-      const buffer = fs.readFileSync(req.file.path);
+      const buffer = fs.readFileSync(safePath);
       const parsed = await parsePdfBuffer(buffer);
       const rawText = parsed.text || '';
 
       // Clean up
-      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      try { fs.unlinkSync(safePath); } catch { /* ignore */ }
 
       let content = rawText;
       if (format === 'json') {
@@ -7876,10 +7879,8 @@ router.post(
   async (req: Request, res: Response) => {
     ensureTables();
     if (!req.file) { res.status(400).json({ error: 'PDF file is required' }); return; }
-    if (!pathInside(req.file.path, PDF_UPLOAD_DIR)) {
-      res.status(400).json({ error: 'Invalid upload path' });
-      return;
-    }
+    const safePath = safeUploadPath(req.file.filename);
+    if (!safePath) { res.status(400).json({ error: 'Invalid upload path' }); return; }
 
     const { operations } = req.body as { operations?: string };
     const ops = operations ? (typeof operations === 'string' ? JSON.parse(operations) : operations) : ['extract_text', 'count_pages'];
@@ -7887,13 +7888,13 @@ router.post(
     const filteredOps = (Array.isArray(ops) ? ops : []).filter((o: string) => validOps.includes(o));
 
     try {
-      const buffer = fs.readFileSync(req.file.path);
+      const buffer = fs.readFileSync(safePath);
       const parsed = await parsePdfBuffer(buffer);
       const md = parsed.text || '';
       const metadata = { title: parsed.info?.Title || null, author: parsed.info?.Author || null, pages: parsed.numpages || 0 };
 
       // Clean up
-      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      try { fs.unlinkSync(safePath); } catch { /* ignore */ }
 
       const results: any = {};
       if (filteredOps.includes('extract_text')) results.text = md.substring(0, 50000);

@@ -6,17 +6,17 @@ import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { ToastProvider } from './components/ToastProvider';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
+import { InstallCoachingModal } from './components/InstallCoachingModal';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
+import { useStandalone } from './hooks/useStandalone';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
-// MapPage (Google Maps) retired 2026-04-19 — Google API keys revoked.
-// /map redirects to /map-v2 (OpenLayers). Phase 5 will delete pages/map/.
-const MapPageV2 = lazyRetry(() => import('./pages/map-v2'));
+const MapPage = lazyRetry(() => import('./pages/map'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
@@ -72,6 +72,10 @@ const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
 const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
 const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
 const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
+const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
+const WirelessAttacksPage = lazyRetry(() => import('./pages/recon-connect/WirelessAttacksPage'));
+const ExploitsPage = lazyRetry(() => import('./pages/recon-connect/ExploitsPage'));
+const CategoryRoute = lazyRetry(() => import('./pages/recon-connect/CategoryRoute'));
 const ArrestRecordsPage = lazyRetry(() => import('./pages/ArrestRecordsPage'));
 const EmailPage = lazyRetry(() => import('./pages/EmailPage'));
 const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
@@ -83,6 +87,7 @@ const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
+const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -173,6 +178,13 @@ function NotFoundPage() {
   );
 }
 
+/** Redirects installed-PWA phone users landing on `/` to `/mobile`. */
+function HomeRedirect({ children }: { children: React.ReactNode }) {
+  const { isStandalone, isMobileViewport } = useStandalone();
+  if (isStandalone && isMobileViewport) return <Navigate to="/mobile" replace />;
+  return <>{children}</>;
+}
+
 /** Per-route error boundary wrapper for lazy-loaded routes */
 function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
@@ -189,6 +201,7 @@ function AppRoutes() {
     <>
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
+      {isAuthenticated && <InstallCoachingModal />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>
         <Routes>
           {/* Public */}
@@ -200,6 +213,7 @@ function AppRoutes() {
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
+          <Route path="/mobile" element={<ProtectedRoute><RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary></ProtectedRoute>} />
 
           {/* Protected routes with Layout */}
           <Route
@@ -209,10 +223,10 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
+            <Route path="/" element={<HomeRedirect>{window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />}</HomeRedirect>} />
             <Route path="/dispatch" element={<DispatchPage />} />
-            <Route path="/map" element={<Navigate to="/map-v2" replace />} />
-            <Route path="/map-v2" element={<RouteErrorBoundary><MapPageV2 /></RouteErrorBoundary>} />
+            <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
+            <Route path="/map-v2" element={<Navigate to="/map" replace />} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
@@ -251,6 +265,10 @@ function AppRoutes() {
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
             <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />
+            <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
+            <Route path="/recon-connect/wireless" element={<RouteErrorBoundary><WirelessAttacksPage /></RouteErrorBoundary>} />
+            <Route path="/recon-connect/exploits" element={<RouteErrorBoundary><ExploitsPage /></RouteErrorBoundary>} />
+            <Route path="/recon-connect/c/:slug" element={<RouteErrorBoundary><CategoryRoute /></RouteErrorBoundary>} />
             <Route path="/arrest-records" element={<RouteErrorBoundary><ArrestRecordsPage /></RouteErrorBoundary>} />
             <Route path="/email" element={<RouteErrorBoundary><EmailPage /></RouteErrorBoundary>} />
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />

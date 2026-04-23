@@ -78,7 +78,11 @@ import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrict
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useMapRouting } from '../../hooks/useMapRouting';
+import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
+import { usePersistedState } from '../../hooks/usePersistedState';
+import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
+import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
+import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
@@ -122,6 +126,14 @@ import PerimeterToolsPanel from './components/PerimeterToolsPanel';
 import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
+import HeatmapLegend from './components/HeatmapLegend';
+import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
+import RouteComparePanel from './components/RouteComparePanel';
+import { useMapHotspots } from './hooks/useMapHotspots';
+import { useMapDimBase } from './hooks/useMapDimBase';
+import { useMapIdleZones } from './hooks/useMapIdleZones';
+import { computeTrailStats, formatTrailStats, downloadTrailAsGpx } from './utils/trailStats';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
@@ -289,9 +301,10 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Heat map state
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [showTrackingLines, setShowTrackingLines] = useState(true);
+  // Heat map state — overlay toggles persist across sessions so officers
+  // don't have to re-enable their usual layers every shift.
+  const [showHeatmap, setShowHeatmap] = usePersistedState<boolean>('rmpg_map_showHeatmap', false);
+  const [showTrackingLines, setShowTrackingLines] = usePersistedState<boolean>('rmpg_map_showTrackingLines', true);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
@@ -329,7 +342,7 @@ export default function MapPage() {
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
-  const [breadcrumbHours, setBreadcrumbHours] = useState(8);
+  const [breadcrumbHours, setBreadcrumbHours] = useState(24);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
@@ -339,7 +352,62 @@ export default function MapPage() {
   const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
-  const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
+  const [playbackTrailsRaw, setPlaybackTrailsRaw] = useState<PlaybackTrail[]>([]);
+
+  // Breadcrumb fetch-window presets. Labels are compact per operator request
+  // (24h / 48h / 7d / 14d / 21d / 1mo / 3mo / 1y). Values are hours — the
+  // server /dispatch/gps/trails endpoint still takes ?hours= so upstream
+  // doesn't need to change. Month = 30d, year = 365d rounded in hours.
+  const BREADCRUMB_HOUR_PRESETS: ReadonlyArray<{ hours: number; label: string }> = [
+    { hours: 24,   label: '24h' },
+    { hours: 48,   label: '48h' },
+    { hours: 168,  label: '7d' },
+    { hours: 336,  label: '14d' },
+    { hours: 504,  label: '21d' },
+    { hours: 720,  label: '1mo' },
+    { hours: 2160, label: '3mo' },
+    { hours: 8760, label: '1y' },
+  ];
+
+  // Trail scrubber — lets dispatchers narrow the rendered trails to a
+  // time sub-window without a re-fetch. Values are "hours ago relative to
+  // now": fromH is the older edge (larger), toH is the newer edge (smaller),
+  // so [fromH=8, toH=0] means "last 8h through now". Default matches
+  // breadcrumbHours so the scrubber starts showing everything and the
+  // dispatcher narrows from there.
+  const [trailWindowFromH, setTrailWindowFromH] = useState<number>(breadcrumbHours);
+  const [trailWindowToH, setTrailWindowToH] = useState<number>(0);
+
+  // Keep the scrubber's "from" handle aligned with the fetched window —
+  // if the user bumps breadcrumbHours from 8 to 24, extend the scrubber
+  // range too so they can actually see the newer data.
+  useEffect(() => {
+    setTrailWindowFromH((prev) => (prev > breadcrumbHours ? breadcrumbHours : prev));
+  }, [breadcrumbHours]);
+
+  // Derived, window-filtered view of the trails. Render effects read this;
+  // the fetch effect writes the unfiltered Raw state. Filter is cheap for
+  // typical point counts (≤2k per unit), so recomputing on every scrubber
+  // drag is fine — no debounce needed.
+  const playbackTrails = useMemo<PlaybackTrail[]>(() => {
+    if (playbackTrailsRaw.length === 0) return playbackTrailsRaw;
+    const now = Date.now();
+    const windowStart = now - trailWindowFromH * 3600 * 1000;
+    const windowEnd = now - trailWindowToH * 3600 * 1000;
+    // Fast path: default window covers everything.
+    if (trailWindowFromH >= breadcrumbHours && trailWindowToH <= 0) {
+      return playbackTrailsRaw;
+    }
+    return playbackTrailsRaw
+      .map((t) => {
+        const filtered = t.points.filter((p) => {
+          const ts = Date.parse(p.time);
+          return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
+        });
+        return { ...t, points: filtered };
+      })
+      .filter((t) => t.points.length > 0);
+  }, [playbackTrailsRaw, trailWindowFromH, trailWindowToH, breadcrumbHours]);
   const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -368,7 +436,82 @@ export default function MapPage() {
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
-  const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
+  // Multi-unit routing: when multiple units are assigned to a call, show an
+  // ETA-colored polyline for each simultaneously (green=fastest, amber=mid,
+  // red=slowest) so the dispatcher can see who's closest at a glance.
+  // Each Route click in the call info window adds to the current set rather
+  // than replacing — clicking Route on unit B while unit A is already routed
+  // shows both polylines.
+  const { activeRoutes, routeLoading, showRoute, clearAllRoutes, updateOrigin } =
+    useMultiUnitRouting({ map: mapInstanceRef.current });
+
+  // Auto-pan the map to newly-dispatched P1 calls so dispatchers don't miss
+  // high-priority events while looking at another part of the map. Existing
+  // P1s at page-load do NOT trigger a pan — only calls that arrive after
+  // this mount. No-op until the Map instance is ready.
+  useAutoPanToP1(mapInstanceRef.current, calls);
+
+  // Audible chirp when a new P1 dispatches — paired with the auto-pan above
+  // so dispatchers who aren't looking at the map still get cued. Defaults on;
+  // user can toggle via localStorage key `rmpg_map_p1AudioEnabled`.
+  const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
+  useP1AudioAlert(calls, { enabled: p1AudioEnabled });
+
+  // Hotspot markers — numbered red pins at the top-5 heatmap peaks. Only
+  // rendered when the basic heatmap layer is on (Advanced heatmap has its
+  // own built-in cluster overlay). Reuses heatmapData — no extra fetch.
+  useMapHotspots({
+    mapInstanceRef,
+    data: heatmapData,
+    enabled: showHeatmap && !advancedHeatmapEnabled,
+    mode: heatmapMode === 'risk' ? 'risk' : 'calls',
+    topN: 5,
+  });
+
+  // Dim-base mode: slightly darken the base tiles when the heatmap is on
+  // so hot peaks pop without muting our own marker colors. Toggle persists.
+  const [dimBaseEnabled, setDimBaseEnabled] = usePersistedState<boolean>('rmpg_map_dimBaseEnabled', true);
+  useMapDimBase({
+    mapInstanceRef,
+    enabled: dimBaseEnabled && showHeatmap,
+    opacity: 0.35,
+  });
+
+  // Idle-zone detection: highlight stretches >=10min where a unit stayed
+  // within ~50m as orange circles. Reuses playbackTrails — pure client-side.
+  const [showIdleZones, setShowIdleZones] = usePersistedState<boolean>('rmpg_map_showIdleZones', false);
+
+  // Route comparison — pick two units from the active breadcrumb set and see
+  // side-by-side stats. Visibility is session-only; IDs are not persisted
+  // because their meaning depends on who's on shift right now.
+  const [showRouteCompare, setShowRouteCompare] = useState(false);
+  const [compareUnitA, setCompareUnitA] = useState<string | number | null>(null);
+  const [compareUnitB, setCompareUnitB] = useState<string | number | null>(null);
+  useMapIdleZones({
+    mapInstanceRef,
+    trails: playbackTrails,
+    enabled: showIdleZones && showBreadcrumbs,
+    minIdleSec: 600,
+    clusterRadiusM: 50,
+  });
+
+  // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
+  // F=field interviews, D=daylight, I=incidents, E=enforcement, ?=help.
+  // No-op when an input is focused or a modifier key is held.
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  useMapKeyboardShortcuts(
+    {
+      toggleHeatmap: () => setShowHeatmap((v) => !v),
+      toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
+      toggleClustering: () => setClusteringEnabled((v) => !v),
+      togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
+      toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
+      toggleDaylight: () => setShowDaylight((v) => !v),
+      toggleIncidentReports: () => setShowIncidentReports((v) => !v),
+      toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
+    },
+    () => setShowShortcutsHelp(true),
+  );
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -465,7 +608,7 @@ export default function MapPage() {
   const [showGeofences, setShowGeofences] = useState(false);
   const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
-  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+  const [clusteringEnabled, setClusteringEnabled] = usePersistedState<boolean>('rmpg_map_clusteringEnabled', false);
 
   // Separate marker tracking for clustering & drag dispatch
   const unitMarkersMapRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
@@ -478,13 +621,14 @@ export default function MapPage() {
     setIntelLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   };
 
-  // New tactical layer toggles
-  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
-  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
+  // New tactical layer toggles — persist across reload so officers don't
+  // have to re-enable their usual layers every shift.
+  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = usePersistedState<boolean>('rmpg_map_showPatrolCheckpoints', false);
+  const [showFieldInterviews, setShowFieldInterviews] = usePersistedState<boolean>('rmpg_map_showFieldInterviews', false);
   const [fiDays, setFiDays] = useState(30);
-  const [showDwellTime, setShowDwellTime] = useState(false);
-  const [showResponseRadius, setShowResponseRadius] = useState(false);
-  const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
+  const [showDwellTime, setShowDwellTime] = usePersistedState<boolean>('rmpg_map_showDwellTime', false);
+  const [showResponseRadius, setShowResponseRadius] = usePersistedState<boolean>('rmpg_map_showResponseRadius', false);
+  const [showEnforcementClusters, setShowEnforcementClusters] = usePersistedState<boolean>('rmpg_map_showEnforcementClusters', false);
   const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
   const [enforcementDays, setEnforcementDays] = useState(90);
   const [showCoverage, setShowCoverage] = useState(false);
@@ -494,7 +638,7 @@ export default function MapPage() {
   const [repeatDays, setRepeatDays] = useState(30);
   const [repeatMinCount, setRepeatMinCount] = useState(3);
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
-  const [showDaylight, setShowDaylight] = useState(false);
+  const [showDaylight, setShowDaylight] = usePersistedState<boolean>('rmpg_map_showDaylight', false);
 
   // Historical call & incident report layers
   const [showCallHistory, setShowCallHistory] = useState(false);
@@ -502,7 +646,7 @@ export default function MapPage() {
   const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
   const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
   const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
-  const [showIncidentReports, setShowIncidentReports] = useState(false);
+  const [showIncidentReports, setShowIncidentReports] = usePersistedState<boolean>('rmpg_map_showIncidentReports', false);
   const [incidentDays, setIncidentDays] = useState(30);
   const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
   const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
@@ -843,6 +987,13 @@ export default function MapPage() {
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
       });
+
+      // Auth/quota failure can hand back a stub Map with no div — route to the
+      // existing error UI instead of crashing in monitorTileLoading.
+      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
+        setMapError('Google Maps failed to initialize — check API key / billing.');
+        return;
+      }
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
@@ -1191,6 +1342,57 @@ export default function MapPage() {
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
             onClick: () => {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
+              // Compute the 3 nearest units with GPS that are NOT already
+              // assigned to this call. Straight-line haversine — cheap enough
+              // to recompute on every info-window open (unit count is small).
+              // This intentionally ignores unit status: the dispatcher can see
+              // the status dot and make their own call on whether an on-break
+              // unit can roll. "Closest by road" would require Directions
+              // calls per unit — too expensive for a tap-to-preview panel.
+              const assignedIds = new Set(assignedUnits.map(u => String(u.id)));
+              const nearestUnits = (call.latitude != null && call.longitude != null)
+                ? units
+                    .filter(u => !assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null)
+                    .map(u => {
+                      const dLat = ((u.latitude! - call.latitude!) * Math.PI) / 180;
+                      const dLng = ((u.longitude! - call.longitude!) * Math.PI) / 180;
+                      const a = Math.sin(dLat / 2) ** 2
+                        + Math.cos((u.latitude! * Math.PI) / 180)
+                        * Math.cos((call.latitude! * Math.PI) / 180)
+                        * Math.sin(dLng / 2) ** 2;
+                      const meters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                      return { unit: u, meters };
+                    })
+                    .sort((a, b) => a.meters - b.meters)
+                    .slice(0, 3)
+                : [];
+
+              let nearestHtml = '';
+              if (nearestUnits.length > 0) {
+                nearestHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
+                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">NEAREST UNITS</div>
+                  ${nearestUnits.map(({ unit: u, meters }) => {
+                    const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
+                    const miles = (meters / 1609.344).toFixed(1);
+                    const routeBtn = (call.latitude != null && call.longitude != null)
+                      ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
+                           data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
+                           data-route-clat="${call.latitude}" data-route-clng="${call.longitude}"
+                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#a0a0a0;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           ▶ ROUTE
+                         </button>`
+                      : '';
+                    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                      <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
+                      <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
+                      <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name || '')}</span>
+                      <span style="font-size:9px;color:#6b7280;">${miles} mi</span>
+                      ${routeBtn}
+                    </div>`;
+                  }).join('')}
+                </div>`;
+              }
+
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
@@ -1237,6 +1439,7 @@ export default function MapPage() {
                   ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
                   <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
                   ${unitsHtml}
+                  ${nearestHtml}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
@@ -1445,16 +1648,18 @@ export default function MapPage() {
   }, []);
 
   // ============================================================
-  // Update Route When Routed Unit GPS Changes
+  // Update Routes When Routed Unit GPS Changes (multi-unit)
   // ============================================================
 
   useEffect(() => {
-    if (!activeRoute) return;
-    const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
-    if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
-      updateOrigin(routedUnit.latitude, routedUnit.longitude);
+    if (activeRoutes.length === 0) return;
+    for (const route of activeRoutes) {
+      const routedUnit = units.find(u => u.call_sign === route.unitCallSign);
+      if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+        updateOrigin(route.unitCallSign, routedUnit.latitude, routedUnit.longitude);
+      }
     }
-  }, [activeRoute, units, updateOrigin]);
+  }, [activeRoutes, units, updateOrigin]);
 
   // ============================================================
   // Heat Map Circles
@@ -1615,7 +1820,7 @@ export default function MapPage() {
     speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
     speedAlertMarkersRef.current = [];
 
-    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
+    if (!showBreadcrumbs) { setPlaybackTrailsRaw([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
@@ -1661,7 +1866,7 @@ export default function MapPage() {
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         if (!trails) return;
-        setPlaybackTrails(trails);
+        setPlaybackTrailsRaw(trails);
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
@@ -2873,6 +3078,29 @@ export default function MapPage() {
                     ))}
                   </div>
 
+                  {/* Dim base map toggle — darkens base tiles so heat pops */}
+                  <button
+                    onClick={() => setDimBaseEnabled(!dimBaseEnabled)}
+                    className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                      dimBaseEnabled ? 'text-red-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                    }`}
+                  >
+                    <span className="flex-1 text-left">Dim Base Map</span>
+                    {dimBaseEnabled && <span className="led-dot led-red" style={{ width: 5, height: 5 }} />}
+                  </button>
+
+                  {/* Saved filter presets */}
+                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
+                    <HeatmapPresets
+                      current={{ days: heatmapDays, mode: heatmapMode, typeFilter: heatmapTypeFilter }}
+                      onApply={(p: HeatmapPresetValue) => {
+                        setHeatmapDays(p.days);
+                        setHeatmapMode(p.mode);
+                        setHeatmapTypeFilter(p.typeFilter);
+                      }}
+                    />
+                  </div>
+
                   {/* Advanced mode toggle */}
                   <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
@@ -3360,9 +3588,10 @@ export default function MapPage() {
               </button>
               {showBreadcrumbs && (
                 <div className="px-3 py-1 space-y-1">
-                  {/* Hours selector */}
-                  <div className="flex items-center gap-1">
-                    {[2, 4, 8, 12, 24].map((h) => (
+                  {/* Hours selector — presets extend from 24h to 1y per
+                      operator request. Label abbreviates days/months/years. */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                       <button
                         key={h}
                         onClick={() => setBreadcrumbHours(h)}
@@ -3372,7 +3601,7 @@ export default function MapPage() {
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        {h}h
+                        {label}
                       </button>
                     ))}
                     <button
@@ -5383,14 +5612,218 @@ export default function MapPage() {
           </div>
         </div>}
 
+        {/* ── Keyboard Shortcuts Help (triggered by `?` key) ── */}
+        <KeyboardShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
+
+        {/* ── Breadcrumb Status Chip + Trail Stats/Export (top-left) ── */}
+        {/* Shows unit count + window + color mode; hovering reveals per-unit
+            stats (miles/duration/max-mph). Clicking EXPORT downloads one
+            .gpx file per trail into the browser downloads folder — good for
+            shift reports or legal discovery. */}
+        {showBreadcrumbs && playbackTrails.length > 0 && (
+          <div
+            className="absolute z-[999]"
+            style={{
+              top: 64,
+              left: 16,
+              background: 'rgba(6,12,20,0.92)',
+              border: '1px solid #2b2b2b',
+              padding: '4px 10px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              fontSize: 10,
+              color: '#9ca3af',
+              letterSpacing: '0.08em',
+              borderRadius: 2,
+            }}
+            title={playbackTrails
+              .map((t) => {
+                const stats = computeTrailStats(t);
+                return `${t.call_sign}: ${formatTrailStats(stats)}`;
+              })
+              .join('\n')}
+          >
+            <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
+            <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
+            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
+            <span>last {BREADCRUMB_HOUR_PRESETS.find((p) => p.hours === breadcrumbHours)?.label || `${breadcrumbHours}h`}</span>
+            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
+            <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
+            <button
+              type="button"
+              onClick={() => setShowIdleZones(!showIdleZones)}
+              style={{
+                marginLeft: 8,
+                padding: '1px 6px',
+                background: showIdleZones ? '#f59e0b30' : '#88888820',
+                border: showIdleZones ? '1px solid #f59e0b80' : '1px solid #88888850',
+                color: showIdleZones ? '#f59e0b' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Highlight stretches where a unit was stationary >10min"
+            >
+              IDLE
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                for (const trail of playbackTrails) downloadTrailAsGpx(trail);
+              }}
+              style={{
+                marginLeft: 4,
+                padding: '1px 6px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Download each unit's trail as a GPX file"
+            >
+              ⇩ GPX
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowRouteCompare((v) => !v)}
+              style={{
+                marginLeft: 4,
+                padding: '1px 6px',
+                background: showRouteCompare ? '#d4a01730' : '#88888820',
+                border: showRouteCompare ? '1px solid #d4a01780' : '1px solid #88888850',
+                color: showRouteCompare ? '#d4a017' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Compare two units' trail stats side-by-side"
+            >
+              ⇆ COMPARE
+            </button>
+          </div>
+        )}
+
+        {/* ── Route Comparison Panel (bottom-right, when toggled) ── */}
+        {showBreadcrumbs && showRouteCompare && (
+          <RouteComparePanel
+            trails={playbackTrails}
+            unitAId={compareUnitA}
+            unitBId={compareUnitB}
+            onChangeA={setCompareUnitA}
+            onChangeB={setCompareUnitB}
+            onClose={() => setShowRouteCompare(false)}
+          />
+        )}
+
+        {/* ── Trail Time-Window Scrubber (top-left, below chip) ── */}
+        {/* Two range inputs that narrow the rendered trail window without
+            re-fetching. fromH is the older edge, toH the newer one. The
+            filter runs in a useMemo, so drags feel live even on ≤2k points
+            per unit. Rendered only when there's something to scrub. */}
+        {showBreadcrumbs && playbackTrailsRaw.length > 0 && (
+          <div
+            className="absolute z-[999]"
+            style={{
+              top: 90,
+              left: 16,
+              background: 'rgba(6,12,20,0.92)',
+              border: '1px solid #2b2b2b',
+              padding: '4px 10px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              fontSize: 9,
+              color: '#9ca3af',
+              letterSpacing: '0.05em',
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 320,
+            }}
+          >
+            <span style={{ color: '#d4a017', fontWeight: 900 }}>WINDOW</span>
+            <span title="From (hours ago)" style={{ color: '#6b7280' }}>{trailWindowFromH.toFixed(1)}h</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowFromH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowFromH(Math.max(v, trailWindowToH + 0.1));
+              }}
+              aria-label="Trail window start (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span style={{ color: '#6b7280' }}>now</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowToH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowToH(Math.min(v, trailWindowFromH - 0.1));
+              }}
+              aria-label="Trail window end (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span title="To (hours ago)" style={{ color: '#6b7280' }}>{trailWindowToH.toFixed(1)}h</span>
+            <button
+              type="button"
+              onClick={() => { setTrailWindowFromH(breadcrumbHours); setTrailWindowToH(0); }}
+              style={{
+                padding: '1px 5px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Reset window to full fetched range"
+            >
+              RESET
+            </button>
+          </div>
+        )}
+
+        {/* ── Heatmap Legend (bottom-right) ── */}
+        {/* Visible whenever any heatmap variant is on; swaps gradient for
+            the "risk" mode so the legend always matches what's on the map. */}
+        {showHeatmap && (
+          <HeatmapLegend
+            mode={heatmapMode === 'risk' ? 'risk' : 'calls'}
+            hint={`last ${heatmapDays} day${heatmapDays === 1 ? '' : 's'}`}
+            position="bottom-right"
+          />
+        )}
+
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
-        {activeRoute && (
+        {/* Lists one row per active unit route; colors match the polylines
+            (green=fastest, amber=mid, red=slowest) for instant "who's closest"
+            read. Single Clear All action collapses the whole set. */}
+        {activeRoutes.length > 0 && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 200 }),
+                : { bottom: 48, left: 16, minWidth: 220 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
@@ -5399,22 +5832,51 @@ export default function MapPage() {
               boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
-                {activeRoute.unitCallSign} → {activeRoute.callNumber}
+                ROUTES ({activeRoutes.length})
               </span>
               <button
-                onClick={clearRoute}
+                onClick={clearAllRoutes}
                 style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
-                title="Clear route"
+                title="Clear all routes"
               >
                 ✕
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
-            </div>
+            {activeRoutes
+              .slice()
+              .sort((a, b) => a.durationSec - b.durationSec)
+              .map((r) => (
+                <div
+                  key={r.unitCallSign}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '3px 0',
+                    borderTop: '1px solid ' + (isLightMapStyle(mapStyle) ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'),
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      background: r.color,
+                      display: 'inline-block',
+                      borderRadius: 2,
+                      flexShrink: 0,
+                      boxShadow: `0 0 6px ${r.color}80`,
+                    }}
+                    title="Route color"
+                  />
+                  <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em', minWidth: 70 }}>
+                    {r.unitCallSign}
+                  </span>
+                  <span style={{ fontSize: 13, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{r.eta}</span>
+                  <span style={{ fontSize: 10, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999', marginLeft: 'auto' }}>{r.distance}</span>
+                </div>
+              ))}
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
             )}
@@ -5862,18 +6324,18 @@ export default function MapPage() {
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
                   <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
-                    <div className="flex gap-1">
-                      {[2, 4, 8, 12, 24].map((h) => (
+                    <div className="flex gap-1 flex-wrap">
+                      {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                         <button
                           key={h}
                           onClick={() => setBreadcrumbHours(h)}
-                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
+                          className={`flex-1 min-w-[44px] py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
                               ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
-                          {h}h
+                          {label}
                         </button>
                       ))}
                     </div>

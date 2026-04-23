@@ -1414,6 +1414,31 @@ function createTables(): void {
       FOREIGN KEY (resolved_by) REFERENCES users(id)
     )
   `).run();
+
+  // ─── GPS STALE ALERTS TABLE ───────────────────────
+  // Server-side watchdog for officer GPS heartbeat loss.
+  // Uses db.prepare().run() pattern per CLAUDE.md Gotcha #42.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS gps_stale_alerts (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id             INTEGER NOT NULL,
+      call_sign           TEXT NOT NULL,
+      officer_id          INTEGER,
+      officer_name        TEXT,
+      last_gps_at         TEXT NOT NULL,
+      stale_detected_at   TEXT NOT NULL,
+      last_escalated_at   TEXT NOT NULL,
+      escalation_level    INTEGER NOT NULL DEFAULT 1,
+      recovered_at        TEXT,
+      duration_sec        INTEGER,
+      last_lat            REAL,
+      last_lng            REAL,
+      last_source         TEXT,
+      notes               TEXT
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_open ON gps_stale_alerts(unit_id, recovered_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_time ON gps_stale_alerts(stale_detected_at)`).run();
 }
 
 /**
@@ -1880,6 +1905,42 @@ function migrateSchema(): void {
   addCol('clients', 'account_manager', 'TEXT');
   addCol('clients', 'priority_client', 'INTEGER DEFAULT 0');
   addCol('clients', 'client_since', 'TEXT');
+
+  // ── SERVE INTAKE: vendor lookup columns ──────────────────
+  addCol('clients', 'billing_code', 'TEXT');
+  addCol('clients', 'requestor_email', 'TEXT');
+  addCol('clients', 'vendor_fingerprint', 'TEXT');
+  addCol('clients', 'caller_phone', 'TEXT');
+
+  // ── SERVE INTAKE: role-tagged persons for legal parties ──
+  addCol('persons', 'role_tag', 'TEXT');        // 'defendant' | 'plaintiff' | 'attorney' | 'resident'
+  addCol('persons', 'entity_type', 'TEXT');     // 'individual' | 'organization'
+  addCol('persons', 'bar_number', 'TEXT');
+  addCol('persons', 'firm_name', 'TEXT');
+
+  // ── SERVE INTAKE: pre-planned attempt windows ─────────────
+  addCol('serve_attempts', 'planned_at', 'TEXT');
+  addCol('serve_attempts', 'window', 'TEXT');
+  addCol('serve_attempts', 'status', 'TEXT');   // 'planned' | 'attempted' | 'served' | 'failed'
+
+  // Seed ICU Investigations vendor fingerprint (idempotent — only fills null/empty fields)
+  try {
+    const existing = db.prepare("SELECT id FROM clients WHERE name LIKE 'ICU Investigations%' OR vendor_fingerprint = ? LIMIT 1").get('ICU Investigations, LLC') as any;
+    if (existing) {
+      db.prepare(`UPDATE clients SET
+        billing_code = COALESCE(NULLIF(billing_code, ''), '0175'),
+        requestor_email = COALESCE(NULLIF(requestor_email, ''), 'a1processserver@gmail.com'),
+        vendor_fingerprint = COALESCE(NULLIF(vendor_fingerprint, ''), 'ICU Investigations, LLC'),
+        caller_phone = COALESCE(NULLIF(caller_phone, ''), '(435) 986-1200')
+        WHERE id = ?`).run(existing.id);
+    } else {
+      db.prepare(`INSERT INTO clients (name, billing_code, requestor_email, vendor_fingerprint, caller_phone, status)
+        VALUES (?, ?, ?, ?, ?, 'active')`).run(
+        'ICU Investigations, LLC', '0175', 'a1processserver@gmail.com', 'ICU Investigations, LLC', '(435) 986-1200');
+    }
+  } catch (err) {
+    // Non-fatal on first run before addCol() has completed
+  }
 
   // ── UNITS — missing columns ────────────────────────────
   addCol('units', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
@@ -3146,6 +3207,53 @@ function migrateSchema(): void {
     `);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_address ON premise_alerts(address)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_coords ON premise_alerts(latitude, longitude)`);
+
+    // Utah Roads import (AGRC): authoritative street centerlines with address ranges,
+    // postal/MSAG community, ESN, ZIP, one-way, speed limit, and DOT functional class.
+    db.prepare(`CREATE TABLE IF NOT EXISTS roads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      utah_road_unique_id TEXT UNIQUE NOT NULL,
+      unique_id TEXT,
+      full_name TEXT,
+      street_name TEXT,
+      pre_dir TEXT,
+      post_type TEXT,
+      post_dir TEXT,
+      left_from INTEGER,
+      left_to INTEGER,
+      right_from INTEGER,
+      right_to INTEGER,
+      parity_left TEXT,
+      parity_right TEXT,
+      postal_community_left TEXT,
+      postal_community_right TEXT,
+      zip_left TEXT,
+      zip_right TEXT,
+      esn_left TEXT,
+      esn_right TEXT,
+      msag_community_left TEXT,
+      msag_community_right TEXT,
+      one_way TEXT,
+      posted_speed INTEGER,
+      dot_functional_class TEXT,
+      county_left TEXT,
+      county_right TEXT
+    )`).run();
+
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_street_community
+      ON roads(street_name, postal_community_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_zip_left
+      ON roads(zip_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_esn_left
+      ON roads(esn_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_esn_right
+      ON roads(esn_right)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS road_segments_geom (
+      utah_road_unique_id TEXT PRIMARY KEY,
+      geom_json TEXT NOT NULL,
+      FOREIGN KEY (utah_road_unique_id) REFERENCES roads(utah_road_unique_id)
+    )`).run();
   } catch (err) {
     console.log('[migrate] Dispatch geography tables:', (err as Error).message);
   }
@@ -3754,6 +3862,17 @@ function migrateSchema(): void {
   addCol('cases', 'assigned_employees', "TEXT DEFAULT '[]'");
   addCol('cases', 'deadline', 'TEXT');
   addCol('cases', 'sla_hours', 'INTEGER');
+
+  // ── SERVE INTAKE: civil-case metadata ─────────────────────
+  addCol('cases', 'court_case_number', 'TEXT');
+  addCol('cases', 'court_id', 'INTEGER');
+  addCol('cases', 'plaintiff_person_id', 'INTEGER');
+  addCol('cases', 'defendant_person_id', 'INTEGER');
+  addCol('cases', 'attorney_person_id', 'INTEGER');
+  addCol('cases', 'signed_filed_date', 'TEXT');
+  addCol('cases', 'response_deadline_days', 'INTEGER');
+  addCol('cases', 'amount_demanded', 'REAL');
+  addCol('cases', 'cause_of_action', 'TEXT');
 
   // ── USERS/EMPLOYEES — territory + performance fields ──────
   addCol('users', 'photo', 'TEXT');

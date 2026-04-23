@@ -549,7 +549,7 @@ export default function MenuBar({
         items: [
           { type: 'action', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate('/') },
           { type: 'action', label: 'Dispatch', icon: Radio, action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, action: () => navigate('/map-v2') },
+          { type: 'action', label: 'Map', icon: Map, action: () => navigate('/map') },
           { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
           { type: 'separator' },
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
@@ -605,7 +605,7 @@ export default function MenuBar({
         items: [
           { type: 'action', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+1', action: () => navigate('/') },
           { type: 'action', label: 'Dispatch', icon: Radio, shortcut: 'Alt+2', action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, shortcut: 'Alt+3', action: () => navigate('/map-v2') },
+          { type: 'action', label: 'Map', icon: Map, shortcut: 'Alt+3', action: () => navigate('/map') },
           { type: 'action', label: 'Records', icon: Database, shortcut: 'Alt+4', action: () => navigate('/records') },
           { type: 'action', label: 'Personnel', icon: Users, shortcut: 'Alt+5', action: () => navigate('/personnel') },
           { type: 'action', label: 'Comms', icon: MessageSquare, shortcut: 'Alt+6', action: () => navigate('/communications') },
@@ -732,6 +732,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'MicroBilt', icon: Search, action: () => navigate('/microbilt') },
           { type: 'action', label: 'Web Research', icon: Globe, action: () => navigate('/web-research') },
+          { type: 'action', label: 'Recon Connect', icon: Search, action: () => navigate('/recon-connect') },
         ],
       },
       {
@@ -834,7 +835,7 @@ export default function MenuBar({
                 // Lazy-import so the jsPDF chunk only loads when a user
                 // actually downloads the guide — keeps the login bundle lean.
                 const { generateDispatchGuidePdf } = await import('../utils/dispatchGuidePdfGenerator');
-                generateDispatchGuidePdf();
+                await generateDispatchGuidePdf();
               } catch (err) {
                 console.error('[DispatchGuide] Generation failed:', err);
               }

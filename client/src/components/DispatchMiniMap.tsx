@@ -143,6 +143,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         gestureHandling: 'cooperative',
       });
+      // Auth/quota failure leaves a stub Map whose getDiv() is undefined —
+      // route to the offline fallback rather than crashing the error boundary.
+      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
+        setError('Map load failed — check connection');
+        return;
+      }
       mapRef.current = map;
       registerMapInstance(map);
 

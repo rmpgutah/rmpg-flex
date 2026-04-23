@@ -23,7 +23,6 @@ import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { startRun, completeRun, failRun } from './scraperRunner';
 import { Semaphore } from './semaphore';
-import { logSafe } from './logSafe';
 import { broadcast } from './websocket';
 import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
 
@@ -1724,7 +1723,7 @@ async function scrapeSource(sourceKey: string): Promise<{
   const parseResult = parseWithFallback(config, fetchResult.body);
   entries = parseResult.entries;
   if (parseResult.driftSignal) {
-    console.warn(`[Warrant Scraper] Drift signal for ${logSafe(sourceKey)}: ${logSafe(parseResult.driftSignal)}`);
+    console.warn(`[Warrant Scraper] Drift signal for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String(parseResult.driftSignal ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
   }
 
   const { inserted, updated } = upsertWarrants(sourceKey, entries);
@@ -1762,7 +1761,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
         const skipRunId = startRun({ source_key: sourceKey });
         completeRun(skipRunId, { skipped_reason: 'circuit_broken' });
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to record skip run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+        console.warn(`[Warrant Scraper] Failed to record skip run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
       }
     }
     return;
@@ -1772,7 +1771,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
   try {
     runId = startRun({ source_key: sourceKey, priority: config.priority });
   } catch (e) {
-    console.warn(`[Warrant Scraper] Failed to start run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+    console.warn(`[Warrant Scraper] Failed to start run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
   }
 
   emitScraperEvent('run_started', {
@@ -1819,7 +1818,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
           sourceKey,
         );
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to persist content_hash for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+        console.warn(`[Warrant Scraper] Failed to persist content_hash for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
       }
     }
 
@@ -1851,7 +1850,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
           });
         }
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to complete run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+        console.warn(`[Warrant Scraper] Failed to complete run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
       }
     }
 
@@ -1892,7 +1891,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
       try {
         failRun(runId, { error_message: (err as Error).message });
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to record failed run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+        console.warn(`[Warrant Scraper] Failed to record failed run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
       }
     }
 
@@ -1914,7 +1913,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
 
     // Transient errors — increment counter
     const shortErr = errMsg.replace(/https?:\/\/[^\s]+/g, '...').substring(0, 100);
-    console.error(`[Warrant Scraper] ${logSafe(displayNameOf(config))}: ${logSafe(shortErr)}`);
+    console.error(`[Warrant Scraper] ${String(displayNameOf(config) ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String(shortErr ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
 
     db.prepare(`
       UPDATE warrant_scraper_config
@@ -1989,7 +1988,7 @@ function scheduleSource(sourceKey: string): void {
   // Initial scrape delayed by deterministic jitter so boot storm spreads over 20 min
   const initialTimer = setTimeout(() => {
     syncSource(sourceKey).catch(err => {
-      console.error(`[Warrant Scraper] Initial scrape error for ${logSafe(sourceKey)}: ${logSafe((err as Error).message)}`);
+      console.error(`[Warrant Scraper] Initial scrape error for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((err as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
     });
   }, jitterMs);
   if (initialTimer.unref) initialTimer.unref();
@@ -1997,7 +1996,7 @@ function scheduleSource(sourceKey: string): void {
   // Schedule recurring
   const interval = setInterval(() => {
     syncSource(sourceKey).catch(err => {
-      console.error(`[Warrant Scraper] Scrape error for ${logSafe(sourceKey)}: ${logSafe((err as Error).message)}`);
+      console.error(`[Warrant Scraper] Scrape error for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((err as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
     });
   }, intervalMs);
 

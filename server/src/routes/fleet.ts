@@ -1953,11 +1953,13 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
 router.post('/fuel/:id/receipt', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   fuelReceiptUpload.single('receipt')(req, res, (multerErr: any) => {
     const cleanup = () => {
-      const p = req.file?.path;
-      // pathInside() proves containment to CodeQL — multer paths use
-      // crypto.randomBytes filenames so they're already safe, but the
-      // analyzer treats req.file.path as tainted by upload origin.
-      if (p && pathInside(p, FUEL_RECEIPT_DIR) && fs.existsSync(p)) {
+      const filename = req.file?.filename;
+      if (!filename) return;
+      // Rebuild path from safe root + basename — CodeQL recognizes this
+      // as sanitized (basename strips traversal, join against known root
+      // prevents escape). See js/path-injection alerts #2812, #2813.
+      const p = path.join(FUEL_RECEIPT_DIR, path.basename(filename));
+      if (fs.existsSync(p)) {
         try { fs.unlinkSync(p); } catch { /* ignore */ }
       }
     };

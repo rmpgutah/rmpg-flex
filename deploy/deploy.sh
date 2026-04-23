@@ -116,6 +116,45 @@ if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$VPS_USER@$VPS_IP" "echo ok" >/de
 fi
 echo "    SSH connection OK"
 
+# ─── Deploy Lock (Gotcha #43 — prevent parallel worktree clobbers) ──
+# Holds /tmp/rmpg-deploy.lock on the VPS for the duration of this deploy.
+# A stale lock older than 15 min is auto-cleared. Other deploys running
+# concurrently fail fast instead of racing.
+LOCK_FILE="/tmp/rmpg-deploy.lock"
+LOCK_ID="$(hostname)-$$-$(date +%s)"
+LOCK_MAX_AGE_SEC=900
+
+echo ">>> Acquiring deploy lock..."
+LOCK_RESULT=$(ssh "$VPS_USER@$VPS_IP" "bash -s" <<LOCKEOF
+  set -e
+  if [ -f "$LOCK_FILE" ]; then
+    AGE=\$(( \$(date +%s) - \$(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    if [ "\$AGE" -lt "$LOCK_MAX_AGE_SEC" ]; then
+      HOLDER=\$(cat "$LOCK_FILE" 2>/dev/null || echo unknown)
+      echo "BUSY: held by \$HOLDER (age \${AGE}s)"
+      exit 1
+    else
+      echo "STALE: clearing lock (age \${AGE}s > ${LOCK_MAX_AGE_SEC}s)"
+    fi
+  fi
+  echo "$LOCK_ID" > "$LOCK_FILE"
+  echo "OK"
+LOCKEOF
+) || {
+  echo ""
+  echo "ERROR: Another deploy is in progress on the VPS."
+  echo "       $LOCK_RESULT"
+  echo ""
+  echo "If you're sure no other deploy is running, clear the stale lock:"
+  echo "  ssh $VPS_USER@$VPS_IP 'rm $LOCK_FILE'"
+  echo ""
+  exit 1
+}
+echo "    Lock acquired: $LOCK_ID"
+
+# Release lock on exit regardless of success/failure
+trap 'ssh "$VPS_USER@$VPS_IP" "[ \"\$(cat $LOCK_FILE 2>/dev/null)\" = \"$LOCK_ID\" ] && rm -f $LOCK_FILE" >/dev/null 2>&1 || true' EXIT
+
 # ─── Pre-deploy Quality Gates ────────────────────────────
 # Self-heal in worktrees: if node_modules is missing, install before gating
 # so the gate fails on *code quality*, not on setup.
