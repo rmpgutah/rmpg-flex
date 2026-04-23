@@ -988,8 +988,16 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const params: any[] = [];
 
     if (startDate && endDate) {
+      // Date-only inputs like "2026-04-22" compare lexicographically against
+      // TEXT timestamps like "2026-04-22T14:30:12.000Z"; the bare date is
+      // LESS than any time on that day, so a naive `<=` excludes the entire
+      // end date. Fix: if endDate has no time component, append end-of-day.
+      // Same defensive fix for startDate: if date-only, pin to start-of-day
+      // so rows stored as local-time (no T) still compare correctly.
+      const normalizedStart = /T|\s\d{2}:/.test(startDate) ? startDate : `${startDate}T00:00:00`;
+      const normalizedEnd   = /T|\s\d{2}:/.test(endDate)   ? endDate   : `${endDate}T23:59:59.999Z`;
       dateClause = `b.recorded_at >= ? AND b.recorded_at <= ?`;
-      params.push(startDate, endDate);
+      params.push(normalizedStart, normalizedEnd);
     } else {
       dateClause = `b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')`;
       params.push(hours);
