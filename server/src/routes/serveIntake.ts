@@ -383,7 +383,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       const m = parsed.dueDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
       if (m) dueDateObj = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10), 23, 59, 59);
     }
-    const schedule = dueDateObj ? computeDiligenceSchedule(dueDateObj, new Date(), -6) : [];
+    const UTAH_UTC_OFFSET_HOURS = -6;
+    const schedule = dueDateObj ? computeDiligenceSchedule(dueDateObj, new Date(), UTAH_UTC_OFFSET_HOURS) : [];
     if (parsed.dueDate && schedule.length === 0) warnings.push('Diligence schedule empty (due date may be in the past)');
 
     const daysRemaining = dueDateObj ? Math.max(0, Math.ceil((dueDateObj.getTime() - Date.now()) / 86_400_000)) : 0;
