@@ -227,13 +227,24 @@ router.post('/mobile/cfs/:id/narrative', authenticateMobile, (req: Request, res:
     const { content } = req.body || {};
     if (!content || !String(content).trim()) { res.status(400).json({ error: 'Narrative cannot be empty' }); return; }
     const db = getDb();
-    // Append into notes as a new timestamped line (no dedicated notes table for calls).
+    // calls_for_service.notes is a JSON-stringified array of note objects
+    // ({ id, text, author, timestamp, ... }). Parse, push, restringify — the
+    // desktop console parses the same shape, so any corruption from the
+    // earlier plain-text concat approach is recoverable by resetting to [].
     const existing = db.prepare('SELECT notes FROM calls_for_service WHERE id = ?').get(callId) as any;
-    const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const authorTag = `[PSO MOBILE / ${req.mobileAuth!.username}]`;
-    const line = `\n${stamp} ${authorTag}\n${String(content).trim()}`;
-    const newNotes = (existing?.notes || '') + line;
-    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(newNotes, callId);
+    let notes: any[] = [];
+    try {
+      const parsed = JSON.parse(existing?.notes || '[]');
+      if (Array.isArray(parsed)) notes = parsed;
+    } catch { /* keep notes = [] on corrupt input */ }
+    notes.push({
+      id: crypto.randomUUID(),
+      text: String(content).trim(),
+      author: `PSO MOBILE / ${req.mobileAuth!.username}`,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      type: 'pso_mobile_narrative',
+    });
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(JSON.stringify(notes), callId);
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
     auditLog(req, 'UPDATE', 'calls_for_service', callId, null, { field: 'notes', source: 'pso-mobile', user_id: req.mobileAuth!.userId });
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
