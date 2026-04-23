@@ -73,6 +73,76 @@ function getOfficerSig(): PdfSignatureData | undefined {
  * Labeled narrative field: prints a small bold label then word-wrapped body text.
  * Used for multi-line descriptive fields inside open sections.
  */
+/**
+ * Shared district/geography bar rendered just below the report header on
+ * every record PDF. Resolves sector/zone/beat/area with fallbacks and
+ * optionally appends CONTRACT ID when present.
+ */
+function drawDistrictBar(
+  doc: jsPDF,
+  y: number,
+  data: Record<string, any>,
+): number {
+  // Skip entirely when we have no geography data at all — avoids empty black bar.
+  const hasAnyGeo = !!(data.sector_id || data.zone_id || data.beat_id || data.sector_name || data.zone_name || data.beat_name || data.area_id || data.area_name || data.dispatch_code);
+  if (!hasAnyGeo) return y;
+
+  const cw = getContentWidth(doc);
+  const barY = y;
+  const hasContract = !!data.contract_id;
+  const barH = 8;
+  doc.setFillColor(...COLOR.TEXT_PRIMARY);
+  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
+
+  const areaFallback = (() => {
+    const dc = String(data.dispatch_code || '').trim();
+    if (!dc) return '';
+    const m = dc.match(/^([A-Za-z]+)\d*/);
+    return m ? m[1].toUpperCase() : '';
+  })();
+  const distFields = [
+    { label: 'SECTION', value: (data.sector_name || data.sector_id || 'N/A') },
+    { label: 'ZONE',    value: (data.zone_name   || data.zone_id   || 'N/A') },
+    { label: 'BEAT',    value: (data.beat_id     || data.beat_name || 'N/A') },
+    { label: 'AREA',    value: (data.area_name   || data.area_id   || areaFallback || data.beat_descriptor || 'N/A') },
+    { label: 'CODE',    value: data.dispatch_code || 'N/A' },
+    ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
+  ];
+
+  const dValSize = 6;
+  const dPad = 3;
+  const naturalWidths = distFields.map((f) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    const labelW = doc.getTextWidth(f.label);
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(dValSize);
+    const valW = doc.getTextWidth(sanitizePdfText(String(f.value)));
+    return Math.max(labelW, valW) + dPad;
+  });
+  const totalNat = naturalWidths.reduce((a, b) => a + b, 0);
+  const finalWidths = naturalWidths.map(w => (w / totalNat) * cw);
+
+  let colX = LAYOUT.PAGE_MARGIN;
+  distFields.forEach((f, i) => {
+    const fw = finalWidths[i];
+    const fx = colX + 1.5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(255, 255, 255);
+    doc.text(f.label, fx, barY + 2.8);
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(dValSize);
+    doc.setTextColor(255, 255, 255);
+    doc.text(sanitizePdfText(String(f.value)).toUpperCase(), fx, barY + 6.5);
+    colX += fw;
+  });
+
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  return barY + barH + 1.5;
+}
+
 function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
   if (!value || !value.trim()) return y;
   // Label line
@@ -931,62 +1001,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Incident Report number is shown in Classification section — no separate banner needed
 
-  // ── Dispatch District Info Bar (gold columns — below header) ──
-  {
-    const cw = getContentWidth(doc);
-    const barY = y;
-    const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
-    const numCols = hasContract ? 6 : 5;
-    const barH = 8;
-    // Black background with white text
-    doc.setFillColor(...COLOR.TEXT_PRIMARY);
-    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
-
-    const distFields = [
-      { label: 'SECTION', value: data.sector_name || 'N/A' },
-      { label: 'ZONE', value: data.zone_name || 'N/A' },
-      { label: 'BEAT', value: data.beat_id || 'N/A' },
-      { label: 'AREA', value: data.beat_descriptor || 'N/A' },
-      { label: 'CODE', value: data.dispatch_code || 'N/A' },
-      ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
-    ];
-
-    // Dynamic column widths — measure all values, no truncation
-    const dValSize = 6; // compact font for district bar
-    const dPad = 3; // padding between columns — enough to prevent truncation
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(dValSize);
-    // Measure each column's natural width
-    const naturalWidths = distFields.map((f) => {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      const labelW = doc.getTextWidth(f.label);
-      doc.setFont(PDF_VALUE_FONT, 'normal');
-      doc.setFontSize(dValSize);
-      const valW = doc.getTextWidth(sanitizePdfText(f.value));
-      return Math.max(labelW, valW) + dPad;
-    });
-    // Scale proportionally to fill exactly cw
-    const totalNat = naturalWidths.reduce((a, b) => a + b, 0);
-    const finalWidths = naturalWidths.map(w => (w / totalNat) * cw);
-
-    let colX = LAYOUT.PAGE_MARGIN;
-    distFields.forEach((f, i) => {
-      const fw = finalWidths[i];
-      const fx = colX + 1.5;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(255, 255, 255);
-      doc.text(f.label, fx, barY + 2.8);
-      doc.setFont(PDF_VALUE_FONT, 'bold');
-      doc.setFontSize(dValSize);
-      doc.setTextColor(255, 255, 255);
-      doc.text(sanitizePdfText(f.value).toUpperCase(), fx, barY + 6.5);
-      colX += fw;
-    });
-
-    y = barY + barH + 1.5;
-  }
+  y = drawDistrictBar(doc, y, data as any);
 
   // Classification
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
@@ -1052,7 +1067,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text('STEP', cStep, y + 2.5);
       doc.text('TIMESTAMP', cTs, y + 2.5);
-      doc.text('Δ', cDelta, y + 2.5);
+      doc.text('ELAPSED', cDelta, y + 2.5);
       doc.text('PHASE', cPhase, y + 2.5);
       y += 3.5;
 
@@ -1693,6 +1708,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── 1. Subject Identification ─────────────────────────────
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
     const fifthW = ffw / 5;
@@ -2176,6 +2193,8 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     caseNumberLabel: 'LICENSE PLATE',
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Vehicle Identification ──
   y = checkPageBreak(doc, y, 25);
   { const sec = openAutoSection(doc, 'Vehicle Identification', y); y = sec.contentY;
@@ -2333,6 +2352,8 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Warrant Information ──
   y = checkPageBreak(doc, y, 18, statusPrio);
   { const sec = openAutoSection(doc, 'Warrant Information', y); y = sec.contentY;
@@ -2454,6 +2475,8 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     caseNumber: data.evidence_number,
     caseNumberLabel: 'EVIDENCE #',
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   // ── Evidence Identification ──
   y = checkPageBreak(doc, y, 25);
@@ -2667,6 +2690,8 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     caseNumber: data.vehicle_number,
     caseNumberLabel: 'UNIT #',
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   // ── Vehicle Information ──
   y = checkPageBreak(doc, y, 25);
@@ -3067,6 +3092,8 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     caseNumberLabel: 'BADGE #',
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Officer Identification (always shown) ──
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, 'Officer Identification', y); y = sec.contentY;
@@ -3350,6 +3377,8 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     caseNumberLabel: 'PROPERTY NAME',
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Property Information ──
   y = checkPageBreak(doc, y, 18);
   { const sec = openAutoSection(doc, 'Property Information', y); y = sec.contentY;
@@ -3513,6 +3542,8 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     caseNumber: data.citation_number,
     caseNumberLabel: 'CITATION #',
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   // ── Citation Information ──
   y = checkPageBreak(doc, y, 18, prio);
@@ -4095,6 +4126,8 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     formNumber: 'FORM PS-204S',
     reportDate: fmtDate(new Date().toISOString()),
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   y += 2;
 
