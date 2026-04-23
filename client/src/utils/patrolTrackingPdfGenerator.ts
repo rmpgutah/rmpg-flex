@@ -122,6 +122,34 @@ function formatDuration(minutes: number): string {
   return `${m}m`;
 }
 
+/** "HH:MM" only — used for inline call-dispatch timestamps so a breadcrumb
+ *  row can show "26-CFS00180 @ 15:36" without eating column width. */
+function formatHourMin(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Abbreviate long GPS-source tokens so the Src column doesn't overflow
+ *  into Status. Falls back to the first 8 chars for anything unknown. */
+function abbrevSource(src: string | undefined | null): string {
+  if (!src) return '-';
+  const key = src.toLowerCase();
+  const map: Record<string, string> = {
+    'browser_mobile':  'MOBILE',
+    'browser_desktop': 'DESKTOP',
+    'owntracks':       'OWNTRCK',
+    'clearpath':       'CPGPS',
+    'clearpathgps':    'CPGPS',
+    'manual':          'MANUAL',
+    'device':          'DEVICE',
+    'unknown':         'UNK',
+  };
+  return map[key] || src.slice(0, 8).toUpperCase();
+}
+
 // ── Generator ────────────────────────────────────────────────
 
 export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData): Promise<void> {
@@ -214,17 +242,30 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.line(marginX, y, pageW - marginX, y);
     y += 14;
 
-    // Column layout (points; total ≈ 595pt ≤ landscape content width ~712pt)
-    const cDate   = marginX;
-    const cBeat   = marginX + 90;
-    const cRoad   = marginX + 140;
-    const cSpd    = marginX + 235;
-    const cHdg    = marginX + 270;
-    const cSrc    = marginX + 295;
-    const cStat   = marginX + 345;
-    const cCall   = marginX + 400;
-    const cDist   = marginX + 470;
-    const cLL     = marginX + 505;
+    // Build per-call dispatch-time lookup so each breadcrumb row can show
+    // its call's dispatch timestamp inline, e.g. "26-CFS00180 @ 15:36".
+    const dispByCall = new Map<string, string>();
+    for (const seg of trail.response_segments) {
+      if (seg.call_number && seg.dispatched_at) {
+        dispByCall.set(seg.call_number, formatHourMin(seg.dispatched_at));
+      }
+    }
+
+    // Column layout — landscape letter content width ~712pt
+    // (pageW - 2*marginX = 792 - 80 = 712). Widened all narrow columns to
+    // prevent BROWSER_MOBILE / DISPATCHED / 26-CFS##### overflow into
+    // adjacent columns.
+    const cDate   = marginX;         //   0    Date/Time (MM/DD HH:MM:SS)
+    const cBeat   = marginX + 100;   // 100    Beat
+    const cRoad   = marginX + 150;   // 150    Road (truncated 22ch)
+    const cSpd    = marginX + 270;   // 270    Speed (XX.X)
+    const cHdg    = marginX + 305;   // 305    Hdg (N/NE/etc.)
+    const cSrc    = marginX + 335;   // 335    Src (MOBILE/OWNTRCK/etc., 7ch)
+    const cStat   = marginX + 390;   // 390    Status (AVAIL/DISP/CLR, up to 10ch)
+    const cCall   = marginX + 445;   // 445    Call # + @HH:MM (up to 18ch)
+    const cDist   = marginX + 555;   // 555    Dist (MI)
+    const cLL     = marginX + 595;   // 595    Lat/Lng
+                                      //        ends ~695 ≤ content width 712
 
     const drawHeader = (yy: number) => {
       doc.setFont('helvetica', 'bold');
@@ -236,7 +277,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.text('Hdg',       cHdg, yy);
       doc.text('Src',       cSrc, yy);
       doc.text('Status',    cStat, yy);
-      doc.text('Call #',    cCall, yy);
+      doc.text('Call # @ Disp', cCall, yy);
       doc.text('Dist',      cDist, yy);
       doc.text('Lat/Lng',   cLL, yy);
       doc.setFont('helvetica', 'normal');
@@ -247,7 +288,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setFontSize(8);
     let rowsOnPage = 0;
     for (const pt of trail.points) {
-      if (rowsOnPage >= 50 || y > pageH - 40) {
+      if (rowsOnPage >= 55 || y > pageH - 40) {
         doc.addPage();
         y = 40;
         drawHeader(y);
@@ -255,14 +296,18 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         rowsOnPage = 0;
       }
 
+      const cn = pt.current_call_number;
+      const disp = cn ? dispByCall.get(cn) : null;
+      const callLabel = cn ? (disp ? `${cn} @ ${disp}` : cn) : '-';
+
       doc.text(formatPointTime(pt.time),                                  cDate, y);
-      doc.text((pt.beat_code || '-').toString(),                          cBeat, y);
-      doc.text(truncate(pt.road_name || '-', 20),                         cRoad, y);
+      doc.text(truncate((pt.beat_code || '-').toString(), 9),             cBeat, y);
+      doc.text(truncate(pt.road_name || '-', 22),                         cRoad, y);
       doc.text(pt.speed_mph != null ? fmtNum(pt.speed_mph, 1) : '-',      cSpd, y);
       doc.text((pt.heading_cardinal || '-').toString(),                   cHdg, y);
-      doc.text((pt.source || '-').toString().toUpperCase(),               cSrc, y);
-      doc.text((pt.status || '-').replace(/_/g, ' ').toUpperCase(),       cStat, y);
-      doc.text((pt.current_call_number || '-').toString(),                cCall, y);
+      doc.text(abbrevSource(pt.source),                                   cSrc, y);
+      doc.text(truncate((pt.status || '-').replace(/_/g, ' ').toUpperCase(), 10), cStat, y);
+      doc.text(truncate(callLabel, 18),                                   cCall, y);
       doc.text(pt.cumulative_distance_miles != null ? fmtNum(pt.cumulative_distance_miles, 1) : '-', cDist, y);
       doc.text(
         pt.lat != null && pt.lng != null
@@ -274,6 +319,21 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       y += 11;
       rowsOnPage += 1;
     }
+  }
+
+  // ── Page numbers (N of M) on every page ──────────────────────
+  // Drawn after all content so we know the final page count. Bottom-right
+  // corner, same style as the fuel report's "Generated" line but smaller.
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    const label = `Page ${p} of ${totalPages}`;
+    const w = doc.getTextWidth(label);
+    doc.text(label, pageW - marginX - w, pageH - 20);
+    doc.setTextColor(0, 0, 0);
   }
 
   // ── Save ──────────────────────────────────────────────────
