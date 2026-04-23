@@ -1004,8 +1004,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
-  y = checkPageBreak(doc, y, 15, prio);
+  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3) + Timeline subsection
+  y = checkPageBreak(doc, y, 40, prio);
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: fmtTimestamp(data.created_at || '') },
@@ -1015,6 +1015,107 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Cleared', value: fmtTimestamp(data.cleared_at || '') },
       { label: 'Closed', value: fmtTimestamp(data.closed_at || '') },
     ], y);
+
+    // Timeline sub-section — compact per-step waterfall with deltas + totals
+    const steps: Array<{ label: string; ts?: string | null; phase?: string }> = [
+      { label: 'Created',    ts: data.created_at },
+      { label: 'Dispatched', ts: data.dispatched_at, phase: 'queue' },
+      { label: 'En Route',   ts: data.enroute_at },
+      { label: 'On Scene',   ts: data.onscene_at,    phase: 'response' },
+      { label: 'Cleared',    ts: data.cleared_at,    phase: 'on-scene' },
+      { label: 'Closed',     ts: data.closed_at },
+      { label: 'Archived',   ts: (data as any).archived_at },
+    ].filter(s => !!s.ts);
+
+    if (steps.length > 0) {
+      y += 1;
+      // Subsection header bar
+      const subX = lx;
+      const subW = ffw;
+      doc.setFillColor(230, 230, 230);
+      doc.rect(subX, y, subW, 4, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('TIMELINE', subX + 1.5, y + 2.8);
+      y += 4;
+
+      // Column header row
+      const cStep = subX + 2;
+      const cTs   = subX + 30;
+      const cDelta = subX + 95;
+      const cPhase = subX + 120;
+      doc.setFillColor(245, 245, 245);
+      doc.rect(subX, y, subW, 3.5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text('STEP', cStep, y + 2.5);
+      doc.text('TIMESTAMP', cTs, y + 2.5);
+      doc.text('Δ', cDelta, y + 2.5);
+      doc.text('PHASE', cPhase, y + 2.5);
+      y += 3.5;
+
+      // Rows
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const rowH = 3.8;
+      let prevMs: number | null = null;
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
+        const tsMs = new Date(s.ts as string).getTime();
+        const deltaMs = (prevMs != null && isFinite(tsMs - prevMs) && tsMs - prevMs >= 0) ? tsMs - prevMs : null;
+        let deltaStr = '—';
+        if (deltaMs != null) {
+          const secsTot = Math.floor(deltaMs / 1000);
+          const hh = Math.floor(secsTot / 3600);
+          const mm = Math.floor((secsTot % 3600) / 60);
+          const ss = secsTot % 60;
+          const pad = (n: number) => n.toString().padStart(2, '0');
+          deltaStr = hh > 0 ? `+${pad(hh)}:${pad(mm)}:${pad(ss)}` : `+${pad(mm)}:${pad(ss)}`;
+        }
+        if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(subX, y, subW, rowH, 'F'); }
+        doc.text(s.label.toUpperCase(), cStep, y + 2.7);
+        doc.text(fmtTimestamp(s.ts as string), cTs, y + 2.7);
+        doc.text(deltaStr, cDelta, y + 2.7);
+        if (s.phase) doc.text(s.phase.toUpperCase(), cPhase, y + 2.7);
+        y += rowH;
+        prevMs = tsMs;
+      }
+
+      // Totals footer
+      const fmtHMS = (ms: number) => {
+        if (!isFinite(ms) || ms <= 0) return '—';
+        const secsTot = Math.floor(ms / 1000);
+        const hh = Math.floor(secsTot / 3600);
+        const mm = Math.floor((secsTot % 3600) / 60);
+        const ss = secsTot % 60;
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const clock = hh > 0 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
+        return `${clock} (${(ms / 3600000).toFixed(2)}h)`;
+      };
+      const t0 = data.created_at ? new Date(data.created_at).getTime() : NaN;
+      const tEnd = (data.cleared_at || data.closed_at || (data as any).archived_at) ? new Date((data.cleared_at || data.closed_at || (data as any).archived_at) as string).getTime() : NaN;
+      const tDisp = data.dispatched_at ? new Date(data.dispatched_at).getTime() : NaN;
+      const tOn = data.onscene_at ? new Date(data.onscene_at).getTime() : NaN;
+      const tClr = data.cleared_at ? new Date(data.cleared_at).getTime() : (data.closed_at ? new Date(data.closed_at).getTime() : NaN);
+      const totalMs = tEnd - t0;
+      const respMs = tOn - tDisp;
+      const onSceneMs = tClr - tOn;
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(0.2);
+      doc.line(subX, y, subX + subW, y);
+      y += 0.8;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const footer = `TOTAL ${fmtHMS(totalMs)}    ·    RESPONSE ${fmtHMS(respMs)}    ·    ON-SCENE ${fmtHMS(onSceneMs)}`;
+      doc.text(footer, subX + 2, y + 2.5);
+      y += 3.8;
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+    }
+
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
