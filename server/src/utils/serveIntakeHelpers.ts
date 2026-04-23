@@ -212,18 +212,18 @@ export function computeDiligenceSchedule(due: Date, now: Date): DiligenceSlot[] 
   // Enumerate candidate (day, window) slots between now and due
   const candidates: DiligenceSlot[] = [];
   const cursor = new Date(now);
-  cursor.setUTCHours(0, 0, 0, 0);
+  cursor.setHours(0, 0, 0, 0);
   const endDay = new Date(due);
-  endDay.setUTCHours(23, 59, 59, 999);
+  endDay.setHours(23, 59, 59, 999);
   while (cursor.getTime() <= endDay.getTime()) {
     for (const w of windows) {
       const slot = new Date(cursor);
-      slot.setUTCHours(w.hour, w.minute, 0, 0);
+      slot.setHours(w.hour, w.minute, 0, 0);
       if (slot.getTime() >= now.getTime() && slot.getTime() <= due.getTime()) {
         candidates.push({ date: slot, window: w.name, weekend: isWeekend(slot) });
       }
     }
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   if (candidates.length === 0) return [];
