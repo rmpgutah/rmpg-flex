@@ -142,10 +142,10 @@ router.post('/mobile/cfs/:id/auth', (req: Request, res: Response) => {
       res.status(403).json({ error: 'QR scan limit reached' }); return;
     }
     const user = db.prepare(`
-      SELECT id, username, role, full_name, is_active FROM users WHERE id = ?
+      SELECT id, username, role, full_name, status FROM users WHERE id = ?
     `).get(userIdNum) as any;
     if (!user) { res.status(404).json({ error: 'User ID not recognized' }); return; }
-    if (!user.is_active) { res.status(403).json({ error: 'User is inactive' }); return; }
+    if (user.status && user.status !== 'active') { res.status(403).json({ error: `User is ${user.status}` }); return; }
     // Increment scan count (unless admin override)
     if (!row.admin_override) {
       db.prepare(`
