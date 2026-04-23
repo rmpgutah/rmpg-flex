@@ -2483,6 +2483,26 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_created ON trespass_orders(created_at)`);
   } catch { /* table already exists */ }
 
+  // ── PSO QR Tokens (mobile quick-login for field PSOs) ──
+  try {
+    db.prepare(`CREATE TABLE IF NOT EXISTS pso_qr_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      scans_used INTEGER NOT NULL DEFAULT 0,
+      max_scans INTEGER NOT NULL DEFAULT 5,
+      admin_override INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      expires_at TEXT,
+      last_scanned_at TEXT,
+      last_scanned_by INTEGER,
+      revoked_at TEXT
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pso_qr_token ON pso_qr_tokens(token)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pso_qr_call ON pso_qr_tokens(call_id)`).run();
+  } catch { /* table already exists */ }
+
   // ── FIX CORRUPTED DATA — undo HTML entity encoding of quotes/apostrophes ──
   // The old sanitize middleware was encoding ' → &#x27; and " → &quot; in stored data
   const corruptionTables = ['persons', 'incidents', 'warrants', 'calls_for_service', 'bolos', 'vehicles_records', 'properties', 'clients'];

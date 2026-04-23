@@ -70,6 +70,7 @@ import microbiltRoutes from './routes/microbilt';
 import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
 import trespassOrderRoutes from './routes/trespassOrders';
+import mobileCfsRoutes from './routes/mobileCfs';
 import caseRoutes from './routes/cases';
 import codeEnforcementRoutes from './routes/codeEnforcement';
 import courtRoutes from './routes/court';
@@ -367,6 +368,7 @@ app.use('/api/microbilt', microbiltRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
 app.use('/api/trespass-orders', trespassOrderRoutes);
+app.use('/api', mobileCfsRoutes); // Mounts /api/cfs/:id/qr-token, /api/mobile/cfs/*
 app.use('/api/cases', caseRoutes);
 app.use('/api/code-enforcement', codeEnforcementRoutes);
 app.use('/api/court', courtRoutes);

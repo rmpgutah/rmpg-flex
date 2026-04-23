@@ -183,6 +183,7 @@ export type RecordPdfType =
 // ── Data Interfaces ──────────────────────────────────────────
 
 export interface CallPdfData {
+  id?: number;
   call_number: string;
   incident_type: string;
   priority: string;
@@ -1678,6 +1679,42 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Signatures — full-width stacked (one on top of the other)
   y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
+
+  // PSO Client Request: QR code on last page for mobile quick-login
+  if (data.incident_type === 'pso_client_request' && data.id) {
+    try {
+      const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      if (resp.ok) {
+        const { qr_png_base64, url } = await resp.json();
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const qrSize = 30; // mm
+        // Reserve the bottom-right corner above the footer
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize;
+        const qrY = pageH - LAYOUT.FOOTER_HEIGHT - qrSize - 22;
+        // If the running Y is already below the QR's top edge, push to a new page
+        if (y > qrY - 5) {
+          doc.addPage();
+        }
+        doc.addImage(qr_png_base64, 'PNG', qrX, qrY, qrSize, qrSize);
+        // Label under the QR
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.text('SCAN FOR MOBILE PSO ACCESS', qrX + qrSize / 2, qrY + qrSize + 2.5, { align: 'center' });
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(...COLOR.TEXT_MUTED);
+        doc.text(url, qrX + qrSize / 2, qrY + qrSize + 5, { align: 'center', maxWidth: qrSize + 10 });
+      }
+    } catch { /* non-fatal — PDF still prints without QR */ }
+  }
 }
 
 // ── Person Record ────────────────────────────────────────────
