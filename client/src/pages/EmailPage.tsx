@@ -755,11 +755,27 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   bodyDiv.className = 'body-content';
   if (bodyHtml) {
     // Use a sandboxed iframe approach: render HTML body inside an iframe for print
-    // This is the same HTML we already render from the email server in a sandboxed iframe
+    // Sanitize the HTML the same way EmailBodyFrame does before injecting into srcdoc
+    const cleanHtml = sanitizeHtml(bodyHtml, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+        'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+        'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
+      ]),
+      allowedAttributes: {
+        a: ['href', 'name', 'target', 'rel'],
+        img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+        '*': ['style', 'class']
+      },
+      allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+      allowedSchemesByTag: {
+        img: ['http', 'https']
+      },
+      disallowedTagsMode: 'discard'
+    });
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');

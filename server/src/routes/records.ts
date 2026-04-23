@@ -646,7 +646,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', (req: Request, res: Response) => {
+router.delete('/persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -1035,7 +1035,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', (req: Request, res: Response) => {
+router.delete('/vehicles/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1500,7 +1500,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', (req: Request, res: Response) => {
+router.delete('/evidence/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -2231,7 +2231,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', (req: Request, res: Response) => {
+router.delete('/properties/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -2486,7 +2486,7 @@ router.post('/links', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', (req: Request, res: Response) => {
+router.delete('/links/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -2714,7 +2714,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
@@ -2871,7 +2871,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', (req: Request, res: Response) => {
+router.delete('/client-persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -4011,7 +4011,7 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id/associates/:linkId - Remove associate link
-router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) => {
+router.delete('/persons/:id/associates/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.linkId);
@@ -4146,7 +4146,7 @@ router.post('/persons/:id/aliases', (req: Request, res: Response) => {
   } catch (error: any) { console.error('Create alias error:', error); res.status(500).json({ error: 'Failed to create alias', code: 'CREATE_ALIAS_ERROR' }); }
 });
 
-router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => {
+router.delete('/persons/:id/aliases/:aliasId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     ensurePersonAliasesTable(db);
@@ -4169,7 +4169,7 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
 // database.ts and is used by the handlers above.
 
 
-router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
+router.delete('/persons/:id/associates/:assocId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;

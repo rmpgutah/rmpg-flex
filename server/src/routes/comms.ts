@@ -1154,6 +1154,11 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
       // audio_file stores relative path like "radio/filename.webm" — resolve against uploads dir
       const uploadsDir = path.resolve(__dirname_comms, '../../uploads');
       const audioPath = path.resolve(uploadsDir, entry.audio_file);
+      // Security: ensure resolved path stays within uploads directory
+      const rel = path.relative(uploadsDir, audioPath);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        res.status(403).json({ error: 'Forbidden', code: 'PATH_TRAVERSAL_BLOCKED' }); return;
+      }
       if (fs.existsSync(audioPath)) {
         const stat = fs.statSync(audioPath);
         res.setHeader('Content-Type', 'audio/webm');
