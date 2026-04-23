@@ -4014,7 +4014,10 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
 router.delete('/persons/:id/associates/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.linkId);
+    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.linkId)), `Removed associate from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Remove associate error:', error);
@@ -4168,17 +4171,6 @@ router.delete('/persons/:id/aliases/:aliasId', requireRole('admin', 'manager', '
 // silent error in the try/catch at module load. The real schema lives in
 // database.ts and is used by the handlers above.
 
-
-router.delete('/persons/:id/associates/:assocId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;
-    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
-    db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.assocId);
-    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.assocId)), `Removed associate from person #${paramStr(req.params.id)}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('Delete associate error:', error); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_ASSOCIATE_ERROR' }); }
-});
 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 3: Last Known Address Tracking

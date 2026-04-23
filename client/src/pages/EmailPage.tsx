@@ -21,6 +21,24 @@ import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils'
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
 
+// Shared sanitize-html options for email HTML content
+const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+    'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+    'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
+  ]),
+  allowedAttributes: {
+    a: ['href', 'name', 'target', 'rel'],
+    img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+    '*': ['style', 'class']
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowedSchemesByTag: {
+    img: ['http', 'https']
+  },
+  disallowedTagsMode: 'discard'
+};
+
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
 const FOLDER_ICONS: Record<string, React.ElementType> = {
@@ -664,22 +682,7 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
     React.useEffect(() => {
       // Use a vetted sanitizer instead of regex stripping to avoid incomplete
       // multi-character sanitization bypasses.
-      const sanitized = sanitizeHtml(bodyHtml, {
-        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
-          'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
-          'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
-        ]),
-        allowedAttributes: {
-          a: ['href', 'name', 'target', 'rel'],
-          img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
-          '*': ['style', 'class']
-        },
-        allowedSchemes: ['http', 'https', 'mailto', 'tel'],
-        allowedSchemesByTag: {
-          img: ['http', 'https']
-        },
-        disallowedTagsMode: 'discard'
-      });
+      const sanitized = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
       // Proxy all external images through our server
       const proxied = proxyEmailImages(sanitized);
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
@@ -756,22 +759,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   if (bodyHtml) {
     // Use a sandboxed iframe approach: render HTML body inside an iframe for print
     // Sanitize the HTML the same way EmailBodyFrame does before injecting into srcdoc
-    const cleanHtml = sanitizeHtml(bodyHtml, {
-      allowedTags: sanitizeHtml.defaults.allowedTags.concat([
-        'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
-        'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
-      ]),
-      allowedAttributes: {
-        a: ['href', 'name', 'target', 'rel'],
-        img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
-        '*': ['style', 'class']
-      },
-      allowedSchemes: ['http', 'https', 'mailto', 'tel'],
-      allowedSchemesByTag: {
-        img: ['http', 'https']
-      },
-      disallowedTagsMode: 'discard'
-    });
+    const cleanHtml = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
