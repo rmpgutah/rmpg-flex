@@ -203,7 +203,7 @@ export function computeDiligenceSchedule(
   utcOffsetHours: number = 0,
 ): DiligenceSlot[] {
   const offsetMs = utcOffsetHours * 60 * 60 * 1000;
-  // Shift UTC timestamps into a fixed-offset local clock space for deterministic window math.
+  // Shift timestamps into fixed-offset local clock space for deterministic window math.
   const toLocal = (d: Date) => new Date(d.getTime() + offsetMs);
   // Convert fixed-offset local clock timestamps back to UTC.
   const fromLocal = (d: Date) => new Date(d.getTime() - offsetMs);

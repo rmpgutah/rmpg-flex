@@ -138,7 +138,7 @@ describe('computeDiligenceSchedule', () => {
     const plan = computeDiligenceSchedule(due, now, -6);
     expect(plan).toHaveLength(3);
     expect(plan.map(p => p.window).sort()).toEqual(['6AM-9AM', '6PM-9PM', '9AM-6PM'].sort());
-    expect(plan.some(p => { const d = p.date.getDay(); return d === 0 || d === 6; })).toBe(true);
+    expect(plan.some(p => p.weekend)).toBe(true);
   });
 
   it('fits all 3 attempts into a same-day window if that is all that is left', () => {
