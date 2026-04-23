@@ -1005,17 +1005,24 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       params.push(parseInt(officerId));
     }
 
+    // LIMIT was 1000 — truncated long-period reports to the earliest N points,
+    // which usually means "the officer parked at start-of-shift" when N is small
+    // relative to total. A multi-week query can easily hit 50k+ rows; we accept
+    // that cost and downsample in JS below if needed. Bumped to 100000 which
+    // covers a full quarter of continuous 10-second breadcrumbs.
+    // Source column defaults to 'unknown' — the real device/ingestion source
+    // is stored in gps_source. Prefer that, falling back through source.
     const rows = db.prepare(`
       SELECT b.id, b.unit_id, b.officer_id, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.call_sign, b.officer_name,
         b.badge_number, b.current_call_id, b.current_call_number,
         b.current_call_type, b.road_name, b.nearest_intersection,
-        b.recorded_at, COALESCE(b.source, 'unknown') as source
+        b.recorded_at,
+        COALESCE(NULLIF(b.gps_source, ''), NULLIF(b.source, ''), 'unknown') AS source
       FROM gps_breadcrumbs b
       WHERE ${dateClause} ${whereExtra}
       ORDER BY b.unit_id, b.recorded_at ASC
-    
-      LIMIT 1000
+      LIMIT 100000
     `).all(...params) as any[];
 
     // ── Constants for filtering ─────────────────────────
