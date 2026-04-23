@@ -40,7 +40,7 @@ export async function attachBlobToRecord(
   let token = '';
   try {
     if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
-      token = localStorage.getItem('accessToken') || '';
+      token = localStorage.getItem('rmpg_token') || '';
     }
   } catch {
     /* test environments may not support localStorage */
@@ -74,7 +74,7 @@ export async function emailBlob(
   let token = '';
   try {
     token = typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function'
-      ? (localStorage.getItem('accessToken') || '')
+      ? (localStorage.getItem('rmpg_token') || '')
       : '';
   } catch { /* no-op */ }
 

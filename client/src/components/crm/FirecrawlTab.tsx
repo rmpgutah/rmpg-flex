@@ -3338,7 +3338,7 @@ function PdfInspectPanel() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('rmpg_token');
       const resp = await fetch('/api/firecrawl-tools/pdf-inspect/upload', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -7509,7 +7509,7 @@ function DocExtractPanel() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('output_format', outputFormat);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('rmpg_token');
       const resp = await fetch('/api/firecrawl-tools/doc-extract/upload', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -10072,7 +10072,7 @@ function PdfToolsPanel() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('operations', JSON.stringify(getSelectedOps()));
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('rmpg_token');
       const resp = await fetch('/api/firecrawl-tools/pdf-manipulate/upload', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
