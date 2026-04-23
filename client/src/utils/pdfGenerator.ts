@@ -1656,11 +1656,13 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header with the standard SECTION_GAP
-    // so the continuation bar looks visually identical to every other section
-    // header. Previous +4mm extra was removed per user request so the
-    // continuation bar doesn't stand out with excessive spacing below it.
-    return contY + contH + SPACING.SECTION_GAP;
+    // Content starts below continuation header. jsPDF's doc.text(x, y) uses
+    // y as the baseline, so the glyph extends UP from y — we must return a
+    // y that places the TOP of the first text line below the banner bottom,
+    // not the baseline. Add the font cap-height (~FIELD_LABEL size * 0.35)
+    // plus a 1mm breathing gap so continuation text doesn't clip the banner.
+    const firstLineCapH = FONT.SIZE_FIELD_VALUE * 0.35;
+    return contY + contH + SPACING.SECTION_GAP + firstLineCapH + 1;
   }
   return y;
 }
