@@ -1687,7 +1687,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          Authorization: `Bearer ${localStorage.getItem('rmpg_token') || ''}`,
         },
       });
       if (resp.ok) {
