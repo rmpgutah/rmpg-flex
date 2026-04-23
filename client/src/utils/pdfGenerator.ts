@@ -214,20 +214,30 @@ export function sanitizePdfText(text: string): string {
  * mid-word with Courier, this respects word boundaries.
  */
 export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
-  const words = text.split(/(\s+)/);
-  const lines: string[] = [];
-  let currentLine = '';
-  for (const word of words) {
-    const testLine = currentLine + word;
-    if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
-      lines.push(currentLine.trimEnd());
-      currentLine = word.trimStart();
-    } else {
-      currentLine = testLine;
+  // Respect caller-provided hard line breaks (\n, \r\n, \r). If we don't split
+  // on them first, jsPDF's doc.text() will render embedded newlines as extra
+  // lines at its internal step, which bypasses the per-line Y advancement in
+  // addFieldPair and causes overlapping text. Fixes PSO scene-conditions
+  // weather field where the API returns multi-line summaries.
+  const out: string[] = [];
+  const segments = String(text ?? '').split(/\r\n|\r|\n/);
+  for (const segment of segments) {
+    if (!segment) { out.push(''); continue; }
+    const words = segment.split(/(\s+)/);
+    let currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine + word;
+      if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
+        out.push(currentLine.trimEnd());
+        currentLine = word.trimStart();
+      } else {
+        currentLine = testLine;
+      }
     }
+    if (currentLine.trim()) out.push(currentLine.trimEnd());
+    else if (segment) out.push('');
   }
-  if (currentLine.trim()) lines.push(currentLine.trimEnd());
-  return lines.length ? lines : [''];
+  return out.length ? out : [''];
 }
 
 function isNarrativeLikePdfText(text: string, width: number): boolean {
@@ -1651,11 +1661,13 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header with the standard SECTION_GAP
-    // so the continuation bar looks visually identical to every other section
-    // header. Previous +4mm extra was removed per user request so the
-    // continuation bar doesn't stand out with excessive spacing below it.
-    return contY + contH + SPACING.SECTION_GAP;
+    // Content starts below continuation header. The extra 2.5mm past
+    // SECTION_GAP accounts for text baseline offset — jsPDF draws text with
+    // the BASELINE at the given Y, so without this buffer the first line's
+    // ascenders overlap the header bar's bottom edge (caught on FORM PS-201
+    // page 3, where 6pt timestamp rows sat right under the continuation
+    // bar). Any first-line baseline fits cleanly inside this gap.
+    return contY + contH + SPACING.SECTION_GAP + 2.5;
   }
   return y;
 }

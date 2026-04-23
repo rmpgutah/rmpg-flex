@@ -242,6 +242,18 @@ function formatServiceType(val: string | undefined | null): string {
   return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
+function formatCallDuration(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return '00:00 (0.00h)';
+  const totalSec = Math.floor(ms / 1000);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const clock = hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
+  const decimalHours = (ms / 3600000).toFixed(2);
+  return `${clock} (${decimalHours}h)`;
+}
+
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
   return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -2520,21 +2532,28 @@ export default function DispatchPage() {
                     {(() => {
                       const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
                       const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
-                      if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
-                      const mins = Math.floor(elapsed / 60000);
-                      return `${mins}m`;
+                      return formatCallDuration(elapsed);
                     })()}
                   </span>
                 </div>
                 {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
                   const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
                   if (diff <= 0 || !isFinite(diff)) return null;
-                  const mins = Math.floor(diff / 60000);
-                  const secs = Math.floor((diff % 60000) / 1000);
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">Response:</span>
-                      <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
+                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                    </div>
+                  );
+                })()}
+                {selectedCall.onscene_at && (() => {
+                  const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
+                  const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                  if (diff <= 0 || !isFinite(diff)) return null;
+                  return (
+                    <div className="flex items-center gap-1">
+                      <span className="text-rmpg-400">On-Scene:</span>
+                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -3899,13 +3918,7 @@ export default function DispatchPage() {
                       {(() => {
                         const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
                         const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
-                        if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
-                        const totalSec = Math.floor(elapsed / 1000);
-                        const hrs = Math.floor(totalSec / 3600);
-                        const mins = Math.floor((totalSec % 3600) / 60);
-                        const secs = totalSec % 60;
-                        if (hrs > 0) return `${hrs}h ${mins}m`;
-                        return `${mins}m ${secs}s`;
+                        return formatCallDuration(elapsed);
                       })()}
                     </span>
                   </div>
@@ -3913,13 +3926,24 @@ export default function DispatchPage() {
                   {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
                     const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
                     if (diff <= 0 || !isFinite(diff)) return null;
-                    const mins = Math.floor(diff / 60000);
-                    const secs = Math.floor((diff % 60000) / 1000);
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
                         <Navigation style={{ width: 10, height: 10 }} className="text-gray-500" />
                         <span className="text-rmpg-400">Response:</span>
-                        <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
+                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      </div>
+                    );
+                  })()}
+                  {/* On-scene time — onscene to cleared (or live if still on scene) */}
+                  {selectedCall.onscene_at && (() => {
+                    const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
+                    const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                    if (diff <= 0 || !isFinite(diff)) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                        <Clock style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <span className="text-rmpg-400">On-Scene:</span>
+                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
