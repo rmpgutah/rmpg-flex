@@ -168,14 +168,26 @@ export default function MobilePsoCfsPage() {
       if (psoAttempt) body.pso_attempt_number = parseInt(psoAttempt, 10);
       if (psoResult) body.pso_result = psoResult;
       if (psoServedTo) body.process_served_to = psoServedTo;
-      if (psoNotes) body.process_service_notes = psoNotes;
-      if (Object.keys(body).length === 0) { setBusy(false); return; }
-      const r = await fetch(`/api/mobile/cfs/${auth.call_id}/pso`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'PSO save failed'); }
+      if (Object.keys(body).length > 0) {
+        const r = await fetch(`/api/mobile/cfs/${auth.call_id}/pso`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'PSO save failed'); }
+      }
+      // PSO service notes go through the narrative-append endpoint so we don't
+      // clobber the shared `notes` column. Prefix with a tag so it's clear in
+      // the log that this was a service-specific note.
+      if (psoNotes.trim()) {
+        const r = await fetch(`/api/mobile/cfs/${auth.call_id}/narrative`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+          body: JSON.stringify({ content: `SERVICE NOTE: ${psoNotes.trim()}` }),
+        });
+        if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'PSO notes save failed'); }
+      }
+      setPsoNotes('');
       setPsoSaved(true);
       setTimeout(() => setPsoSaved(false), 2500);
     } catch (err: any) {

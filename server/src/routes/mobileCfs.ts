@@ -227,15 +227,15 @@ router.post('/mobile/cfs/:id/narrative', authenticateMobile, (req: Request, res:
     const { content } = req.body || {};
     if (!content || !String(content).trim()) { res.status(400).json({ error: 'Narrative cannot be empty' }); return; }
     const db = getDb();
-    // Append into call_notes as a new timestamped line (no dedicated notes table for calls).
-    const existing = db.prepare('SELECT call_notes FROM calls_for_service WHERE id = ?').get(callId) as any;
+    // Append into notes as a new timestamped line (no dedicated notes table for calls).
+    const existing = db.prepare('SELECT notes FROM calls_for_service WHERE id = ?').get(callId) as any;
     const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const authorTag = `[PSO MOBILE / ${req.mobileAuth!.username}]`;
     const line = `\n${stamp} ${authorTag}\n${String(content).trim()}`;
-    const newNotes = (existing?.call_notes || '') + line;
-    db.prepare('UPDATE calls_for_service SET call_notes = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(newNotes, callId);
+    const newNotes = (existing?.notes || '') + line;
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(newNotes, callId);
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
-    auditLog(req, 'UPDATE', 'calls_for_service', callId, null, { field: 'call_notes', source: 'pso-mobile', user_id: req.mobileAuth!.userId });
+    auditLog(req, 'UPDATE', 'calls_for_service', callId, null, { field: 'notes', source: 'pso-mobile', user_id: req.mobileAuth!.userId });
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
     res.json({ success: true });
   } catch (err) {
@@ -252,11 +252,13 @@ router.post('/mobile/cfs/:id/pso', authenticateMobile, (req: Request, res: Respo
     const callId = req.mobileAuth!.callId;
     const allowedFields: Array<[string, string]> = [
       ['pso_attempt_number', 'pso_attempt_number'],
-      ['pso_result', 'pso_result'],
+      ['pso_result', 'process_service_result'],
       ['process_served_to', 'process_served_to'],
       ['process_served_at', 'process_served_at'],
       ['process_service_address', 'process_served_address'],
-      ['process_service_notes', 'process_service_notes'],
+      // process_service_notes intentionally NOT mapped here: there's no dedicated
+      // column, and overwriting `notes` would clobber the narrative log. The
+      // mobile UI routes PSO notes through the Add-Narrative endpoint instead.
     ];
     const sets: string[] = [];
     const vals: any[] = [];
