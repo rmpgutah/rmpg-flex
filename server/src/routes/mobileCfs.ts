@@ -141,9 +141,14 @@ router.post('/mobile/cfs/:id/auth', (req: Request, res: Response) => {
     if (!row.admin_override && row.scans_used >= row.max_scans) {
       res.status(403).json({ error: 'QR scan limit reached' }); return;
     }
+    // Officers enter their badge_number (e.g. 1572); fall back to users.id or employee_id.
+    const badgeStr = String(userIdNum);
     const user = db.prepare(`
-      SELECT id, username, role, full_name, status FROM users WHERE id = ?
-    `).get(userIdNum) as any;
+      SELECT id, username, role, full_name, status, badge_number
+      FROM users
+      WHERE badge_number = ? OR employee_id = ? OR id = ?
+      LIMIT 1
+    `).get(badgeStr, badgeStr, userIdNum) as any;
     if (!user) { res.status(404).json({ error: 'User ID not recognized' }); return; }
     if (user.status && user.status !== 'active') { res.status(403).json({ error: `User is ${user.status}` }); return; }
     // Increment scan count (unless admin override)
