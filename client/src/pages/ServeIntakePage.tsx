@@ -9,7 +9,7 @@ import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin,
   User, Building2, Phone, X, ChevronRight, Edit2, Save, ArrowLeft,
   Gavel, Calendar, Briefcase, FileWarning, Clock, Shield, Users,
-  History, Target, Hash, AlertCircle, Star, Fingerprint, ListChecks,
+  History, Target, Hash, AlertCircle, Star, Fingerprint, ListChecks, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
