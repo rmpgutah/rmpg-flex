@@ -5391,8 +5391,15 @@ function migrateSchema(): void {
     s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
   }
 
-  // Enable ALL warrant scraper sources — circuit breaker auto-disables sources that fail 5 times
-  db.prepare("UPDATE warrant_scraper_config SET enabled = 1 WHERE enabled = 0 AND source_type != 'search_form'").run();
+  // Audit 2026-04-24: REMOVED the blind bulk re-enable of every disabled
+  // source. That UPDATE was undoing per-source auto-disable decisions made
+  // by the HTTP 404 handler in multiStateWarrantScraper.ts. Sources whose
+  // pages had been permanently removed were auto-disabled, re-enabled on
+  // every boot, scraped, 404'd, auto-disabled, re-enabled ad infinitum.
+  // Result: ~700+ failing runs per 24h, wasted bandwidth, polluted
+  // warrant_scraper_runs table, noise in logs. Let per-source auto-disable
+  // decisions stick. Users can re-enable a source manually via the admin
+  // scrapers tab if a page comes back online.
   // ── Radio transcripts — audio recording columns ──
   addCol("radio_transcripts", "audio_file", "TEXT");
   addCol("radio_transcripts", "file_size", "INTEGER");
