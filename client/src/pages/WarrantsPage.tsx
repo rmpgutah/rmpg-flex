@@ -49,6 +49,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
+import CollapsibleSection from '../components/CollapsibleSection';
 import {
   priorityBucket,
   priorityChipClass,
@@ -647,6 +648,26 @@ export default function WarrantsPage() {
       });
     } catch (err: any) {
       alert(err?.message || 'Packet generation failed');
+    }
+  };
+
+  // Phase 1: download a single-warrant PDF for the currently selected warrant
+  const handlePrintWarrantPdf = async (id: number) => {
+    try {
+      const res = await apiFetch<any>(`/warrants/${id}`);
+      const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
+      const data: any = {
+        ...raw,
+        subject_aliases: raw.subject_aliases
+          ? (Array.isArray(raw.subject_aliases) ? raw.subject_aliases : [raw.subject_aliases])
+          : undefined,
+        printed_by_name: user?.full_name,
+        printed_by_badge: user?.badge_number,
+        printed_at: new Date().toISOString(),
+      };
+      await downloadRecordPdf('warrant', data, `warrant-${data.warrant_number}.pdf`);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to print warrant PDF');
     }
   };
 
@@ -2276,6 +2297,63 @@ export default function WarrantsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Phase 1: Source / Provenance */}
+                {(selectedWarrant as any).source_scraper_name && (
+                  <CollapsibleSection title="Source / Provenance" defaultOpen={false}>
+                    <div className="text-xs space-y-1 p-2">
+                      <div>Scraper: <span className="text-rmpg-200">{(selectedWarrant as any).source_scraper_name}</span></div>
+                      <div>State: <span className="text-rmpg-200">{(selectedWarrant as any).source_state || stateFromSource(selectedWarrant.source)}</span></div>
+                      {(selectedWarrant as any).source_url && (
+                        <div>URL: <a href={(selectedWarrant as any).source_url} target="_blank" rel="noreferrer" className="text-amber-400 underline">link</a></div>
+                      )}
+                      <div>Last refreshed: {(selectedWarrant as any).last_scraped_at ? formatDateTime((selectedWarrant as any).last_scraped_at) : '—'}</div>
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Phase 1: RMPG Encounters */}
+                {Array.isArray((selectedWarrant as any).rmpg_encounters) && (selectedWarrant as any).rmpg_encounters.length > 0 && (
+                  <CollapsibleSection
+                    title="RMPG Encounters"
+                    count={(selectedWarrant as any).rmpg_encounters.length}
+                    defaultOpen={false}
+                  >
+                    <div className="p-2">
+                      {(selectedWarrant as any).rmpg_encounters.slice(0, 20).map((e: any, i: number) => (
+                        <div key={i} className="text-xs py-1 border-b border-rmpg-700">
+                          <span className="text-rmpg-400">{e.date ? formatDate(e.date) : '—'}</span>
+                          <span className="text-rmpg-200 ml-2">{e.context}</span>
+                          {e.property && <span className="text-rmpg-500 ml-2">— {e.property}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Phase 1: Known Associates & Vehicles */}
+                {((Array.isArray((selectedWarrant as any).known_associates) && (selectedWarrant as any).known_associates.length > 0) ||
+                  (Array.isArray((selectedWarrant as any).known_vehicles) && (selectedWarrant as any).known_vehicles.length > 0)) && (
+                  <CollapsibleSection title="Known Associates & Vehicles" defaultOpen={false}>
+                    <div className="p-2 space-y-1">
+                      {(selectedWarrant as any).known_associates?.map((a: any, i: number) => (
+                        <div key={`a${i}`} className="text-xs text-rmpg-200">{a.name} <span className="text-rmpg-500">({a.relationship || '—'})</span></div>
+                      ))}
+                      {(selectedWarrant as any).known_vehicles?.map((v: any, i: number) => (
+                        <div key={`v${i}`} className="text-xs text-rmpg-200 font-mono">{v.plate} <span className="text-rmpg-500">{v.description}</span></div>
+                      ))}
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Phase 1: Print PDF action */}
+                <button
+                  type="button"
+                  onClick={() => handlePrintWarrantPdf(selectedWarrant.id)}
+                  className="toolbar-btn-primary w-full mt-3 flex items-center justify-center gap-2"
+                >
+                  <Printer className="w-3 h-3" /> Print PDF
+                </button>
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-rmpg-400">
