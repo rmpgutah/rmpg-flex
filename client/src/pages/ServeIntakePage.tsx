@@ -389,7 +389,7 @@ export default function ServeIntakePage() {
             <div className="flex items-center gap-3 text-[10px] flex-wrap">
               <span className="text-rmpg-500">Documents detected:</span>
               {detectedTypes.fieldSheet ? <span className="text-amber-400">✓ Field Sheet</span> : <span className="text-rmpg-600">✗ Field Sheet</span>}
-              {detectedTypes.courtDocket ? <span className="text-red-400">✓ Court Docket</span> : <span className="text-rmpg-600">✗ Court Docket</span>}
+              {detectedTypes.courtDocket ? <span className="text-red-400">✓ Court Docket{(detectedTypes as any).courtDocketCount > 1 ? ` (${(detectedTypes as any).courtDocketCount} docs)` : ''}</span> : <span className="text-rmpg-600">✗ Court Docket</span>}
               {detectedTypes.infoSheet ? <span className="text-green-400">✓ Info Sheet</span> : <span className="text-rmpg-600">✗ Info Sheet</span>}
             </div>
           )}
