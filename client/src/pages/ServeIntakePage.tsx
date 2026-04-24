@@ -9,6 +9,7 @@ import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin,
   User, Building2, Phone, X, ChevronRight, Edit2, Save, ArrowLeft,
   Gavel, Calendar, Briefcase, FileWarning, Clock, Shield, Users,
+  History, Target, Hash, AlertCircle, Star, Fingerprint, ListChecks,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
@@ -127,6 +128,9 @@ export default function ServeIntakePage() {
   const [editBilingual, setEditBilingual] = useState(false);
   // Attorney
   const [editAttorney, setEditAttorney] = useState({ name: '', firm: '', barNumber: '', tel: '', email: '', fax: '' });
+  // Priority & additional notes
+  const [editPriority, setEditPriority] = useState<'P1' | 'P2' | 'P3' | 'P4'>('P4');
+  const [editAdditionalNotes, setEditAdditionalNotes] = useState('');
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -250,6 +254,8 @@ export default function ServeIntakePage() {
         documentPages: parseInt(editDocPages, 10) || 0,
         bilingual: editBilingual,
         attorney: editAttorney,
+        priority: editPriority,
+        additionalNotes: editAdditionalNotes || undefined,
       };
       if (selectedClientId) overrides.client_id = selectedClientId;
       const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
@@ -503,6 +509,101 @@ export default function ServeIntakePage() {
                 <span className="text-amber-300">{parsed.serviceRulesSummary}</span>
               </div>
             )}
+          </div>
+
+          {/* ── Row 6: Service Rules + Priority ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="panel-beveled p-4 space-y-3">
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Service Rules & Restrictions</h3>
+              {parsed.serviceRulesSummary ? (
+                <div className="space-y-1.5">
+                  {parsed.serviceRulesSummary.split('. ').filter(Boolean).map((rule, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[10px]">
+                      <AlertCircle className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
+                      <span className="text-rmpg-200">{rule.endsWith('.') ? rule : rule + '.'}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[10px] text-rmpg-500 italic">No specific service rules detected from instructions</p>
+              )}
+              {parsed.orderingClientRule && (
+                <div className="bg-surface-sunken p-2 text-[10px]">
+                  <span className="text-rmpg-500 font-bold">CLIENT RULE: </span>
+                  <span className="text-rmpg-300">{parsed.orderingClientRule}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="panel-beveled p-4 space-y-3">
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><Star className="w-3.5 h-3.5" /> Priority & Classification</h3>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase flex items-center gap-1 mb-1"><Target className="w-3 h-3" /> Dispatch Priority</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {([['P1', 'Emergency', 'bg-red-900/30 border-red-700/50 text-red-400'], ['P2', 'Urgent', 'bg-amber-900/30 border-amber-700/50 text-amber-400'], ['P3', 'Normal', 'bg-gray-900/30 border-gray-700/50 text-gray-400'], ['P4', 'Low', 'bg-green-900/30 border-green-700/50 text-green-400']] as const).map(([val, label, cls]) => (
+                    <button key={val} type="button" onClick={() => setEditPriority(val)}
+                      className={`p-1.5 border text-center text-[10px] font-bold transition-all ${editPriority === val ? cls + ' ring-1 ring-brand-500/50' : 'bg-[#0c0c0c] border-[#181818] text-rmpg-500'}`}>
+                      {val}<br /><span className="text-[8px] font-normal">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <FieldRow label="Additional Dispatcher Notes" icon={FileText} value={editAdditionalNotes} onChange={setEditAdditionalNotes} placeholder="Any additional notes for the dispatcher..." multiline />
+            </div>
+          </div>
+
+          {/* ── Row 7: Job Activity History ── */}
+          {parsed.jobActivity && parsed.jobActivity.length > 0 && (
+            <div className="panel-beveled p-4 space-y-3">
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> Client Job Activity History</h3>
+              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                {parsed.jobActivity.map((entry: any, i: number) => (
+                  <div key={i} className="flex items-start gap-3 text-[10px] py-1 border-b border-rmpg-800 last:border-0">
+                    <span className="text-rmpg-500 font-mono whitespace-nowrap">{entry.when}</span>
+                    <span className="text-amber-400 font-bold whitespace-nowrap">{entry.action}</span>
+                    <span className="text-rmpg-300 flex-1">{entry.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Row 8: Vendor Fingerprint + Data Summary ── */}
+          <div className="panel-beveled p-4 space-y-3">
+            <h3 className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5"><Fingerprint className="w-3.5 h-3.5" /> Extraction Summary</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[10px]">
+              <div className="bg-surface-sunken p-2">
+                <span className="text-rmpg-500 block">Vendor ID</span>
+                <span className="text-rmpg-200 font-mono">{parsed.vendorFingerprint || '—'}</span>
+              </div>
+              <div className="bg-surface-sunken p-2">
+                <span className="text-rmpg-500 block">Document Pages</span>
+                <span className="text-rmpg-200 font-mono">{editDocPages || '0'}</span>
+              </div>
+              <div className="bg-surface-sunken p-2">
+                <span className="text-rmpg-500 block">Primary Doc</span>
+                <span className="text-rmpg-200 font-mono">{parsed.primaryDoc || '—'}</span>
+              </div>
+              <div className="bg-surface-sunken p-2">
+                <span className="text-rmpg-500 block">Files Uploaded</span>
+                <span className="text-rmpg-200 font-mono">{files.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Row 9: What Will Be Created ── */}
+          <div className="panel-beveled p-4 space-y-2">
+            <h3 className="text-[10px] font-bold text-green-400 uppercase tracking-wider flex items-center gap-1.5"><ListChecks className="w-3.5 h-3.5" /> Records To Be Created</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
+              <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> Person: {editDefendant.first} {editDefendant.last}</div>
+              {editPlaintiff && <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> Plaintiff: {editPlaintiff.substring(0, 30)}</div>}
+              {editAttorney.name && <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> Attorney: {editAttorney.name}</div>}
+              {editAddress && <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> Property at address</div>}
+              <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> Civil Case (CV-XX-XXXXX)</div>
+              <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> Dispatch Call ({editPriority})</div>
+              <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> Serve Queue Entry</div>
+              {editDueDate && <div className="flex items-center gap-1.5 text-rmpg-200"><CheckCircle className="w-3 h-3 text-green-500" /> 3 Planned Attempts</div>}
+            </div>
           </div>
 
           {/* Confirm */}

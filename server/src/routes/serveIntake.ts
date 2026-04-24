@@ -584,6 +584,15 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       text: n.text,
       timestamp: now,
     }));
+    // Append additional dispatcher notes if provided
+    if (overrides?.additionalNotes) {
+      notesWrapped.push({
+        id: String(tsBase + notesWrapped.length),
+        author: 'Dispatcher',
+        text: `DISPATCHER NOTE -- ${overrides.additionalNotes}`,
+        timestamp: now,
+      });
+    }
     const notesJson = JSON.stringify(notesWrapped);
 
     // ── CFS call ─────────────────────────────────────────────
@@ -649,7 +658,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         ?, ?
       )
     `).run(
-      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request', 'P4', 4, 'pending',
+      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request',
+      overrides?.priority || 'P4', ({'P1':1,'P2':2,'P3':3,'P4':4} as any)[overrides?.priority || 'P4'] || 4, 'pending',
       callerName, callerPhone || null, 'client', callerAddress || null,
       parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || null, null,
       propertyId, latitude, longitude,
