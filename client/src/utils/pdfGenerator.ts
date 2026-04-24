@@ -1999,8 +1999,8 @@ interface IncidentData {
   pso_72hr_deadline?: string;
   pso_72hr_notified?: string | null;
   pso_service_windows?: string;
-  // Process-service legal details (formerly accessed via `(data as any)` casts)
-  client_name?: string;
+  // Process-service legal details (formerly accessed via `(data as any)` casts).
+  // `client_name` is declared earlier in this interface alongside `property_name`.
   attorney_name?: string;
   jurisdiction?: string;
   deadline?: string;
