@@ -2593,7 +2593,7 @@ function drawDiagonalWatermark(
   doc.setTextColor(0, 0, 0);
 }
 
-async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
+export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Promise<void> {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2921,6 +2921,12 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     doc.text(audit, lx, doc.internal.pageSize.getHeight() - 6);
     doc.setTextColor(0, 0, 0);
   }
+}
+
+// Backward-compatible thin wrapper so the rest of the generator (downloadRecordPdf
+// + any other internal callers) keeps working unchanged.
+async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
+  await renderWarrantIntoDoc(doc, data);
 }
 
 // ── Evidence / Property Custody Report ───────────────────────

@@ -57,6 +57,7 @@ import {
   freshnessIcon,
   stateFromSource,
 } from '../utils/warrantListHelpers';
+import { buildWarrantPacketPdf } from '../utils/warrantPacket';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ScrapersTab from './warrants/ScrapersTab';
@@ -600,6 +601,53 @@ export default function WarrantsPage() {
       fetchWarrants({ silent: true });
     } catch (err: any) { alert(err?.message || 'Batch update failed'); }
     finally { setBatchSubmitting(false); }
+  };
+
+  // Phase 1 bulk handlers — Archive / Mark Reviewed / Print Packet
+  const handleBulkArchive = async () => {
+    if (!batchSelected.size) return;
+    if (!window.confirm(`Archive ${batchSelected.size} warrant(s)?`)) return;
+    try {
+      const res = await apiFetch<{ archived: number; skipped: number }>('/warrants/bulk-archive', {
+        method: 'POST',
+        body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
+      });
+      alert(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`);
+      setBatchSelected(new Set());
+      fetchWarrants({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || 'Bulk archive failed');
+    }
+  };
+
+  const handleBulkReview = async () => {
+    if (!batchSelected.size) return;
+    try {
+      const res = await apiFetch<{ reviewed: number }>('/warrants/bulk-review', {
+        method: 'POST',
+        body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
+      });
+      alert(`Marked ${res.reviewed} warrant(s) reviewed`);
+      setBatchSelected(new Set());
+      fetchWarrants({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || 'Bulk review failed');
+    }
+  };
+
+  const handleBulkPrintPacket = async () => {
+    if (!batchSelected.size) return;
+    if (batchSelected.size > 200) { alert('Packet print limited to 200 warrants'); return; }
+    if (batchSelected.size > 50 && !window.confirm(`Print ${batchSelected.size} warrants as a single packet? This may take 30+ seconds.`)) return;
+    const ids = Array.from(batchSelected);
+    try {
+      await buildWarrantPacketPdf(ids, {
+        full_name: user?.full_name,
+        badge_number: user?.badge_number,
+      });
+    } catch (err: any) {
+      alert(err?.message || 'Packet generation failed');
+    }
   };
 
   // Form modal
@@ -1784,7 +1832,7 @@ export default function WarrantsPage() {
 
             {/* Batch Actions Bar */}
             {batchSelected.size > 0 && (isGodMode || isAdminOrManager) && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
                 <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
                 <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
                   <option value="">Set Status...</option>
@@ -1796,6 +1844,10 @@ export default function WarrantsPage() {
                 <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-40">
                   {batchSubmitting ? 'Updating...' : 'Apply'}
                 </button>
+                <span className="mx-1 text-rmpg-600">|</span>
+                <button type="button" onClick={handleBulkPrintPacket} className="toolbar-btn text-[10px] px-2 py-0.5">Print packet PDF</button>
+                <button type="button" onClick={handleBulkReview} className="toolbar-btn text-[10px] px-2 py-0.5">Mark reviewed</button>
+                <button type="button" onClick={handleBulkArchive} className="toolbar-btn text-[10px] px-2 py-0.5">Archive</button>
                 <button type="button" onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
               </div>
             )}
