@@ -325,7 +325,11 @@ export default function ServeIntakePage() {
       setError(err?.message || 'Failed to process documents');
     }
     setProcessing(false);
-  }, [files, parsed, editDefendant, editAddress, editPlaintiff, editDueDate, editInstructions, editCourt, editJobNumber]);
+  }, [files, parsed, editDefendant, editAddress, editPlaintiff, editDueDate, editInstructions,
+      editCourt, editCourtAddress, editCounty, editCourtCaseNumber, editJobNumber, editClientJobNumber,
+      editDocuments, editServiceType, editServiceWindows, editSignedDate, editResponseDays,
+      editClerkPhone, editDocPages, editBilingual, editAttorney, editPriority, editAdditionalNotes,
+      selectedClientId]);
 
   const resetAll = () => {
     setStep('upload');
@@ -416,44 +420,46 @@ export default function ServeIntakePage() {
                 </div>
               </div>
               {files.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 px-3 py-2.5 panel-beveled bg-surface-raised text-xs border-l-2" style={{
-                  borderLeftColor: f.type === 'court_docket' ? '#dc2626' : f.type === 'field_sheet' ? '#f59e0b' : f.type === 'info_sheet' ? '#22c55e' : '#888',
-                }}>
-                  <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
-                  <span className="text-white font-medium truncate flex-1">{f.name}</span>
-                  {/* Doc type selector */}
-                  <select
-                    className="input-dark text-[9px] w-28 py-0.5"
-                    value={f.type}
-                    onChange={e => changeDocType(i, e.target.value as UploadedFile['type'])}
-                  >
-                    {DOC_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    <option value="unknown">Auto-detect</option>
-                  </select>
-                  {f.status === 'extracted' ? (
-                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                  ) : (
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Extraction may be incomplete" />
-                  )}
-                  <span className="text-[9px] text-rmpg-500">{f.text.length.toLocaleString()} chars</span>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedPreview(expandedPreview === i ? null : i); }}
-                    className="p-0.5 text-rmpg-500 hover:text-brand-400 transition-colors" title="Preview extracted text">
-                    <Eye className="w-3 h-3" />
-                  </button>
-                  <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400">
-                    <X className="w-3 h-3" />
-                  </IconButton>
-                </div>
-                {/* Extracted text preview */}
-                {expandedPreview === i && (
-                  <div className="mx-3 mb-2 p-3 bg-surface-sunken border border-rmpg-700/50 max-h-[200px] overflow-y-auto">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[9px] text-rmpg-500 uppercase font-bold">Extracted Text Preview</span>
-                      <span className="text-[9px] text-rmpg-600">{f.text.length.toLocaleString()} characters</span>
-                    </div>
-                    <pre className="text-[9px] text-rmpg-300 font-mono whitespace-pre-wrap leading-relaxed">{f.text.slice(0, 3000)}{f.text.length > 3000 ? '\n\n... (truncated)' : ''}</pre>
+                <React.Fragment key={i}>
+                  <div className="flex items-center gap-2 px-3 py-2.5 panel-beveled bg-surface-raised text-xs border-l-2" style={{
+                    borderLeftColor: f.type === 'court_docket' ? '#dc2626' : f.type === 'field_sheet' ? '#f59e0b' : f.type === 'info_sheet' ? '#22c55e' : '#888',
+                  }}>
+                    <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
+                    <span className="text-white font-medium truncate flex-1">{f.name}</span>
+                    {/* Doc type selector */}
+                    <select
+                      className="input-dark text-[9px] w-28 py-0.5"
+                      value={f.type}
+                      onChange={e => changeDocType(i, e.target.value as UploadedFile['type'])}
+                    >
+                      {DOC_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      <option value="unknown">Auto-detect</option>
+                    </select>
+                    {f.status === 'extracted' ? (
+                      <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Extraction may be incomplete" />
+                    )}
+                    <span className="text-[9px] text-rmpg-500">{f.text.length.toLocaleString()} chars</span>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedPreview(expandedPreview === i ? null : i); }}
+                      className="p-0.5 text-rmpg-500 hover:text-brand-400 transition-colors" title="Preview extracted text">
+                      <Eye className="w-3 h-3" />
+                    </button>
+                    <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400">
+                      <X className="w-3 h-3" />
+                    </IconButton>
                   </div>
-                )}
+                  {/* Extracted text preview */}
+                  {expandedPreview === i && (
+                    <div className="mx-3 mb-2 p-3 bg-surface-sunken border border-rmpg-700/50 max-h-[200px] overflow-y-auto">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[9px] text-rmpg-500 uppercase font-bold">Extracted Text Preview</span>
+                        <span className="text-[9px] text-rmpg-600">{f.text.length.toLocaleString()} characters</span>
+                      </div>
+                      <pre className="text-[9px] text-rmpg-300 font-mono whitespace-pre-wrap leading-relaxed">{f.text.slice(0, 3000)}{f.text.length > 3000 ? '\n\n... (truncated)' : ''}</pre>
+                    </div>
+                  )}
+                </React.Fragment>
               ))}
             </div>
           )}
