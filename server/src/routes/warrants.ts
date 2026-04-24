@@ -2093,13 +2093,18 @@ router.post('/search-all', (req: Request, res: Response) => {
 
       if (firstName) { scrapedWhere += ' AND LOWER(first_name) LIKE LOWER(?)'; scrapedParams.push(`%${firstName}%`); }
       if (lastName) { scrapedWhere += ' AND LOWER(last_name) LIKE LOWER(?)'; scrapedParams.push(`%${lastName}%`); }
-      if (chargeKeyword) { scrapedWhere += ' AND LOWER(charges) LIKE LOWER(?)'; scrapedParams.push(`%${chargeKeyword}%`); }
+      // Audit 2026-04-24: column is `charge_description`, not `charges`;
+      // `scraped_warrants` has no `scraped_at` — use `last_seen_at` (updated on
+      // every scraper refresh). Every POST /api/warrants/search-all threw
+      // SQLITE_ERROR: the `ORDER BY scraped_at` clause fired on every call;
+      // the `LOWER(charges)` clause fired whenever a charge keyword was passed.
+      if (chargeKeyword) { scrapedWhere += ' AND LOWER(charge_description) LIKE LOWER(?)'; scrapedParams.push(`%${chargeKeyword}%`); }
       if (offenseLevel) { scrapedWhere += ' AND LOWER(offense_level) = LOWER(?)'; scrapedParams.push(offenseLevel); }
 
       const scrapedWarrants = db.prepare(`
         SELECT * FROM scraped_warrants
         ${scrapedWhere}
-        ORDER BY scraped_at DESC
+        ORDER BY last_seen_at DESC
         LIMIT 500
       `).all(...scrapedParams) as any[];
       sources.push('scraped');
