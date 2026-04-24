@@ -19,6 +19,7 @@ import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { startBreadcrumbDecimator } from './utils/breadcrumbDecimator';
+import { startGpsGapDetector } from './utils/gpsGapDetector';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
@@ -655,6 +656,13 @@ try {
       startBreadcrumbDecimator();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'breadcrumb-decimator' }, 'failed to start scheduler');
+    }
+
+    // Start GPS gap detector (alerts when active units go silent)
+    try {
+      startGpsGapDetector();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'gps-gap-detector' }, 'failed to start scheduler');
     }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)

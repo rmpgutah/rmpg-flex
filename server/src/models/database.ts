@@ -5010,6 +5010,23 @@ function migrateSchema(): void {
     )
   `).run();
 
+  // ── OwnTracks pending devices (first-seen, not yet claimed) ──
+  // Any tracker_id that authenticates successfully but isn't mapped gets
+  // a row here. Admin UI lists these for one-click claim into
+  // owntracks_device_map. Breadcrumbs are NOT recorded until claimed.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS owntracks_pending_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tracker_id TEXT NOT NULL UNIQUE,
+      last_lat REAL,
+      last_lng REAL,
+      last_payload TEXT,
+      first_seen_at TEXT DEFAULT (datetime('now','localtime')),
+      last_seen_at TEXT DEFAULT (datetime('now','localtime')),
+      seen_count INTEGER NOT NULL DEFAULT 1
+    )
+  `).run();
+
   // ── units: add 'out_of_service' to CHECK constraint (production fix) ──
   try {
     const uInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='units'").get() as { sql: string } | undefined;

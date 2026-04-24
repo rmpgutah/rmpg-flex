@@ -3720,4 +3720,70 @@ router.post('/records/raw-insert', requireRole('admin'), (req: Request, res: Res
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// OwnTracks pending-device management
+// ═══════════════════════════════════════════════════════════════════════
+// When an OwnTracks client authenticates with a valid webhook token but
+// its tracker_id has no mapping, the webhook handler upserts a row into
+// owntracks_pending_devices and returns 202. These endpoints let admins
+// see the queue and claim in one click, no SQL required.
+
+router.get('/owntracks-pending', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, tracker_id, last_lat, last_lng, first_seen_at, last_seen_at, seen_count
+      FROM owntracks_pending_devices
+      ORDER BY last_seen_at DESC
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to list pending devices' });
+  }
+});
+
+router.post('/owntracks-pending/:id/claim', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const unitId = parseInt(String(req.body?.unit_id ?? ''), 10);
+    const deviceName = typeof req.body?.device_name === 'string' ? req.body.device_name.slice(0, 200) : null;
+    if (isNaN(unitId)) { res.status(400).json({ error: 'unit_id required' }); return; }
+
+    const pending = db.prepare('SELECT tracker_id FROM owntracks_pending_devices WHERE id = ?').get(id) as any;
+    if (!pending) { res.status(404).json({ error: 'pending device not found' }); return; }
+    const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+    if (!unit) { res.status(404).json({ error: 'unit not found' }); return; }
+
+    // Transaction keeps the queue consistent if either write fails.
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO owntracks_device_map (tracker_id, unit_id, device_name)
+        VALUES (?, ?, ?)
+        ON CONFLICT(tracker_id) DO UPDATE SET unit_id=excluded.unit_id, device_name=excluded.device_name
+      `).run(pending.tracker_id, unitId, deviceName);
+      db.prepare('DELETE FROM owntracks_pending_devices WHERE id = ?').run(id);
+    })();
+
+    // 'unit_assigned' is the closest existing audit action — a tracker becoming bound to a unit.
+    auditLog(req, 'unit_assigned', 'owntracks_device_map', unitId, `claim tracker=${pending.tracker_id} → ${unit.call_sign}`);
+    res.json({ ok: true, tracker_id: pending.tracker_id, unit_id: unitId, call_sign: unit.call_sign });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to claim device' });
+  }
+});
+
+router.delete('/owntracks-pending/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const info = db.prepare('DELETE FROM owntracks_pending_devices WHERE id = ?').run(id);
+    res.json({ ok: true, deleted: Number(info?.changes ?? 0) });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to delete' });
+  }
+});
+
 export default router;

@@ -500,18 +500,25 @@ function pushTimeEntry(db: any, body: any) {
 }
 
 function pushGpsBreadcrumbs(db: any, body: any) {
-  // Body is an array of GPS points
+  // Body is an array of GPS points (from desktop offline queue).
+  // recorded_at is normalized to localtime format via datetime(?, 'localtime')
+  // so it lines up with the live-write path — otherwise replayed points
+  // would sit in a different timestamp format than real-time points, re-
+  // introducing the mixed-format bug the live path was hardened against.
   const points = Array.isArray(body) ? body : (body.points || [body]);
   const stmt = db.prepare(`
     INSERT INTO gps_breadcrumbs (unit_id, officer_id, call_sign, latitude, longitude,
-      accuracy, heading, speed, unit_status, recorded_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      accuracy, heading, speed, unit_status, recorded_at, gps_source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+      COALESCE(datetime(?, 'localtime'), datetime('now','localtime')),
+      COALESCE(?, 'offline_desktop'))
   `);
 
   const tx = db.transaction(() => {
     for (const p of points) {
       stmt.run(p.unit_id, p.officer_id, p.call_sign, p.latitude, p.longitude,
-        p.accuracy, p.heading, p.speed, p.unit_status, p.recorded_at);
+        p.accuracy, p.heading, p.speed, p.unit_status, p.recorded_at,
+        p.gps_source ?? null);
     }
   });
   tx();

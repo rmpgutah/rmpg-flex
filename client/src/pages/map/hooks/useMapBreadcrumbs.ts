@@ -318,36 +318,109 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
             breadcrumbMarkersRef.current.push(dot);
           });
 
-          // Speed alert markers — exclamation at 80+ mph
-          points.forEach((pt) => {
-            if (pt.speed != null && Number.isFinite(pt.speed) && pt.speed * MPS_TO_MPH >= 80) {
-              try {
-                const alertMarker = new google.maps.Marker({
-                  position: { lat: pt.lat, lng: pt.lng },
-                  map,
-                  icon: {
-                    path: 'M -6,-6 L 6,-6 L 0,6 Z',
-                    scale: 1.8,
-                    fillColor: '#dc2626',
-                    fillOpacity: 0.95,
-                    strokeColor: '#fbbf24',
-                    strokeWeight: 2,
-                    strokeOpacity: 1,
-                    anchor: new google.maps.Point(0, 0),
-                  },
-                  label: {
-                    text: '!',
-                    color: '#ffffff',
-                    fontWeight: '900',
-                    fontSize: '11px',
-                  },
-                  title: `Speed Alert: ${(pt.speed * MPS_TO_MPH).toFixed(0)} mph`,
-                  zIndex: 5000,
-                });
-                speedAlertMarkersRef.current.push(alertMarker);
-              } catch (err) {
-                // ignore individual marker errors
+          // ── Speed alert consolidation ─────────────────────────────
+          // Previously: one warning triangle per breadcrumb >= 80 mph,
+          // which stacked 10+ triangles along a single speeding run and
+          // visually cluttered the map.
+          //
+          // Now: walk the trail, group contiguous overspeed points into
+          // "events", and drop ONE severity-colored badge at the event's
+          // midpoint. Badge text shows the peak mph seen in that event.
+          // Tooltip shows duration + point count.
+          //
+          // Thresholds ladder:
+          //   >= 100 mph → CRITICAL (red, border red, "pursuit speed")
+          //   >=  90 mph → HIGH     (orange)
+          //   >=  80 mph → WARNING  (amber/yellow)
+          const OVERSPEED_THRESHOLD_MPH = 80;
+          interface OverspeedEvent {
+            startIdx: number;
+            endIdx: number;
+            peakMph: number;
+            peakLat: number;
+            peakLng: number;
+            startTime: string | null;
+            endTime: string | null;
+          }
+          const events: OverspeedEvent[] = [];
+          let cur: OverspeedEvent | null = null;
+          points.forEach((pt, idx) => {
+            const mph = pt.speed != null && Number.isFinite(pt.speed) ? pt.speed * MPS_TO_MPH : 0;
+            if (mph >= OVERSPEED_THRESHOLD_MPH) {
+              if (!cur) {
+                cur = {
+                  startIdx: idx, endIdx: idx, peakMph: mph,
+                  peakLat: pt.lat, peakLng: pt.lng,
+                  startTime: pt.time ?? null, endTime: pt.time ?? null,
+                };
+              } else {
+                cur.endIdx = idx;
+                cur.endTime = pt.time ?? null;
+                if (mph > cur.peakMph) {
+                  cur.peakMph = mph;
+                  cur.peakLat = pt.lat;
+                  cur.peakLng = pt.lng;
+                }
               }
+            } else if (cur) {
+              events.push(cur);
+              cur = null;
+            }
+          });
+          if (cur) events.push(cur);
+
+          events.forEach((ev) => {
+            // Severity band determines colors + badge text.
+            const peak = Math.round(ev.peakMph);
+            let fillColor: string, strokeColor: string;
+            if (peak >= 100) { fillColor = '#dc2626'; strokeColor = '#fca5a5'; }    // critical red
+            else if (peak >= 90) { fillColor = '#ea580c'; strokeColor = '#fdba74'; } // high orange
+            else { fillColor = '#d4a017'; strokeColor = '#fde68a'; }                 // warning gold
+
+            // Midpoint of the speeding segment — center the badge over the
+            // fastest sub-segment so the marker visually tracks where the
+            // worst of the event happened.
+            const lat = ev.peakLat;
+            const lng = ev.peakLng;
+
+            // Duration (seconds) + point count for the tooltip.
+            const durSec = (ev.startTime && ev.endTime)
+              ? Math.max(0, Math.round((new Date(ev.endTime).getTime() - new Date(ev.startTime).getTime()) / 1000))
+              : 0;
+            const durStr = durSec >= 60 ? `${Math.floor(durSec / 60)}m ${durSec % 60}s` : `${durSec}s`;
+            const ptCount = ev.endIdx - ev.startIdx + 1;
+            const tierLabel = peak >= 100 ? 'PURSUIT' : peak >= 90 ? 'HIGH' : 'WARN';
+
+            try {
+              const alertMarker = new google.maps.Marker({
+                position: { lat, lng },
+                map,
+                icon: {
+                  // Warning triangle — slightly larger than before (2.4 vs 1.8)
+                  // since there are far fewer of them competing for attention.
+                  path: 'M -7,-6 L 7,-6 L 0,7 Z',
+                  scale: 2.4,
+                  fillColor,
+                  fillOpacity: 0.95,
+                  strokeColor,
+                  strokeWeight: 2,
+                  strokeOpacity: 1,
+                  anchor: new google.maps.Point(0, 0),
+                },
+                label: {
+                  // Badge text = peak mph. Two digits fit cleanly; three
+                  // (100+) still fit but are tighter — acceptable tradeoff.
+                  text: String(peak),
+                  color: '#ffffff',
+                  fontWeight: '900',
+                  fontSize: '10px',
+                },
+                title: `${tierLabel}  ${peak} mph peak  ·  ${durStr}  ·  ${ptCount} pts`,
+                zIndex: 5000 + peak, // faster events render on top
+              });
+              speedAlertMarkersRef.current.push(alertMarker);
+            } catch (err) {
+              // ignore individual marker errors
             }
           });
         });

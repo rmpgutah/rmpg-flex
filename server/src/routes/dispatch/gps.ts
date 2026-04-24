@@ -25,6 +25,50 @@ const GPS_SOURCE_PRIORITY: Record<string, number> = {
   traccar: 4,       // alternative background tracker
 };
 const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
+const GPS_STALE_SEC = Math.floor(GPS_STALE_MS / 1000);
+
+/**
+ * Atomically update a unit's live GPS position if — and only if — the
+ * incoming source's priority is >= the currently-stored source's, OR
+ * the stored fix is stale. Executes as a single UPDATE statement so two
+ * concurrent writers cannot both pass a TOCTOU check and clobber each
+ * other: the priority gate runs under the same row lock as the write.
+ *
+ * Returns true if the row was updated, false if suppressed by the gate.
+ */
+function updateUnitGpsIfHigherPriority(
+  unitId: number,
+  lat: number,
+  lng: number,
+  source: string,
+  nowLocal: string,
+): boolean {
+  const db = getDb();
+  const incomingPriority = GPS_SOURCE_PRIORITY[source] ?? 0;
+  // The priority ladder is encoded in SQL so the comparison happens
+  // atomically with the write. We intentionally bake in the full ladder
+  // here rather than reading it from a table — the set is tiny and
+  // changes-per-decade.
+  const info = db.prepare(`
+    UPDATE units
+    SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
+    WHERE id = ?
+      AND (
+        gps_updated_at IS NULL
+        OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) > ?
+        OR COALESCE(CASE gps_source
+             WHEN 'owntracks' THEN 4
+             WHEN 'traccar' THEN 4
+             WHEN 'clearpathgps' THEN 3
+             WHEN 'browser_mobile' THEN 2
+             WHEN 'browser_desktop' THEN 1
+             WHEN 'browser' THEN 1
+             ELSE 0
+           END, 0) <= ?
+      )
+  `).run(lat, lng, source, nowLocal, unitId, GPS_STALE_SEC, incomingPriority);
+  return Number(info?.changes ?? 0) > 0;
+}
 
 /** Ray-casting point-in-polygon test */
 function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
@@ -188,31 +232,18 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     // ── Use the LATEST point for live unit position and broadcast ──
     const latest = validPoints[validPoints.length - 1];
 
-    // ── GPS Source Priority Check ──
-    // Determine incoming source: phone GPS > desktop WiFi
+    // ── GPS Source Priority Check (atomic) ──
+    // Determine incoming source: phone GPS > desktop WiFi.
     const allowedDeviceTypes = ['mobile', 'desktop'];
     const rawDeviceType = typeof req.body.device_type === 'string' ? req.body.device_type : 'desktop';
     const deviceType = allowedDeviceTypes.includes(rawDeviceType) ? rawDeviceType : 'desktop';
     const gpsSource = deviceType === 'mobile' ? 'browser_mobile' : 'browser_desktop';
-    const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 1;
 
-    // Check current unit's GPS source and freshness
-    const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
-    const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
-    const updatedAtMs = currentGps?.gps_updated_at ? new Date(currentGps.gps_updated_at).getTime() : NaN;
-    const currentAge = !isNaN(updatedAtMs)
-      ? Date.now() - updatedAtMs
-      : Infinity; // no previous update or invalid date → always accept
-
-    // Update live position only if: incoming priority >= current, OR current source is stale
-    const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
-
-    if (shouldUpdateLive) {
-      db.prepare(`
-        UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
-        WHERE id = ?
-      `).run(latest.lat, latest.lng, gpsSource, localNow(), unit.id);
-    }
+    // Priority check happens inside the UPDATE's WHERE clause so two
+    // concurrent writers cannot both pass a read-then-write TOCTOU.
+    const shouldUpdateLive = updateUnitGpsIfHigherPriority(
+      unit.id, latest.lat, latest.lng, gpsSource, localNow()
+    );
 
     // Fetch full unit info for broadcast (always needed for breadcrumb metadata)
     const updated = db.prepare(`
@@ -226,13 +257,16 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
     // ── Bulk-insert all breadcrumb points in a single transaction ──
     // Breadcrumbs are ALWAYS recorded regardless of priority — both sessions contribute trail data
+    // Normalize `recorded_at` to localtime format at write time so downstream
+    // reads don't have to cope with the ISO-UTC/localtime mix. `datetime(?, 'localtime')`
+    // parses either input form and emits "YYYY-MM-DD HH:MM:SS" consistently.
     const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
         road_name, nearest_intersection, gps_source, recorded_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         NULL, NULL, ?,
-        COALESCE(?, datetime('now','localtime')))
+        COALESCE(datetime(?, 'localtime'), datetime('now','localtime')))
     `);
 
     const insertMany = db.transaction((pts: GpsPoint[]) => {
@@ -1147,25 +1181,37 @@ const owntracksHandler = (req: Request, res: Response) => {
     }
 
     if (!unit) {
-      res.status(404).json({ error: `No unit mapped to tracker ID "${trackerId}". Add mapping in Admin or set call_sign to match.` });
+      // Auto-register as a pending device. The phone will keep posting;
+      // each post bumps seen_count + last_seen_at so admins can see
+      // which devices are live. Breadcrumbs are NOT stored until an
+      // admin claims the device (see /api/admin/owntracks-pending).
+      // This turns first-boot setup from "edit SQL" to "click once".
+      try {
+        db.prepare(`
+          INSERT INTO owntracks_pending_devices
+            (tracker_id, last_lat, last_lng, last_payload, seen_count)
+          VALUES (?, ?, ?, ?, 1)
+          ON CONFLICT(tracker_id) DO UPDATE SET
+            last_lat      = excluded.last_lat,
+            last_lng      = excluded.last_lng,
+            last_payload  = excluded.last_payload,
+            last_seen_at  = datetime('now','localtime'),
+            seen_count    = seen_count + 1
+        `).run(trackerId, lat, lng, JSON.stringify(body).slice(0, 1000));
+      } catch (e: any) {
+        console.error('[GPS] pending device register failed:', e?.message || e);
+      }
+      // 202 Accepted — phone treats 2xx as success and keeps posting.
+      // Body is the empty array OwnTracks expects so it doesn't log an error.
+      res.status(202).json([]);
       return;
     }
 
     const now = localNow();
     const gpsSource = source;
-    const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 4;
 
-    // GPS source priority check
-    const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
-    const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
-    const updatedAtMs = currentGps?.gps_updated_at ? new Date(currentGps.gps_updated_at).getTime() : NaN;
-    const currentAge = !isNaN(updatedAtMs) ? Date.now() - updatedAtMs : Infinity;
-    const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
-
-    if (shouldUpdateLive) {
-      db.prepare('UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ? WHERE id = ?')
-        .run(lat, lng, gpsSource, now, unit.id);
-    }
+    // Priority check happens inside the UPDATE's WHERE clause — atomic.
+    const shouldUpdateLive = updateUnitGpsIfHigherPriority(unit.id, lat, lng, gpsSource, now);
 
     // Fetch full unit for broadcast
     const updated = db.prepare(`
@@ -1174,11 +1220,12 @@ const owntracksHandler = (req: Request, res: Response) => {
       WHERE u.id = ?
     `).get(unit.id) as any;
 
-    // Insert breadcrumb
+    // Insert breadcrumb — normalize recorded_at to localtime format at write time.
+    // See matching comment in the browser-GPS insert above.
     db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number, gps_source, recorded_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(datetime(?, 'localtime'), datetime('now','localtime')))
     `).run(
       unit.id, unit.officer_id, lat, lng, accuracy, heading, speed,
       updated?.status || unit.status, updated?.call_sign || unit.call_sign,

@@ -988,7 +988,12 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const params: any[] = [];
 
     if (startDate && endDate) {
-      dateClause = `b.recorded_at >= ? AND b.recorded_at <= ?`;
+      // Wrap both sides in datetime() so ISO-UTC and localtime-format
+      // rows compare correctly against the caller's bounds. Without the
+      // cast, a row with ISO-UTC "2026-04-23T23:59:59.000Z" sorts above
+      // localtime-format "2026-04-23 23:59:59" (ASCII 'T' > space) and
+      // gets wrongly excluded at day-boundary queries.
+      dateClause = `datetime(b.recorded_at) >= datetime(?) AND datetime(b.recorded_at) <= datetime(?)`;
       params.push(startDate, endDate);
     } else {
       dateClause = `b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')`;

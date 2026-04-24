@@ -246,12 +246,22 @@ function handlePostGps(body) {
   const db = getLocalDb();
   const points = Array.isArray(body) ? body : (body.points || [body]);
 
+  // Tag each point with recorded_at if the caller didn't set one.
+  // Critical for offline replay — without a local timestamp the server
+  // would stamp replayed points with the time the sync happened to run,
+  // which misplaces the trail wherever reconnection occurred.
+  const nowIso = new Date().toISOString();
+  for (const p of points) {
+    if (!p.recorded_at) p.recorded_at = nowIso;
+    if (!p.gps_source) p.gps_source = 'offline_desktop';
+  }
+
+  // Store locally for immediate map rendering on the offline client.
   const stmt = db.prepare(`
     INSERT INTO gps_breadcrumbs (unit_id, officer_id, call_sign, latitude, longitude,
       accuracy, heading, speed, unit_status, recorded_at, is_synced)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
   `);
-
   const tx = db.transaction(() => {
     for (const p of points) {
       stmt.run(p.unit_id, p.officer_id, p.call_sign, p.latitude, p.longitude,
@@ -260,7 +270,18 @@ function handlePostGps(body) {
   });
   tx();
 
-  return { status: 200, data: { stored: points.length } };
+  // Queue the batch for replay when connectivity returns. Previously the
+  // local store was a black hole — points landed here and never made it
+  // back to the server. The sync push loop in syncManager.js drains the
+  // queue via POST /api/offline/sync/push; pushGpsBreadcrumbs() on the
+  // server side understands this payload shape.
+  try {
+    enqueue('POST', '/api/dispatch/gps', { points }, null, 'gps_breadcrumbs');
+  } catch (e) {
+    console.warn('[offlineRouter] failed to enqueue GPS batch:', e?.message || e);
+  }
+
+  return { status: 200, data: { stored: points.length, queued: points.length } };
 }
 
 // ─── Handler: GET /api/incidents ─────────────────────────────
