@@ -1938,6 +1938,12 @@ interface IncidentData {
   scene_safety?: string;
   direction_of_travel?: string;
   created_at?: string;
+  // Dispatch lifecycle timestamps — used for computed response/on-scene/total durations
+  dispatched_at?: string;
+  enroute_at?: string;
+  onscene_at?: string;
+  cleared_at?: string;
+  closed_at?: string;
   road_conditions?: string;
   traffic_control?: string;
   vehicle_1_info?: string;
@@ -2418,7 +2424,32 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         } catch { /* malformed JSON — skip rather than crash */ }
       }
 
-      // Row 7: Record-keeping meta
+      // Row 7: Response-time metrics — computed from dispatch lifecycle timestamps.
+      // Internal-record value is having the durations printed alongside the section
+      // rather than forcing the reader into a separate analytics UI.
+      if (data.dispatched_at || data.onscene_at || data.cleared_at || data.closed_at) {
+        const durMin = (from?: string, to?: string): string => {
+          if (!from || !to) return '';
+          const a = Date.parse(from);
+          const b = Date.parse(to);
+          if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
+          const mins = Math.round((b - a) / 60_000);
+          const h = Math.floor(mins / 60);
+          const m = mins % 60;
+          return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        };
+        const responseTime = durMin(data.dispatched_at, data.onscene_at);
+        const onSceneTime = durMin(data.onscene_at, data.cleared_at);
+        const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
+        if (responseTime || onSceneTime || totalTime) {
+          const fya = addFieldPair(doc, 'Response Time', responseTime || '—', lx, y, thirdW);
+          const fyb = addFieldPair(doc, 'On-Scene Time', onSceneTime || '—', lx + thirdW, y, thirdW);
+          const fyc = addFieldPair(doc, 'Total Duration', totalTime || '—', lx + thirdW * 2, y, thirdW);
+          y = Math.max(fya, fyb, fyc);
+        }
+      }
+
+      // Row 8: Record-keeping meta
       if (data.created_by || data.dispatcher_name || data.created_at) {
         const fya = addFieldPair(doc, 'Created By', data.created_by || '', lx, y, thirdW);
         const fyb = addFieldPair(doc, 'Dispatcher', data.dispatcher_name || '', lx + thirdW, y, thirdW);
