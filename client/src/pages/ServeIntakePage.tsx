@@ -152,6 +152,7 @@ export default function ServeIntakePage() {
   // Priority & additional notes
   const [editPriority, setEditPriority] = useState<'P1' | 'P2' | 'P3' | 'P4'>('P4');
   const [editAdditionalNotes, setEditAdditionalNotes] = useState('');
+  const [expandedPreview, setExpandedPreview] = useState<number | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -351,6 +352,28 @@ export default function ServeIntakePage() {
       {/* ═══════ STEP 1: UPLOAD ═══════ */}
       {step === 'upload' && (
         <>
+          {/* Instructions panel */}
+          <div className="panel-beveled p-4 bg-surface-sunken">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 flex items-center justify-center bg-brand-900/30 border border-brand-700/50 flex-shrink-0">
+                <Upload className="w-5 h-5 text-brand-400" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-white mb-1">Upload Service Documents</h3>
+                <p className="text-[10px] text-rmpg-400 leading-relaxed">
+                  Upload PDF documents from the process service packet. The system automatically detects document types,
+                  extracts defendant information, addresses, court details, and service instructions.
+                </p>
+                <div className="flex items-center gap-4 mt-2 text-[9px]">
+                  <span className="flex items-center gap-1 text-red-400"><FileText className="w-3 h-3" /> Court Docket — Summons, Complaints, Orders</span>
+                  <span className="flex items-center gap-1 text-amber-400"><FileText className="w-3 h-3" /> Field Sheet — Service instructions, addresses</span>
+                  <span className="flex items-center gap-1 text-green-400"><FileText className="w-3 h-3" /> Info Sheet — Job details, activity history</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Drop zone */}
           <div
             ref={dropRef}
             onDrop={handleDrop}
@@ -359,21 +382,43 @@ export default function ServeIntakePage() {
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
             role="button" tabIndex={0}
             aria-label="Upload PDF documents"
-            className="border-2 border-dashed border-rmpg-600 p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 focus:outline-none focus:border-brand-500 transition-all"
+            className={`border-2 border-dashed p-10 text-center cursor-pointer transition-all ${
+              files.length > 0
+                ? 'border-brand-500/50 bg-brand-900/5 hover:bg-brand-900/10'
+                : 'border-rmpg-600 hover:border-rmpg-400 hover:bg-surface-raised/50'
+            } focus:outline-none focus:border-brand-500`}
           >
-            <Upload className="w-10 h-10 text-rmpg-500 mx-auto mb-3" />
-            <p className="text-sm font-bold text-rmpg-300">DRAG & DROP PDF DOCUMENTS</p>
-            <p className="text-[10px] text-rmpg-500 mt-1">Court Docket · Field Sheet · Information Sheet</p>
-            <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-full bg-surface-raised border border-rmpg-600 flex items-center justify-center mb-4">
+                <Upload className="w-8 h-8 text-rmpg-400" />
+              </div>
+              <p className="text-sm font-bold text-rmpg-200">DRAG & DROP PDF DOCUMENTS</p>
+              <p className="text-[10px] text-rmpg-500 mt-1">Supports multiple files · Court Docket · Field Sheet · Info Sheet</p>
+              <p className="text-[10px] text-brand-400 mt-3 font-medium">or click anywhere to browse files</p>
+              <p className="text-[8px] text-rmpg-600 mt-2">Accepted: PDF files only · Max 10 files per upload</p>
+            </div>
             <input ref={fileInputRef} type="file" accept=".pdf" multiple className="hidden"
               onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }} />
           </div>
 
           {files.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">{files.length} Document{files.length > 1 ? 's' : ''} Loaded</p>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5" />
+                  {files.length} Document{files.length > 1 ? 's' : ''} Loaded
+                </p>
+                <div className="flex items-center gap-2 text-[9px]">
+                  <span className="text-rmpg-500">{files.reduce((sum, f) => sum + f.text.length, 0).toLocaleString()} chars extracted</span>
+                  {files.every(f => f.status === 'extracted') && (
+                    <span className="flex items-center gap-1 text-green-400"><CheckCircle className="w-3 h-3" /> All extracted</span>
+                  )}
+                </div>
+              </div>
               {files.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
+                <div key={i} className="flex items-center gap-2 px-3 py-2.5 panel-beveled bg-surface-raised text-xs border-l-2" style={{
+                  borderLeftColor: f.type === 'court_docket' ? '#dc2626' : f.type === 'field_sheet' ? '#f59e0b' : f.type === 'info_sheet' ? '#22c55e' : '#888',
+                }}>
                   <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
                   <span className="text-white font-medium truncate flex-1">{f.name}</span>
                   {/* Doc type selector */}
@@ -391,23 +436,60 @@ export default function ServeIntakePage() {
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Extraction may be incomplete" />
                   )}
                   <span className="text-[9px] text-rmpg-500">{f.text.length.toLocaleString()} chars</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedPreview(expandedPreview === i ? null : i); }}
+                    className="p-0.5 text-rmpg-500 hover:text-brand-400 transition-colors" title="Preview extracted text">
+                    <Eye className="w-3 h-3" />
+                  </button>
                   <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400">
                     <X className="w-3 h-3" />
                   </IconButton>
                 </div>
+                {/* Extracted text preview */}
+                {expandedPreview === i && (
+                  <div className="mx-3 mb-2 p-3 bg-surface-sunken border border-rmpg-700/50 max-h-[200px] overflow-y-auto">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[9px] text-rmpg-500 uppercase font-bold">Extracted Text Preview</span>
+                      <span className="text-[9px] text-rmpg-600">{f.text.length.toLocaleString()} characters</span>
+                    </div>
+                    <pre className="text-[9px] text-rmpg-300 font-mono whitespace-pre-wrap leading-relaxed">{f.text.slice(0, 3000)}{f.text.length > 3000 ? '\n\n... (truncated)' : ''}</pre>
+                  </div>
+                )}
               ))}
             </div>
           )}
 
           {files.length > 0 && (
-            <button onClick={handleParse} disabled={parsing || files.every(f => f.status === 'error')}
-              className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center">
-              {parsing ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Extracting & Parsing...</>
-              ) : (
-                <><ChevronRight className="w-4 h-4" /> Review Extracted Data</>
-              )}
-            </button>
+            <div className="space-y-2">
+              {/* Document checklist */}
+              <div className="panel-beveled p-3 bg-surface-sunken">
+                <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Document Detection Summary</p>
+                <div className="grid grid-cols-3 gap-2 text-[10px]">
+                  <div className={`flex items-center gap-1.5 p-1.5 border ${files.some(f => f.type === 'court_docket') ? 'border-red-700/40 bg-red-900/10 text-red-400' : 'border-rmpg-700/30 text-rmpg-600'}`}>
+                    {files.some(f => f.type === 'court_docket') ? <CheckCircle className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                    Court Docket {files.filter(f => f.type === 'court_docket').length > 1 ? `(${files.filter(f => f.type === 'court_docket').length})` : ''}
+                  </div>
+                  <div className={`flex items-center gap-1.5 p-1.5 border ${files.some(f => f.type === 'field_sheet') ? 'border-amber-700/40 bg-amber-900/10 text-amber-400' : 'border-rmpg-700/30 text-rmpg-600'}`}>
+                    {files.some(f => f.type === 'field_sheet') ? <CheckCircle className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                    Field Sheet
+                  </div>
+                  <div className={`flex items-center gap-1.5 p-1.5 border ${files.some(f => f.type === 'info_sheet') ? 'border-green-700/40 bg-green-900/10 text-green-400' : 'border-rmpg-700/30 text-rmpg-600'}`}>
+                    {files.some(f => f.type === 'info_sheet') ? <CheckCircle className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                    Info Sheet
+                  </div>
+                </div>
+                {!files.some(f => f.type === 'field_sheet') && (
+                  <p className="text-[9px] text-amber-400 mt-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Field Sheet missing — defendant name and address may not extract</p>
+                )}
+              </div>
+              <button onClick={handleParse} disabled={parsing || files.every(f => f.status === 'error')}
+                className="w-full toolbar-btn toolbar-btn-primary py-3.5 text-sm font-bold justify-center">
+                {parsing ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Extracting & Parsing {files.length} Document{files.length > 1 ? 's' : ''}...</>
+                ) : (
+                  <><ChevronRight className="w-4 h-4" /> Review Extracted Data →</>
+                )}
+              </button>
+            </div>
           )}
         </>
       )}
