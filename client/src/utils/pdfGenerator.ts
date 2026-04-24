@@ -145,18 +145,21 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   watermark_text: 'CONFIDENTIAL',
 };
 
-/** Fetch branding settings from admin config API (gracefully falls back to defaults) */
+/** Fetch branding settings from admin system-settings API.
+ * Branding is stored as a JSON blob under config_key 'branding_settings'
+ * in the system_settings category (saved by Admin > Branding tab).
+ * Falls back to defaults if the API is unreachable or has no branding saved.
+ */
 export async function fetchPdfBranding(): Promise<PdfBranding> {
   try {
     const token = localStorage.getItem('rmpg_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch('/api/admin/config/branding', { headers });
+    const res = await fetch('/api/admin/system-settings', { headers });
     if (!res.ok) return { ...DEFAULT_PDF_BRANDING };
-    const items = await res.json() as { config_key: string; config_value: string }[];
-    const item = items.find(i => i.config_key === 'branding_settings') || items[0];
-    if (!item) return { ...DEFAULT_PDF_BRANDING };
-    const parsed = JSON.parse(item.config_value);
+    const settings = await res.json() as Record<string, string>;
+    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING };
+    const parsed = JSON.parse(settings.branding_settings);
     return { ...DEFAULT_PDF_BRANDING, ...parsed };
   } catch {
     return { ...DEFAULT_PDF_BRANDING };
