@@ -3435,6 +3435,70 @@ export default function DispatchPage() {
           })()}
         </div>
 
+        {/* Operational Intelligence Strip — response times + shift throughput + priority filter */}
+        {(() => {
+          const todayCalls = calls.filter(c => {
+            if (!c.created_at) return false;
+            const d = new Date(c.created_at);
+            const now = new Date();
+            return d.toDateString() === now.toDateString();
+          });
+          const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+          // Avg response time (created → onscene) for calls with onscene_at today
+          const responseTimes = todayCalls
+            .filter(c => c.onscene_at && c.created_at)
+            .map(c => (new Date(c.onscene_at!).getTime() - new Date(c.created_at!).getTime()) / 60000)
+            .filter(m => m > 0 && m < 480);
+          const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
+          // Oldest pending call age
+          const pendingCalls = calls.filter(c => c.status === 'pending');
+          const oldestPending = pendingCalls.length > 0
+            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => new Date(c.created_at || 0).getTime()))) / 60000)
+            : null;
+
+          return (
+            <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0" style={{ background: '#080808' }}>
+              {/* Shift throughput */}
+              <span className="text-rmpg-400 flex items-center gap-1">
+                <span className="text-[8px] text-rmpg-600">TODAY</span>
+                <strong className="text-white">{todayCalls.length}</strong> calls
+                <span className="text-rmpg-600">·</span>
+                <strong className="text-green-400">{clearedToday}</strong> cleared
+              </span>
+              {/* Avg response */}
+              {avgResponse !== null && (
+                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${avgResponse <= 8 ? 'text-green-400 border-green-700/40 bg-green-900/20' : avgResponse <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/20' : 'text-red-400 border-red-700/40 bg-red-900/20'}`}>
+                  AVG RESPONSE: <strong>{avgResponse}m</strong>
+                </span>
+              )}
+              {/* Oldest pending */}
+              {oldestPending !== null && oldestPending > 0 && (
+                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${oldestPending <= 5 ? 'text-rmpg-400 border-rmpg-700/40' : oldestPending <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/10 animate-pulse' : 'text-red-400 border-red-700/40 bg-red-900/20 animate-pulse'}`}>
+                  OLDEST WAIT: <strong>{oldestPending}m</strong>
+                </span>
+              )}
+              {/* Priority quick filters */}
+              <div className="ml-auto flex items-center gap-0.5">
+                <span className="text-[8px] text-rmpg-600 mr-1">PRIORITY</span>
+                {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
+                  const count = calls.filter(c => c.priority === p && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  const colors: Record<string, string> = {
+                    P1: 'bg-red-900/40 text-red-400 border-red-700/50',
+                    P2: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
+                    P3: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+                    P4: 'bg-green-900/40 text-green-400 border-green-700/50',
+                  };
+                  return (
+                    <span key={p} className={`px-1.5 py-0.5 text-[8px] font-bold border ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}>
+                      {p}:{count}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Feature 9: Call Type Statistics Bar */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0c0c80' }}>
@@ -3639,6 +3703,23 @@ export default function DispatchPage() {
                   {onSceneElapsed && (
                     <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-purple-300 bg-purple-900/20 border border-purple-700/30 whitespace-nowrap tabular-nums" title="Time on scene">
                       <Clock style={{ width: 9, height: 9 }} /> On scene: {onSceneElapsed}
+                    </span>
+                  )}
+                  {/* Total elapsed timer (since call creation) */}
+                  {selectedCall.created_at && !['cleared', 'closed', 'archived', 'cancelled'].includes(selectedCall.status) && (
+                    <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${
+                      (() => {
+                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        if (mins > 60) return 'text-red-400 bg-red-900/20 border border-red-700/30';
+                        if (mins > 30) return 'text-amber-400 bg-amber-900/20 border border-amber-700/30';
+                        return 'text-rmpg-400 bg-rmpg-900/20 border border-rmpg-700/30';
+                      })()
+                    }`} title="Total call duration">
+                      <Clock style={{ width: 9, height: 9 }} />
+                      {(() => {
+                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+                      })()}
                     </span>
                   )}
                 </div>
