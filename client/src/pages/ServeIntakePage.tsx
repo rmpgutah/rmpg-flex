@@ -81,6 +81,26 @@ interface IntakeResult {
 
 type Step = 'upload' | 'review' | 'complete';
 
+// IMPORTANT: FieldRow must be defined OUTSIDE the component to prevent
+// React from recreating it on every render (which unmounts the input and kills focus).
+function FieldRow({ label, icon: Icon, value, onChange, placeholder, multiline }: {
+  label: string; icon: React.ElementType; value: string;
+  onChange: (v: string) => void; placeholder?: string; multiline?: boolean;
+}) {
+  return (
+    <div>
+      <label className="text-[10px] text-rmpg-400 uppercase flex items-center gap-1 mb-1">
+        <Icon className="w-3 h-3" /> {label}
+      </label>
+      {multiline ? (
+        <textarea className="input-dark text-xs w-full min-h-[48px]" rows={3} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+      ) : (
+        <input className="input-dark text-xs w-full" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+      )}
+    </div>
+  );
+}
+
 const DOC_TYPE_OPTIONS = [
   { value: 'court_docket', label: 'Court Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
@@ -314,22 +334,6 @@ export default function ServeIntakePage() {
     setResult(null);
     setError(null);
   };
-
-  const FieldRow = ({ label, icon: Icon, value, onChange, placeholder, multiline }: {
-    label: string; icon: React.ElementType; value: string;
-    onChange: (v: string) => void; placeholder?: string; multiline?: boolean;
-  }) => (
-    <div>
-      <label className="text-[10px] text-rmpg-400 uppercase flex items-center gap-1 mb-1">
-        <Icon className="w-3 h-3" /> {label}
-      </label>
-      {multiline ? (
-        <textarea className="input-dark text-xs w-full min-h-[48px]" rows={3} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
-      ) : (
-        <input className="input-dark text-xs w-full" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
-      )}
-    </div>
-  );
 
   return (
     <div className="p-4 space-y-4 max-w-5xl mx-auto">

@@ -439,15 +439,32 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const info = parseInfoSheetLabels(infoSheet);
   const attorney = extractAttorneyBlock(courtDocket);
 
-  // Defendant — Field Sheet "Party to Serve:" (preserves layout whitespace via \s+)
-  const ptsMatch = fieldSheet.match(/Party to Serve[:\s]+([^\n]+)/i) || infoSheet.match(/Recipient[:\s]+([^\n]+)/i);
-  const rawPartyName = (ptsMatch?.[1] || info.defendant || '').replace(/,\s*an\s+individual.*$/i, '').trim();
-  const nameParts = rawPartyName.split(/\s+/);
+  // ── Defendant name extraction (multi-source fallback) ──
+  // Priority: Field Sheet "Party to Serve" → Info Sheet "Recipient" → Info Sheet "Defendant" label
+  //         → Court Docket caption "vs" line → Court Docket "Defendant" keyword
+  const ptsMatch = fieldSheet.match(/Party to Serve[:\s]+([^\n]+)/i)
+    || infoSheet.match(/Recipient[:\s]+([^\n]+)/i)
+    || courtDocket.match(/(?:vs?\.?|versus)\s*\n?\s*([A-Z][A-Za-z ,.'-]+?)(?:\s*,\s*(?:an individual|Defendant|et al))/i)
+    || courtDocket.match(/Defendant[:\s]+([^\n]+)/i);
+  let rawPartyName = (ptsMatch?.[1] || info.defendant || '').replace(/,\s*an\s+individual.*$/i, '').replace(/,?\s*(?:Defendant|et al\.?)$/i, '').trim();
+  // Strip trailing noise: "aka", "dba", court case numbers
+  rawPartyName = rawPartyName.replace(/\s+(?:aka|a\.k\.a|dba|d\.b\.a)\.?\s+.*$/i, '').trim();
+  const nameParts = rawPartyName.split(/\s+/).filter(Boolean);
+
+  // DOB extraction — try field sheet, info sheet, AND court docket
   let dob = '';
-  const dobMatch = fieldSheet.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i) || infoSheet.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+  const dobMatch = fieldSheet.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)
+    || infoSheet.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)
+    || allText.match(/(?:Date of Birth|D\.O\.B\.?|Born)[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)
+    || allText.match(/DOB[:\s]*(\d{4}-\d{2}-\d{2})/i);
   if (dobMatch) {
-    const [m, d, y] = dobMatch[1].split('/');
-    dob = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    const raw = dobMatch[1];
+    if (raw.includes('-')) {
+      dob = raw; // Already YYYY-MM-DD
+    } else {
+      const [m, d, y] = raw.split('/');
+      dob = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
   }
   const defendant = {
     first: nameParts[0] || '',
@@ -456,42 +473,76 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     dob,
   };
 
-  // Address — Field Sheet block
-  const addrMatch = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/);
+  // ── Address extraction (multi-pattern fallback) ──
+  // Try standard "123 Street, City, ST 84123" → then "Address:" label → then any ZIP-terminated line
+  const addrMatch = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/)
+    || infoSheet.match(/(?:Address|Service Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i)
+    || allText.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,\s*(?:UT|Utah|CO|AZ|NV|ID|WY|NM)\s*\d{5})/i);
   const address = addrMatch ? addrMatch[1].trim() : '';
   const addressParts = parseAddressParts(address);
 
-  // Plaintiff — info sheet first, then docket caption
+  // ── Plaintiff extraction (multi-source) ──
   let plaintiff = info.plaintiff;
   if (!plaintiff) {
-    const m = courtDocket.match(/([A-Z][^\n]{5,200}?),\s*\n\s*Plaintiff,/);
+    // Standard docket caption: "NAME,\n  Plaintiff,"
+    const m = courtDocket.match(/([A-Z][^\n]{5,200}?),\s*\n\s*Plaintiff/i)
+      || courtDocket.match(/([A-Z][^\n]{3,200}?)\s*,?\s*Plaintiff/i);
     if (m) plaintiff = m[1].replace(/\s+/g, ' ').trim();
   }
+  // Strip trailing comma/period from plaintiff name
+  plaintiff = (plaintiff || '').replace(/[,.\s]+$/, '').trim();
 
-  // Court / clerk / court address
-  const court = info.court || (courtDocket.match(/(THIRD|FIRST|SECOND|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^,\n]*/i)?.[0].trim() || '');
-  const courtAddress = info.courtAddress || (courtDocket.match(/(\d+\s+South\s+State\s+St[^,\n]*,\s*[^,\n]*\d{5}(?:-\d{4})?)/i)?.[1] || '');
-  const clerkMatch = courtDocket.match(/call\s+the\s+clerk[\s\S]*?at\s*\((\d{3})\)\s*(\d{3})[-.\s]?(\d{4})/i);
+  // ── Court extraction (broader matching) ──
+  const courtPatterns = [
+    /(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^,\n]*/i,
+    /(?:IN THE\s+)?(\w+\s+DISTRICT\s+COURT[^,\n]*)/i,
+    /(?:IN THE\s+)?(\w+\s+CIRCUIT\s+COURT[^,\n]*)/i,
+    /(JUSTICE\s+COURT[^,\n]*)/i,
+    /(SMALL\s+CLAIMS\s+COURT[^,\n]*)/i,
+  ];
+  let court = info.court;
+  if (!court) {
+    for (const re of courtPatterns) {
+      const m = courtDocket.match(re);
+      if (m) { court = (m[1] || m[0]).trim(); break; }
+    }
+  }
+  court = court || '';
+  const courtAddress = info.courtAddress || (courtDocket.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,?\s*(?:UT|Utah)\s*\d{5})/i)?.[1] || '');
+  const clerkMatch = courtDocket.match(/(?:call|contact)\s+(?:the\s+)?clerk[\s\S]*?(?:at\s*)?\(?(\d{3})\)?\s*[-.\s]?(\d{3})[-.\s]?(\d{4})/i)
+    || courtDocket.match(/Clerk[:\s]*\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/i);
   const clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
 
-  // Documents list
-  const documents = (fieldSheet.match(/Documents[:\s]+([^\n]+)/i)?.[1] || '').trim();
+  // ── Documents list (field sheet → info sheet → court docket) ──
+  const documents = (fieldSheet.match(/Documents[:\s]+([^\n]+)/i)?.[1]
+    || infoSheet.match(/Documents?[:\s]+([^\n]+)/i)?.[1]
+    || '').trim();
   const primaryDoc = primaryDocToken(documents);
   const serviceType = deriveServiceType(primaryDoc);
   const bilingual = /bilingual/i.test(documents);
   const documentPages = parseInt((infoSheet.match(/(\d+)\s*pages/i)?.[1] || '0'), 10);
 
-  // Instructions verbatim
-  const instrMatch = fieldSheet.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n|$)/i);
+  // ── Instructions extraction (multiple fallback patterns) ──
+  const instrMatch = fieldSheet.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n|$)/i)
+    || fieldSheet.match(/(?:Special Instructions|Service Instructions|Notes)[:\s]*\n([\s\S]*?)(?:\n\s*\n|$)/i)
+    || infoSheet.match(/(?:Instructions|Service Notes)[:\s]*\n?([\s\S]*?)(?:\n\s*\n|$)/i);
   const instructions = instrMatch ? instrMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : '';
   const orderingClientRule = instructions.split('.')[0].trim() + (instructions ? '.' : '');
 
-  // Job numbers (ICU Job + client subordinate job# in parens)
-  const jobMatch = fieldSheet.match(/Job[:\s]+(\d+)\s*\((\d+)\)/i) || fieldSheet.match(/(\d{7,})\s*\((\d{5,})\)/);
+  // ── Job numbers (ICU Job + client subordinate job#) ──
+  const jobMatch = fieldSheet.match(/Job[:\s#]+(\d+)\s*\((\d+)\)/i)
+    || fieldSheet.match(/(\d{7,})\s*\((\d{5,})\)/)
+    || infoSheet.match(/JOB[:\s#]+(\d+)/i);
   const jobNumber = jobMatch?.[1] || '';
-  const clientJobNumber = jobMatch?.[2] || (courtDocket.match(/\*S\d+(\d{6})\*/)?.[1] || '');
+  const clientJobNumber = jobMatch?.[2]
+    || (courtDocket.match(/\*S\d+(\d{6})\*/)?.[1] || '')
+    || (courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+)/i)?.[1] || '');
 
-  const dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1] || '');
+  // Due date — field sheet, info sheet, or any "Due:" mention
+  const dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+    || infoSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+    || infoSheet.match(/Deadline[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+    || '');
 
   // Signed + response deadline from docket URCP 4 text
   const signedDate = (courtDocket.match(/DATED\s+([A-Z][a-z]+\s+\d{1,2},\s*\d{4})/)?.[1] || '').replace(/,\s*$/, '');
