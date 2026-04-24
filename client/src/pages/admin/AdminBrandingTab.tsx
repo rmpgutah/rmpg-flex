@@ -104,13 +104,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
       if (s.branding_settings) {
         try { brandObj = JSON.parse(s.branding_settings); } catch { /* */ }
       }
-      setConfig(prev => {
-        const merged = { ...prev };
-        for (const key of Object.keys(prev) as (keyof BrandingConfig)[]) {
-          if (brandObj[key] !== undefined) merged[key] = brandObj[key];
-        }
-        return merged;
-      });
+      setConfig(prev => ({ ...prev, ...brandObj } as BrandingConfig));
     } catch { /* use defaults */ }
     setLoading(false);
   }, []);
