@@ -197,33 +197,44 @@ export interface DiligenceSlot {
   weekend: boolean;
 }
 
-export function computeDiligenceSchedule(due: Date, now: Date): DiligenceSlot[] {
+export function computeDiligenceSchedule(
+  due: Date,
+  now: Date,
+  utcOffsetHours: number = 0,
+): DiligenceSlot[] {
+  const offsetMs = utcOffsetHours * 60 * 60 * 1000;
+  // Shift timestamps into fixed-offset local clock space for deterministic window math.
+  const toLocal = (d: Date) => new Date(d.getTime() + offsetMs);
+  // Convert fixed-offset local clock timestamps back to UTC.
+  const fromLocal = (d: Date) => new Date(d.getTime() - offsetMs);
+
   const windows: Array<{ name: DiligenceSlot['window']; hour: number; minute: number }> = [
     { name: '6AM-9AM', hour: 7, minute: 30 },
     { name: '9AM-6PM', hour: 12, minute: 0 },
     { name: '6PM-9PM', hour: 19, minute: 30 },
   ];
 
-  const isWeekend = (d: Date) => {
-    const day = d.getDay();
+  const isWeekend = (utcDate: Date) => {
+    const day = toLocal(utcDate).getUTCDay();
     return day === 0 || day === 6;
   };
 
   // Enumerate candidate (day, window) slots between now and due
   const candidates: DiligenceSlot[] = [];
-  const cursor = new Date(now);
-  cursor.setHours(0, 0, 0, 0);
-  const endDay = new Date(due);
-  endDay.setHours(23, 59, 59, 999);
-  while (cursor.getTime() <= endDay.getTime()) {
+  const localCursor = toLocal(now);
+  localCursor.setUTCHours(0, 0, 0, 0);
+  const localDue = toLocal(due);
+
+  while (localCursor.getTime() <= localDue.getTime()) {
     for (const w of windows) {
-      const slot = new Date(cursor);
-      slot.setHours(w.hour, w.minute, 0, 0);
-      if (slot.getTime() >= now.getTime() && slot.getTime() <= due.getTime()) {
-        candidates.push({ date: slot, window: w.name, weekend: isWeekend(slot) });
+      const localSlot = new Date(localCursor);
+      localSlot.setUTCHours(w.hour, w.minute, 0, 0);
+      const utcSlot = fromLocal(localSlot);
+      if (utcSlot.getTime() >= now.getTime() && utcSlot.getTime() <= due.getTime()) {
+        candidates.push({ date: utcSlot, window: w.name, weekend: isWeekend(utcSlot) });
       }
     }
-    cursor.setDate(cursor.getDate() + 1);
+    localCursor.setUTCDate(localCursor.getUTCDate() + 1);
   }
 
   if (candidates.length === 0) return [];
