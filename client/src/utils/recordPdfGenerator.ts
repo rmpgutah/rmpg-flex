@@ -2578,6 +2578,21 @@ async function generateQrDataUrl(text: string): Promise<string | null> {
   }
 }
 
+function drawDiagonalWatermark(
+  doc: jsPDF,
+  text: string,
+  color: [number, number, number, number]
+) {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFontSize(72);
+  doc.setTextColor(color[0], color[1], color[2]);
+  (doc as any).setGState?.(new (doc as any).GState({ opacity: color[3] }));
+  doc.text(text, pageW / 2, pageH / 2, { align: 'center', angle: -30 });
+  (doc as any).setGState?.(new (doc as any).GState({ opacity: 1 }));
+  doc.setTextColor(0, 0, 0);
+}
+
 async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -2776,11 +2791,125 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     }
   }
 
+  // ── Subject identification (Phase 1) ──
+  if (data.subject_aliases?.length || data.subject_distinguishing_features || data.subject_scars_marks_tattoos) {
+    y = checkPageBreak(doc, y, 16, statusPrio);
+    const sec = openAutoSection(doc, 'Subject Identification', y);
+    y = sec.contentY;
+    if (data.subject_aliases?.length) {
+      y = addFieldPair(doc, 'AKAs', data.subject_aliases.join(', '), lx, y, ffw);
+    }
+    if (data.subject_scars_marks_tattoos) {
+      y = addFieldPair(doc, 'Scars / Marks / Tattoos', data.subject_scars_marks_tattoos, lx, y, ffw);
+    }
+    if (data.subject_distinguishing_features) {
+      y = addFieldPair(doc, 'Distinguishing', data.subject_distinguishing_features, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Statute text (Phase 1) ──
+  if (data.statute_text) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'Statute', y);
+    y = sec.contentY;
+    doc.setFontSize(9);
+    const lines = doc.splitTextToSize(data.statute_text, ffw);
+    doc.text(lines, lx, y + 4);
+    y += 4 + lines.length * 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Known associates (Phase 1) ──
+  if (data.known_associates?.length) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'Known Associates', y);
+    y = sec.contentY;
+    doc.setFontSize(8);
+    const associates = data.known_associates.slice(0, 10);
+    associates.forEach((a, idx) => {
+      doc.text(`${a.name}  (${a.relationship || 'associate'})`, lx + 2, y + 4 + idx * 4);
+    });
+    y += associates.length * 4 + 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Known vehicles (Phase 1) ──
+  if (data.known_vehicles?.length) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'Known Vehicles', y);
+    y = sec.contentY;
+    doc.setFontSize(8);
+    const vehicles = data.known_vehicles.slice(0, 10);
+    vehicles.forEach((v, idx) => {
+      doc.text(`${v.plate}  ${v.description}`, lx + 2, y + 4 + idx * 4);
+    });
+    y += vehicles.length * 4 + 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Source / provenance (Phase 1) ──
+  y = checkPageBreak(doc, y, 18, statusPrio);
+  {
+    const sec = openAutoSection(doc, 'Source / Provenance', y);
+    y = sec.contentY;
+    const halfW = ffw / 2;
+    if (data.source_scraper_name) {
+      const r1a = addFieldPair(doc, 'Scraper', data.source_scraper_name, lx, y, halfW);
+      const r1b = addFieldPair(doc, 'State',   data.source_state || '—',  lx + halfW, y, halfW);
+      y = Math.max(r1a, r1b);
+    } else {
+      const r1a = addFieldPair(doc, 'Source', 'Manually entered', lx, y, halfW);
+      const r1b = addFieldPair(doc, 'By',     data.entered_by_name || 'Unknown', lx + halfW, y, halfW);
+      y = Math.max(r1a, r1b);
+    }
+    if (data.source_url) {
+      y = addFieldPair(doc, 'URL', data.source_url, lx, y, ffw);
+    }
+    const r3a = addFieldPair(doc, 'Last refreshed', fmtDate(data.source_last_scraped_at) || '—', lx, y, halfW);
+    const r3b = addFieldPair(doc, 'Verification',   data.source_verification || 'auto-scraped', lx + halfW, y, halfW);
+    y = Math.max(r3a, r3b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── RMPG encounters (Phase 1) ──
+  if (data.rmpg_encounters?.length) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'RMPG Encounters', y);
+    y = sec.contentY;
+    doc.setFontSize(8);
+    const encounters = data.rmpg_encounters.slice(0, 20);
+    encounters.forEach((e, idx) => {
+      doc.text(
+        `${fmtDate(e.date)}  ${e.context}${e.property ? '  —  ' + e.property : ''}`,
+        lx + 2,
+        y + 4 + idx * 4
+      );
+    });
+    y += encounters.length * 4 + 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
   // Signature Block — full-width stacked
   y = addStackedSignatures(doc, 'Reporting Officer', '', y, getOfficerSig(), undefined, statusPrio);
+
+  // ── Watermarks (after all content) — Phase 1 ──
+  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+    drawDiagonalWatermark(doc, 'EXPIRED', [220, 38, 38, 0.15]);
+  }
+  if (data.archived_at) {
+    drawDiagonalWatermark(doc, 'ARCHIVED', [100, 116, 139, 0.15]);
+  }
+
+  // ── Print audit footer (Phase 1) ──
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  const audit = `Printed by: ${data.printed_by_name || 'Unknown'}${data.printed_by_badge ? ' #' + data.printed_by_badge : ''}  on  ${fmtDate(data.printed_at) || fmtDate(new Date().toISOString())}`;
+  doc.text(audit, lx, doc.internal.pageSize.getHeight() - 6);
+  doc.setTextColor(0, 0, 0);
 }
 
 // ── Evidence / Property Custody Report ───────────────────────

@@ -137,6 +137,52 @@ describe('recordPdfGenerator smoke tests', () => {
     expect(doc.getNumberOfPages()).toBeGreaterThan(0);
   });
 
+  it('renders with all new Phase 1 fields populated', async () => {
+    const data = {
+      ...minWarrant,
+      oca_number: '2026-CR-4827',
+      ori: 'UT0181700',
+      ncic_entry_number: 'N28B9',
+      issue_date: '2026-04-01',
+      priority_score: 87,
+      statute_text: 'Theft — Obtaining property by deception',
+      subject_aliases: ['Johnny', 'Red'],
+      subject_distinguishing_features: 'snake tattoo neck',
+      known_associates: [{ name: 'Doe, Jane', relationship: 'spouse' }],
+      known_vehicles: [{ plate: 'ABC123', description: '2021 Civic Blue' }],
+      rmpg_encounters: [{ date: '2026-03-20', context: 'FI-2026-0012', property: 'Walmart' }],
+      source_scraper_name: 'Utah Warrants Live',
+      source_state: 'UT',
+      source_last_scraped_at: '2026-04-24T13:45:00Z',
+      printed_by_name: 'Zamora',
+      printed_by_badge: '142',
+      printed_at: '2026-04-24T14:32:00Z',
+    };
+    const doc = await generateRecordPdf('warrant', data);
+    expect(doc.output('arraybuffer').byteLength).toBeGreaterThan(5000);
+  });
+
+  it('renders EXPIRED watermark for past expires_at', async () => {
+    const data = { ...minWarrant, expires_at: '2020-01-01' };
+    const doc = await generateRecordPdf('warrant', data);
+    expect(doc).toBeDefined();
+  });
+
+  it('renders ARCHIVED watermark when archived_at set', async () => {
+    const data = { ...minWarrant, archived_at: '2026-04-01' };
+    const doc = await generateRecordPdf('warrant', data);
+    expect(doc).toBeDefined();
+  });
+
+  it('handles Unicode subject name', async () => {
+    const doc = await generateRecordPdf('warrant', {
+      ...minWarrant,
+      subject_first_name: 'Müller',
+      subject_last_name: '王',
+    });
+    expect(doc).toBeDefined();
+  });
+
   it('generates an evidence PDF from minimal data', async () => {
     const doc = await generateRecordPdf('evidence', minEvidence);
     expect(doc).toBeDefined();
