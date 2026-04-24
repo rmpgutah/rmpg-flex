@@ -44,6 +44,19 @@ function getLogger(req: Request): { warn: (...a: any[]) => void; error: (...a: a
   return (req as any).log || { warn: console.warn.bind(console), error: console.error.bind(console), info: console.info.bind(console) };
 }
 
+function utcOffsetHoursForZone(date: Date, timeZone: string): number {
+  const part = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'shortOffset',
+  }).formatToParts(date).find(p => p.type === 'timeZoneName')?.value ?? '';
+  const m = part.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  const hours = parseInt(m[2], 10);
+  const minutes = parseInt(m[3] || '0', 10);
+  return sign * (hours + minutes / 60);
+}
+
 // ── PDF binary → text (pdftotext) ───────────────────────────
 router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   const chunks: Buffer[] = [];
@@ -383,7 +396,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       const m = parsed.dueDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
       if (m) dueDateObj = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10), 23, 59, 59);
     }
-    const schedule = dueDateObj ? computeDiligenceSchedule(dueDateObj, new Date()) : [];
+    const utahOffsetHours = utcOffsetHoursForZone(new Date(), 'America/Denver');
+    const schedule = dueDateObj ? computeDiligenceSchedule(dueDateObj, new Date(), utahOffsetHours) : [];
     if (parsed.dueDate && schedule.length === 0) warnings.push('Diligence schedule empty (due date may be in the past)');
 
     const daysRemaining = dueDateObj ? Math.max(0, Math.ceil((dueDateObj.getTime() - Date.now()) / 86_400_000)) : 0;
