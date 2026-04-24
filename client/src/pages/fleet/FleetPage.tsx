@@ -757,6 +757,15 @@ export default function FleetPage() {
               )}
             </>
           )}
+          {/* Daily patrol reports archive — month/day tree of auto-generated PDFs */}
+          <button
+            type="button"
+            className="toolbar-btn"
+            onClick={() => { window.location.href = '/fleet/reports'; }}
+            title="Daily Patrol Reports Archive"
+          >
+            <Calendar className="w-3 h-3" /> Daily Reports
+          </button>
           <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
         </PanelTitleBar>
