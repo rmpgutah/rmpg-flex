@@ -351,3 +351,37 @@ describe('GET /api/warrants — Phase 1 filters & computed fields', () => {
     expect(w.matches_person).toBe(1);
   });
 });
+
+describe('GET /api/warrants/:id detail extensions', () => {
+  it('includes statute_text when statute_id linked', async () => {
+    // utah_statutes has several NOT NULL columns; provide all of them.
+    const statuteId = db
+      .prepare(
+        `INSERT INTO utah_statutes (title, chapter, section, citation, short_title, description, category)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(76, 6, '404', '76-6-404-test', 'Theft', 'Theft statute', 'criminal')
+      .lastInsertRowid as number;
+    const warrantId = seedWarrant({ statute_id: statuteId });
+    const res = await authGet(`/api/warrants/${warrantId}`).expect(200);
+    expect(String(res.body.statute_text || '')).toContain('Theft');
+  });
+
+  it('includes rmpg_encounters when subject linked and has call_persons rows', async () => {
+    const personId = seedPerson();
+    const callId = seedCall();
+    db.prepare('INSERT INTO call_persons (call_id, person_id) VALUES (?, ?)').run(callId, personId);
+    const warrantId = seedWarrant({ subject_person_id: personId });
+    const res = await authGet(`/api/warrants/${warrantId}`).expect(200);
+    expect(res.body.rmpg_encounters).toBeInstanceOf(Array);
+    expect(res.body.rmpg_encounters.length).toBeGreaterThan(0);
+  });
+
+  it('returns empty encounters/associates/vehicles when no subject link', async () => {
+    const warrantId = seedWarrant({ subject_person_id: null });
+    const res = await authGet(`/api/warrants/${warrantId}`).expect(200);
+    expect(res.body.rmpg_encounters).toEqual([]);
+    expect(res.body.known_associates).toEqual([]);
+    expect(res.body.known_vehicles).toEqual([]);
+  });
+});

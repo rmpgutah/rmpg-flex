@@ -1221,6 +1221,7 @@ router.put('/scrapers/:source_key', requireRole('admin', 'manager'), (req: Reque
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureWarrantReviewColumns(db);
 
     const warrant = db.prepare(`
       SELECT w.*,
@@ -1235,11 +1236,16 @@ router.get('/:id', (req: Request, res: Response) => {
         p.eye_color as subject_eye_color,
         p.address as subject_address,
         p.photo_url as subject_photo_url,
+        p.alias_nickname as subject_aliases,
+        p.scars_marks_tattoos as subject_scars_marks_tattoos,
+        p.distinguishing_features as subject_distinguishing_features,
         (p.first_name || ' ' || p.last_name) as subject_name,
+        s.short_title as statute_text,
         u_entered.full_name as entered_by_name,
         u_served.full_name as served_by_name
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
+      LEFT JOIN utah_statutes s ON s.id = w.statute_id
       LEFT JOIN users u_entered ON w.entered_by = u_entered.id
       LEFT JOIN users u_served ON w.served_by = u_served.id
       WHERE w.id = ?
@@ -1257,13 +1263,97 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'warrant' AND al.entity_id = ?
       ORDER BY al.created_at DESC
-    
+
       LIMIT 1000
     `).all(warrant.id);
+
+    // Phase 1 detail joins: RMPG encounters, known associates, known vehicles.
+    // Each block is guarded — supplemental tables may not exist on fresh schemas.
+    const rmpg_encounters: any[] = [];
+    const known_associates: any[] = [];
+    const known_vehicles: any[] = [];
+
+    if (warrant.subject_person_id) {
+      // calls_for_service encounters via call_persons
+      try {
+        const callRows = db.prepare(`
+          SELECT c.created_at AS date, c.call_number AS context, pr.name AS property
+          FROM call_persons cp
+          JOIN calls_for_service c ON c.id = cp.call_id
+          LEFT JOIN properties pr ON pr.id = c.property_id
+          WHERE cp.person_id = ?
+          ORDER BY c.created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...callRows);
+      } catch {
+        // tables may not exist
+      }
+      // incidents via incident_persons
+      try {
+        const incRows = db.prepare(`
+          SELECT i.created_at AS date, i.incident_number AS context, NULL AS property
+          FROM incident_persons ip
+          JOIN incidents i ON i.id = ip.incident_id
+          WHERE ip.person_id = ?
+          ORDER BY i.created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...incRows);
+      } catch {
+        // tables may not exist
+      }
+      // field interviews
+      try {
+        const fiRows = db.prepare(`
+          SELECT created_at AS date, fi_number AS context, NULL AS property
+          FROM field_interviews
+          WHERE person_id = ?
+          ORDER BY created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...fiRows);
+      } catch {
+        // field_interviews may not exist
+      }
+      // Sort combined encounters by date DESC, cap at 20
+      rmpg_encounters.sort((a: any, b: any) => String(b.date || '').localeCompare(String(a.date || '')));
+      rmpg_encounters.splice(20);
+
+      try {
+        const a = db.prepare(`
+          SELECT p.first_name || ' ' || p.last_name AS name,
+                 pa.relationship_type AS relationship
+          FROM person_associates pa
+          JOIN persons p ON p.id = pa.associate_id
+          WHERE pa.person_id = ?
+          LIMIT 10
+        `).all(warrant.subject_person_id);
+        known_associates.push(...a);
+      } catch {
+        // person_associates may not exist
+      }
+
+      try {
+        const v = db.prepare(`
+          SELECT plate_number AS plate,
+                 (COALESCE(year,'') || ' ' || COALESCE(make,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(color,'')) AS description
+          FROM vehicles_records
+          WHERE owner_person_id = ?
+          LIMIT 10
+        `).all(warrant.subject_person_id);
+        known_vehicles.push(...v);
+      } catch {
+        // vehicles_records may not exist
+      }
+    }
 
     res.json({
       ...warrant,
       activity,
+      rmpg_encounters,
+      known_associates,
+      known_vehicles,
     });
   } catch (error: any) {
     console.error('Get warrant error:', error);
