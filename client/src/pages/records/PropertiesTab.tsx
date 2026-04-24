@@ -19,6 +19,10 @@ import {
   FileText,
   Wrench,
   Camera,
+  ArrowUpDown,
+  Filter,
+  Navigation,
+  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -256,6 +260,27 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
     propertySubmitError,
   } = state;
 
+  const [sortBy, setSortBy] = useState<'name' | 'client' | 'newest'>('name');
+  const [filterType, setFilterType] = useState<string | null>(null);
+
+  const displayProperties = React.useMemo(() => {
+    let list = [...filteredProperties];
+    if (filterType) {
+      list = list.filter(p => {
+        if (filterType === 'active') return p.is_active;
+        if (filterType === 'inactive') return !p.is_active;
+        if (filterType === 'hazard') return !!p.hazard_notes;
+        if (filterType === 'residential') return p.property_type === 'residential';
+        if (filterType === 'commercial') return p.property_type === 'commercial';
+        return true;
+      });
+    }
+    if (sortBy === 'name') list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    else if (sortBy === 'client') list.sort((a, b) => (a.client_name || '').localeCompare(b.client_name || ''));
+    else if (sortBy === 'newest') list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  }, [filteredProperties, sortBy, filterType]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Summary Bar + Search */}
@@ -292,9 +317,29 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
         </div>
       </div>
 
+      {/* Sort + Filter */}
+      <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1.5 text-[9px] flex-wrap">
+        <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
+        {(['name', 'client', 'newest'] as const).map(s => (
+          <button key={s} type="button" onClick={() => setSortBy(s)}
+            className={`px-1.5 py-0.5 font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+            {s === 'name' ? 'Name' : s === 'client' ? 'Client' : 'Newest'}
+          </button>
+        ))}
+        <span className="w-px h-3 bg-rmpg-700 mx-1" />
+        <Filter className="w-3 h-3 text-rmpg-500" />
+        {[{ key: null, label: 'All' }, { key: 'active', label: 'Active' }, { key: 'inactive', label: 'Inactive' }, { key: 'hazard', label: 'Hazard' }, { key: 'residential', label: 'Residential' }, { key: 'commercial', label: 'Commercial' }].map(f => (
+          <button key={f.key || 'all'} type="button" onClick={() => setFilterType(f.key)}
+            className={`px-2 py-0.5 font-medium border transition-all ${filterType === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300'}`}>
+            {f.label}
+          </button>
+        ))}
+        {filterType && <span className="text-rmpg-500 ml-1">({displayProperties.length})</span>}
+      </div>
+
       {/* Property List */}
       <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Property records">
-        {filteredProperties.length === 0 && (
+        {displayProperties.length === 0 && (
           <div className="text-center py-16">
             <Building2 className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
             <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
@@ -303,7 +348,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             </p>
           </div>
         )}
-        {filteredProperties.map((prop, idx) => (
+        {displayProperties.map((prop, idx) => (
           <div
             key={prop.id}
             role="listitem"
