@@ -301,9 +301,16 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       return;
     }
 
-    // ── Vendor lookup via fingerprint (clients table) ────────
+    // ── Client lookup (user-selected > vendor fingerprint > name match > fallback)
     let vendorClient: any = null;
-    if (parsed.vendorFingerprint) {
+    // If user explicitly selected a client in the review step, use that
+    if (overrides?.client_id) {
+      vendorClient = db.prepare(
+        "SELECT id, name, billing_code, requestor_email, caller_phone, address FROM clients WHERE id = ? LIMIT 1"
+      ).get(overrides.client_id);
+    }
+    // Otherwise auto-detect from document fingerprint
+    if (!vendorClient && parsed.vendorFingerprint) {
       vendorClient = db.prepare(
         "SELECT id, name, billing_code, requestor_email, caller_phone, address FROM clients WHERE vendor_fingerprint = ? LIMIT 1"
       ).get(parsed.vendorFingerprint);
@@ -314,7 +321,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       ).get('%ICU Investigations%');
     }
     if (!vendorClient) {
-      warnings.push(`Vendor fingerprint "${parsed.vendorFingerprint}" not found in clients; using client_id=1 fallback`);
+      warnings.push(`No client matched — using fallback (client_id=1)`);
     }
     const clientId: number = vendorClient?.id ?? 1;
     const callerName: string = vendorClient?.name || 'Process Service Client';
