@@ -398,91 +398,70 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     }
   } catch { /* use defaults */ }
 
-  // ── Section header (light bg + dark text) ──
+  // ── Section header (document-style: bold label + thin rule underneath) ──
+  // Mirrors the Fuel Report aesthetic: no filled bars, no colored accents,
+  // just an uppercase heading with a 0.3mm horizontal rule beneath it.
   function drawSectionHeader(title: string) {
-    doc.setFillColor(...CLR.PRIMARY);
-    doc.rect(margin, yPos, 2, 7, 'F');
-    doc.setFillColor(...CLR.BG_HDR);
-    doc.rect(margin + 2, yPos, contentW - 2, 7, 'F');
-    doc.setDrawColor(...CLR.TEXT_SEC);
-    doc.setLineWidth(0.3);
-    doc.line(margin, yPos + 7, margin + contentW, yPos + 7);
     doc.setTextColor(...CLR.TEXT);
-    doc.setFontSize(9);
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), margin + 5, yPos + 5);
-    doc.setFont('courier', 'normal');
+    doc.text(title.toUpperCase(), margin, yPos + 4);
+    doc.setDrawColor(...CLR.BORDER);
+    doc.setLineWidth(0.3);
+    doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
+    doc.setFont('helvetica', 'normal');
     yPos += 10;
   }
 
-  // ── Column headers ──
+  // ── Column headers — bold labels + single rule underneath, no fill ──
   function drawColumnHeaders(cols: { label: string; w: number }[]) {
-    doc.setFillColor(...CLR.BG_TBL);
-    doc.rect(margin, yPos, contentW, 5, 'F');
-    doc.setDrawColor(...CLR.BORDER);
-    doc.setLineWidth(0.3);
-    doc.line(margin, yPos + 5, margin + contentW, yPos + 5);
-    doc.setTextColor(...CLR.TEXT_SEC);
-    doc.setFontSize(6);
+    doc.setTextColor(...CLR.TEXT);
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
     for (const col of cols) {
-      doc.text(col.label, xOff + 1, yPos + 3.5);
+      doc.text(col.label, xOff + 1, yPos + 3);
       xOff += col.w;
     }
+    doc.setDrawColor(...CLR.BORDER);
+    doc.setLineWidth(0.2);
+    doc.line(margin, yPos + 4.5, margin + contentW, yPos + 4.5);
     doc.setFont('courier', 'normal');
-    yPos += 6;
+    yPos += 5.5;
   }
 
   // ── Page utilities ──
-  // Page 1 = cover (no top header — it has its own centered layout)
-  // Pages 2+ = dark header bar with agency name + report title
+  // Document-style chrome: no header band, no colored stripes.
+  // Pages 2+ show a thin running title line. Footer is a plain
+  // "Page X of Y" in muted text with FORM + date metadata.
   function addHeaderFooter(pageNum: number, totalPages: number) {
     if (pageNum > 1) {
-      doc.setFillColor(...CLR.BG_DARK);
-      doc.rect(0, 0, pageW, 14, 'F');
-
-      // Logo in header if available
-      if (logoPngB64) {
-        try {
-          doc.setFillColor(255, 255, 255);
-          doc.roundedRect(margin - 1, 1.5, 13, 11, 1, 1, 'F');
-          doc.addImage(logoPngB64, 'PNG', margin - 0.5, 2, 12, 10);
-        } catch { /* ignore */ }
-      }
-
-      const textX = logoPngB64 ? margin + 14 : margin;
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(brandText, textX, 9);
-      doc.setFontSize(7);
-      doc.setFont('courier', 'normal');
-      doc.text(`DAILY PATROL REPORT  |  ${dateStr}  |  FORM PS-210`, pageW - margin, 9, { align: 'right' });
-
-      // Accent strip
-      doc.setFillColor(...CLR.PRIMARY);
-      doc.rect(0, 14, pageW / 2, 1, 'F');
-      doc.setFillColor(...CLR.ACCENT);
-      doc.rect(pageW / 2, 14, pageW / 2, 1, 'F');
+      // Thin running title — helvetica, muted, no fill
+      doc.setTextColor(...CLR.TEXT_SEC);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${brandText}  —  DAILY PATROL REPORT  —  ${dateStr}`, margin, margin - 6);
+      doc.setDrawColor(...CLR.BORDER);
+      doc.setLineWidth(0.15);
+      doc.line(margin, margin - 4, margin + contentW, margin - 4);
+      doc.setTextColor(...CLR.TEXT);
     }
 
-    // Footer on ALL pages
-    doc.setFillColor(...CLR.BG_HDR);
-    doc.rect(0, pageH - 8, pageW, 8, 'F');
+    // Plain footer — no filled band, just muted text and a hairline rule
     doc.setDrawColor(...CLR.BORDER);
-    doc.setLineWidth(0.2);
-    doc.line(0, pageH - 8, pageW, pageH - 8);
+    doc.setLineWidth(0.15);
+    doc.line(margin, pageH - 8, margin + contentW, pageH - 8);
     doc.setTextColor(...CLR.TEXT_MUTED);
-    doc.setFontSize(5.5);
-    doc.text(`Generated: ${reportDate}  |  FORM PS-210  |  CONFIDENTIAL — INTERNAL USE ONLY`, margin, pageH - 3.5);
-    doc.text(`Page ${pageNum} of ${totalPages}`, pageW - margin, pageH - 3.5, { align: 'right' });
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Form PS-210  ·  Generated ${reportDate}`, margin, pageH - 4);
+    doc.text(`Page ${pageNum} of ${totalPages}`, margin + contentW, pageH - 4, { align: 'right' });
     doc.setTextColor(...CLR.TEXT);
   }
 
   function newPage() {
     doc.addPage();
-    yPos = margin + 18;
+    yPos = margin;
   }
 
   function ensureSpace(needed: number) {
@@ -490,109 +469,57 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   }
 
   // ════════════════════════════════════════════════════════
-  // Cover Page — Professional centered logo + bold title
+  // Page 1 — Clean document-style title block (Fuel Report parity)
   // ════════════════════════════════════════════════════════
 
-  // Try to load logo from disk
-  let logoPngB64: string | null = null;
-  try {
-    const logoPath = path.resolve(__dirname, '../../../client/public/RMPG Logo Dark.png');
-    if (fs.existsSync(logoPath)) {
-      const logoData = fs.readFileSync(logoPath);
-      logoPngB64 = 'data:image/png;base64,' + logoData.toString('base64');
-    }
-  } catch { /* no logo available */ }
+  // Logo is intentionally NOT shown in the new layout — the document
+  // aesthetic prioritizes text hierarchy over branded chrome. Kept the
+  // variable declaration because addHeaderFooter() previously referenced
+  // it; the new running header doesn't need it either, so it's gone.
+  const logoPngB64: string | null = null;
+  void logoPngB64; // satisfy no-unused while keeping the name in scope if needed
 
-  // White background with subtle border at top
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, pageW, 60, 'F');
-
-  // Accent strip at top
-  doc.setFillColor(...CLR.PRIMARY);
-  doc.rect(0, 0, pageW, 2, 'F');
-
-  // Centered logo
-  if (logoPngB64) {
-    try {
-      const logoSize = 30;
-      const logoX = (pageW - logoSize) / 2;
-      doc.addImage(logoPngB64, 'PNG', logoX, 6, logoSize, logoSize);
-    } catch { /* ignore */ }
-  }
-
-  // Bold centered title
-  const titleY = logoPngB64 ? 42 : 18;
+  // Top-left aligned title block
   doc.setTextColor(...CLR.TEXT);
   doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text(brandText, pageW / 2, titleY, { align: 'center' });
+  doc.text(`${brandText} — DAILY PATROL REPORT`, margin, yPos + 2);
+  yPos += 8;
 
+  // Metadata lines immediately below, left-aligned, plain style
   doc.setFontSize(10);
-  doc.setFont('courier', 'normal');
-  doc.setTextColor(...CLR.TEXT_SEC);
-  doc.text(brandSub, pageW / 2, titleY + 6, { align: 'center' });
-
-  // Bold report title
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...CLR.PRIMARY);
-  doc.text('DAILY PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
-
-  doc.setFontSize(7);
-  doc.setFont('courier', 'normal');
-  doc.setTextColor(...CLR.TEXT_MUTED);
-  doc.text(`FORM PS-210  |  Rev. 2026-03`, pageW / 2, titleY + 19, { align: 'center' });
-
-  // Accent strip divider
-  const stripY = titleY + 22;
-  doc.setFillColor(...CLR.PRIMARY);
-  doc.rect(margin, stripY, contentW / 2, 1.2, 'F');
-  doc.setFillColor(...CLR.ACCENT);
-  doc.rect(margin + contentW / 2, stripY, contentW / 2, 1.2, 'F');
-
-  yPos = stripY + 6;
-
-  drawSectionHeader(`Report Period — ${formatDate(dateStr)}`);
-
-  // Metadata
-  doc.setTextColor(...CLR.TEXT);
-  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
   const metaLines: [string, string][] = [
-    ['Report Date:', formatDate(dateStr)],
-    ['Period:', `${dateStr} 00:00 — 23:59`],
-    ['Units Tracked:', String(trails.length)],
-    ['Total Breadcrumbs:', String(totalPoints)],
+    ['Period:',    `${formatDate(dateStr)}  (${dateStr} 00:00 — 23:59)`],
+    ['Units:',     `${trails.length} tracked`],
+    ['Breadcrumbs:', `${totalPoints.toLocaleString()} points`],
     ['Generated:', reportDate],
-    ['Auto-Generated:', 'Yes — Midnight Daily Report'],
   ];
-
+  // Fixed label column width for tidy alignment (like the Fuel Report).
+  const labelColW = 30;
   for (const [label, value] of metaLines) {
     doc.setFont('helvetica', 'bold');
-    doc.text(label, margin + 4, yPos);
-    doc.setFont('courier', 'normal');
-    doc.text(value, margin + 44, yPos);
+    doc.text(label, margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(value, margin + labelColW, yPos);
     yPos += 5;
   }
-  yPos += 6;
+  yPos += 4;
 
-  // Unit summaries
-  drawSectionHeader('Unit Summary');
+  // Unit summaries — plain-text rows, no fills, no accent bars
+  drawSectionHeader(`Units (${trails.length})`);
 
   for (const trail of trails) {
-    ensureSpace(20);
-    doc.setFillColor(...CLR.PRIMARY);
-    doc.rect(margin, yPos, 2, 6, 'F');
-    doc.setFillColor(245, 245, 250);
-    doc.rect(margin + 2, yPos, contentW - 2, 6, 'F');
+    ensureSpace(16);
     doc.setTextColor(...CLR.TEXT);
-    doc.setFontSize(8);
-    doc.setFont('courier', 'bold');
-    doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge: ${trail.badge_number || 'N/A'})`, margin + 5, yPos + 4.2);
-    yPos += 8;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge ${trail.badge_number || 'N/A'})`, margin, yPos + 3);
+    yPos += 5;
 
     doc.setTextColor(...CLR.TEXT_SEC);
-    doc.setFontSize(7);
-    doc.setFont('courier', 'normal');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
     const s = trail.stats;
     const items = [
       `Distance: ${s.total_distance_miles} mi`, `Duration: ${s.duration_minutes} min`,
@@ -603,10 +530,11 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     ];
     const colW = contentW / 4;
     for (let i = 0; i < items.length; i++) {
-      doc.text(items[i], margin + 4 + (i % 4) * colW, yPos + Math.floor(i / 4) * 4.5);
+      doc.text(items[i], margin + (i % 4) * colW, yPos + Math.floor(i / 4) * 4.5);
     }
     yPos += 12;
   }
+  yPos += 2;
 
   // ════════════════════════════════════════════════════════
   // Detail Pages
@@ -637,13 +565,9 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     for (let i = 0; i < trail.points.length; i += sampleRate) {
       const pt = trail.points[i];
       ensureSpace(5);
-      if (yPos === margin + 18) drawBcHeaders();
-
-      const rowIdx = Math.floor(i / sampleRate);
-      if (rowIdx % 2 === 0) {
-        doc.setFillColor(...CLR.BG_ZEBRA);
-        doc.rect(margin, yPos, contentW, 4, 'F');
-      }
+      // After a page break, yPos resets to margin (see newPage()); re-draw
+      // column headers so tables flowing across pages stay labeled.
+      if (yPos === margin) drawBcHeaders();
 
       doc.setTextColor(...CLR.TEXT);
       let xOff = margin;
@@ -693,10 +617,6 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       for (let si = 0; si < trail.response_segments.length; si++) {
         const seg = trail.response_segments[si];
         ensureSpace(5);
-        if (si % 2 === 0) {
-          doc.setFillColor(...CLR.BG_ZEBRA);
-          doc.rect(margin, yPos, contentW, 4.2, 'F');
-        }
         doc.setTextColor(...CLR.TEXT);
         let rxOff = margin;
         const rRow = [
@@ -734,10 +654,6 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       for (let zi = 0; zi < sorted.length; zi++) {
         ensureSpace(5);
         const [beatId, zone] = sorted[zi];
-        if (zi % 2 === 0) {
-          doc.setFillColor(...CLR.BG_ZEBRA);
-          doc.rect(margin, yPos, contentW, 4.2, 'F');
-        }
         doc.setTextColor(...CLR.TEXT);
         let zxOff = margin;
         const zRow = [beatId, zone.beat_code, zone.city, String(zone.point_count), formatDuration(zone.time_seconds), `${zone.percentage}%`];
