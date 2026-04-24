@@ -145,6 +145,96 @@ function nextCaseNumber(db: ReturnType<typeof getDb>): string {
   return `CV-${year}-${String(seq).padStart(5, '0')}`;
 }
 
+// ── Parse-only preview (no record creation) ─────────────────
+// Returns extracted data for review/editing before committing to DB.
+// Client calls this first, lets user correct mistakes, then POSTs /intake with overrides.
+router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const { documents } = req.body;
+    if (!documents || !Array.isArray(documents) || documents.length === 0) {
+      res.status(400).json({ error: 'documents array required' });
+      return;
+    }
+
+    let fieldSheet = '';
+    let courtDocket = '';
+    let infoSheet = '';
+    for (const d of documents) {
+      const txt = (d?.text || '') as string;
+      if (!txt) continue;
+      let kind = d.type as string | undefined;
+      if (!kind || kind === 'unknown') kind = detectDocType(txt);
+      if (kind === 'court_filing') kind = 'court_docket';
+      if (kind === 'info_page') kind = 'info_sheet';
+      if (kind === 'field_sheet' && !fieldSheet) fieldSheet = txt;
+      else if (kind === 'court_docket' && !courtDocket) courtDocket = txt;
+      else if (kind === 'info_sheet' && !infoSheet) infoSheet = txt;
+      else {
+        if (!fieldSheet) fieldSheet = txt;
+        else if (!courtDocket) courtDocket = txt;
+        else if (!infoSheet) infoSheet = txt;
+      }
+    }
+
+    const parsed = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
+
+    // Check for duplicate defendant
+    const db = getDb();
+    let duplicateWarning: string | null = null;
+    if (parsed.defendant.last) {
+      const existing = db.prepare(
+        "SELECT id, first_name, last_name FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1"
+      ).get(parsed.defendant.first, parsed.defendant.last) as any;
+      if (existing) {
+        duplicateWarning = `Person "${existing.first_name} ${existing.last_name}" already exists (ID: ${existing.id}). Record will be updated, not duplicated.`;
+      }
+    }
+
+    // Check for active serve on same address
+    let activeServeWarning: string | null = null;
+    if (parsed.address) {
+      const activeSQ = db.prepare(
+        "SELECT id, recipient_name FROM serve_queue WHERE recipient_address = ? AND status IN ('pending', 'in_progress') LIMIT 1"
+      ).get(parsed.address) as any;
+      if (activeSQ) {
+        activeServeWarning = `Active serve already exists at this address for "${activeSQ.recipient_name}" (Queue #${activeSQ.id}).`;
+      }
+    }
+
+    res.json({
+      parsed: {
+        defendant: parsed.defendant,
+        address: parsed.address,
+        addressParts: parsed.addressParts,
+        plaintiff: parsed.plaintiff,
+        court: parsed.court,
+        courtAddress: parsed.courtAddress,
+        county: parsed.county,
+        attorney: parsed.attorney,
+        documents: parsed.documents,
+        primaryDoc: parsed.primaryDoc,
+        serviceType: parsed.serviceType,
+        instructions: parsed.instructions,
+        jobNumber: parsed.jobNumber,
+        clientJobNumber: parsed.clientJobNumber,
+        dueDate: parsed.dueDate,
+        signedDate: parsed.signedDate,
+        serviceWindows: parsed.serviceWindows,
+        serviceRulesSummary: parsed.serviceRulesSummary,
+        courtCaseNumber: parsed.courtCaseNumber,
+      },
+      detectedTypes: {
+        fieldSheet: !!fieldSheet,
+        courtDocket: !!courtDocket,
+        infoSheet: !!infoSheet,
+      },
+      warnings: [duplicateWarning, activeServeWarning].filter(Boolean),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Parse failed: ' + (err?.message || 'Unknown error') });
+  }
+});
+
 // ── Main intake ──────────────────────────────────────────────
 router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
   const log = getLogger(req);
@@ -154,11 +244,13 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const userId = req.user!.userId as number;
     const now = localNow();
 
-    const { documents } = req.body;
+    const { documents, overrides } = req.body;
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       res.status(400).json({ error: 'documents array required with at least one document' });
       return;
     }
+    // overrides: optional user corrections from the review step
+    // { defendant?: {first,middle,last,dob}, address?, plaintiff?, dueDate?, instructions? }
 
     // Bin each document by type (explicit > auto-detect)
     let fieldSheet = '';
@@ -184,6 +276,25 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     }
 
     const parsed: ParseOutput = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
+
+    // Apply user overrides from review step (if provided)
+    if (overrides) {
+      if (overrides.defendant) {
+        if (overrides.defendant.first) parsed.defendant.first = overrides.defendant.first;
+        if (overrides.defendant.middle !== undefined) parsed.defendant.middle = overrides.defendant.middle;
+        if (overrides.defendant.last) parsed.defendant.last = overrides.defendant.last;
+        if (overrides.defendant.dob) parsed.defendant.dob = overrides.defendant.dob;
+      }
+      if (overrides.address) {
+        (parsed as any).address = overrides.address;
+        (parsed as any).addressParts = parseAddressParts(overrides.address);
+      }
+      if (overrides.plaintiff) parsed.plaintiff = overrides.plaintiff;
+      if (overrides.dueDate) (parsed as any).dueDate = overrides.dueDate;
+      if (overrides.instructions) parsed.instructions = overrides.instructions;
+      if (overrides.court) parsed.court = overrides.court;
+      if (overrides.jobNumber) parsed.jobNumber = overrides.jobNumber;
+    }
 
     if (!parsed.defendant.last) {
       res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
