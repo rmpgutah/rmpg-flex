@@ -25,6 +25,8 @@ interface UploadedFile {
 interface ParsedData {
   defendant: { first: string; middle: string; last: string; dob: string };
   address: string;
+  address: string;
+  addressParts: { building: string; floor: string; suite: string; street: string; city: string; state: string; zip: string };
   plaintiff: string;
   court: string;
   courtAddress: string;
@@ -38,9 +40,15 @@ interface ParsedData {
   clientJobNumber: string;
   dueDate: string;
   signedDate: string;
+  responseDeadlineDays: number;
+  clerkPhone: string;
+  documentPages: number;
+  bilingual: boolean;
+  orderingClientRule: string;
   serviceWindows: string;
   serviceRulesSummary: string;
   courtCaseNumber: string;
+  vendorFingerprint: string;
 }
 
 interface ParseResponse {
@@ -96,14 +104,29 @@ export default function ServeIntakePage() {
       setClients(active);
     }).catch(() => {});
   }, []);
-  // Editable overrides
+  // Editable overrides — all extracted fields are user-correctable
   const [editDefendant, setEditDefendant] = useState({ first: '', middle: '', last: '', dob: '' });
   const [editAddress, setEditAddress] = useState('');
+  const [editAddressParts, setEditAddressParts] = useState({ building: '', floor: '', suite: '', city: '', state: '', zip: '' });
   const [editPlaintiff, setEditPlaintiff] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editInstructions, setEditInstructions] = useState('');
   const [editCourt, setEditCourt] = useState('');
+  const [editCourtAddress, setEditCourtAddress] = useState('');
+  const [editCounty, setEditCounty] = useState('');
+  const [editCourtCaseNumber, setEditCourtCaseNumber] = useState('');
   const [editJobNumber, setEditJobNumber] = useState('');
+  const [editClientJobNumber, setEditClientJobNumber] = useState('');
+  const [editDocuments, setEditDocuments] = useState('');
+  const [editServiceType, setEditServiceType] = useState('');
+  const [editServiceWindows, setEditServiceWindows] = useState('');
+  const [editSignedDate, setEditSignedDate] = useState('');
+  const [editResponseDays, setEditResponseDays] = useState('');
+  const [editClerkPhone, setEditClerkPhone] = useState('');
+  const [editDocPages, setEditDocPages] = useState('');
+  const [editBilingual, setEditBilingual] = useState(false);
+  // Attorney
+  const [editAttorney, setEditAttorney] = useState({ name: '', firm: '', barNumber: '', tel: '', email: '', fax: '' });
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -168,14 +191,29 @@ export default function ServeIntakePage() {
       setParsed(resp.parsed);
       setParseWarnings(resp.warnings);
       setDetectedTypes(resp.detectedTypes);
-      // Pre-fill editable fields
-      setEditDefendant({ ...resp.parsed.defendant });
-      setEditAddress(resp.parsed.address);
-      setEditPlaintiff(resp.parsed.plaintiff);
-      setEditDueDate(resp.parsed.dueDate);
-      setEditInstructions(resp.parsed.instructions);
-      setEditCourt(resp.parsed.court);
-      setEditJobNumber(resp.parsed.jobNumber);
+      // Pre-fill ALL editable fields from parsed data
+      const p = resp.parsed;
+      setEditDefendant({ ...p.defendant });
+      setEditAddress(p.address || '');
+      setEditAddressParts({ building: p.addressParts?.building || '', floor: p.addressParts?.floor || '', suite: p.addressParts?.suite || '', city: p.addressParts?.city || '', state: p.addressParts?.state || 'UT', zip: p.addressParts?.zip || '' });
+      setEditPlaintiff(p.plaintiff || '');
+      setEditDueDate(p.dueDate || '');
+      setEditInstructions(p.instructions || '');
+      setEditCourt(p.court || '');
+      setEditCourtAddress(p.courtAddress || '');
+      setEditCounty(p.county || '');
+      setEditCourtCaseNumber(p.courtCaseNumber || '');
+      setEditJobNumber(p.jobNumber || '');
+      setEditClientJobNumber(p.clientJobNumber || '');
+      setEditDocuments(p.documents || '');
+      setEditServiceType(p.serviceType || '');
+      setEditServiceWindows(p.serviceWindows || '');
+      setEditSignedDate(p.signedDate || '');
+      setEditResponseDays(String(p.responseDeadlineDays || '21'));
+      setEditClerkPhone(p.clerkPhone || '');
+      setEditDocPages(String(p.documentPages || '0'));
+      setEditBilingual(!!p.bilingual);
+      setEditAttorney({ name: p.attorney?.name || '', firm: p.attorney?.firm || '', barNumber: p.attorney?.barNumber || '', tel: p.attorney?.tel || '', email: p.attorney?.email || '', fax: p.attorney?.fax || '' });
       setStep('review');
     } catch (err: any) {
       setError(err?.message || 'Failed to parse documents');
@@ -190,21 +228,29 @@ export default function ServeIntakePage() {
     setError(null);
     try {
       const documents = files.map(f => ({ type: f.type, text: f.text }));
-      const overrides: Record<string, any> = {};
-      if (parsed) {
-        // Only send overrides if user changed a value
-        if (editDefendant.first !== parsed.defendant.first || editDefendant.last !== parsed.defendant.last ||
-            editDefendant.middle !== parsed.defendant.middle || editDefendant.dob !== parsed.defendant.dob) {
-          overrides.defendant = editDefendant;
-        }
-        if (editAddress !== parsed.address) overrides.address = editAddress;
-        if (editPlaintiff !== parsed.plaintiff) overrides.plaintiff = editPlaintiff;
-        if (editDueDate !== parsed.dueDate) overrides.dueDate = editDueDate;
-        if (editInstructions !== parsed.instructions) overrides.instructions = editInstructions;
-        if (editCourt !== parsed.court) overrides.court = editCourt;
-        if (editJobNumber !== parsed.jobNumber) overrides.jobNumber = editJobNumber;
-      }
-      // Include selected client if user chose one
+      // Send ALL editable fields as overrides — server applies them over auto-extracted values
+      const overrides: Record<string, any> = {
+        defendant: editDefendant,
+        address: editAddress,
+        plaintiff: editPlaintiff,
+        dueDate: editDueDate,
+        instructions: editInstructions,
+        court: editCourt,
+        courtAddress: editCourtAddress,
+        county: editCounty,
+        courtCaseNumber: editCourtCaseNumber,
+        jobNumber: editJobNumber,
+        clientJobNumber: editClientJobNumber,
+        documents: editDocuments,
+        serviceType: editServiceType,
+        serviceWindows: editServiceWindows,
+        signedDate: editSignedDate,
+        responseDeadlineDays: parseInt(editResponseDays, 10) || 21,
+        clerkPhone: editClerkPhone,
+        documentPages: parseInt(editDocPages, 10) || 0,
+        bilingual: editBilingual,
+        attorney: editAttorney,
+      };
       if (selectedClientId) overrides.client_id = selectedClientId;
       const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
         method: 'POST',
@@ -328,13 +374,10 @@ export default function ServeIntakePage() {
       {step === 'review' && parsed && (
         <>
           <div className="flex items-center gap-2 mb-2">
-            <button onClick={() => setStep('upload')} className="toolbar-btn text-[10px]">
-              <ArrowLeft className="w-3 h-3" /> Back to Upload
-            </button>
-            <span className="text-[10px] text-rmpg-400 flex-1">Review and correct extracted data before creating records</span>
+            <button onClick={() => setStep('upload')} className="toolbar-btn text-[10px]"><ArrowLeft className="w-3 h-3" /> Back</button>
+            <span className="text-[10px] text-rmpg-400 flex-1">Review and correct all extracted data before creating records</span>
           </div>
 
-          {/* Warnings */}
           {parseWarnings.length > 0 && (
             <div className="bg-amber-900/20 border border-amber-700/40 p-3 text-[10px] text-amber-300 space-y-1">
               <div className="flex items-center gap-1 font-bold"><AlertTriangle className="w-3.5 h-3.5" /> Warnings</div>
@@ -342,111 +385,130 @@ export default function ServeIntakePage() {
             </div>
           )}
 
-          {/* Detected document types */}
           {detectedTypes && (
-            <div className="flex items-center gap-3 text-[10px]">
-              <span className="text-rmpg-500">Detected:</span>
-              {detectedTypes.fieldSheet && <span className="text-amber-400">✓ Field Sheet</span>}
-              {detectedTypes.courtDocket && <span className="text-red-400">✓ Court Docket</span>}
-              {detectedTypes.infoSheet && <span className="text-green-400">✓ Info Sheet</span>}
-              {!detectedTypes.fieldSheet && <span className="text-rmpg-600">✗ Field Sheet</span>}
-              {!detectedTypes.courtDocket && <span className="text-rmpg-600">✗ Court Docket</span>}
-              {!detectedTypes.infoSheet && <span className="text-rmpg-600">✗ Info Sheet</span>}
+            <div className="flex items-center gap-3 text-[10px] flex-wrap">
+              <span className="text-rmpg-500">Documents detected:</span>
+              {detectedTypes.fieldSheet ? <span className="text-amber-400">✓ Field Sheet</span> : <span className="text-rmpg-600">✗ Field Sheet</span>}
+              {detectedTypes.courtDocket ? <span className="text-red-400">✓ Court Docket</span> : <span className="text-rmpg-600">✗ Court Docket</span>}
+              {detectedTypes.infoSheet ? <span className="text-green-400">✓ Info Sheet</span> : <span className="text-rmpg-600">✗ Info Sheet</span>}
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Defendant */}
+          {/* ── Row 1: Defendant + Address ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="panel-beveled p-4 space-y-3">
-              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5" /> Defendant / Recipient
-              </h3>
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Defendant / Recipient</h3>
               <div className="grid grid-cols-3 gap-2">
                 <FieldRow label="First Name" icon={User} value={editDefendant.first} onChange={v => setEditDefendant(p => ({ ...p, first: v }))} placeholder="First" />
                 <FieldRow label="Middle" icon={User} value={editDefendant.middle} onChange={v => setEditDefendant(p => ({ ...p, middle: v }))} placeholder="Middle" />
                 <FieldRow label="Last Name" icon={User} value={editDefendant.last} onChange={v => setEditDefendant(p => ({ ...p, last: v }))} placeholder="Last" />
               </div>
               <FieldRow label="Date of Birth" icon={Calendar} value={editDefendant.dob} onChange={v => setEditDefendant(p => ({ ...p, dob: v }))} placeholder="YYYY-MM-DD" />
-              <FieldRow label="Service Address" icon={MapPin} value={editAddress} onChange={setEditAddress} placeholder="Full address with city, state, ZIP" />
             </div>
 
-            {/* Client + Case Details */}
             <div className="panel-beveled p-4 space-y-3">
-              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
-                <Gavel className="w-3.5 h-3.5" /> Client & Case Details
-              </h3>
-              {/* Client selector */}
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase flex items-center gap-1 mb-1">
-                  <Users className="w-3 h-3" /> Ordering Client
-                </label>
-                <select
-                  className="input-dark text-xs w-full"
-                  value={selectedClientId}
-                  onChange={e => {
-                    const id = e.target.value ? parseInt(e.target.value, 10) : '';
-                    setSelectedClientId(id);
-                  }}
-                >
-                  <option value="">Auto-detect from document</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.billing_code ? ` (${c.billing_code})` : ''}
-                    </option>
-                  ))}
-                </select>
-                {selectedClientId && (() => {
-                  const c = clients.find(cl => cl.id === selectedClientId);
-                  return c ? (
-                    <div className="mt-1 text-[9px] text-rmpg-500 space-x-3">
-                      {c.caller_phone && <span>Phone: {c.caller_phone}</span>}
-                      {c.address && <span>Address: {c.address}</span>}
-                    </div>
-                  ) : null;
-                })()}
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Service Address</h3>
+              <FieldRow label="Full Address" icon={MapPin} value={editAddress} onChange={setEditAddress} placeholder="123 Main St, City, ST 84123" />
+              <div className="grid grid-cols-4 gap-2">
+                <FieldRow label="Building #" icon={Building2} value={editAddressParts.building} onChange={v => setEditAddressParts(p => ({ ...p, building: v }))} placeholder="123" />
+                <FieldRow label="Suite/Apt" icon={Building2} value={editAddressParts.suite} onChange={v => setEditAddressParts(p => ({ ...p, suite: v }))} placeholder="Apt 4B" />
+                <FieldRow label="City" icon={MapPin} value={editAddressParts.city} onChange={v => setEditAddressParts(p => ({ ...p, city: v }))} placeholder="City" />
+                <div className="grid grid-cols-2 gap-1">
+                  <FieldRow label="State" icon={MapPin} value={editAddressParts.state} onChange={v => setEditAddressParts(p => ({ ...p, state: v }))} placeholder="UT" />
+                  <FieldRow label="ZIP" icon={MapPin} value={editAddressParts.zip} onChange={v => setEditAddressParts(p => ({ ...p, zip: v }))} placeholder="84123" />
+                </div>
               </div>
-              <FieldRow label="Plaintiff" icon={Building2} value={editPlaintiff} onChange={setEditPlaintiff} placeholder="Plaintiff name" />
-              <FieldRow label="Court" icon={Gavel} value={editCourt} onChange={setEditCourt} placeholder="Court name" />
+            </div>
+          </div>
+
+          {/* ── Row 2: Client + Case ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="panel-beveled p-4 space-y-3">
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Ordering Client</h3>
+              <select className="input-dark text-xs w-full" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value ? parseInt(e.target.value, 10) : '')}>
+                <option value="">Auto-detect from document</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}{c.billing_code ? ` (${c.billing_code})` : ''}</option>)}
+              </select>
+              {selectedClientId && (() => { const c = clients.find(cl => cl.id === selectedClientId); return c ? <div className="text-[9px] text-rmpg-500">{c.caller_phone && <span>Phone: {c.caller_phone} · </span>}{c.address && <span>{c.address}</span>}</div> : null; })()}
+              <FieldRow label="Plaintiff" icon={Building2} value={editPlaintiff} onChange={setEditPlaintiff} placeholder="Plaintiff name or organization" />
+            </div>
+
+            <div className="panel-beveled p-4 space-y-3">
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><Gavel className="w-3.5 h-3.5" /> Court & Case</h3>
+              <FieldRow label="Court" icon={Gavel} value={editCourt} onChange={setEditCourt} placeholder="Third Judicial District Court" />
+              <FieldRow label="Court Address" icon={MapPin} value={editCourtAddress} onChange={setEditCourtAddress} placeholder="450 South State St, SLC 84111" />
+              <div className="grid grid-cols-3 gap-2">
+                <FieldRow label="County" icon={MapPin} value={editCounty} onChange={setEditCounty} placeholder="Salt Lake" />
+                <FieldRow label="Court Case #" icon={FileText} value={editCourtCaseNumber} onChange={setEditCourtCaseNumber} placeholder="CV-26-001234" />
+                <FieldRow label="Clerk Phone" icon={Phone} value={editClerkPhone} onChange={setEditClerkPhone} placeholder="(801) 555-1234" />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Row 3: Documents + Service ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="panel-beveled p-4 space-y-3">
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Documents</h3>
+              <FieldRow label="Document List" icon={FileText} value={editDocuments} onChange={setEditDocuments} placeholder="Summons; Complaint; Exhibits A-C" />
+              <div className="grid grid-cols-3 gap-2">
+                <FieldRow label="Service Type" icon={Shield} value={editServiceType} onChange={setEditServiceType} placeholder="SUMMONS SERVICE" />
+                <FieldRow label="Pages" icon={FileText} value={editDocPages} onChange={setEditDocPages} placeholder="0" />
+                <div>
+                  <label className="text-[10px] text-rmpg-400 uppercase flex items-center gap-1 mb-1"><FileWarning className="w-3 h-3" /> Bilingual</label>
+                  <button type="button" onClick={() => setEditBilingual(!editBilingual)} role="switch" aria-checked={editBilingual}
+                    className={`w-full p-2 border text-[11px] font-medium text-left ${editBilingual ? 'bg-green-900/15 border-green-700/40 text-green-300' : 'bg-[#0c0c0c] border-[#181818] text-rmpg-400'}`}>
+                    {editBilingual ? '✓ Bilingual documents' : 'English only'}
+                  </button>
+                </div>
+              </div>
+              <FieldRow label="Signed/Filed Date" icon={Calendar} value={editSignedDate} onChange={setEditSignedDate} placeholder="January 15, 2026" />
+            </div>
+
+            <div className="panel-beveled p-4 space-y-3">
+              <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Service Schedule</h3>
               <div className="grid grid-cols-2 gap-2">
                 <FieldRow label="Due Date" icon={Calendar} value={editDueDate} onChange={setEditDueDate} placeholder="MM/DD/YYYY" />
-                <FieldRow label="Job Number" icon={Briefcase} value={editJobNumber} onChange={setEditJobNumber} placeholder="Job #" />
+                <FieldRow label="Response Deadline (days)" icon={Clock} value={editResponseDays} onChange={setEditResponseDays} placeholder="21" />
+              </div>
+              <FieldRow label="Service Windows" icon={Clock} value={editServiceWindows} onChange={setEditServiceWindows} placeholder="6AM-9AM, 9AM-6PM, 6PM-9PM" />
+              <div className="grid grid-cols-2 gap-2">
+                <FieldRow label="Job Number (ICU)" icon={Briefcase} value={editJobNumber} onChange={setEditJobNumber} placeholder="1234567" />
+                <FieldRow label="Client Job #" icon={Briefcase} value={editClientJobNumber} onChange={setEditClientJobNumber} placeholder="56789" />
               </div>
             </div>
           </div>
 
-          {/* Instructions */}
+          {/* ── Row 4: Attorney ── */}
           <div className="panel-beveled p-4 space-y-3">
-            <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5" /> Service Instructions
-            </h3>
-            <FieldRow label="Instructions" icon={FileText} value={editInstructions} onChange={setEditInstructions} placeholder="Service instructions..." multiline />
-          </div>
-
-          {/* Read-only extracted details */}
-          <div className="panel-beveled p-4 space-y-2">
-            <h3 className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5" /> Additional Extracted Data (read-only)
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
-              {parsed.documents && <div><span className="text-rmpg-500">Documents:</span> <span className="text-rmpg-300">{parsed.documents}</span></div>}
-              {parsed.serviceType && <div><span className="text-rmpg-500">Service Type:</span> <span className="text-rmpg-300">{parsed.serviceType}</span></div>}
-              {parsed.courtCaseNumber && <div><span className="text-rmpg-500">Case #:</span> <span className="text-rmpg-300">{parsed.courtCaseNumber}</span></div>}
-              {parsed.serviceWindows && <div><span className="text-rmpg-500">Windows:</span> <span className="text-rmpg-300">{parsed.serviceWindows}</span></div>}
-              {parsed.attorney.name && <div><span className="text-rmpg-500">Attorney:</span> <span className="text-rmpg-300">{parsed.attorney.name}</span></div>}
-              {parsed.attorney.firm && <div><span className="text-rmpg-500">Firm:</span> <span className="text-rmpg-300">{parsed.attorney.firm}</span></div>}
-              {parsed.signedDate && <div><span className="text-rmpg-500">Signed:</span> <span className="text-rmpg-300">{parsed.signedDate}</span></div>}
-              {parsed.serviceRulesSummary && <div className="col-span-2"><span className="text-rmpg-500">Rules:</span> <span className="text-rmpg-300">{parsed.serviceRulesSummary}</span></div>}
+            <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Attorney for Plaintiff</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <FieldRow label="Name" icon={User} value={editAttorney.name} onChange={v => setEditAttorney(p => ({ ...p, name: v }))} placeholder="Attorney name" />
+              <FieldRow label="Firm" icon={Building2} value={editAttorney.firm} onChange={v => setEditAttorney(p => ({ ...p, firm: v }))} placeholder="Law firm" />
+              <FieldRow label="Bar #" icon={Shield} value={editAttorney.barNumber} onChange={v => setEditAttorney(p => ({ ...p, barNumber: v }))} placeholder="12345" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <FieldRow label="Phone" icon={Phone} value={editAttorney.tel} onChange={v => setEditAttorney(p => ({ ...p, tel: v }))} placeholder="(801) 555-1234" />
+              <FieldRow label="Fax" icon={Phone} value={editAttorney.fax} onChange={v => setEditAttorney(p => ({ ...p, fax: v }))} placeholder="(801) 555-5678" />
+              <FieldRow label="Email" icon={FileText} value={editAttorney.email} onChange={v => setEditAttorney(p => ({ ...p, email: v }))} placeholder="attorney@firm.com" />
             </div>
           </div>
 
-          {/* Confirm button */}
+          {/* ── Row 5: Instructions ── */}
+          <div className="panel-beveled p-4 space-y-3">
+            <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Service Instructions</h3>
+            <FieldRow label="Instructions (verbatim from field sheet)" icon={FileText} value={editInstructions} onChange={setEditInstructions} placeholder="Service instructions..." multiline />
+            {parsed.serviceRulesSummary && (
+              <div className="bg-amber-900/10 border border-amber-700/30 p-2 text-[10px]">
+                <span className="text-amber-400 font-bold">AUTO-DETECTED RULES: </span>
+                <span className="text-amber-300">{parsed.serviceRulesSummary}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Confirm */}
           <button onClick={handleConfirm} disabled={processing || !editDefendant.last}
             className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center">
-            {processing ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Creating Records...</>
-            ) : (
-              <><CheckCircle className="w-4 h-4" /> Confirm & Create Person + Property + Case + Dispatch Call</>
-            )}
+            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating Records...</> : <><CheckCircle className="w-4 h-4" /> Confirm & Create All Records</>}
           </button>
         </>
       )}
