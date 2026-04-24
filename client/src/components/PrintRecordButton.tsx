@@ -136,6 +136,69 @@ export default function PrintRecordButton({
       }
     }
 
+    // For person records, fetch linked vehicles and properties
+    if (recordType === 'person' && data.id) {
+      try {
+        const links = await apiFetch<any[]>(`/records/links?source_type=person&source_id=${data.id}`);
+        if (links && links.length > 0) {
+          enriched.linked_vehicles = links.filter((l: any) => l.target_type === 'vehicle').map((l: any) => ({
+            license_plate: l.target_label || l.target_name || '',
+            year: l.target_meta?.year || '',
+            make: l.target_meta?.make || '',
+            model: l.target_meta?.model || '',
+            color: l.target_meta?.color || '',
+            relationship: l.relationship || 'linked',
+          }));
+          enriched.linked_properties = links.filter((l: any) => l.target_type === 'property').map((l: any) => ({
+            name: l.target_label || l.target_name || '',
+            address: l.target_meta?.address || '',
+            relationship: l.relationship || 'linked',
+          }));
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // For vehicle records, fetch incident/call/citation history
+    if (recordType === 'vehicle' && data.id) {
+      try {
+        const history = await apiFetch<any>(`/records/vehicles/${data.id}/history`);
+        if (history) {
+          enriched.incidents = (history.incidents || []).map((i: any) => ({
+            incident_number: i.incident_number, incident_type: i.incident_type,
+            status: i.status, created_at: i.occurred_at || i.created_at,
+          }));
+          enriched.citations = (history.citations || []).map((c: any) => ({
+            citation_number: c.citation_number, type: c.type || 'traffic',
+            status: c.status, violation_date: c.violation_date,
+          }));
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // For property records, fetch incident/call history + trespass orders
+    if (recordType === 'property' && data.id) {
+      try {
+        const calls = await apiFetch<any[]>(`/dispatch/calls?property_id=${data.id}&limit=50`);
+        if (calls && calls.length > 0) {
+          enriched.calls = calls.map((c: any) => ({
+            call_number: c.call_number, incident_type: c.incident_type,
+            status: c.status, created_at: c.created_at,
+          }));
+        }
+      } catch { /* non-fatal */ }
+      try {
+        const trespass = await apiFetch<any[]>(`/trespass-orders?property_id=${data.id}&limit=50`);
+        if (trespass && trespass.length > 0) {
+          enriched.trespass_orders = trespass.map((t: any) => ({
+            order_number: t.order_number || `TO-${t.id}`,
+            subject_name: t.subject_name || '',
+            status: t.status, issued_date: t.issued_date || t.created_at,
+            expires_date: t.expires_date || '',
+          }));
+        }
+      } catch { /* non-fatal */ }
+    }
+
     // For call records, fetch GPS breadcrumb trail
     if (recordType === 'call' && data.id) {
       try {
