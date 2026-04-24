@@ -2146,7 +2146,8 @@ router.get('/database/backups', requireRole('admin'), (req: Request, res: Respon
 router.delete('/database/backups/:filename', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const dataDir = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
-    const filename = paramStr(req.params.filename);
+    // Security: strip path components to prevent directory traversal
+    const filename = path.basename(paramStr(req.params.filename));
 
     // Security: only allow deleting backup files
     if (!filename.startsWith('rmpg-flex-backup-') || !filename.endsWith('.db')) {

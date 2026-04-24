@@ -214,20 +214,30 @@ export function sanitizePdfText(text: string): string {
  * mid-word with Courier, this respects word boundaries.
  */
 export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
-  const words = text.split(/(\s+)/);
-  const lines: string[] = [];
-  let currentLine = '';
-  for (const word of words) {
-    const testLine = currentLine + word;
-    if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
-      lines.push(currentLine.trimEnd());
-      currentLine = word.trimStart();
-    } else {
-      currentLine = testLine;
+  // Respect caller-provided hard line breaks (\n, \r\n, \r). If we don't split
+  // on them first, jsPDF's doc.text() will render embedded newlines as extra
+  // lines at its internal step, which bypasses the per-line Y advancement in
+  // addFieldPair and causes overlapping text. Fixes PSO scene-conditions
+  // weather field where the API returns multi-line summaries.
+  const out: string[] = [];
+  const segments = String(text ?? '').split(/\r\n|\r|\n/);
+  for (const segment of segments) {
+    if (!segment) { out.push(''); continue; }
+    const words = segment.split(/(\s+)/);
+    let currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine + word;
+      if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
+        out.push(currentLine.trimEnd());
+        currentLine = word.trimStart();
+      } else {
+        currentLine = testLine;
+      }
     }
+    if (currentLine.trim()) out.push(currentLine.trimEnd());
+    else if (segment) out.push('');
   }
-  if (currentLine.trim()) lines.push(currentLine.trimEnd());
-  return lines.length ? lines : [''];
+  return out.length ? out : [''];
 }
 
 function isNarrativeLikePdfText(text: string, width: number): boolean {
@@ -1651,11 +1661,13 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header with the standard SECTION_GAP
-    // so the continuation bar looks visually identical to every other section
-    // header. Previous +4mm extra was removed per user request so the
-    // continuation bar doesn't stand out with excessive spacing below it.
-    return contY + contH + SPACING.SECTION_GAP;
+    // Content starts below continuation header. The extra 2.5mm past
+    // SECTION_GAP accounts for text baseline offset — jsPDF draws text with
+    // the BASELINE at the given Y, so without this buffer the first line's
+    // ascenders overlap the header bar's bottom edge (caught on FORM PS-201
+    // page 3, where 6pt timestamp rows sat right under the continuation
+    // bar). Any first-line baseline fits cleanly inside this gap.
+    return contY + contH + SPACING.SECTION_GAP + 2.5;
   }
   return y;
 }
@@ -1926,6 +1938,12 @@ interface IncidentData {
   scene_safety?: string;
   direction_of_travel?: string;
   created_at?: string;
+  // Dispatch lifecycle timestamps — used for computed response/on-scene/total durations
+  dispatched_at?: string;
+  enroute_at?: string;
+  onscene_at?: string;
+  cleared_at?: string;
+  closed_at?: string;
   road_conditions?: string;
   traffic_control?: string;
   vehicle_1_info?: string;
@@ -1976,6 +1994,21 @@ interface IncidentData {
   pso_requestor_phone?: string;
   pso_requestor_email?: string;
   pso_billing_code?: string;
+  pso_attempt_number?: number;
+  // PSO SLA / compliance fields (server-tracked, previously hidden on the printed report)
+  pso_72hr_deadline?: string;
+  pso_72hr_notified?: string | null;
+  pso_service_windows?: string;
+  // Process-service legal details (formerly accessed via `(data as any)` casts).
+  // `client_name` is declared earlier in this interface alongside `property_name`.
+  attorney_name?: string;
+  jurisdiction?: string;
+  deadline?: string;
+  time_window?: string;
+  service_instructions?: string;
+  // Record-keeping meta
+  created_by?: string;
+  dispatcher_name?: string;
   // Process Service fields
   process_service_type?: string;
   process_served_to?: string;
@@ -2314,20 +2347,127 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
 
   // ═══════════════════════════════════════════════════════════
   // SECTION 1C — PSO CLIENT REQUEST DETAILS
+  // Expanded 2026-04-23 for internal record-keeping: surfaces contract
+  // linkage, 72hr SLA status, service-window compliance, service
+  // instructions, and creator/dispatcher meta.
   // ═══════════════════════════════════════════════════════════
-  if (data.pso_service_type || data.pso_requestor_name || data.pso_billing_code) {
-    y = checkPageBreak(doc, y, 20);
+  if (data.pso_service_type || data.pso_requestor_name || data.pso_billing_code || data.contract_id) {
+    y = checkPageBreak(doc, y, 30);
     { const sec = openAutoSection(doc, 'PSO Client Request Details', y); y = sec.contentY;
       const thirdW = ffw / 3;
+      const attemptNum = data.pso_attempt_number || 1;
+
+      // Row 1: Service Type / Authorization / Billing Code
       const fy1 = addFieldPair(doc, 'Service Type', formatServiceType(data.pso_service_type), lx, y, thirdW);
       const fy2 = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx + thirdW, y, thirdW);
       const fy3 = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', lx + thirdW * 2, y, thirdW);
       y = Math.max(fy1, fy2, fy3);
+
+      // Row 2: Requestor block
       const fy4 = addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, thirdW);
       const fy5 = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', lx + thirdW, y, thirdW);
       const fy6 = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email || '', lx + thirdW * 2, y, thirdW);
       y = Math.max(fy4, fy5, fy6);
+
+      // Row 3: Contract / Client / Attempt# — printed whenever any linkage field is present
+      if (data.contract_id || data.client_name || attemptNum > 1) {
+        const fya = addFieldPair(doc, 'Contract ID', data.contract_id || '', lx, y, thirdW);
+        const fyb = addFieldPair(doc, 'Client', data.client_name || '', lx + thirdW, y, thirdW);
+        const fyc = addFieldPair(doc, 'Attempt #', String(attemptNum), lx + thirdW * 2, y, thirdW);
+        y = Math.max(fya, fyb, fyc);
+      }
+
+      // Row 4: Legal meta (Attorney / Jurisdiction / Time Window)
+      if (data.attorney_name || data.jurisdiction || data.time_window) {
+        const fya = addFieldPair(doc, 'Attorney', data.attorney_name || '', lx, y, thirdW);
+        const fyb = addFieldPair(doc, 'Jurisdiction', data.jurisdiction || '', lx + thirdW, y, thirdW);
+        const fyc = addFieldPair(doc, 'Time Window', data.time_window || '', lx + thirdW * 2, y, thirdW);
+        y = Math.max(fya, fyb, fyc);
+      }
+
+      // Row 5: 72-hour SLA block — the key operational accountability marker
+      if (data.pso_72hr_deadline || data.pso_72hr_notified) {
+        let slaStatus = 'IN WINDOW';
+        if (data.pso_72hr_notified === 'overdue') slaStatus = 'OVERDUE';
+        else if (data.pso_72hr_notified === 'resolved') slaStatus = 'RESOLVED';
+        else if (data.pso_72hr_deadline) {
+          const dlTs = Date.parse(data.pso_72hr_deadline);
+          if (!Number.isNaN(dlTs) && dlTs < Date.now()) slaStatus = 'OVERDUE';
+        }
+        let timeRemaining = '';
+        if (data.pso_72hr_deadline) {
+          const dlTs = Date.parse(data.pso_72hr_deadline);
+          if (!Number.isNaN(dlTs)) {
+            const diffMs = dlTs - Date.now();
+            const absH = Math.floor(Math.abs(diffMs) / 3_600_000);
+            const absM = Math.floor((Math.abs(diffMs) % 3_600_000) / 60_000);
+            timeRemaining = diffMs >= 0 ? `${absH}h ${absM}m left` : `${absH}h ${absM}m past due`;
+          }
+        }
+        const fya = addFieldPair(doc, '72hr SLA Deadline', data.pso_72hr_deadline || '', lx, y, thirdW);
+        const fyb = addFieldPair(doc, 'SLA Status', slaStatus, lx + thirdW, y, thirdW);
+        const fyc = addFieldPair(doc, 'Time vs. Deadline', timeRemaining, lx + thirdW * 2, y, thirdW);
+        y = Math.max(fya, fyb, fyc);
+      }
+
+      // Row 6: Service-window compliance (parsed from JSON)
+      if (data.pso_service_windows) {
+        try {
+          const w = JSON.parse(data.pso_service_windows) as Record<string, boolean | number>;
+          const flag = (k: string): string => (w[k] ? 'YES' : 'NO');
+          const quartW = ffw / 4;
+          const fya = addFieldPair(doc, 'Early Morning', flag('early_morning'), lx, y, quartW);
+          const fyb = addFieldPair(doc, 'Daytime', flag('daytime'), lx + quartW, y, quartW);
+          const fyc = addFieldPair(doc, 'Evening', flag('evening'), lx + quartW * 2, y, quartW);
+          const fyd = addFieldPair(doc, 'Weekend', flag('weekend'), lx + quartW * 3, y, quartW);
+          y = Math.max(fya, fyb, fyc, fyd);
+        } catch { /* malformed JSON — skip rather than crash */ }
+      }
+
+      // Row 7: Response-time metrics — computed from dispatch lifecycle timestamps.
+      // Internal-record value is having the durations printed alongside the section
+      // rather than forcing the reader into a separate analytics UI.
+      if (data.dispatched_at || data.onscene_at || data.cleared_at || data.closed_at) {
+        const durMin = (from?: string, to?: string): string => {
+          if (!from || !to) return '';
+          const a = Date.parse(from);
+          const b = Date.parse(to);
+          if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
+          const mins = Math.round((b - a) / 60_000);
+          const h = Math.floor(mins / 60);
+          const m = mins % 60;
+          return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        };
+        const responseTime = durMin(data.dispatched_at, data.onscene_at);
+        const onSceneTime = durMin(data.onscene_at, data.cleared_at);
+        const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
+        if (responseTime || onSceneTime || totalTime) {
+          const fya = addFieldPair(doc, 'Response Time', responseTime || '—', lx, y, thirdW);
+          const fyb = addFieldPair(doc, 'On-Scene Time', onSceneTime || '—', lx + thirdW, y, thirdW);
+          const fyc = addFieldPair(doc, 'Total Duration', totalTime || '—', lx + thirdW * 2, y, thirdW);
+          y = Math.max(fya, fyb, fyc);
+        }
+      }
+
+      // Row 8: Record-keeping meta
+      if (data.created_by || data.dispatcher_name || data.created_at) {
+        const fya = addFieldPair(doc, 'Created By', data.created_by || '', lx, y, thirdW);
+        const fyb = addFieldPair(doc, 'Dispatcher', data.dispatcher_name || '', lx + thirdW, y, thirdW);
+        const fyc = addFieldPair(doc, 'Created', data.created_at || '', lx + thirdW * 2, y, thirdW);
+        y = Math.max(fya, fyb, fyc);
+      }
+
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+
+    // Service Instructions — caution block so site-specific guidance is unmissable in print
+    if (data.service_instructions && data.service_instructions.trim()) {
+      y = checkPageBreak(doc, y, 20);
+      y = addCautionBlock(
+        doc,
+        `SERVICE INSTRUCTIONS — ${data.service_instructions.trim()}`,
+        lx, y, ffw,
+      );
     }
   }
 
@@ -3403,20 +3543,20 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'PSO Service Type', (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
       y = Math.max(yL, yR); }
-    if ((data as any).attorney_name || (data as any).client_name || (data as any).jurisdiction) {
+    if (data.attorney_name || data.client_name || data.jurisdiction) {
       const tw = ffw / 3;
-      const a1 = addFieldPair(doc, 'Attorney', (data as any).attorney_name || '', lx, y, tw);
-      const a2 = addFieldPair(doc, 'Client', (data as any).client_name || '', lx + tw, y, tw);
-      const a3 = addFieldPair(doc, 'Jurisdiction', (data as any).jurisdiction || '', lx + 2 * tw, y, tw);
+      const a1 = addFieldPair(doc, 'Attorney', data.attorney_name || '', lx, y, tw);
+      const a2 = addFieldPair(doc, 'Client', data.client_name || '', lx + tw, y, tw);
+      const a3 = addFieldPair(doc, 'Jurisdiction', data.jurisdiction || '', lx + 2 * tw, y, tw);
       y = Math.max(a1, a2, a3);
     }
-    if ((data as any).deadline || (data as any).time_window) {
-      const dl1 = addFieldPair(doc, 'Deadline', (data as any).deadline || '', lx, y, hfw);
-      const dl2 = addFieldPair(doc, 'Time Window', (data as any).time_window || '', rx, y, hfw);
+    if (data.deadline || data.time_window) {
+      const dl1 = addFieldPair(doc, 'Deadline', data.deadline || '', lx, y, hfw);
+      const dl2 = addFieldPair(doc, 'Time Window', data.time_window || '', rx, y, hfw);
       y = Math.max(dl1, dl2);
     }
-    if ((data as any).service_instructions) {
-      y = addFieldPair(doc, 'Service Instructions', (data as any).service_instructions, lx, y, ffw);
+    if (data.service_instructions) {
+      y = addFieldPair(doc, 'Service Instructions', data.service_instructions, lx, y, ffw);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
