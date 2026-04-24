@@ -21,6 +21,7 @@ interface UploadedFile {
   type: 'court_docket' | 'field_sheet' | 'info_sheet' | 'unknown';
   text: string;
   status: 'pending' | 'extracted' | 'error';
+  rawFile: File;  // Keep original File for uploading as attachment after intake
 }
 
 interface ParsedData {
@@ -163,7 +164,7 @@ export default function ServeIntakePage() {
         : file.name.toLowerCase().includes('field') ? 'field_sheet' as const
         : file.name.toLowerCase().includes('info') ? 'info_sheet' as const
         : 'unknown' as const;
-      newFiles.push({ name: file.name, type, text, status: text.length > 50 ? 'extracted' : 'error' });
+      newFiles.push({ name: file.name, type, text, status: text.length > 50 ? 'extracted' : 'error', rawFile: file });
     }
     setFiles(prev => [...prev, ...newFiles]);
     setError(null);
@@ -265,6 +266,37 @@ export default function ServeIntakePage() {
       if (resp?.success) {
         setResult(resp);
         setStep('complete');
+
+        // Upload original PDF files as attachments to the dispatch call + case
+        // This runs in the background — doesn't block the completion step
+        const token = localStorage.getItem('rmpg_token');
+        for (const f of files) {
+          if (!f.rawFile) continue;
+          const formData = new FormData();
+          formData.append('files', f.rawFile);
+          // Link to dispatch call
+          formData.append('entity_type', 'call');
+          formData.append('entity_id', String(resp.call_id));
+          try {
+            await fetch('/api/uploads', {
+              method: 'POST',
+              headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+              body: formData,
+            });
+          } catch { /* non-fatal — files still processed */ }
+          // Also link to case
+          const formData2 = new FormData();
+          formData2.append('files', f.rawFile);
+          formData2.append('entity_type', 'case');
+          formData2.append('entity_id', String(resp.case_id));
+          try {
+            await fetch('/api/uploads', {
+              method: 'POST',
+              headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+              body: formData2,
+            });
+          } catch { /* non-fatal */ }
+        }
       } else {
         setError('Intake processing failed');
       }
