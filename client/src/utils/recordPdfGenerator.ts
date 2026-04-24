@@ -624,6 +624,28 @@ export interface WarrantPdfData {
   search_date?: string;
   verified_by?: string;
   verification_date?: string;
+  // NEW — Phase 1 enhancement (2026-04-24)
+  oca_number?: string;
+  ori?: string;
+  ncic_entry_number?: string;
+  issue_date?: string;
+  priority_score?: number;
+  statute_text?: string;
+  qr_code_data_url?: string;
+  subject_aliases?: string[];
+  subject_scars_marks_tattoos?: string;
+  subject_distinguishing_features?: string;
+  known_associates?: { name: string; relationship: string }[];
+  known_vehicles?: { plate: string; description: string }[];
+  source_scraper_name?: string;
+  source_state?: string;
+  source_url?: string;
+  source_last_scraped_at?: string;
+  source_verification?: string;
+  rmpg_encounters?: { date: string; context: string; property?: string }[];
+  printed_by_name?: string;
+  printed_by_badge?: string;
+  printed_at?: string;
 }
 
 export interface EvidencePdfData {
