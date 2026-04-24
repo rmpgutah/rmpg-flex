@@ -17,6 +17,50 @@ VPS_USER="root"
 APP_DIR="/opt/rmpg-flex"
 DOMAIN="rmpgutah.us"
 
+# ── Deploy lock (CLAUDE.md Gotcha #43) ─────────────────
+# Prevents parallel worktree deploys from silently clobbering each other.
+# The lock lives on the VPS (not locally) so every worktree on this Mac
+# sees the same state. Stale locks auto-expire after 10 minutes.
+LOCK_PATH="/tmp/rmpg-deploy.lock"
+LOCK_MAX_AGE=600  # 10 minutes in seconds
+
+acquire_deploy_lock() {
+  local lock_info
+  lock_info=$(ssh -o ConnectTimeout=5 "${VPS_USER}@${VPS_IP}" "
+    if [ -f ${LOCK_PATH} ]; then
+      lock_age=\$(( \$(date +%s) - \$(stat -c %Y ${LOCK_PATH} 2>/dev/null || echo 0) ))
+      if [ \$lock_age -lt ${LOCK_MAX_AGE} ]; then
+        echo \"HELD:\$(cat ${LOCK_PATH} 2>/dev/null):\${lock_age}\"
+        exit 1
+      fi
+    fi
+    echo \"worktree=$(basename "$PROJECT_DIR") host=$(hostname) pid=$$\" > ${LOCK_PATH}
+    echo ACQUIRED
+  " 2>&1) || true
+
+  if echo "$lock_info" | grep -q '^HELD:'; then
+    local held_info="${lock_info#HELD:}"
+    echo ""
+    echo "╔══════════════════════════════════════════════════╗"
+    echo "║  ✗ DEPLOY BLOCKED — another deploy in progress   ║"
+    echo "╠══════════════════════════════════════════════════╣"
+    echo "║  Holder: ${held_info}"
+    echo "║  If stale, force-clear on the VPS:"
+    echo "║    ssh ${VPS_USER}@${VPS_IP} rm ${LOCK_PATH}"
+    echo "╚══════════════════════════════════════════════════╝"
+    exit 1
+  fi
+}
+
+release_deploy_lock() {
+  ssh -o ConnectTimeout=5 "${VPS_USER}@${VPS_IP}" "rm -f ${LOCK_PATH}" 2>/dev/null || true
+}
+
+# Always release the lock, even on error/interrupt
+trap release_deploy_lock EXIT INT TERM
+
+acquire_deploy_lock
+
 # Get the project root (parent of deploy/)
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 

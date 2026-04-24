@@ -73,6 +73,76 @@ function getOfficerSig(): PdfSignatureData | undefined {
  * Labeled narrative field: prints a small bold label then word-wrapped body text.
  * Used for multi-line descriptive fields inside open sections.
  */
+/**
+ * Shared district/geography bar rendered just below the report header on
+ * every record PDF. Resolves sector/zone/beat/area with fallbacks and
+ * optionally appends CONTRACT ID when present.
+ */
+function drawDistrictBar(
+  doc: jsPDF,
+  y: number,
+  data: Record<string, any>,
+): number {
+  // Skip entirely when we have no geography data at all — avoids empty black bar.
+  const hasAnyGeo = !!(data.sector_id || data.zone_id || data.beat_id || data.sector_name || data.zone_name || data.beat_name || data.area_id || data.area_name || data.dispatch_code);
+  if (!hasAnyGeo) return y;
+
+  const cw = getContentWidth(doc);
+  const barY = y;
+  const hasContract = !!data.contract_id;
+  const barH = 8;
+  doc.setFillColor(...COLOR.TEXT_PRIMARY);
+  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
+
+  const areaFallback = (() => {
+    const dc = String(data.dispatch_code || '').trim();
+    if (!dc) return '';
+    const m = dc.match(/^([A-Za-z]+)\d*/);
+    return m ? m[1].toUpperCase() : '';
+  })();
+  const distFields = [
+    { label: 'SECTION', value: (data.sector_name || data.sector_id || 'N/A') },
+    { label: 'ZONE',    value: (data.zone_name   || data.zone_id   || 'N/A') },
+    { label: 'BEAT',    value: (data.beat_id     || data.beat_name || 'N/A') },
+    { label: 'AREA',    value: (data.area_name   || data.area_id   || areaFallback || data.beat_descriptor || 'N/A') },
+    { label: 'CODE',    value: data.dispatch_code || 'N/A' },
+    ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
+  ];
+
+  const dValSize = 6;
+  const dPad = 3;
+  const naturalWidths = distFields.map((f) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    const labelW = doc.getTextWidth(f.label);
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(dValSize);
+    const valW = doc.getTextWidth(sanitizePdfText(String(f.value)));
+    return Math.max(labelW, valW) + dPad;
+  });
+  const totalNat = naturalWidths.reduce((a, b) => a + b, 0);
+  const finalWidths = naturalWidths.map(w => (w / totalNat) * cw);
+
+  let colX = LAYOUT.PAGE_MARGIN;
+  distFields.forEach((f, i) => {
+    const fw = finalWidths[i];
+    const fx = colX + 1.5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(255, 255, 255);
+    doc.text(f.label, fx, barY + 2.8);
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(dValSize);
+    doc.setTextColor(255, 255, 255);
+    doc.text(sanitizePdfText(String(f.value)).toUpperCase(), fx, barY + 6.5);
+    colX += fw;
+  });
+
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  return barY + barH + 1.5;
+}
+
 function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
   if (!value || !value.trim()) return y;
   // Label line
@@ -113,6 +183,7 @@ export type RecordPdfType =
 // ── Data Interfaces ──────────────────────────────────────────
 
 export interface CallPdfData {
+  id?: number;
   call_number: string;
   incident_type: string;
   priority: string;
@@ -195,6 +266,17 @@ export interface CallPdfData {
   pso_requestor_email?: string;
   pso_billing_code?: string;
   pso_attempt_number?: number;
+  // PSO SLA / compliance fields (server-tracked, previously hidden on the printed record)
+  pso_72hr_deadline?: string;                // ISO — 72hr re-dispatch deadline after clear/close
+  pso_72hr_notified?: string | null;         // 'overdue' | 'resolved' | null
+  pso_service_windows?: string;              // JSON: {early_morning,daytime,evening,weekend}
+  // Process-service legal details (formerly accessed via `(data as any)` casts)
+  client_name?: string;
+  attorney_name?: string;
+  jurisdiction?: string;
+  deadline?: string;
+  time_window?: string;
+  service_instructions?: string;
   // Process Service fields
   process_service_type?: string;
   process_served_to?: string;
@@ -931,62 +1013,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Incident Report number is shown in Classification section — no separate banner needed
 
-  // ── Dispatch District Info Bar (gold columns — below header) ──
-  {
-    const cw = getContentWidth(doc);
-    const barY = y;
-    const hasContract = !!(data.contract_id && data.incident_type === 'pso_client_request');
-    const numCols = hasContract ? 6 : 5;
-    const barH = 8;
-    // Black background with white text
-    doc.setFillColor(...COLOR.TEXT_PRIMARY);
-    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
-
-    const distFields = [
-      { label: 'SECTION', value: data.sector_name || 'N/A' },
-      { label: 'ZONE', value: data.zone_name || 'N/A' },
-      { label: 'BEAT', value: data.beat_id || 'N/A' },
-      { label: 'AREA', value: data.beat_descriptor || 'N/A' },
-      { label: 'CODE', value: data.dispatch_code || 'N/A' },
-      ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
-    ];
-
-    // Dynamic column widths — measure all values, no truncation
-    const dValSize = 6; // compact font for district bar
-    const dPad = 3; // padding between columns — enough to prevent truncation
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(dValSize);
-    // Measure each column's natural width
-    const naturalWidths = distFields.map((f) => {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      const labelW = doc.getTextWidth(f.label);
-      doc.setFont(PDF_VALUE_FONT, 'normal');
-      doc.setFontSize(dValSize);
-      const valW = doc.getTextWidth(sanitizePdfText(f.value));
-      return Math.max(labelW, valW) + dPad;
-    });
-    // Scale proportionally to fill exactly cw
-    const totalNat = naturalWidths.reduce((a, b) => a + b, 0);
-    const finalWidths = naturalWidths.map(w => (w / totalNat) * cw);
-
-    let colX = LAYOUT.PAGE_MARGIN;
-    distFields.forEach((f, i) => {
-      const fw = finalWidths[i];
-      const fx = colX + 1.5;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(255, 255, 255);
-      doc.text(f.label, fx, barY + 2.8);
-      doc.setFont(PDF_VALUE_FONT, 'bold');
-      doc.setFontSize(dValSize);
-      doc.setTextColor(255, 255, 255);
-      doc.text(sanitizePdfText(f.value).toUpperCase(), fx, barY + 6.5);
-      colX += fw;
-    });
-
-    y = barY + barH + 1.5;
-  }
+  y = drawDistrictBar(doc, y, data as any);
 
   // Classification
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
@@ -1004,8 +1031,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
-  y = checkPageBreak(doc, y, 15, prio);
+  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3) + Timeline subsection
+  y = checkPageBreak(doc, y, 40, prio);
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: fmtTimestamp(data.created_at || '') },
@@ -1015,6 +1042,107 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Cleared', value: fmtTimestamp(data.cleared_at || '') },
       { label: 'Closed', value: fmtTimestamp(data.closed_at || '') },
     ], y);
+
+    // Timeline sub-section — compact per-step waterfall with deltas + totals
+    const steps: Array<{ label: string; ts?: string | null; phase?: string }> = [
+      { label: 'Created',    ts: data.created_at },
+      { label: 'Dispatched', ts: data.dispatched_at, phase: 'queue' },
+      { label: 'En Route',   ts: data.enroute_at },
+      { label: 'On Scene',   ts: data.onscene_at,    phase: 'response' },
+      { label: 'Cleared',    ts: data.cleared_at,    phase: 'on-scene' },
+      { label: 'Closed',     ts: data.closed_at },
+      { label: 'Archived',   ts: (data as any).archived_at },
+    ].filter(s => !!s.ts);
+
+    if (steps.length > 0) {
+      y += 1;
+      // Subsection header bar
+      const subX = lx;
+      const subW = ffw;
+      doc.setFillColor(230, 230, 230);
+      doc.rect(subX, y, subW, 4, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('TIMELINE', subX + 1.5, y + 2.8);
+      y += 4;
+
+      // Column header row
+      const cStep = subX + 2;
+      const cTs   = subX + 30;
+      const cDelta = subX + 95;
+      const cPhase = subX + 120;
+      doc.setFillColor(245, 245, 245);
+      doc.rect(subX, y, subW, 3.5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text('STEP', cStep, y + 2.5);
+      doc.text('TIMESTAMP', cTs, y + 2.5);
+      doc.text('ELAPSED', cDelta, y + 2.5);
+      doc.text('PHASE', cPhase, y + 2.5);
+      y += 3.5;
+
+      // Rows
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const rowH = 3.8;
+      let prevMs: number | null = null;
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
+        const tsMs = new Date(s.ts as string).getTime();
+        const deltaMs = (prevMs != null && isFinite(tsMs - prevMs) && tsMs - prevMs >= 0) ? tsMs - prevMs : null;
+        let deltaStr = '—';
+        if (deltaMs != null) {
+          const secsTot = Math.floor(deltaMs / 1000);
+          const hh = Math.floor(secsTot / 3600);
+          const mm = Math.floor((secsTot % 3600) / 60);
+          const ss = secsTot % 60;
+          const pad = (n: number) => n.toString().padStart(2, '0');
+          deltaStr = hh > 0 ? `+${pad(hh)}:${pad(mm)}:${pad(ss)}` : `+${pad(mm)}:${pad(ss)}`;
+        }
+        if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(subX, y, subW, rowH, 'F'); }
+        doc.text(s.label.toUpperCase(), cStep, y + 2.7);
+        doc.text(fmtTimestamp(s.ts as string), cTs, y + 2.7);
+        doc.text(deltaStr, cDelta, y + 2.7);
+        if (s.phase) doc.text(s.phase.toUpperCase(), cPhase, y + 2.7);
+        y += rowH;
+        prevMs = tsMs;
+      }
+
+      // Totals footer
+      const fmtHMS = (ms: number) => {
+        if (!isFinite(ms) || ms <= 0) return '—';
+        const secsTot = Math.floor(ms / 1000);
+        const hh = Math.floor(secsTot / 3600);
+        const mm = Math.floor((secsTot % 3600) / 60);
+        const ss = secsTot % 60;
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const clock = hh > 0 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
+        return `${clock} (${(ms / 3600000).toFixed(2)}h)`;
+      };
+      const t0 = data.created_at ? new Date(data.created_at).getTime() : NaN;
+      const tEnd = (data.cleared_at || data.closed_at || (data as any).archived_at) ? new Date((data.cleared_at || data.closed_at || (data as any).archived_at) as string).getTime() : NaN;
+      const tDisp = data.dispatched_at ? new Date(data.dispatched_at).getTime() : NaN;
+      const tOn = data.onscene_at ? new Date(data.onscene_at).getTime() : NaN;
+      const tClr = data.cleared_at ? new Date(data.cleared_at).getTime() : (data.closed_at ? new Date(data.closed_at).getTime() : NaN);
+      const totalMs = tEnd - t0;
+      const respMs = tOn - tDisp;
+      const onSceneMs = tClr - tOn;
+      doc.setDrawColor(...COLOR.BORDER_TABLE);
+      doc.setLineWidth(0.2);
+      doc.line(subX, y, subX + subW, y);
+      y += 0.8;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const footer = `TOTAL ${fmtHMS(totalMs)}    ·    RESPONSE ${fmtHMS(respMs)}    ·    ON-SCENE ${fmtHMS(onSceneMs)}`;
+      doc.text(footer, subX + 2, y + 2.5);
+      y += 3.8;
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+    }
+
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -1031,27 +1159,149 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // PSO Client Request Details — right after Caller Information
+  // PSO Client Request Details — right after Caller Information.
+  // Expanded 2026-04-23 for internal record-keeping: surfaces SLA markers,
+  // service-window compliance, timing metrics, and creator/dispatcher meta
+  // that previously lived only in the DB.
   if (data.incident_type === 'pso_client_request') {
     y = checkPageBreak(doc, y, 18, prio);
     const attemptNum = data.pso_attempt_number || 1;
-    const attemptLabel = attemptNum > 1
-      ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
-      : '';
+    const ordinal = (n: number): string => {
+      if (n === 1) return '1st';
+      if (n === 2) return '2nd';
+      if (n === 3) return '3rd';
+      return `${n}th`;
+    };
+    const attemptLabel = attemptNum > 1 ? ` -- ${ordinal(attemptNum)} Attempt` : '';
     const psoSec = openAutoSection(doc, `PSO Client Request Details${attemptLabel}`, y); y = psoSec.contentY;
+
+    // Row 1: Service Type / Authorization / Billing Code
     y = addThreeColumnFields(doc, [
       { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
       { label: 'Authorization / PO#', value: data.pso_authorization || '' },
       { label: 'Billing Code', value: data.pso_billing_code || '' },
     ], y);
+
+    // Row 2: Requestor block
     y = addThreeColumnFields(doc, [
       { label: 'Requestor Name', value: data.pso_requestor_name || '' },
       { label: 'Requestor Phone', value: data.pso_requestor_phone || '' },
       { label: 'Requestor Email', value: data.pso_requestor_email || '' },
     ], y);
+
+    // Row 3: Contract / Client / Attempt#  (contract_id may exist for non-legal PSO too)
+    if (data.contract_id || data.client_name || attemptNum > 1) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Contract ID', value: data.contract_id || '' },
+        { label: 'Client', value: data.client_name || '' },
+        { label: 'Attempt #', value: String(attemptNum) },
+      ], y);
+    }
+
+    // Row 4: Legal-service meta (Attorney / Jurisdiction / Time Window) — only for process-service flavor
+    if (data.attorney_name || data.jurisdiction || data.time_window) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Attorney', value: data.attorney_name || '' },
+        { label: 'Jurisdiction', value: data.jurisdiction || '' },
+        { label: 'Time Window', value: data.time_window || '' },
+      ], y);
+    }
+
+    // Row 5: 72-hour SLA block — the key operational accountability marker
+    if (data.pso_72hr_deadline || data.pso_72hr_notified) {
+      const deadlineStr = fmtTimestamp(data.pso_72hr_deadline);
+      let slaStatus = 'IN WINDOW';
+      if (data.pso_72hr_notified === 'overdue') slaStatus = 'OVERDUE';
+      else if (data.pso_72hr_notified === 'resolved') slaStatus = 'RESOLVED';
+      else if (data.pso_72hr_deadline) {
+        try {
+          const dl = new Date(data.pso_72hr_deadline);
+          if (!Number.isNaN(dl.getTime()) && isPast(dl.toISOString())) slaStatus = 'OVERDUE';
+        } catch { /* ignore parse errors */ }
+      }
+      // Time remaining vs. now (positive = remaining, negative = past deadline)
+      let timeRemaining = '';
+      if (data.pso_72hr_deadline) {
+        try {
+          const dl = new Date(data.pso_72hr_deadline).getTime();
+          const diffMs = dl - Date.now();
+          const absH = Math.floor(Math.abs(diffMs) / 3_600_000);
+          const absM = Math.floor((Math.abs(diffMs) % 3_600_000) / 60_000);
+          timeRemaining = diffMs >= 0
+            ? `${absH}h ${absM}m remaining`
+            : `${absH}h ${absM}m past due`;
+        } catch { /* ignore */ }
+      }
+      y = addThreeColumnFields(doc, [
+        { label: '72hr SLA Deadline', value: deadlineStr },
+        { label: 'SLA Status', value: slaStatus },
+        { label: 'Time vs. Deadline', value: timeRemaining },
+      ], y);
+    }
+
+    // Row 6: Service-window compliance flags (parsed from JSON)
+    if (data.pso_service_windows) {
+      try {
+        const w = JSON.parse(data.pso_service_windows) as Record<string, boolean | number>;
+        const flag = (k: string): string => (w[k] ? 'YES' : 'NO');
+        y = addThreeColumnFields(doc, [
+          { label: 'Early Morning', value: flag('early_morning') },
+          { label: 'Daytime', value: flag('daytime') },
+          { label: 'Evening', value: flag('evening') },
+        ], y);
+        y = addFieldPair(doc, 'Weekend Coverage', flag('weekend'), lx, y, ffw);
+      } catch { /* malformed JSON — skip the row rather than crash the PDF */ }
+    }
+
+    // Row 7: Response-time metrics — computed from existing timestamps. Internal-record value is
+    // having the durations printed alongside the raw timestamps, not in a separate analytics UI.
+    if (data.dispatched_at || data.onscene_at || data.cleared_at) {
+      const durMin = (from?: string, to?: string): string => {
+        if (!from || !to) return '';
+        const a = new Date(from).getTime();
+        const b = new Date(to).getTime();
+        if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
+        const mins = Math.round((b - a) / 60_000);
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+      };
+      const responseTime = durMin(data.dispatched_at, data.onscene_at);
+      const onSceneTime = durMin(data.onscene_at, data.cleared_at);
+      const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
+      if (responseTime || onSceneTime || totalTime) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Response Time', value: responseTime || '—' },
+          { label: 'On-Scene Time', value: onSceneTime || '—' },
+          { label: 'Total Duration', value: totalTime || '—' },
+        ], y);
+      }
+    }
+
+    // Row 8: Record-keeping meta — who created, who dispatched. Small, terminal-style footer
+    // that gives an audit trail without hunting through the server audit log.
+    if (data.created_by || data.dispatcher_name || data.created_at) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Created By', value: data.created_by || '' },
+        { label: 'Dispatcher', value: data.dispatcher_name || '' },
+        { label: 'Created', value: fmtTimestamp(data.created_at) },
+      ], y);
+    }
+
     y = closeAutoSection(doc, psoSec.sectionY, y, undefined, psoSec.sectionPage);
 
-    // Process Service sub-section
+    // Service Instructions — rendered as a caution block so the dispatcher's / requestor's
+    // specific on-site guidance is impossible to miss when the form is read in printed form.
+    if (data.service_instructions && data.service_instructions.trim()) {
+      y = checkPageBreak(doc, y, 20, prio);
+      y = addCautionBlock(
+        doc,
+        `SERVICE INSTRUCTIONS — ${data.service_instructions.trim()}`,
+        lx, y, ffw,
+      );
+    }
+
+    // Process Service sub-section (unchanged from prior version except for the deadline row)
     if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
       y = checkPageBreak(doc, y, 18, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
@@ -1065,6 +1315,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
         { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
       ], y);
+      if (data.deadline) {
+        y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
+      }
       y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
     }
   }
@@ -1562,6 +1815,42 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Signatures — full-width stacked (one on top of the other)
   y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
+
+  // PSO Client Request: QR code on last page for mobile quick-login
+  if (data.incident_type === 'pso_client_request' && data.id) {
+    try {
+      const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('rmpg_token') || ''}`,
+        },
+      });
+      if (resp.ok) {
+        const { qr_png_base64, url } = await resp.json();
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const qrSize = 30; // mm
+        // Reserve the bottom-right corner above the footer
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize;
+        const qrY = pageH - LAYOUT.FOOTER_HEIGHT - qrSize - 22;
+        // If the running Y is already below the QR's top edge, push to a new page
+        if (y > qrY - 5) {
+          doc.addPage();
+        }
+        doc.addImage(qr_png_base64, 'PNG', qrX, qrY, qrSize, qrSize);
+        // Label under the QR
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.text('SCAN FOR MOBILE PSO ACCESS', qrX + qrSize / 2, qrY + qrSize + 2.5, { align: 'center' });
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(...COLOR.TEXT_MUTED);
+        doc.text(url, qrX + qrSize / 2, qrY + qrSize + 5, { align: 'center', maxWidth: qrSize + 10 });
+      }
+    } catch { /* non-fatal — PDF still prints without QR */ }
+  }
 }
 
 // ── Person Record ────────────────────────────────────────────
@@ -1591,6 +1880,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     caseNumberLabel: 'SUBJECT NAME',
     reportDate: fmtDate(data.created_at),
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   // ── 1. Subject Identification ─────────────────────────────
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
@@ -2075,6 +2366,8 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     caseNumberLabel: 'LICENSE PLATE',
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Vehicle Identification ──
   y = checkPageBreak(doc, y, 25);
   { const sec = openAutoSection(doc, 'Vehicle Identification', y); y = sec.contentY;
@@ -2232,6 +2525,8 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Warrant Information ──
   y = checkPageBreak(doc, y, 18, statusPrio);
   { const sec = openAutoSection(doc, 'Warrant Information', y); y = sec.contentY;
@@ -2353,6 +2648,8 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     caseNumber: data.evidence_number,
     caseNumberLabel: 'EVIDENCE #',
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   // ── Evidence Identification ──
   y = checkPageBreak(doc, y, 25);
@@ -2566,6 +2863,8 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     caseNumber: data.vehicle_number,
     caseNumberLabel: 'UNIT #',
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   // ── Vehicle Information ──
   y = checkPageBreak(doc, y, 25);
@@ -2966,6 +3265,8 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     caseNumberLabel: 'BADGE #',
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Officer Identification (always shown) ──
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, 'Officer Identification', y); y = sec.contentY;
@@ -3249,6 +3550,8 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     caseNumberLabel: 'PROPERTY NAME',
   });
 
+  y = drawDistrictBar(doc, y, data as any);
+
   // ── Property Information ──
   y = checkPageBreak(doc, y, 18);
   { const sec = openAutoSection(doc, 'Property Information', y); y = sec.contentY;
@@ -3412,6 +3715,8 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     caseNumber: data.citation_number,
     caseNumberLabel: 'CITATION #',
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   // ── Citation Information ──
   y = checkPageBreak(doc, y, 18, prio);
@@ -3994,6 +4299,8 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
     formNumber: 'FORM PS-204S',
     reportDate: fmtDate(new Date().toISOString()),
   });
+
+  y = drawDistrictBar(doc, y, data as any);
 
   y += 2;
 

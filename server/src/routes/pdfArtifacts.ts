@@ -118,8 +118,14 @@ router.get('/:id/blob', (req: Request, res: Response) => {
   if (!row?.blob_path || !fs.existsSync(row.blob_path)) {
     return res.status(404).json({ error: 'not found' });
   }
+  // Security: ensure resolved path is within expected uploads directory
+  const baseDir = path.resolve(process.cwd(), 'uploads', 'pdf');
+  const resolved = path.resolve(row.blob_path);
+  if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
   res.setHeader('Content-Type', 'application/pdf');
-  return fs.createReadStream(row.blob_path).pipe(res);
+  return fs.createReadStream(resolved).pipe(res);
 });
 
 export default router;
