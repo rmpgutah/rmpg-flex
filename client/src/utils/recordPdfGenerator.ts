@@ -515,6 +515,9 @@ export interface PersonPdfData {
   updated_at?: string;
   id_photo?: PdfImage | null;
   attachment_images?: PdfImage[];
+  // Linked records (from record_links)
+  linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
+  linked_properties?: { name: string; address?: string; relationship?: string }[];
 }
 
 export interface VehiclePdfData {
@@ -580,6 +583,10 @@ export interface VehiclePdfData {
   created_at?: string;
   updated_at?: string;
   attachment_images?: PdfImage[];
+  // Linked records (from system-history or record_links)
+  incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
+  calls?: { call_number: string; incident_type: string; status: string; location: string; created_at: string }[];
+  citations?: { citation_number: string; type: string; status: string; violation_date: string }[];
 }
 
 export interface WarrantPdfData {
@@ -885,9 +892,19 @@ export interface PropertyPdfData {
   access_instructions?: string;
   post_orders?: string;
   hazard_notes?: string;
+  // Contract
+  contract_number?: string;
+  contract_start?: string;
+  contract_end?: string;
+  billing_rate?: string;
+  notes?: string;
   created_at?: string;
   updated_at?: string;
   attachment_images?: PdfImage[];
+  // Linked records
+  incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
+  calls?: { call_number: string; incident_type: string; status: string; created_at: string }[];
+  trespass_orders?: { order_number: string; subject_name: string; status: string; issued_date: string; expires_date: string }[];
 }
 
 export interface CitationPdfData {
@@ -2363,6 +2380,35 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     );
   }
 
+  // ── 14b. Linked Vehicles ──────────────────────────────────
+  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Vehicles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const vehRows = data.linked_vehicles.map(v => [
+      v.license_plate || 'N/A',
+      [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
+      (v.color || '').toUpperCase(),
+      titleCase(v.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      vehRows, y, [lx, lx + 35, lx + 110, lx + 140]);
+  }
+
+  // ── 14c. Linked Properties ──────────────────────────────────
+  if (data.linked_properties && data.linked_properties.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Properties', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const propRows = data.linked_properties.map(p => [
+      p.name || 'N/A',
+      p.address || '',
+      titleCase(p.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      propRows, y, [lx, lx + 50, lx + 140]);
+  }
+
   // ── 15. Notes ─────────────────────────────────────────────
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
 
@@ -2536,7 +2582,65 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     }
   }
 
+  // ── Incident History ──
+  if (data.incidents && data.incidents.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const incRows = data.incidents.map(inc => [
+      inc.incident_number || 'N/A',
+      (inc.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      titleCase(inc.status || ''),
+      fmtDate(inc.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT #', x: lx }, { label: 'TYPE', x: lx + 35 }, { label: 'STATUS', x: lx + 100 }, { label: 'DATE', x: lx + 140 }],
+      incRows, y, [lx, lx + 35, lx + 100, lx + 140]);
+  }
+
+  // ── Call History ──
+  if (data.calls && data.calls.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const callRows = data.calls.map(c => [
+      c.call_number || 'N/A',
+      (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      displayStatus(c.status || ''),
+      c.location || '',
+      fmtDate(c.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CALL #', x: lx }, { label: 'TYPE', x: lx + 27 }, { label: 'STATUS', x: lx + 69 }, { label: 'LOCATION', x: lx + 97 }, { label: 'DATE', x: lx + 152 }],
+      callRows, y, [lx, lx + 27, lx + 69, lx + 97, lx + 152]);
+  }
+
+  // ── Citation History ──
+  if (data.citations && data.citations.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const citRows = data.citations.map(c => [
+      c.citation_number || 'N/A',
+      titleCase(c.type || ''),
+      titleCase(c.status || ''),
+      fmtDate(c.violation_date),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CITATION #', x: lx }, { label: 'TYPE', x: lx + 40 }, { label: 'STATUS', x: lx + 90 }, { label: 'DATE', x: lx + 140 }],
+      citRows, y, [lx, lx + 40, lx + 90, lx + 140]);
+  }
+
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
+
+  // ── Record Metadata ──
+  y = drawFormSection(doc, {
+    sideTab: { label: 'META' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [{ cells: [
+      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+    ]}],
+    y,
+  });
 
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
@@ -3739,6 +3843,65 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── Contract Information ──
+  if (data.contract_number || data.contract_start || data.billing_rate) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Contract Information', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const ct1 = addFieldPair(doc, 'Contract #', data.contract_number || '', lx, y, qw);
+    const ct2 = addFieldPair(doc, 'Start Date', fmtDate(data.contract_start), lx + qw, y, qw);
+    const ct3 = addFieldPair(doc, 'End Date', fmtDate(data.contract_end), lx + 2 * qw, y, qw);
+    const ct4 = addFieldPair(doc, 'Billing Rate', data.billing_rate || '', lx + 3 * qw, y, qw);
+    y = Math.max(ct1, ct2, ct3, ct4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Incident History at this property ──
+  if (data.incidents && data.incidents.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const incRows = data.incidents.map(inc => [
+      inc.incident_number || 'N/A',
+      (inc.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      titleCase(inc.status || ''),
+      fmtDate(inc.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT #', x: lx }, { label: 'TYPE', x: lx + 35 }, { label: 'STATUS', x: lx + 100 }, { label: 'DATE', x: lx + 140 }],
+      incRows, y, [lx, lx + 35, lx + 100, lx + 140]);
+  }
+
+  // ── Dispatch Call History at this property ──
+  if (data.calls && data.calls.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const callRows = data.calls.map(c => [
+      c.call_number || 'N/A',
+      (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      displayStatus(c.status || ''),
+      fmtDate(c.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CALL #', x: lx }, { label: 'TYPE', x: lx + 30 }, { label: 'STATUS', x: lx + 95 }, { label: 'DATE', x: lx + 140 }],
+      callRows, y, [lx, lx + 30, lx + 95, lx + 140]);
+  }
+
+  // ── Trespass Orders for this property ──
+  if (data.trespass_orders && data.trespass_orders.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Trespass Orders', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const toRows = data.trespass_orders.map(t => [
+      t.order_number || 'N/A',
+      t.subject_name || '',
+      titleCase(t.status || ''),
+      fmtDate(t.issued_date),
+      fmtDate(t.expires_date),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'ORDER #', x: lx }, { label: 'SUBJECT', x: lx + 30 }, { label: 'STATUS', x: lx + 85 }, { label: 'ISSUED', x: lx + 120 }, { label: 'EXPIRES', x: lx + 150 }],
+      toRows, y, [lx, lx + 30, lx + 85, lx + 120, lx + 150]);
+  }
+
   // Access Instructions
   y = addNarrativeSection(doc, 'Access Instructions', data.access_instructions || '', y);
 
@@ -3747,6 +3910,21 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 
   // Hazard Notes
   y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
+
+  // Notes
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
+
+  // ── Record Metadata ──
+  y = drawFormSection(doc, {
+    sideTab: { label: 'META' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [{ cells: [
+      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+    ]}],
+    y,
+  });
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
