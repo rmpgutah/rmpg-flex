@@ -4,11 +4,11 @@
 // Auto-creates Person, Property, Case, CFS call, Serve Queue.
 // ============================================================
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin,
   User, Building2, Phone, X, ChevronRight, Edit2, Save, ArrowLeft,
-  Gavel, Calendar, Briefcase, FileWarning, Clock, Shield,
+  Gavel, Calendar, Briefcase, FileWarning, Clock, Shield, Users,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
@@ -87,6 +87,15 @@ export default function ServeIntakePage() {
   const [parsing, setParsing] = useState(false);
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Client selector
+  const [clients, setClients] = useState<{ id: number; name: string; billing_code?: string; caller_phone?: string; address?: string }[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<number | ''>('');
+  useEffect(() => {
+    apiFetch<any[]>('/admin/clients').then(data => {
+      const active = (data || []).filter((c: any) => c.is_active !== 0);
+      setClients(active);
+    }).catch(() => {});
+  }, []);
   // Editable overrides
   const [editDefendant, setEditDefendant] = useState({ first: '', middle: '', last: '', dob: '' });
   const [editAddress, setEditAddress] = useState('');
@@ -195,6 +204,8 @@ export default function ServeIntakePage() {
         if (editCourt !== parsed.court) overrides.court = editCourt;
         if (editJobNumber !== parsed.jobNumber) overrides.jobNumber = editJobNumber;
       }
+      // Include selected client if user chose one
+      if (selectedClientId) overrides.client_id = selectedClientId;
       const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
         method: 'POST',
         body: JSON.stringify({ documents, overrides: Object.keys(overrides).length > 0 ? overrides : undefined }),
@@ -359,11 +370,41 @@ export default function ServeIntakePage() {
               <FieldRow label="Service Address" icon={MapPin} value={editAddress} onChange={setEditAddress} placeholder="Full address with city, state, ZIP" />
             </div>
 
-            {/* Case Details */}
+            {/* Client + Case Details */}
             <div className="panel-beveled p-4 space-y-3">
               <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
-                <Gavel className="w-3.5 h-3.5" /> Case Details
+                <Gavel className="w-3.5 h-3.5" /> Client & Case Details
               </h3>
+              {/* Client selector */}
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase flex items-center gap-1 mb-1">
+                  <Users className="w-3 h-3" /> Ordering Client
+                </label>
+                <select
+                  className="input-dark text-xs w-full"
+                  value={selectedClientId}
+                  onChange={e => {
+                    const id = e.target.value ? parseInt(e.target.value, 10) : '';
+                    setSelectedClientId(id);
+                  }}
+                >
+                  <option value="">Auto-detect from document</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.billing_code ? ` (${c.billing_code})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedClientId && (() => {
+                  const c = clients.find(cl => cl.id === selectedClientId);
+                  return c ? (
+                    <div className="mt-1 text-[9px] text-rmpg-500 space-x-3">
+                      {c.caller_phone && <span>Phone: {c.caller_phone}</span>}
+                      {c.address && <span>Address: {c.address}</span>}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
               <FieldRow label="Plaintiff" icon={Building2} value={editPlaintiff} onChange={setEditPlaintiff} placeholder="Plaintiff name" />
               <FieldRow label="Court" icon={Gavel} value={editCourt} onChange={setEditCourt} placeholder="Court name" />
               <div className="grid grid-cols-2 gap-2">
