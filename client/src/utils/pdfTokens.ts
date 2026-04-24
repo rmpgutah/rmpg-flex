@@ -24,11 +24,16 @@ export const COLOR = {
   BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
   BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
   BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
+  BORDER_FIELD_RULE: [200, 200, 208] as const, // Subtle field underline rule
 
   // Backgrounds — lighter, modern government-form style
   BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#363636 dark blue-gray)
-  BG_TABLE_HDR:    [70, 75, 88]     as const,  // Table column header (slate)
+  BG_SECTION_HDR:  [35, 40, 50]     as const,  // Section header bar (dark charcoal)
+  BG_TABLE_HDR:    [55, 60, 72]     as const,  // Table column header (slate)
+  BG_SECTION_TINT: [248, 248, 252]  as const,  // Light background tint inside section content
+
+  // Brand accent (gold) — used for section header accents + visual anchoring
+  ACCENT_GOLD:     [212, 160, 23]   as const,  // #d4a017 — matches UI brand gold
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -98,7 +103,9 @@ export const BORDER = {
   CHECK_MARK:       0.6,   // Check mark stroke
   SIGNATURE_LINE:   0.4,   // Signature line
   ACCENT_HEADER:    0.8,   // Accent line below header
-  ACCENT_FOOTER:    0.4,   // Accent line above footer
+  ACCENT_FOOTER:    0.5,   // Accent line above footer
+  ACCENT_SECTION:   1.5,   // Gold left-accent strip on section headers
+  FIELD_UNDERLINE:  0.15,  // Subtle underline below field values
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
@@ -117,7 +124,7 @@ export const SPACING = {
   XL:                 2.5,   // Generous gap
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
-  SECTION_HEADER_H:   3.5,   // Section header bar height (compact)
+  SECTION_HEADER_H:   4.5,   // Section header bar height (readable with accent strip)
   SECTION_GAP:        1.0,   // Gap between sections (compact but visible)
   SECTION_CONTENT_PAD: 2.2,  // Gap from header bar to first content
   SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border

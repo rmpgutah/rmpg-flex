@@ -616,14 +616,17 @@ export function drawGeographyStrip(
   const cellW = contentW / 5;
   const stripH = 6.5;
 
-  // Cell background (light gray)
-  doc.setFillColor(245, 245, 248);
-  doc.rect(margin, y, contentW, stripH, 'F');
+  // Gold top border (ties to section header accent)
+  doc.setFillColor(...COLOR.ACCENT_GOLD);
+  doc.rect(margin, y, contentW, 0.5, 'F');
 
-  // Top and bottom borders
+  // Cell background (light tint)
+  doc.setFillColor(...COLOR.BG_SECTION_TINT);
+  doc.rect(margin, y + 0.5, contentW, stripH - 0.5, 'F');
+
+  // Bottom border
   doc.setDrawColor(...COLOR.BORDER_SECTION);
-  doc.setLineWidth(0.3);
-  doc.line(margin, y, margin + contentW, y);
+  doc.setLineWidth(0.2);
   doc.line(margin, y + stripH, margin + contentW, y + stripH);
 
   const labels = ['AREA', 'SECTOR', 'ZONE', 'BEAT', 'CONTRACT ID'];

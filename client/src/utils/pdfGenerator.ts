@@ -445,21 +445,22 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Section header bar (dark slate) with white text, left-justified
+  // Gold left-accent strip (brand identity anchor)
+  const accentW = BORDER.ACCENT_SECTION;
+  doc.setFillColor(...COLOR.ACCENT_GOLD);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
+
+  // Section header bar (dark charcoal) — offset by accent strip width
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H, 'F');
-  // Thin border around header — matches interior table line weight
-  doc.setDrawColor(...COLOR.BORDER_TABLE);
-  doc.setLineWidth(BORDER.TABLE_ROW);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H);
+  doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  // Vertically centered in header bar: baseline ≈ top + (barH + capH) / 2
+  // Vertically centered in header bar
   const capH = FONT.SIZE_SECTION_TITLE * 0.35;
   const sectionTextY = y + (SPACING.SECTION_HEADER_H + capH) / 2;
-  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + accentW + SPACING.CONTENT_INSET + 1, sectionTextY);
 
   // Reset text color to primary (black) — prevents white text leaking into content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -482,7 +483,11 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   if (startPage !== currentPage) {
     doc.setPage(currentPage);
   }
-  // No enclosing section outline — section header bar is sufficient
+
+  // Bottom rule — subtle gold-tinted line marking section end
+  doc.setDrawColor(...COLOR.ACCENT_GOLD);
+  doc.setLineWidth(0.3);
+  doc.line(LAYOUT.PAGE_MARGIN, contentEndY + padding, LAYOUT.PAGE_MARGIN + cw, contentEndY + padding);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   return contentEndY + padding + SPACING.SECTION_GAP;
@@ -558,10 +563,16 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
     lineY += lineStep;
   }
 
+  // Field underline — subtle rule beneath the value for typewriter-form look
+  const underlineY = y + labelH + boxH;
+  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+  doc.setLineWidth(BORDER.FIELD_UNDERLINE);
+  doc.line(x + innerPad, underlineY, x + width - innerPad, underlineY);
+
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 0.4; // label + box + row gap
+  return underlineY + 0.6; // underline + row gap
 }
 
 /**
@@ -1007,19 +1018,32 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Footer text position — pushed up from edge for print margin safety
+  // Footer accent line (gold, matches section headers)
   const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 2;
-  const textY = barY + 5;
+  doc.setDrawColor(...COLOR.ACCENT_GOLD);
+  doc.setLineWidth(BORDER.ACCENT_FOOTER);
+  doc.line(LAYOUT.PAGE_MARGIN, barY, LAYOUT.PAGE_MARGIN + cw, barY);
 
-  // Left: Form # + INTERNAL USE ONLY — bold, readable
+  const textY = barY + 4;
+
+  // Left: Form # + INTERNAL USE ONLY
   doc.setFont('courier', 'bold');
-  doc.setFontSize(7);
+  doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
   doc.text(leftParts.join('  |  '), LAYOUT.PAGE_MARGIN, textY);
 
-  // Right: Page X of Y — bold
-  doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - LAYOUT.PAGE_MARGIN, textY, { align: 'right' });
+  // Center: Agency name (subtle branding)
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5);
+  doc.setTextColor(...COLOR.TEXT_MUTED);
+  doc.text(brand.report_header_text || 'ROCKY MOUNTAIN PROTECTIVE GROUP', pageWidth / 2, textY, { align: 'center' });
+
+  // Right: Page X of Y
+  doc.setFont('courier', 'bold');
+  doc.setFontSize(6);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(`PAGE ${pageNum} OF ${totalPages}`, pageWidth - LAYOUT.PAGE_MARGIN, textY, { align: 'right' });
 }
 
 /**
@@ -1282,7 +1306,7 @@ export function addNarrativeSection(
   const cw = getContentWidth(doc);
   const pageH = doc.internal.pageSize.getHeight();
   const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(246, 246, 250);
+  doc.setFillColor(...COLOR.BG_SECTION_TINT);
   doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
 
   // Page break callback: draw section continuation sub-header + fresh tint
@@ -1305,7 +1329,7 @@ export function addNarrativeSection(
     // Draw fresh background tint for remaining text on this page
     const cw2 = getContentWidth(doc);
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
-    doc.setFillColor(246, 246, 250);
+    doc.setFillColor(...COLOR.BG_SECTION_TINT);
     doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont('courier', 'normal');
@@ -1590,12 +1614,12 @@ export function addTableWithShading(
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Dark table header (police report style)
+      // Dark table header with gold accent strip (matches section headers)
+      const tblAccW = BORDER.ACCENT_SECTION;
+      doc.setFillColor(...COLOR.ACCENT_GOLD);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, tblAccW, headerRowH, 'F');
       doc.setFillColor(...COLOR.BG_TABLE_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_OUTER);
-      doc.setLineWidth(BORDER.TABLE_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH);
+      doc.rect(LAYOUT.PAGE_MARGIN + tblAccW, atY, cw - tblAccW, headerRowH, 'F');
       doc.setFontSize(FONT.SIZE_TABLE_HEADER);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_INVERTED);
