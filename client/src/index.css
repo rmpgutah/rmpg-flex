@@ -75,8 +75,10 @@
     overflow-x: hidden;
     /* Safe-area insets handled by mobile shell components (MobileHeader, MobileBottomNav)
        to avoid double-padding. Body only sets it on desktop as a fallback. */
-    /* Spillman Flex: subtle noise texture on body */
-    background-image:
+    /* Spillman Flex: subtle noise texture on body — value intentionally empty;
+       the noise texture was removed without dropping the declaration, which
+       made the CSS parser discard the surrounding @layer base rule and zeroed
+       html/body height, breaking page scrolling. */
   }
 }
 
@@ -88,7 +90,9 @@
 /* Subtle vignette on the app shell — darker edges like a CRT monitor */
 @media (min-width: 768px) {
   #root {
-    background-image:
+    /* CRT-monitor vignette — value intentionally empty after the vignette
+       was removed. Keeping the empty rule would re-trigger the same parser
+       break that zeroed page height, so the whole rule is removed. */
   }
 }
 
