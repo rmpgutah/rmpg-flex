@@ -2669,7 +2669,8 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   }
 
   // ── Subject Information ──
-  y = checkPageBreak(doc, y, 20, statusPrio);
+  // Reserve enough vertical space (~115pt) to fit the 110pt mugshot without splitting
+  y = checkPageBreak(doc, y, 115, statusPrio);
   { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
     const sixthW = ffw / 6;
     // Row 1: Last Name (2/5), First Name (2/5), DOB (1/5)
@@ -2690,11 +2691,11 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     if (data.subject_address) {
       y = addFieldPair(doc, 'Address', data.subject_address, lx, y, ffw);
     }
-    // Mugshot — 50pt x 50pt, right-aligned within section (Phase 1)
+    // Mugshot — 110pt x 110pt (~1.5"), right-aligned within section (Phase 1 review)
     if (data.subject_photo_url) {
       try {
-        const photoW = 50;
-        const photoH = 50;
+        const photoW = 110;
+        const photoH = 110;
         const photoX = rx + getHalfFieldWidth(doc) - photoW;
         const photoY = sec.contentY;
         doc.addImage(data.subject_photo_url, 'JPEG', photoX, photoY, photoW, photoH);
@@ -2896,20 +2897,30 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   // Signature Block — full-width stacked
   y = addStackedSignatures(doc, 'Reporting Officer', '', y, getOfficerSig(), undefined, statusPrio);
 
-  // ── Watermarks (after all content) — Phase 1 ──
+  // ── Watermarks (after all content) — stamp every page (Phase 1 review) ──
+  const totalPages = doc.getNumberOfPages();
   if (data.expires_at && new Date(data.expires_at) < new Date()) {
-    drawDiagonalWatermark(doc, 'EXPIRED', [220, 38, 38, 0.15]);
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      drawDiagonalWatermark(doc, 'EXPIRED', [220, 38, 38, 0.15]);
+    }
   }
   if (data.archived_at) {
-    drawDiagonalWatermark(doc, 'ARCHIVED', [100, 116, 139, 0.15]);
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      drawDiagonalWatermark(doc, 'ARCHIVED', [100, 116, 139, 0.15]);
+    }
   }
 
-  // ── Print audit footer (Phase 1) ──
-  doc.setFontSize(7);
-  doc.setTextColor(100, 100, 100);
+  // ── Print audit footer — stamp every page (Phase 1 review) ──
   const audit = `Printed by: ${data.printed_by_name || 'Unknown'}${data.printed_by_badge ? ' #' + data.printed_by_badge : ''}  on  ${fmtDate(data.printed_at) || fmtDate(new Date().toISOString())}`;
-  doc.text(audit, lx, doc.internal.pageSize.getHeight() - 6);
-  doc.setTextColor(0, 0, 0);
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text(audit, lx, doc.internal.pageSize.getHeight() - 6);
+    doc.setTextColor(0, 0, 0);
+  }
 }
 
 // ── Evidence / Property Custody Report ───────────────────────

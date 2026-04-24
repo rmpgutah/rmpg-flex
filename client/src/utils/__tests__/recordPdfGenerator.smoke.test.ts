@@ -168,6 +168,14 @@ describe('recordPdfGenerator smoke tests', () => {
     expect(doc).toBeDefined();
   });
 
+  it('embeds EXPIRED text in PDF when expires_at is past', async () => {
+    const data = { ...minWarrant, expires_at: '2020-01-01' };
+    const doc = await generateRecordPdf('warrant', data);
+    const pdfBytes = Buffer.from(doc.output('arraybuffer'));
+    // jsPDF encodes text as parenthesized literals like "(EXPIRED) Tj" — search for the substring
+    expect(pdfBytes.includes(Buffer.from('EXPIRED'))).toBe(true);
+  });
+
   it('renders ARCHIVED watermark when archived_at set', async () => {
     const data = { ...minWarrant, archived_at: '2026-04-01' };
     const doc = await generateRecordPdf('warrant', data);
