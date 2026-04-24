@@ -8,6 +8,7 @@ import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/univers
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
 import { paramStr } from '../utils/reqHelpers';
+import { ensureWarrantReviewColumns, ensureWarrantIndexes } from '../utils/warrantHelpers';
 
 const router = Router();
 
@@ -18,6 +19,8 @@ router.use(authenticateToken);
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureWarrantReviewColumns(db);
+    ensureWarrantIndexes(db);
     const {
       status,
       type,
@@ -88,12 +91,59 @@ router.get('/', (req: Request, res: Response) => {
       params.push(person_id);
     }
 
+    // ── Phase 1 list UI filters (additive, AND-combined) ──
+    // priority_min: only warrants with priority_score >= N
+    if (req.query.priority_min != null && req.query.priority_min !== '') {
+      const pMin = parseInt(String(req.query.priority_min), 10);
+      if (!Number.isNaN(pMin)) {
+        whereClause += ' AND w.priority_score >= ?';
+        params.push(pMin);
+      }
+    }
+    // since_days: only warrants issued (or created) within last N days
+    if (req.query.since_days != null && req.query.since_days !== '') {
+      const sDays = parseInt(String(req.query.since_days), 10);
+      if (!Number.isNaN(sDays)) {
+        whereClause += " AND julianday('now') - julianday(COALESCE(w.issue_date, w.created_at)) <= ?";
+        params.push(sDays);
+      }
+    }
+    // matches_person=1: only warrants with a linked subject person
+    if (req.query.matches_person === '1') {
+      whereClause += ' AND w.subject_person_id IS NOT NULL';
+    }
+    // state=UT: match source prefix like 'ut_%' (e.g. ut_warrants)
+    if (typeof req.query.state === 'string' && req.query.state.length > 0) {
+      whereClause += ' AND lower(w.source) LIKE ?';
+      params.push(`${req.query.state.toLowerCase()}_%`);
+    }
+    // state_prefix: literal source prefix match
+    if (typeof req.query.state_prefix === 'string' && req.query.state_prefix.length > 0) {
+      whereClause += ' AND w.source LIKE ?';
+      params.push(`${req.query.state_prefix}%`);
+    }
+
     // Archive filter
-    if (archived === 'true') {
+    if (req.query.include_archived === '1') {
+      // no-op — include archived
+    } else if (archived === 'true') {
       whereClause += ' AND w.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
       whereClause += ' AND w.archived_at IS NULL';
     }
+
+    // Sort: priority | age | freshness | alpha | (default: created_at DESC for back-compat)
+    const sortParam = typeof req.query.sort === 'string' ? req.query.sort : null;
+    const orderDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
+    const sortMap: Record<string, string> = {
+      priority: 'w.priority_score',
+      age: "julianday('now') - julianday(COALESCE(w.issue_date, w.created_at))",
+      freshness: "julianday('now') - julianday(COALESCE(w.last_scraped_at, w.updated_at))",
+      alpha: 'w.warrant_number',
+    };
+    const orderBy = sortParam && sortMap[sortParam]
+      ? `${sortMap[sortParam]} ${orderDir}`
+      : 'w.created_at DESC';
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPageNum = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
@@ -112,12 +162,15 @@ router.get('/', (req: Request, res: Response) => {
         p.last_name as subject_last_name,
         (p.first_name || ' ' || p.last_name) as subject_name,
         u.full_name as entered_by_name,
-        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count
+        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count,
+        CAST(julianday('now') - julianday(COALESCE(w.issue_date, w.created_at)) AS INTEGER) AS age_days,
+        CAST(julianday('now') - julianday(COALESCE(w.last_scraped_at, w.updated_at)) AS INTEGER) AS freshness_days,
+        CASE WHEN w.subject_person_id IS NOT NULL THEN 1 ELSE 0 END AS matches_person
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id
       ${whereClause}
-      ORDER BY w.created_at DESC
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `).all(...params, perPageNum, offset);
 

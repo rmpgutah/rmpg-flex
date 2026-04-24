@@ -66,6 +66,18 @@ export function ensureWarrantReviewColumns(db: Database.Database): void {
     if (!cols.some((c) => c.name === 'last_scraped_at')) {
       db.prepare('ALTER TABLE warrants ADD COLUMN last_scraped_at TEXT').run();
     }
+    // Phase 1 list/PDF columns — used by filter/sort query, bulk-archive, and PDF v2.
+    // Added here (not in a separate helper) so every handler that reads/writes warrants
+    // gets them idempotently. All nullable.
+    if (!cols.some((c) => c.name === 'priority_score')) {
+      db.prepare('ALTER TABLE warrants ADD COLUMN priority_score INTEGER').run();
+    }
+    if (!cols.some((c) => c.name === 'issue_date')) {
+      db.prepare('ALTER TABLE warrants ADD COLUMN issue_date TEXT').run();
+    }
+    if (!cols.some((c) => c.name === 'archived_by')) {
+      db.prepare('ALTER TABLE warrants ADD COLUMN archived_by INTEGER').run();
+    }
     reviewColumnsEnsured = true;
   } catch {
     // table doesn't exist yet — retry on next call
