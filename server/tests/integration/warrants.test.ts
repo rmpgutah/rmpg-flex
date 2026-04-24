@@ -411,6 +411,14 @@ describe('POST /api/warrants/bulk-archive', () => {
     const ids = Array.from({ length: 501 }, (_, i) => i + 1);
     await authPost('/api/warrants/bulk-archive').send({ warrant_ids: ids }).expect(400);
   });
+
+  it('rejects non-integer ids', async () => {
+    await authPost('/api/warrants/bulk-archive').send({ warrant_ids: ['abc', null, {}] }).expect(400);
+  });
+
+  it('rejects unauthenticated bulk-archive', async () => {
+    await request(app).post('/api/warrants/bulk-archive').send({ warrant_ids: [1] }).expect(401);
+  });
 });
 
 describe('POST /api/warrants/bulk-review', () => {

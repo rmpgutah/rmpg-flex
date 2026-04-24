@@ -1222,13 +1222,15 @@ router.put('/scrapers/:source_key', requireRole('admin', 'manager'), (req: Reque
 // greedy parameterized route.
 
 // POST /api/warrants/bulk-archive — archive up to 500 warrants by id
-router.post('/bulk-archive', (req: Request, res: Response) => {
+router.post('/bulk-archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     ensureWarrantReviewColumns(db);
-    const ids = Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [];
+    const ids = (Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [])
+      .map((x: any) => Number(x))
+      .filter((n: number) => Number.isInteger(n) && n > 0);
     if (ids.length === 0) {
-      res.status(400).json({ error: 'warrant_ids must be a non-empty array', code: 'WARRANT_IDS_REQUIRED' });
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array of integers', code: 'WARRANT_IDS_REQUIRED' });
       return;
     }
     if (ids.length > 500) {
@@ -1241,6 +1243,7 @@ router.post('/bulk-archive', (req: Request, res: Response) => {
     const result = db
       .prepare(`UPDATE warrants SET archived_at = ?, archived_by = ? WHERE id IN (${placeholders}) AND archived_at IS NULL`)
       .run(now, userId, ...ids);
+    auditLog(req, 'warrant_updated', 'warrant', 0, `Bulk archived ${result.changes} of ${ids.length} warrants`);
     res.json({ archived: result.changes, skipped: ids.length - result.changes });
   } catch (err: any) {
     console.error('[warrants] bulk-archive error:', err?.message);
@@ -1249,13 +1252,15 @@ router.post('/bulk-archive', (req: Request, res: Response) => {
 });
 
 // POST /api/warrants/bulk-review — mark up to 500 warrants reviewed by current user
-router.post('/bulk-review', (req: Request, res: Response) => {
+router.post('/bulk-review', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     ensureWarrantReviewColumns(db);
-    const ids = Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [];
+    const ids = (Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [])
+      .map((x: any) => Number(x))
+      .filter((n: number) => Number.isInteger(n) && n > 0);
     if (ids.length === 0) {
-      res.status(400).json({ error: 'warrant_ids must be a non-empty array', code: 'WARRANT_IDS_REQUIRED' });
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array of integers', code: 'WARRANT_IDS_REQUIRED' });
       return;
     }
     if (ids.length > 500) {
@@ -1268,6 +1273,7 @@ router.post('/bulk-review', (req: Request, res: Response) => {
     const result = db
       .prepare(`UPDATE warrants SET reviewed_at = ?, reviewed_by = ? WHERE id IN (${placeholders})`)
       .run(now, userId, ...ids);
+    auditLog(req, 'warrant_updated', 'warrant', 0, `Bulk marked ${result.changes} warrants as reviewed`);
     res.json({ reviewed: result.changes });
   } catch (err: any) {
     console.error('[warrants] bulk-review error:', err?.message);
@@ -1344,8 +1350,10 @@ router.get('/:id', (req: Request, res: Response) => {
           LIMIT 20
         `).all(warrant.subject_person_id);
         rmpg_encounters.push(...callRows);
-      } catch {
-        // tables may not exist
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
       }
       // incidents via incident_persons
       try {
@@ -1358,8 +1366,10 @@ router.get('/:id', (req: Request, res: Response) => {
           LIMIT 20
         `).all(warrant.subject_person_id);
         rmpg_encounters.push(...incRows);
-      } catch {
-        // tables may not exist
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
       }
       // field interviews
       try {
@@ -1371,8 +1381,10 @@ router.get('/:id', (req: Request, res: Response) => {
           LIMIT 20
         `).all(warrant.subject_person_id);
         rmpg_encounters.push(...fiRows);
-      } catch {
-        // field_interviews may not exist
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
       }
       // Sort combined encounters by date DESC, cap at 20
       rmpg_encounters.sort((a: any, b: any) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -1388,8 +1400,10 @@ router.get('/:id', (req: Request, res: Response) => {
           LIMIT 10
         `).all(warrant.subject_person_id);
         known_associates.push(...a);
-      } catch {
-        // person_associates may not exist
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
       }
 
       try {
@@ -1401,8 +1415,10 @@ router.get('/:id', (req: Request, res: Response) => {
           LIMIT 10
         `).all(warrant.subject_person_id);
         known_vehicles.push(...v);
-      } catch {
-        // vehicles_records may not exist
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
       }
     }
 
