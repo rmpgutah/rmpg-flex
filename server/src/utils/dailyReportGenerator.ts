@@ -118,14 +118,22 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
   const startDate = `${dateStr} 00:00:00`;
   const endDate = `${dateStr} 23:59:59`;
 
+  // Wrap recorded_at in datetime() so mixed timestamp formats compare
+  // correctly. gps_breadcrumbs stores a blend of ISO-UTC (from OwnTracks,
+  // e.g. "2026-04-24T02:23:49.000Z") and localtime ("YYYY-MM-DD HH:MM:SS"
+  // from the datetime('now','localtime') default). Lexicographic string
+  // comparison misplaces the ISO rows because "T" > space — a day with
+  // 18K ISO-UTC points appeared empty. datetime() coerces both to a
+  // canonical scalar before comparison.
   const rows = db.prepare(`
     SELECT b.id, b.unit_id, b.officer_id, b.latitude, b.longitude, b.accuracy,
       b.heading, b.speed, b.unit_status, b.call_sign, b.officer_name,
       b.badge_number, b.current_call_id, b.current_call_number,
       b.current_call_type, b.recorded_at
     FROM gps_breadcrumbs b
-    WHERE b.recorded_at >= ? AND b.recorded_at <= ?
-    ORDER BY b.unit_id, b.recorded_at ASC
+    WHERE datetime(b.recorded_at) >= datetime(?)
+      AND datetime(b.recorded_at) <= datetime(?)
+    ORDER BY b.unit_id, datetime(b.recorded_at) ASC
   `).all(startDate, endDate) as any[];
 
   if (rows.length === 0) return [];
