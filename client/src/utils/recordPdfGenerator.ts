@@ -266,6 +266,17 @@ export interface CallPdfData {
   pso_requestor_email?: string;
   pso_billing_code?: string;
   pso_attempt_number?: number;
+  // PSO SLA / compliance fields (server-tracked, previously hidden on the printed record)
+  pso_72hr_deadline?: string;                // ISO — 72hr re-dispatch deadline after clear/close
+  pso_72hr_notified?: string | null;         // 'overdue' | 'resolved' | null
+  pso_service_windows?: string;              // JSON: {early_morning,daytime,evening,weekend}
+  // Process-service legal details (formerly accessed via `(data as any)` casts)
+  client_name?: string;
+  attorney_name?: string;
+  jurisdiction?: string;
+  deadline?: string;
+  time_window?: string;
+  service_instructions?: string;
   // Process Service fields
   process_service_type?: string;
   process_served_to?: string;
@@ -1148,27 +1159,149 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // PSO Client Request Details — right after Caller Information
+  // PSO Client Request Details — right after Caller Information.
+  // Expanded 2026-04-23 for internal record-keeping: surfaces SLA markers,
+  // service-window compliance, timing metrics, and creator/dispatcher meta
+  // that previously lived only in the DB.
   if (data.incident_type === 'pso_client_request') {
     y = checkPageBreak(doc, y, 18, prio);
     const attemptNum = data.pso_attempt_number || 1;
-    const attemptLabel = attemptNum > 1
-      ? ` -- ${attemptNum === 2 ? '2nd' : attemptNum === 3 ? '3rd' : attemptNum + 'th'} Attempt`
-      : '';
+    const ordinal = (n: number): string => {
+      if (n === 1) return '1st';
+      if (n === 2) return '2nd';
+      if (n === 3) return '3rd';
+      return `${n}th`;
+    };
+    const attemptLabel = attemptNum > 1 ? ` -- ${ordinal(attemptNum)} Attempt` : '';
     const psoSec = openAutoSection(doc, `PSO Client Request Details${attemptLabel}`, y); y = psoSec.contentY;
+
+    // Row 1: Service Type / Authorization / Billing Code
     y = addThreeColumnFields(doc, [
       { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
       { label: 'Authorization / PO#', value: data.pso_authorization || '' },
       { label: 'Billing Code', value: data.pso_billing_code || '' },
     ], y);
+
+    // Row 2: Requestor block
     y = addThreeColumnFields(doc, [
       { label: 'Requestor Name', value: data.pso_requestor_name || '' },
       { label: 'Requestor Phone', value: data.pso_requestor_phone || '' },
       { label: 'Requestor Email', value: data.pso_requestor_email || '' },
     ], y);
+
+    // Row 3: Contract / Client / Attempt#  (contract_id may exist for non-legal PSO too)
+    if (data.contract_id || data.client_name || attemptNum > 1) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Contract ID', value: data.contract_id || '' },
+        { label: 'Client', value: data.client_name || '' },
+        { label: 'Attempt #', value: String(attemptNum) },
+      ], y);
+    }
+
+    // Row 4: Legal-service meta (Attorney / Jurisdiction / Time Window) — only for process-service flavor
+    if (data.attorney_name || data.jurisdiction || data.time_window) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Attorney', value: data.attorney_name || '' },
+        { label: 'Jurisdiction', value: data.jurisdiction || '' },
+        { label: 'Time Window', value: data.time_window || '' },
+      ], y);
+    }
+
+    // Row 5: 72-hour SLA block — the key operational accountability marker
+    if (data.pso_72hr_deadline || data.pso_72hr_notified) {
+      const deadlineStr = fmtTimestamp(data.pso_72hr_deadline);
+      let slaStatus = 'IN WINDOW';
+      if (data.pso_72hr_notified === 'overdue') slaStatus = 'OVERDUE';
+      else if (data.pso_72hr_notified === 'resolved') slaStatus = 'RESOLVED';
+      else if (data.pso_72hr_deadline) {
+        try {
+          const dl = new Date(data.pso_72hr_deadline);
+          if (!Number.isNaN(dl.getTime()) && isPast(dl.toISOString())) slaStatus = 'OVERDUE';
+        } catch { /* ignore parse errors */ }
+      }
+      // Time remaining vs. now (positive = remaining, negative = past deadline)
+      let timeRemaining = '';
+      if (data.pso_72hr_deadline) {
+        try {
+          const dl = new Date(data.pso_72hr_deadline).getTime();
+          const diffMs = dl - Date.now();
+          const absH = Math.floor(Math.abs(diffMs) / 3_600_000);
+          const absM = Math.floor((Math.abs(diffMs) % 3_600_000) / 60_000);
+          timeRemaining = diffMs >= 0
+            ? `${absH}h ${absM}m remaining`
+            : `${absH}h ${absM}m past due`;
+        } catch { /* ignore */ }
+      }
+      y = addThreeColumnFields(doc, [
+        { label: '72hr SLA Deadline', value: deadlineStr },
+        { label: 'SLA Status', value: slaStatus },
+        { label: 'Time vs. Deadline', value: timeRemaining },
+      ], y);
+    }
+
+    // Row 6: Service-window compliance flags (parsed from JSON)
+    if (data.pso_service_windows) {
+      try {
+        const w = JSON.parse(data.pso_service_windows) as Record<string, boolean | number>;
+        const flag = (k: string): string => (w[k] ? 'YES' : 'NO');
+        y = addThreeColumnFields(doc, [
+          { label: 'Early Morning', value: flag('early_morning') },
+          { label: 'Daytime', value: flag('daytime') },
+          { label: 'Evening', value: flag('evening') },
+        ], y);
+        y = addFieldPair(doc, 'Weekend Coverage', flag('weekend'), lx, y, ffw);
+      } catch { /* malformed JSON — skip the row rather than crash the PDF */ }
+    }
+
+    // Row 7: Response-time metrics — computed from existing timestamps. Internal-record value is
+    // having the durations printed alongside the raw timestamps, not in a separate analytics UI.
+    if (data.dispatched_at || data.onscene_at || data.cleared_at) {
+      const durMin = (from?: string, to?: string): string => {
+        if (!from || !to) return '';
+        const a = new Date(from).getTime();
+        const b = new Date(to).getTime();
+        if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
+        const mins = Math.round((b - a) / 60_000);
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+      };
+      const responseTime = durMin(data.dispatched_at, data.onscene_at);
+      const onSceneTime = durMin(data.onscene_at, data.cleared_at);
+      const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
+      if (responseTime || onSceneTime || totalTime) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Response Time', value: responseTime || '—' },
+          { label: 'On-Scene Time', value: onSceneTime || '—' },
+          { label: 'Total Duration', value: totalTime || '—' },
+        ], y);
+      }
+    }
+
+    // Row 8: Record-keeping meta — who created, who dispatched. Small, terminal-style footer
+    // that gives an audit trail without hunting through the server audit log.
+    if (data.created_by || data.dispatcher_name || data.created_at) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Created By', value: data.created_by || '' },
+        { label: 'Dispatcher', value: data.dispatcher_name || '' },
+        { label: 'Created', value: fmtTimestamp(data.created_at) },
+      ], y);
+    }
+
     y = closeAutoSection(doc, psoSec.sectionY, y, undefined, psoSec.sectionPage);
 
-    // Process Service sub-section
+    // Service Instructions — rendered as a caution block so the dispatcher's / requestor's
+    // specific on-site guidance is impossible to miss when the form is read in printed form.
+    if (data.service_instructions && data.service_instructions.trim()) {
+      y = checkPageBreak(doc, y, 20, prio);
+      y = addCautionBlock(
+        doc,
+        `SERVICE INSTRUCTIONS — ${data.service_instructions.trim()}`,
+        lx, y, ffw,
+      );
+    }
+
+    // Process Service sub-section (unchanged from prior version except for the deadline row)
     if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
       y = checkPageBreak(doc, y, 18, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
@@ -1182,6 +1315,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
         { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
       ], y);
+      if (data.deadline) {
+        y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
+      }
       y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
     }
   }
