@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 import { isPast, isWithinDays } from './dateUtils';
 import {
   addConfidentialWatermark,
@@ -2569,6 +2570,14 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
 // ── Warrant ──────────────────────────────────────────────────
 
+async function generateQrDataUrl(text: string): Promise<string | null> {
+  try {
+    return await QRCode.toDataURL(text, { width: 96, margin: 0, errorCorrectionLevel: 'M' });
+  } catch {
+    return null;
+  }
+}
+
 async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -2589,6 +2598,44 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   });
 
   y = drawDistrictBar(doc, y, data as any);
+
+  // QR code — top-right of page 1 (Phase 1)
+  const qrUrl = data.qr_code_data_url ||
+    (typeof window !== 'undefined' && (data as any).id
+      ? await generateQrDataUrl(`${window.location.origin}/warrants/${(data as any).id}`)
+      : null);
+  if (qrUrl) {
+    doc.addImage(qrUrl, 'PNG', rx - 24, 4, 24, 24);
+  }
+
+  // Priority stamp — below header, right column
+  const bucket = data.priority_score == null ? null :
+    data.priority_score >= 90 ? { label: 'CRITICAL', color: [220, 38, 38] as [number,number,number] } :
+    data.priority_score >= 70 ? { label: 'HIGH',     color: [245, 158, 11] as [number,number,number] } :
+    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 116, 139] as [number,number,number] } :
+    { label: 'LOW', color: [156, 163, 175] as [number,number,number] };
+  if (bucket) {
+    doc.setFillColor(bucket.color[0], bucket.color[1], bucket.color[2]);
+    doc.setTextColor(255, 255, 255);
+    doc.roundedRect(rx - 55, 32, 50, 8, 1, 1, 'F');
+    doc.setFontSize(9);
+    doc.text(`${bucket.label} ${data.priority_score}/100`, rx - 30, 37.5, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  // NCIC compliance block
+  y = checkPageBreak(doc, y, 14, statusPrio);
+  {
+    const sec = openAutoSection(doc, 'NCIC / ORI', y);
+    y = sec.contentY;
+    const quarterW = ffw / 4;
+    const r1a = addFieldPair(doc, 'ORI',        data.ori        || '—', lx + quarterW * 0, y, quarterW);
+    const r1b = addFieldPair(doc, 'OCA #',      data.oca_number || '—', lx + quarterW * 1, y, quarterW);
+    const r1c = addFieldPair(doc, 'NCIC Entry', data.ncic_entry_number || '—', lx + quarterW * 2, y, quarterW);
+    const r1d = addFieldPair(doc, 'Issue Date', fmtDate(data.issue_date) || '—', lx + quarterW * 3, y, quarterW);
+    y = Math.max(r1a, r1b, r1c, r1d);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   // ── Warrant Information ──
   y = checkPageBreak(doc, y, 18, statusPrio);
@@ -2627,6 +2674,21 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     // Row 3: Address (full width, conditional)
     if (data.subject_address) {
       y = addFieldPair(doc, 'Address', data.subject_address, lx, y, ffw);
+    }
+    // Mugshot — 50pt x 50pt, right-aligned within section (Phase 1)
+    if (data.subject_photo_url) {
+      try {
+        const photoW = 50;
+        const photoH = 50;
+        const photoX = rx + getHalfFieldWidth(doc) - photoW;
+        const photoY = sec.contentY;
+        doc.addImage(data.subject_photo_url, 'JPEG', photoX, photoY, photoW, photoH);
+        doc.setDrawColor(...COLOR.BORDER_FIELD);
+        doc.rect(photoX, photoY, photoW, photoH, 'S');
+        y = Math.max(y, photoY + photoH + 2);
+      } catch {
+        // photo URL invalid — skip
+      }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
