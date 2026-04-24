@@ -518,9 +518,14 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
     const db = getDb();
     const unitId = parseInt(req.params.unitId as string, 10);
     if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }); return; }
-    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    // Cap at 8760h (1 year) to match client-side BREADCRUMB_HOUR_PRESETS.
+    // Previously 72h — truncated everything beyond 3 days even when client asked for 7d+.
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 8760);
 
     // Fix 15: LIMIT on trail queries to prevent huge responses
+    // Raised 10K→100K to allow dense OwnTracks trails (1 Hz = ~3600/hr/unit)
+    // to survive multi-day ranges. Server-side filters still collapse stationary
+    // points, so typical payload stays well under this cap.
     const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number,
@@ -529,7 +534,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
-      LIMIT 10000
+      LIMIT 100000
     `).all(unitId, hours) as any[];
 
     // ── Filter: accuracy gate + jump detection + stationary collapse ──
@@ -591,7 +596,9 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
 router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    // Cap at 8760h (1 year) to match client-side BREADCRUMB_HOUR_PRESETS.
+    // Previously 72h — silently truncated multi-day preset selections.
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 8760);
 
     // Haversine distance in meters between two lat/lng pairs
     const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -618,7 +625,7 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY b.unit_id, b.recorded_at ASC
-      LIMIT 50000
+      LIMIT 500000
     `).all(hours) as any[];
 
     // ── Group by unit, then filter each trail to remove starburst artifacts ──
