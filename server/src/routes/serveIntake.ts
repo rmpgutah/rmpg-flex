@@ -156,8 +156,10 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
+    // Multiple court dockets are common (Summons + Complaint + Exhibits).
+    // Concatenate all court_docket texts so the parser sees the full packet.
     let fieldSheet = '';
-    let courtDocket = '';
+    const courtDocketParts: string[] = [];
     let infoSheet = '';
     for (const d of documents) {
       const txt = (d?.text || '') as string;
@@ -166,15 +168,17 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       if (!kind || kind === 'unknown') kind = detectDocType(txt);
       if (kind === 'court_filing') kind = 'court_docket';
       if (kind === 'info_page') kind = 'info_sheet';
-      if (kind === 'field_sheet' && !fieldSheet) fieldSheet = txt;
-      else if (kind === 'court_docket' && !courtDocket) courtDocket = txt;
-      else if (kind === 'info_sheet' && !infoSheet) infoSheet = txt;
+      if (kind === 'field_sheet') { if (!fieldSheet) fieldSheet = txt; }
+      else if (kind === 'court_docket') { courtDocketParts.push(txt); }
+      else if (kind === 'info_sheet') { if (!infoSheet) infoSheet = txt; }
       else {
         if (!fieldSheet) fieldSheet = txt;
-        else if (!courtDocket) courtDocket = txt;
+        else if (courtDocketParts.length === 0) courtDocketParts.push(txt);
         else if (!infoSheet) infoSheet = txt;
+        else courtDocketParts.push(txt); // additional unknown docs → treat as court material
       }
     }
+    const courtDocket = courtDocketParts.join('\n\n--- DOCUMENT SEPARATOR ---\n\n');
 
     const parsed = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
 
@@ -205,7 +209,8 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       parsed,  // Return full ParseOutput — client renders all fields for review/editing
       detectedTypes: {
         fieldSheet: !!fieldSheet,
-        courtDocket: !!courtDocket,
+        courtDocket: courtDocketParts.length > 0,
+        courtDocketCount: courtDocketParts.length,
         infoSheet: !!infoSheet,
       },
       warnings: [duplicateWarning, activeServeWarning].filter(Boolean),
@@ -232,28 +237,28 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     // overrides: optional user corrections from the review step
     // { defendant?: {first,middle,last,dob}, address?, plaintiff?, dueDate?, instructions? }
 
-    // Bin each document by type (explicit > auto-detect)
+    // Bin documents by type — multiple court dockets are concatenated
     let fieldSheet = '';
-    let courtDocket = '';
+    const courtDocketParts: string[] = [];
     let infoSheet = '';
     for (const d of documents) {
       const txt = (d?.text || '') as string;
       if (!txt) continue;
       let kind = d.type as string | undefined;
       if (!kind || kind === 'unknown') kind = detectDocType(txt);
-      // Accept legacy "court_filing" / "info_page" aliases from older clients
       if (kind === 'court_filing') kind = 'court_docket';
       if (kind === 'info_page') kind = 'info_sheet';
-      if (kind === 'field_sheet' && !fieldSheet) fieldSheet = txt;
-      else if (kind === 'court_docket' && !courtDocket) courtDocket = txt;
-      else if (kind === 'info_sheet' && !infoSheet) infoSheet = txt;
+      if (kind === 'field_sheet') { if (!fieldSheet) fieldSheet = txt; }
+      else if (kind === 'court_docket') { courtDocketParts.push(txt); }
+      else if (kind === 'info_sheet') { if (!infoSheet) infoSheet = txt; }
       else {
-        // Unknown — fall back to whatever slot is empty
         if (!fieldSheet) fieldSheet = txt;
-        else if (!courtDocket) courtDocket = txt;
+        else if (courtDocketParts.length === 0) courtDocketParts.push(txt);
         else if (!infoSheet) infoSheet = txt;
+        else courtDocketParts.push(txt);
       }
     }
+    const courtDocket = courtDocketParts.join('\n\n--- DOCUMENT SEPARATOR ---\n\n');
 
     const parsed: ParseOutput = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
 
