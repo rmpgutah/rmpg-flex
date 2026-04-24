@@ -2,10 +2,12 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
+import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/universalWarrantScanner';
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
+import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
@@ -30,7 +32,7 @@ router.get('/', (req: Request, res: Response) => {
       expiring_days,
       person_id,
       page = '1',
-      per_page = '50',
+      per_page = '100000',
     } = req.query;
 
     let whereClause = 'WHERE 1=1';
@@ -74,14 +76,6 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND w.created_at <= ?';
       params.push(date_to);
     }
-    if (severity) {
-      whereClause += ' AND w.offense_level = ?';
-      params.push(severity);
-    }
-    if (source) {
-      whereClause += ' AND w.source = ?';
-      params.push(source);
-    }
     if (expiring_days) {
       const eDays = parseInt(expiring_days as string, 10);
       if (!isNaN(eDays) && eDays > 0) {
@@ -102,7 +96,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPageNum = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPageNum = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPageNum;
 
     const countRow = db.prepare(`
@@ -579,7 +573,7 @@ router.get('/unified', (req: Request, res: Response) => {
 
     // Pagination
     const pageNum = parseInt(req.query.page as string, 10) || 1;
-    const perPage = parseInt(req.query.per_page as string, 10) || 50;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(req.query.per_page as string, 10)) || 100000));
     const total = filtered.length;
     const paged = filtered.slice((pageNum - 1) * perPage, pageNum * perPage);
 
@@ -698,7 +692,7 @@ router.get('/scraped/status', (req: Request, res: Response) => {
 router.get('/watch/runs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const runs = db.prepare(`
       SELECT * FROM warrant_watch_runs
@@ -885,6 +879,291 @@ router.get('/national-coverage', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// ⚠️  ROUTE ORDER SENSITIVE — /:id below is parameterized and greedy.
+// All /scrapers/* routes MUST appear ABOVE router.get('/:id', ...).
+// See CLAUDE.md "Express Route Ordering" rule.
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/warrants/scrapers/health — cheap summary for header badge
+// MUST be defined BEFORE /scrapers/:source_key to avoid "health" matching :source_key
+router.get('/scrapers/health', (req: Request, res: Response) => {
+  try {
+    res.json(getHealthSummary());
+  } catch (err: any) {
+    console.error('GET /scrapers/health error:', err);
+    res.status(500).json({ error: 'Failed to fetch health', code: 'FETCH_HEALTH_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/metrics/summary?window=24
+// Also defined BEFORE /scrapers/:source_key for the same reason.
+router.get('/scrapers/metrics/summary', (req: Request, res: Response) => {
+  try {
+    const window = Math.max(1, Math.min(720, parseInt((req.query.window as string) || '24', 10) || 24));
+    const db = getDb();
+    const sources = db.prepare('SELECT source_key FROM warrant_scraper_config WHERE enabled = 1').all() as { source_key: string }[];
+    const all = sources.map(s => getSourceMetrics(s.source_key, window));
+
+    const totalRuns = all.reduce((sum, m) => sum + m.total_runs, 0);
+    const totalInserted = all.reduce((sum, m) => sum + m.total_inserted, 0);
+    const totalUpdated = all.reduce((sum, m) => sum + m.total_updated, 0);
+    const totalSuccess = all.reduce((sum, m) => sum + m.successful_runs + m.unchanged_runs, 0);
+
+    const gradeDist: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    for (const m of all) gradeDist[m.health_grade] = (gradeDist[m.health_grade] ?? 0) + 1;
+
+    res.json({
+      window_hours: window,
+      total_sources: all.length,
+      total_runs: totalRuns,
+      total_warrants_inserted: totalInserted,
+      total_warrants_updated: totalUpdated,
+      avg_success_rate: totalRuns > 0 ? totalSuccess / totalRuns : 0,
+      grade_distribution: gradeDist,
+    });
+  } catch (err: any) {
+    console.error('GET /scrapers/metrics/summary error:', err);
+    res.status(500).json({ error: 'Failed to fetch summary', code: 'FETCH_SUMMARY_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers — list all sources with 24h metrics
+router.get('/scrapers', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sources = db.prepare(`
+      SELECT source_key, display_name, state, county, source_url, source_type,
+        enabled, circuit_broken, priority, consecutive_errors,
+        last_scrape_at, last_success_at, last_error,
+        avg_parse_count, p95_latency_ms,
+        (SELECT COUNT(*) FROM scraped_warrants WHERE source_key = warrant_scraper_config.source_key) AS warrant_count
+      FROM warrant_scraper_config
+      ORDER BY priority, state, county
+    `).all() as any[];
+
+    const withMetrics = sources.map(s => ({
+      ...s,
+      metrics_24h: getSourceMetrics(s.source_key, 24),
+    }));
+    res.json({ sources: withMetrics });
+  } catch (err: any) {
+    console.error('GET /scrapers error:', err);
+    res.status(500).json({ error: 'Failed to fetch scrapers', code: 'FETCH_SCRAPERS_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/:source_key — single source with 24h + 7d metrics
+router.get('/scrapers/:source_key', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const source = db.prepare('SELECT * FROM warrant_scraper_config WHERE source_key = ?').get(req.params.source_key);
+    if (!source) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+    res.json({
+      ...source,
+      metrics_24h: getSourceMetrics(paramStr(req.params.source_key), 24),
+      metrics_7d: getSourceMetrics(paramStr(req.params.source_key), 168),
+    });
+  } catch (err: any) {
+    console.error('GET /scrapers/:source_key error:', err);
+    res.status(500).json({ error: 'Failed to fetch source', code: 'FETCH_SOURCE_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/:source_key/runs?limit=50&offset=0
+router.get('/scrapers/:source_key/runs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(100000, Math.max(1, (parseInt((req.query.limit as string) || '50', 10)) || 100000));
+    const offset = Math.max(0, parseInt((req.query.offset as string) || '0', 10) || 0);
+    const runs = db.prepare(`
+      SELECT * FROM warrant_scraper_runs
+      WHERE source_key = ?
+      ORDER BY started_at DESC
+      LIMIT ? OFFSET ?
+    `).all(req.params.source_key, limit, offset);
+    res.json({ runs });
+  } catch (err: any) {
+    console.error('GET /scrapers/:source_key/runs error:', err);
+    res.status(500).json({ error: 'Failed to fetch runs', code: 'FETCH_RUNS_ERROR' });
+  }
+});
+
+// ── Scraper action endpoints (admin + manager) ─────────────
+// POST /api/warrants/scrapers/bulk — bulk enable/disable/reset/set_priority
+// Defined BEFORE /scrapers/:source_key/* routes so "bulk" doesn't match :source_key.
+router.post('/scrapers/bulk', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const { action, source_keys, priority } = req.body;
+    if (!Array.isArray(source_keys) || source_keys.length === 0) {
+      return res.status(400).json({ error: 'source_keys array required', code: 'MISSING_KEYS' });
+    }
+    if (source_keys.length > 200) {
+      return res.status(400).json({ error: 'max 200 sources per bulk op', code: 'TOO_MANY' });
+    }
+
+    const db = getDb();
+    const placeholders = source_keys.map(() => '?').join(',');
+    let result;
+
+    switch (action) {
+      case 'enable':
+        result = db.prepare(`UPDATE warrant_scraper_config SET enabled = 1 WHERE source_key IN (${placeholders})`).run(...source_keys);
+        break;
+      case 'disable':
+        result = db.prepare(`UPDATE warrant_scraper_config SET enabled = 0 WHERE source_key IN (${placeholders})`).run(...source_keys);
+        break;
+      case 'reset':
+        result = db.prepare(`UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key IN (${placeholders})`).run(...source_keys);
+        break;
+      case 'set_priority': {
+        const p = parseInt(priority, 10);
+        if (![1, 2, 3, 4].includes(p)) return res.status(400).json({ error: 'priority must be 1-4', code: 'INVALID_PRIORITY' });
+        result = db.prepare(`UPDATE warrant_scraper_config SET priority = ? WHERE source_key IN (${placeholders})`).run(p, ...source_keys);
+        break;
+      }
+      default:
+        return res.status(400).json({ error: 'action must be enable|disable|reset|set_priority', code: 'INVALID_ACTION' });
+    }
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper bulk ${action}: ${source_keys.length} sources`);
+    return res.json({ success: true, affected: result.changes });
+  } catch (err: any) {
+    console.error('POST /scrapers/bulk error:', err);
+    return res.status(500).json({ error: 'Bulk op failed', code: 'BULK_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/trigger — force immediate scrape
+router.post('/scrapers/:source_key/trigger', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const sourceKey = paramStr(req.params.source_key);
+    const db = getDb();
+    const exists = db.prepare('SELECT source_key FROM warrant_scraper_config WHERE source_key = ?').get(sourceKey);
+    if (!exists) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    // Fire and forget — returns immediately so UI doesn't block on the scrape
+    const { syncSource } = await import('../utils/multiStateWarrantScraper');
+    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String(e.message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`));
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper manually triggered: ${sourceKey}`);
+    return res.json({ success: true, source_key: sourceKey, message: 'Scrape initiated' });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/trigger error:', err);
+    return res.status(500).json({ error: 'Trigger failed', code: 'TRIGGER_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/test — dry-run parse (no DB write)
+router.post('/scrapers/:source_key/test', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const config = db.prepare('SELECT * FROM warrant_scraper_config WHERE source_key = ?').get(req.params.source_key) as any;
+    if (!config) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+    if (!config.source_url) return res.status(400).json({ error: 'Source has no URL', code: 'NO_URL' });
+
+    const { parseWithFallback } = await import('../utils/multiStateWarrantScraper');
+    const response = await fetch(config.source_url);
+    const html = await response.text();
+    const result = parseWithFallback(config, html);
+
+    return res.json({
+      source_key: req.params.source_key,
+      http_status: response.status,
+      bytes: html.length,
+      parser_used: result.parserUsed,
+      drift_signal: result.driftSignal || null,
+      entry_count: result.entries.length,
+      sample: result.entries.slice(0, 10),
+    });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/test error:', err);
+    return res.status(500).json({ error: err.message || 'Test failed', code: 'TEST_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/reset-circuit — clear circuit breaker
+router.post('/scrapers/:source_key/reset-circuit', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = db.prepare(
+      'UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key = ?'
+    ).run(req.params.source_key);
+    if (result.changes === 0) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper circuit reset: ${req.params.source_key}`);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/reset-circuit error:', err);
+    return res.status(500).json({ error: 'Reset failed', code: 'RESET_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/preview — parse pasted HTML (no DB write, no fetch)
+router.post('/scrapers/:source_key/preview', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const { html } = req.body;
+    if (typeof html !== 'string' || html.length === 0) {
+      return res.status(400).json({ error: 'html body required', code: 'MISSING_HTML' });
+    }
+    if (html.length > 5_000_000) {
+      return res.status(413).json({ error: 'html too large (5MB max)', code: 'HTML_TOO_LARGE' });
+    }
+
+    const config = getDb().prepare('SELECT * FROM warrant_scraper_config WHERE source_key = ?').get(req.params.source_key) as any;
+    if (!config) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    const { parseWithFallback } = await import('../utils/multiStateWarrantScraper');
+    const result = parseWithFallback(config, html);
+
+    return res.json({
+      parser_used: result.parserUsed,
+      drift_signal: result.driftSignal || null,
+      entry_count: result.entries.length,
+      entries: result.entries,
+    });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/preview error:', err);
+    return res.status(500).json({ error: err.message || 'Preview failed', code: 'PREVIEW_ERROR' });
+  }
+});
+
+// PUT /api/warrants/scrapers/:source_key — update priority/interval/enabled
+router.put('/scrapers/:source_key', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const { priority, scrape_interval_minutes, enabled } = req.body;
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (priority !== undefined) {
+      const p = parseInt(priority, 10);
+      if (![1, 2, 3, 4].includes(p)) return res.status(400).json({ error: 'priority must be 1-4', code: 'INVALID_PRIORITY' });
+      updates.push('priority = ?'); params.push(p);
+    }
+    if (scrape_interval_minutes !== undefined) {
+      const m = parseInt(scrape_interval_minutes, 10);
+      if (Number.isNaN(m) || m < 5 || m > 1440) return res.status(400).json({ error: 'interval must be 5-1440 min', code: 'INVALID_INTERVAL' });
+      updates.push('scrape_interval_minutes = ?'); params.push(m);
+    }
+    if (enabled !== undefined) {
+      updates.push('enabled = ?'); params.push(enabled ? 1 : 0);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: 'No fields to update', code: 'NO_UPDATES' });
+
+    params.push(req.params.source_key);
+    const result = getDb().prepare(
+      `UPDATE warrant_scraper_config SET ${updates.join(', ')} WHERE source_key = ?`
+    ).run(...params);
+    if (result.changes === 0) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper config updated: ${req.params.source_key} ${JSON.stringify(req.body)}`);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('PUT /scrapers/:source_key error:', err);
+    return res.status(500).json({ error: 'Update failed', code: 'UPDATE_ERROR' });
+  }
+});
+
 // GET /api/warrants/:id - Get single warrant with details
 router.get('/:id', (req: Request, res: Response) => {
   try {
@@ -1035,6 +1314,17 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
     broadcast('alerts', 'warrant', {
       action: 'created',
       warrant,
+    });
+    // Dispatcher Brain fan-in (Phase 2): also emit on the dispatch
+    // channel with a flat shape the brain's warrant-entered rule
+    // consumes. Severity is 'moderate' per design — warrants affect
+    // officer safety so they merit a spoken notice.
+    broadcastDispatchUpdate({
+      action: 'warrant_entered',
+      warrant_id: warrantId,
+      subject_name: warrant?.subject_name,
+      offense_class: warrant?.offense_level ?? warrant?.type,
+      bail_amount: warrant?.bail_amount,
     });
 
     res.status(201).json(warrant);

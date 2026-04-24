@@ -4,6 +4,12 @@ export interface FooterOptions {
   pageNumber: number;
   totalPages: number;
   revision: string;
+  /**
+   * Timestamp used for the "Generated YYYY-MM-DD" footer text. Defaults to
+   * `new Date()` so production always shows today. Tests inject a fixed Date
+   * to keep snapshot output byte-stable (see __tests__/snapshotHelpers.ts).
+   */
+  generatedAt?: Date;
 }
 
 /**
@@ -20,6 +26,7 @@ export function drawDefaultFooter(doc: jsPDF, opts: FooterOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(120, 120, 120);
-  doc.text(`Generated ${new Date().toISOString().split('T')[0]} • Rev ${opts.revision}`, 10, footerY);
+  const generatedAt = opts.generatedAt ?? new Date();
+  doc.text(`Generated ${generatedAt.toISOString().split('T')[0]} • Rev ${opts.revision}`, 10, footerY);
   doc.text(`Page ${opts.pageNumber} of ${opts.totalPages}`, pageWidth - 10, footerY, { align: 'right' });
 }

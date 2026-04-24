@@ -83,70 +83,89 @@ export function loadGoogleMaps(apiKey: string): Promise<void> {
   return _gmapsLoadPromise;
 }
 
+// Installs the Google-recommended Dynamic Library Import bootstrap once per
+// page. After this, `google.maps.importLibrary('maps'|'places'|'marker'|
+// 'visualization')` returns promises that reject on failure instead of
+// injecting the "Oops! This page didn't load Google Maps correctly" dialog
+// into the DOM. See https://developers.google.com/maps/documentation/javascript/load-maps-js-api
+function installBootstrap(apiKey: string): void {
+  if ((window as any).google?.maps?.importLibrary) return;
+  // Verbatim Google bootstrap, adapted inline with a user-supplied key.
+  (function (g: any) {
+    let h: any, a: any, k: any;
+    const p = 'The Google Maps JavaScript API';
+    const c = 'google';
+    const l = 'importLibrary';
+    const q = '__ib__';
+    const m: any = document;
+    let b: any = window;
+    b = b[c] || (b[c] = {});
+    const d = b.maps || (b.maps = {});
+    const r = new Set<string>();
+    const e = new URLSearchParams();
+    const u = () =>
+      h ||
+      (h = new Promise(async (f: any, n: any) => {
+        a = m.createElement('script');
+        e.set('libraries', [...r].join(''));
+        for (k in g) e.set(k.replace(/[A-Z]/g, (t: string) => '_' + t[0].toLowerCase()), g[k]);
+        e.set('callback', c + '.maps.' + q);
+        a.src = 'https://maps.' + c + 'apis.com/maps/api/js?' + e;
+        d[q] = f;
+        a.onerror = () => (h = n(new Error(p + ' could not load.')));
+        a.nonce = m.querySelector('script[nonce]')?.nonce || '';
+        m.head.append(a);
+      }));
+    d[l]
+      ? console.warn(p + ' only loads once. Ignoring:', g)
+      : (d[l] = (f: any, ...n: any[]) => r.add(f) && u().then(() => d[l](f, ...n)));
+  })({ key: apiKey, v: 'weekly' });
+}
+
 function doScriptLoad(
   apiKey: string,
   resolve: () => void,
   reject: (err: Error) => void,
 ): void {
-  // Remove any stale/failed script tags so we always get a fresh load.
-  const existing = document.querySelector('script[src*="maps.googleapis.com"]');
-  if (existing) {
-    if (gmapsReady()) {
+  let settled = false;
+
+  // Safety timeout — 45 seconds for slow mobile/cellular connections.
+  const timeout = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    _loadInProgress = false;
+    _gmapsLoadPromise = null;
+    reject(new Error('Google Maps load timed out (45s)'));
+  }, 45000);
+
+  (async () => {
+    try {
+      installBootstrap(apiKey);
+      const g = (window as any).google.maps;
+      // `maps` is critical — everything else is optional. If a secondary
+      // library fails (quota/restriction for just that API), we still
+      // want the base map to render. Components that actually use
+      // places/marker/visualization re-check availability at call sites.
+      await g.importLibrary('maps');
+      await Promise.allSettled([
+        g.importLibrary('places'),
+        g.importLibrary('marker'),
+        g.importLibrary('visualization'),
+      ]);
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       _loadInProgress = false;
       resolve();
-      return;
-    }
-    existing.remove();
-    delete (window as any).__rmpg_gmaps_init__;
-  }
-
-  let settled = false;
-  const callbackName = '__rmpg_gmaps_init__';
-
-  const cleanup = () => {
-    delete (window as any)[callbackName];
-    _loadInProgress = false;
-  };
-
-  (window as any)[callbackName] = () => {
-    if (settled) return;
-    settled = true;
-    cleanup();
-    resolve();
-  };
-
-  const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker,visualization&callback=${callbackName}&v=weekly`;
-  script.async = true;
-  script.defer = true;
-  script.onerror = () => {
-    if (settled) return;
-    settled = true;
-    _gmapsLoadPromise = null;
-    script.remove();
-    cleanup();
-    reject(new Error('Failed to load Google Maps script'));
-  };
-  document.head.appendChild(script);
-
-  // Safety timeout — 45 seconds to accommodate slow mobile/vehicle connections.
-  // This is intentionally long because officers driving on cellular/satellite
-  // connections may experience very slow downloads.
-  setTimeout(() => {
-    if (settled) return;
-    // Check one more time — script may have loaded just as timeout fires
-    if (gmapsReady()) {
+    } catch (err: any) {
+      if (settled) return;
       settled = true;
-      cleanup();
-      resolve();
-      return;
+      clearTimeout(timeout);
+      _loadInProgress = false;
+      _gmapsLoadPromise = null;
+      reject(err instanceof Error ? err : new Error(String(err?.message || err)));
     }
-    settled = true;
-    _gmapsLoadPromise = null;
-    script.remove();
-    cleanup();
-    reject(new Error('Google Maps script load timed out (45s)'));
-  }, 45000);
+  })();
 }
 
 /**

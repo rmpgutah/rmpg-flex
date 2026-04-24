@@ -8,8 +8,8 @@
 
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
-import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark } from './pdfGenerator';
-import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
+import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark, finalizePoliceReport } from './pdfGenerator';
+import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT } from './pdfTokens';
 import { localToday } from './dateUtils';
 
 // ── Types matching the server patrol-tracking response ──────
@@ -187,23 +187,30 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.rect(pageW / 2, 14, pageW / 2, 1, 'F');
     }
 
-    // Footer on ALL pages
+    // Footer on ALL pages. Pulled up 5mm from the bottom edge so the
+    // entire footer bar sits inside the printer SAFE PRINT ZONE (typical
+    // no-print margin is 3-6mm). Previous position (flush to bottom edge)
+    // was being clipped on cheaper office printers.
     const footerH = 8;
-    const footerY = pageH - footerH;
+    const SAFE_PRINT_EDGE_BOTTOM = 5;
+    const footerY = pageH - footerH - SAFE_PRINT_EDGE_BOTTOM;
     doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
-    doc.rect(0, footerY, pageW, footerH, 'F');
+    doc.rect(SAFE_PRINT_EDGE_BOTTOM, footerY, pageW - 2 * SAFE_PRINT_EDGE_BOTTOM, footerH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(0, footerY, pageW, footerY);
+    doc.line(SAFE_PRINT_EDGE_BOTTOM, footerY, pageW - SAFE_PRINT_EDGE_BOTTOM, footerY);
     doc.setTextColor(...COLOR.TEXT_MUTED);
     doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
-    doc.setFont('courier', 'bold');
+    doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.text(sanitizePdfText(`${formNum}  |  INTERNAL USE ONLY  |  Page ${pageNum} of ${totalPages}`), margin, footerY + footerH / 2 + 0.5);
     doc.text(sanitizePdfText(`GENERATED: ${reportDate.toUpperCase()}`), pageW - margin, footerY + footerH / 2 + 0.5, { align: 'right' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
   }
 
-  // ── Utility: draw a section header bar (dark gray bg + white text) ──
+  // ── Utility: draw a section header bar. Matches the incident-report
+  // styling from pdfGenerator.ts#openAutoSection — same fill color, same
+  // text size, same content pad below the bar — so patrol tracking reads
+  // visually consistent with every other report type.
   function drawSectionHeader(title: string) {
     const barH = SPACING.SECTION_HEADER_H;
     doc.setFillColor(...COLOR.BG_SECTION_HDR);
@@ -211,29 +218,40 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + FONT.SIZE_SECTION_TITLE * 0.14);
-    doc.setFont('courier', 'normal');
+    // Vertically center text using cap-height formula matching openAutoSection
+    const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET + 1, yPos + (barH + capH) / 2);
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    yPos += barH + SPACING.LG;
+    yPos += barH + SPACING.SECTION_CONTENT_PAD;
   }
 
-  // ── Utility: draw table column headers ──────────────
+  // ── Utility: draw table column headers. Matches the incident-report
+  // styling from pdfGenerator.ts#addTableWithShading — light slate fill
+  // with dark text, thin border matching inner dividers.
+  // Backs up yPos by SECTION_CONTENT_PAD so the column-header bar sits
+  // FLUSH against the section title bar above it (matches LINKED PERSONS
+  // / LINKED VEHICLES look). Patrol tracking always calls this
+  // immediately after drawSectionHeader so the subtraction is safe.
   function drawColumnHeaders(cols: { label: string; w: number }[]) {
+    yPos -= SPACING.SECTION_CONTENT_PAD;
     const hdrH = 5;
-    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
     doc.rect(margin, yPos, contentW, hdrH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW * 3);
-    doc.line(margin, yPos + hdrH, margin + contentW, yPos + hdrH);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.rect(margin, yPos, contentW, hdrH);
+    doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setFont('helvetica', 'bold');
+    const capH = FONT.SIZE_TABLE_HEADER * 0.35;
+    const textY = yPos + (hdrH + capH) / 2;
     let xOff = margin;
     for (const col of cols) {
-      doc.text(col.label.toUpperCase(), xOff + 1, yPos + 3.5);
+      doc.text(col.label.toUpperCase(), xOff + 1, textY);
       xOff += col.w;
     }
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += hdrH + 1;
   }
@@ -281,7 +299,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.text(sanitizePdfText(branding.report_header_text), pageW / 2, titleY, { align: 'center' });
 
   doc.setFontSize(10);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(sanitizePdfText(branding.report_subheader_text), pageW / 2, titleY + 6, { align: 'center' });
 
@@ -292,7 +310,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
   doc.setFontSize(7);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setTextColor(...COLOR.TEXT_MUTED);
   doc.text(`${formNum}  |  ${FORM_REVISION}`, pageW / 2, titleY + 19, { align: 'center' });
 
@@ -311,7 +329,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // Report metadata
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
 
   const startLabel = data.query.startDate
     ? formatDate(data.query.startDate)
@@ -332,7 +350,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, margin + 4, yPos);
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(sanitizePdfText(value), margin + 42, yPos);
@@ -356,14 +374,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFontSize(8);
-    doc.setFont('courier', 'bold');
+    doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.text(sanitizePdfText(`${trail.call_sign}  --  ${trail.officer_name}  (BADGE: ${trail.badge_number || 'N/A'})`).toUpperCase(), margin + 5, yPos + 4.2);
     yPos += 8;
 
     // Stats grid
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
 
     const stats = trail.stats;
     const zonesCount = trail.zone_coverage ? Object.keys(trail.zone_coverage).length : 0;
@@ -435,7 +453,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     // Table rows
     doc.setFontSize(5.5);
-    doc.setFont('courier', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
 
     // Sample points for readability — if > 300 points, sample every Nth
     const maxRows = 300;
@@ -619,6 +637,20 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setPage(p);
     addHeaderFooter(p, totalPages);
   }
+
+  // Patrol tracking is date-based — encode rich form metadata
+  const barcodeId = `PTR-${localToday().replace(/-/g, '')}-${data.trails[0]?.call_sign || 'ALL'}`;
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: 'PATROL-TRACKING',
+        caseNumber: barcodeId,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: localToday(),
+      },
+    },
+  });
 
   // ── Save the PDF ─────────────────────────────────────
   const dateStr = localToday().replace(/-/g, '');

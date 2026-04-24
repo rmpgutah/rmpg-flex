@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import SplitPanel from '../components/SplitPanel';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -341,9 +342,9 @@ export default function SexOffenderRegistryPage() {
             className={`w-full pl-7 ${searchInput ? 'pr-7' : 'pr-2'} py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white placeholder-rmpg-500 focus:border-brand-500 focus:outline-none`}
           />
           {searchInput && (
-            <button type="button" onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+            <IconButton onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
               <X size={12} />
-            </button>
+            </IconButton>
           )}
         </div>
         <select
@@ -393,8 +394,8 @@ export default function SexOffenderRegistryPage() {
                   onClick={() => setSelected(r)}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/50"
                   style={{
-                    background: isSelected ? 'rgba(26,90,158,0.15)' : undefined,
-                    borderLeft: isSelected ? '3px solid #888888' : '3px solid transparent',
+                    background: isSelected ? 'rgba(42,42,42,0.6)' : undefined,
+                    borderLeft: isSelected ? '3px solid #d4a017' : '3px solid transparent',
                   }}
                 >
                   {/* Mugshot Thumbnail */}
@@ -459,8 +460,8 @@ export default function SexOffenderRegistryPage() {
         >
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="toolbar-btn p-0.5 disabled:opacity-40"><ChevronLeft size={12} /></button>
+            <IconButton onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+              className="toolbar-btn p-0.5 disabled:opacity-40" aria-label="Previous page"><ChevronLeft size={12} /></IconButton>
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               const p = page <= 3 ? i + 1 : page + i - 2;
               if (p < 1 || p > totalPages) return null;
@@ -470,8 +471,8 @@ export default function SexOffenderRegistryPage() {
                 >{p}</button>
               );
             })}
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="toolbar-btn p-0.5 disabled:opacity-40"><ChevronRight size={12} /></button>
+            <IconButton onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+              className="toolbar-btn p-0.5 disabled:opacity-40" aria-label="Next page"><ChevronRight size={12} /></IconButton>
           </div>
         </div>
       )}
@@ -484,13 +485,14 @@ export default function SexOffenderRegistryPage() {
   const rightPanel = selected ? (
     <div className="h-full overflow-y-auto" style={{ background: '#050505' }}>
       {/* Close button */}
-      <button type="button"
+      <IconButton
         onClick={() => setSelected(null)}
         className="absolute top-2 right-2 z-10 toolbar-btn p-1"
         title="Close"
+        aria-label="Close"
       >
         <X size={14} />
-      </button>
+      </IconButton>
 
       {/* Header Section */}
       <div className="p-4 relative" style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)', borderBottom: '1px solid #2b2b2b' }}>
@@ -862,9 +864,9 @@ export default function SexOffenderRegistryPage() {
               <h3 className="text-xs font-bold text-[#d4a017] uppercase tracking-widest">
                 Link to Person Record
               </h3>
-              <button type="button" onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-white">
+              <IconButton onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-white" aria-label="Close">
                 <X size={14} />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <p className="text-[11px] text-rmpg-300">
@@ -1008,7 +1010,7 @@ function RecordFormModal({
             <ShieldAlert size={14} className="text-[#d4a017]" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
           </h2>
-          <button type="button" onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close"><X size={14} /></IconButton>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* Name */}
@@ -1171,7 +1173,7 @@ function ImportModal({
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <Upload size={14} className="text-[#d4a017]" /> Import Records
           </h2>
-          <button type="button" onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close"><X size={14} /></IconButton>
         </div>
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-rmpg-400">

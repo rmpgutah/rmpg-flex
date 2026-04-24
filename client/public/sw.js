@@ -3,12 +3,12 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
-// v45: Offline tile layer caching (CartoDB dark_matter Z7-15).
-//      Pre-downloads 1,738 tiles (~11 MB) for Utah operational
-//      area so maps work on vehicle WiFi dead zones.
+// v146: Offline tile layer caching (CartoDB dark_matter Z7-15).
+//       Pre-downloads 1,738 tiles (~11 MB) for Utah operational
+//       area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v223';
+const CACHE_NAME = 'rmpg-flex-v430';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
@@ -23,12 +23,14 @@ const STATIC_ASSETS = [
   '/tiles/manifest.json',
 ];
 
-// Evict oldest entries when cache exceeds limit
+// Evict entries when cache exceeds limit (order not guaranteed)
 async function trimCache(cacheName, maxEntries) {
   const cache = await caches.open(cacheName);
   const keys = await cache.keys();
   if (keys.length > maxEntries) {
-    const toDelete = keys.slice(0, keys.length - maxEntries);
+    const excess = keys.length - maxEntries;
+    const startIndex = Math.floor(Math.random() * (keys.length - excess + 1));
+    const toDelete = keys.slice(startIndex, startIndex + excess);
     await Promise.all(toDelete.map((key) => cache.delete(key)));
   }
 }
@@ -298,7 +300,11 @@ self.addEventListener('message', (event) => {
   }
   // Clean unregister — clear all caches and unregister SW (troubleshooting)
   if (event.data && event.data.type === 'UNREGISTER') {
-    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
-    self.registration.unregister();
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+        .then(() => self.registration.unregister())
+    );
   }
 });

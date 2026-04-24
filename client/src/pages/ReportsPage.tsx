@@ -108,7 +108,7 @@ const CHART_TOOLTIP_STYLE = {
     fontFamily: 'monospace',
     boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   },
-  cursor: { fill: 'rgba(26,90,158,0.08)' },
+  cursor: { fill: 'rgba(212,160,23,0.12)' },
 };
 
 // ============================================================
@@ -383,7 +383,7 @@ function DailyBriefingCard() {
                 <div className="text-[8px] text-rmpg-500 uppercase">P2 Calls</div>
               </div>
               <div className="panel-beveled bg-surface-sunken p-2 text-center">
-                <div className="text-lg font-bold font-mono text-blue-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
+                <div className="text-lg font-bold font-mono text-gray-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
                 <div className="text-[8px] text-rmpg-500 uppercase">Avg Response</div>
               </div>
             </div>
@@ -654,7 +654,7 @@ function BeatActivityCard() {
   return (
     <div className="bg-surface-base panel-beveled">
       <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
-        <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+        <MapPin className="w-3.5 h-3.5 text-gray-400" />
         <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Beat Activity Report</h3>
       </div>
       <div className="p-4">
@@ -675,7 +675,7 @@ function BeatActivityCard() {
                 {data.beats.map((b: any) => (
                   <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-blue-400">{b.calls}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>
@@ -1006,7 +1006,7 @@ export default function ReportsPage() {
           {/* Summary Stats */}
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
-              { label: 'Total Calls', value: stats.totalCalls, color: '#888888', border: 'border-l-blue-500' },
+              { label: 'Total Calls', value: stats.totalCalls, color: '#888888', border: 'border-l-gray-500' },
               { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
               { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
               { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },

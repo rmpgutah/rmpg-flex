@@ -21,6 +21,7 @@ import {
   Monitor,
   RotateCcw,
   Key,
+  Volume2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
@@ -28,6 +29,7 @@ import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
 import TrustedDevicesList from './security/TrustedDevicesList';
 import LoginHistoryTable from './security/LoginHistoryTable';
+import VoicePersonaSettings from './settings/VoicePersonaSettings';
 import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
@@ -62,7 +64,7 @@ interface UserPreferences {
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'profile' | 'password' | 'sessions' | 'security' | 'preferences';
+  initialTab?: 'profile' | 'password' | 'sessions' | 'security' | 'preferences' | 'voice';
 }
 
 export default function UserProfileModal({ isOpen, onClose, initialTab = 'profile' }: UserProfileModalProps) {
@@ -480,6 +482,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
     { id: 'preferences' as const, label: 'Prefs', icon: Settings },
+    { id: 'voice' as const, label: 'Voice', icon: Volume2 },
     { id: 'password' as const, label: 'Password', icon: Lock },
     { id: 'security' as const, label: 'Security', icon: ShieldCheck },
     { id: 'sessions' as const, label: 'Sessions', icon: Key },
@@ -758,6 +761,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </button>
               </div>
             </>
+          )}
+
+          {activeTab === 'voice' && (
+            <VoicePersonaSettings />
           )}
 
           {activeTab === 'password' && (

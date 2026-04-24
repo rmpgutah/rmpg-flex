@@ -95,7 +95,7 @@ export default function MapSidebar({
             <div className="w-px h-3 bg-rmpg-700" />
             {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-400">P1:{callsByPriority['P1']}</span> : null}
             {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-400">P2:{callsByPriority['P2']}</span> : null}
-            {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
+            {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-gray-400">P3:{callsByPriority['P3']}</span> : null}
           </div>
 
           {/* #3: Tab bar with smooth active indicator transition */}
@@ -164,7 +164,7 @@ export default function MapSidebar({
                         />
                         <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                         {unit.gps_source === 'clearpathgps' && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
                         {/* #6: Stale GPS indicator with tooltip text */}
                         {isStale && (
@@ -180,7 +180,7 @@ export default function MapSidebar({
                       <div className="ml-5 mt-0.5">
                         <span className="text-[9px] text-rmpg-400">{unit.officer_name}</span>
                         {unit.call_number && (
-                          <span className="text-[9px] text-blue-400 ml-2 font-mono">{unit.call_number}</span>
+                          <span className="text-[9px] text-gray-400 ml-2 font-mono">{unit.call_number}</span>
                         )}
                       </div>
                       {unit.current_call_type && (
@@ -235,7 +235,7 @@ export default function MapSidebar({
                       </div>
                       <div className="ml-8 text-[8px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>
                       {call.property_name && (
-                        <div className="ml-8 text-[8px] text-blue-400 truncate mt-0.5">{call.property_name}</div>
+                        <div className="ml-8 text-[8px] text-gray-400 truncate mt-0.5">{call.property_name}</div>
                       )}
                       {/* Quick actions */}
                       <div className="ml-8 mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -250,7 +250,7 @@ export default function MapSidebar({
                         {call.status === 'dispatched' && (
                           <button type="button"
                             onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                            className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-blue-900/30 text-blue-400 border border-blue-700/40 hover:bg-blue-800/40 transition-colors"
+                            className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-gray-700/40 hover:bg-gray-800/40 transition-colors"
                           >
                             EN ROUTE
                           </button>

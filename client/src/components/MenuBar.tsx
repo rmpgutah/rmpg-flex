@@ -88,6 +88,7 @@ import {
   Brain,
   SlidersHorizontal,
   AudioLines,
+  Network,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
 import { setVoiceChannelConfig, setVoiceChannelEnabled, isVoiceChannelEnabled, getVoiceChannelConfig } from '../utils/voiceChannel';
@@ -576,6 +577,7 @@ export default function MenuBar({
           { type: 'action', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
           { type: 'action', label: 'Daily Activity', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
+          { type: 'action', label: 'Connections', icon: Network, action: () => navigate('/connections') },
           { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit'), adminOnly: true },
@@ -730,6 +732,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'MicroBilt', icon: Search, action: () => navigate('/microbilt') },
           { type: 'action', label: 'Web Research', icon: Globe, action: () => navigate('/web-research') },
+          { type: 'action', label: 'Recon Connect', icon: Search, action: () => navigate('/recon-connect') },
         ],
       },
       {
@@ -765,6 +768,7 @@ export default function MenuBar({
         icon: BarChart3,
         items: [
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
+          { type: 'action', label: 'Connections', icon: Network, action: () => navigate('/connections') },
           { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
           { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
           { type: 'action', label: 'Custom Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
@@ -821,6 +825,22 @@ export default function MenuBar({
           { type: 'action', label: 'Policies & Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
           { type: 'action', label: 'Training Dashboard', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Field Operations Guide', icon: Clipboard, action: () => { setShow10Codes(true); } },
+          { type: 'separator' },
+          {
+            type: 'action',
+            label: 'Dispatch Guide (PDF)',
+            icon: Download,
+            action: async () => {
+              try {
+                // Lazy-import so the jsPDF chunk only loads when a user
+                // actually downloads the guide — keeps the login bundle lean.
+                const { generateDispatchGuidePdf } = await import('../utils/dispatchGuidePdfGenerator');
+                await generateDispatchGuidePdf();
+              } catch (err) {
+                console.error('[DispatchGuide] Generation failed:', err);
+              }
+            },
+          },
         ],
       },
       { type: 'separator' },

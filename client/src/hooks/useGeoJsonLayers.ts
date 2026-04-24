@@ -52,7 +52,11 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'county',
     label: 'Counties',
     file: 'county.geojson',
-    visible: true,
+    // Off by default so the map opens clean (plain black Spillman base
+    // + only the operational overlays the dispatcher has explicitly
+    // enabled). Users opt-in via the layers panel; visibility is
+    // session-only — not persisted yet.
+    visible: false,
     selectable: true,
     style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
@@ -76,7 +80,9 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'beat',
     label: 'Beats',
     file: 'beat.geojson',
-    visible: true,
+    // Off by default (see county note). Most operational views want a
+    // clean base; dispatchers who need beat polygons toggle them on.
+    visible: false,
     selectable: true,
     style: { fillColor: '#22c55e', fillOpacity: 0.20, strokeColor: '#22c55e', strokeOpacity: 0.6, strokeWeight: 1.2 },
     labelProp: 'beat_code',
@@ -128,10 +134,12 @@ const ASSIGNED_STYLE = {
 };
 
 // ── Municipality color palette (hash-based for 257 municipalities) ──
+// No blues (#3b82f6, #06b6d4, #6366f1, #0ea5e9 removed) per Spillman pure-black
+// theme — replaced with gold/amber/orange/magenta variants.
 const MUNI_COLORS = [
-  '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
-  '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#06b6d4', '#e11d48',
-  '#84cc16', '#6366f1', '#d946ef', '#0ea5e9', '#facc15', '#fb923c',
+  '#22c55e', '#d4a017', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
+  '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#facc15', '#e11d48',
+  '#84cc16', '#fb923c', '#d946ef', '#fde047', '#eab308', '#fbbf24',
 ];
 
 function getMuniColor(name: string): string {
@@ -143,12 +151,12 @@ function getMuniColor(name: string): string {
 // ── Section color palette (12 distinct hues for beat sections) ──
 
 export const SECTION_COLORS: Record<string, string> = {
-  SL1: '#22c55e', SL2: '#3b82f6', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#06b6d4',
+  SL1: '#22c55e', SL2: '#d4a017', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#fbbf24',
   DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
   WB1: '#8b5cf6', WB2: '#10b981',
-  UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
+  UC1: '#facc15', UC2: '#eab308', UC3: '#f43f5e',
 };
-const SECTION_COLOR_FALLBACKS = ['#0ea5e9', '#d946ef', '#84cc16', '#fb923c', '#e11d48', '#14b8a6', '#f59e0b', '#8b5cf6'];
+const SECTION_COLOR_FALLBACKS = ['#fb923c', '#d946ef', '#84cc16', '#facc15', '#e11d48', '#14b8a6', '#f59e0b', '#8b5cf6'];
 
 export function getSectionColor(sectionId: string): string {
   if (!sectionId) return SECTION_COLOR_FALLBACKS[0];

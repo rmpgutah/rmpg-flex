@@ -381,7 +381,7 @@ router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req:
 // GET /api/patrol/scans - List recent scans
 router.get('/scans', (req: Request, res: Response) => {
   try {
-    const { checkpointId, officerId, startDate, endDate, limit = '100' } = req.query;
+    const { checkpointId, officerId, startDate, endDate, limit = '100000' } = req.query;
 
     const db = getDb();
     const conditions: string[] = [];

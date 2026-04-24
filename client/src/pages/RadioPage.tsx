@@ -164,78 +164,177 @@ export default function RadioPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   // ─── Audio Playback ───────────────────────────────────
+  // We use Web Audio API (AudioContext + decodeAudioData) instead of an
+  // <audio> element because Safari on macOS cannot decode WebM/Opus through
+  // the native <audio> pipeline (macOS CoreAudio lacks an Opus codec).
+  // AudioContext has its own Opus decoder on every modern browser.
   const [playingId, setPlayingId] = useState<string | number | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  // Playback bookkeeping for scrub math — AudioBufferSourceNode can't report
+  // currentTime, so we compute it from ctx.currentTime minus the start stamp.
+  const playbackStartCtxTimeRef = useRef(0);
+  const playbackOffsetRef = useRef(0);
+  const playbackBufferRef = useRef<AudioBuffer | null>(null);
+  const playbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const blobUrlRef = useRef<string | null>(null);
+  /** Tear down any active playback — stops source, clears timer, resets UI. */
+  const stopPlaybackInternal = useCallback(() => {
+    if (audioSourceRef.current) {
+      try { audioSourceRef.current.stop(); } catch { /* already stopped */ }
+      try { audioSourceRef.current.disconnect(); } catch { /* ok */ }
+      audioSourceRef.current = null;
+    }
+    if (playbackTimerRef.current) {
+      clearInterval(playbackTimerRef.current);
+      playbackTimerRef.current = null;
+    }
+    setPlayingId(null);
+    setPlaybackTime(0);
+    setPlaybackDuration(0);
+    playbackOffsetRef.current = 0;
+    playbackBufferRef.current = null;
+  }, []);
 
-  const togglePlayback = useCallback(async (entryId: string | number) => {
+  const togglePlayback = useCallback(async (entry: any) => {
+    const entryId = entry?.id ?? entry;
     if (playingId === entryId) {
-      // Stop current playback
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
-      setPlayingId(null);
+      stopPlaybackInternal();
       return;
     }
-    // Stop any existing playback and clean up previous blob
-    if (audioRef.current) {
-      audioRef.current.pause();
+    // Stop any prior playback before starting a new one.
+    stopPlaybackInternal();
+
+    // Resume/create AudioContext INSIDE the gesture tick. Safari requires the
+    // AudioContext be created or resumed from a user gesture; creating it in
+    // the click handler keeps it unlocked for the async decode that follows.
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new AudioContext();
     }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume().catch(() => {});
     }
 
     try {
       // Fetch audio via apiFetchBlob (handles JWT auth + token refresh on 401)
       const rawBlob = await apiFetchBlob(`/comms/radio/audio/${entryId}`);
-      // Ensure blob has audio MIME type for <audio> element compatibility
-      const blob = rawBlob.type.startsWith('audio/') ? rawBlob : new Blob([rawBlob], { type: 'audio/webm' });
-      const blobUrl = URL.createObjectURL(blob);
-      blobUrlRef.current = blobUrl;
+      const arrayBuffer = await rawBlob.arrayBuffer();
+      const ctx = audioCtxRef.current!;
+      // decodeAudioData works for WebM/Opus on Chrome, Firefox, and Safari —
+      // each browser ships its own Opus decoder in its Web Audio stack,
+      // independent of the OS media framework.
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
 
-      const audio = new Audio(blobUrl);
-      audio.onended = () => {
-        setPlayingId(null);
-        if (blobUrlRef.current) {
-          URL.revokeObjectURL(blobUrlRef.current);
-          blobUrlRef.current = null;
+      const serverDur = typeof entry?.duration === 'number' && entry.duration > 0
+        ? entry.duration : audioBuffer.duration;
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      audioSourceRef.current = source;
+      playbackBufferRef.current = audioBuffer;
+      playbackOffsetRef.current = 0;
+      playbackStartCtxTimeRef.current = ctx.currentTime;
+
+      source.onended = () => {
+        // Only clear if this source is still the active one (guards against
+        // overlapping stop→start churn from rapid button mashing).
+        if (audioSourceRef.current === source) {
+          stopPlaybackInternal();
         }
       };
-      audio.onerror = (e) => {
-        console.error('[Radio Playback] Audio element error:', e);
-        setPlayingId(null);
-        if (blobUrlRef.current) {
-          URL.revokeObjectURL(blobUrlRef.current);
-          blobUrlRef.current = null;
-        }
-      };
-      audioRef.current = audio;
-      await audio.play();
+
+      source.start(0);
+      setPlaybackTime(0);
+      setPlaybackDuration(audioBuffer.duration || serverDur);
       setPlayingId(entryId);
-    } catch (err) {
-      console.error('[Radio Playback] Failed:', err);
-      addToast('Failed to play recording', 'error');
-      setPlayingId(null);
-    }
-  }, [playingId]);
 
-  // Cleanup audio + blob URLs on unmount
+      // Tick scrub time from AudioContext.currentTime — far more accurate
+      // than the old <audio>.currentTime approach, and doesn't depend on
+      // the container having a duration element.
+      playbackTimerRef.current = setInterval(() => {
+        const elapsed = (ctx.currentTime - playbackStartCtxTimeRef.current) + playbackOffsetRef.current;
+        setPlaybackTime(Math.min(elapsed, audioBuffer.duration));
+      }, 100);
+    } catch (err: any) {
+      console.error('[Radio Playback] Failed:', err);
+      const name = err?.name || 'Error';
+      const msg = err?.message || String(err);
+      addToast(`Playback failed: ${name} — ${msg.slice(0, 100)}`, 'error');
+      stopPlaybackInternal();
+    }
+  }, [playingId, addToast, stopPlaybackInternal]);
+
+  // Scrub handler — seeks within playback by stopping the current
+  // AudioBufferSourceNode and starting a fresh one at the new offset.
+  // (Web Audio source nodes are one-shot; you can't set currentTime on them.)
+  const seekPlayback = useCallback((seconds: number) => {
+    const ctx = audioCtxRef.current;
+    const buffer = playbackBufferRef.current;
+    if (!ctx || !buffer) return;
+    const clamped = Math.max(0, Math.min(seconds, buffer.duration));
+
+    // Stop the current source without triggering stopPlaybackInternal's
+    // state reset — we want playback to continue from the new offset.
+    if (audioSourceRef.current) {
+      const old = audioSourceRef.current;
+      old.onended = null;
+      try { old.stop(); } catch { /* ok */ }
+      try { old.disconnect(); } catch { /* ok */ }
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.onended = () => {
+      if (audioSourceRef.current === source) {
+        stopPlaybackInternal();
+      }
+    };
+    source.start(0, clamped);
+    audioSourceRef.current = source;
+    playbackOffsetRef.current = clamped;
+    playbackStartCtxTimeRef.current = ctx.currentTime;
+    setPlaybackTime(clamped);
+  }, [stopPlaybackInternal]);
+
+  // Download a recording as a .webm file for evidence/archive use.
+  // Uses apiFetchBlob so JWT auth is handled identically to playback.
+  const downloadRecording = useCallback(async (entry: any) => {
+    try {
+      const rawBlob = await apiFetchBlob(`/comms/radio/audio/${entry.id}`);
+      const blob = rawBlob.type.startsWith('audio/') ? rawBlob : new Blob([rawBlob], { type: 'audio/webm' });
+      const url = URL.createObjectURL(blob);
+      const ts = (entry.transmitted_at || '').replace(/[:\s]/g, '-');
+      const who = (entry.username || 'unit').replace(/[^a-z0-9_-]/gi, '');
+      const chan = (entry.channel || 'radio').replace(/[^a-z0-9_-]/gi, '');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `radio-${chan}-${who}-${ts}.webm`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      addToast('Failed to download recording', 'error');
+    }
+  }, [addToast]);
+
+  // Cleanup audio resources on unmount
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
+      if (audioSourceRef.current) {
+        try { audioSourceRef.current.stop(); } catch { /* ok */ }
+        try { audioSourceRef.current.disconnect(); } catch { /* ok */ }
+        audioSourceRef.current = null;
       }
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
+      if (playbackTimerRef.current) {
+        clearInterval(playbackTimerRef.current);
+        playbackTimerRef.current = null;
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
       }
     };
   }, []);
@@ -265,7 +364,7 @@ export default function RadioPage() {
     if (historyEntries.length === 0) return;
     const header = 'Timestamp,Channel,User,Duration(s),Transcript,Has Audio\n';
     const rows = historyEntries.map(e =>
-      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}","${e.audio_file ? 'Yes' : 'No'}"`
+      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration || ''}","${(e.transcript || '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}","${e.audio_file ? 'Yes' : 'No'}"`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -351,7 +450,7 @@ export default function RadioPage() {
                   {!isMe && !isInCall && (
                     <button type="button"
                       onClick={() => startCall(u.userId)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 text-blue-400 hover:text-blue-300"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-300"
                       title={`Call ${u.fullName || u.username}`}
                     >
                       <Phone style={{ width: 11, height: 11 }} />
@@ -481,8 +580,9 @@ export default function RadioPage() {
               historyEntries.map((entry) => (
                 <div
                   key={entry.id}
-                  className="flex items-start gap-2 py-1.5 border-b border-rmpg-800/50"
+                  className="py-1.5 border-b border-rmpg-800/50"
                 >
+                 <div className="flex items-start gap-2">
                   <span className="text-[9px] font-mono text-rmpg-600 flex-shrink-0 mt-px">
                     {safeTimeStr(entry.transmitted_at)}
                   </span>
@@ -498,9 +598,9 @@ export default function RadioPage() {
                         {(entry.channel || '').toUpperCase()}
                       </span>
                     </div>
-                    {entry.duration_seconds > 0 && (
+                    {entry.duration > 0 && (
                       <span className="text-[9px] font-mono text-rmpg-600">
-                        {formatDuration(entry.duration_seconds)}
+                        {formatDuration(entry.duration)}
                       </span>
                     )}
                     {entry.transcript && (
@@ -510,17 +610,51 @@ export default function RadioPage() {
                     )}
                   </div>
                   {entry.audio_file && (
-                    <button type="button"
-                      onClick={() => togglePlayback(entry.id)}
-                      className="flex-shrink-0 mt-px p-0.5 rounded-sm hover:bg-rmpg-800 transition-colors"
-                      title={playingId === entry.id ? 'Stop playback' : 'Play recording'}
-                    >
-                      {playingId === entry.id ? (
-                        <Square size={12} className="text-red-400" />
-                      ) : (
-                        <Play size={12} className="text-green-400" />
-                      )}
-                    </button>
+                    <div className="flex items-center gap-1 flex-shrink-0 mt-px">
+                      <button type="button"
+                        onClick={() => togglePlayback(entry)}
+                        className="p-0.5 rounded-sm hover:bg-rmpg-800 transition-colors"
+                        title={playingId === entry.id ? 'Stop playback' : 'Play recording'}
+                        aria-label={playingId === entry.id ? 'Stop playback' : 'Play recording'}
+                      >
+                        {playingId === entry.id ? (
+                          <Square size={12} className="text-red-400" />
+                        ) : (
+                          <Play size={12} className="text-green-400" />
+                        )}
+                      </button>
+                      <button type="button"
+                        onClick={() => downloadRecording(entry)}
+                        className="p-0.5 rounded-sm hover:bg-rmpg-800 transition-colors"
+                        title="Download recording"
+                        aria-label={`Download recording from ${entry.full_name || entry.username || 'unit'}`}
+                      >
+                        <Download size={12} className="text-[#888888]" />
+                      </button>
+                    </div>
+                  )}
+                 </div>
+                  {/* Scrub bar — only rendered for the entry currently playing.
+                      Monochrome CAD aesthetic; not a waveform. */}
+                  {playingId === entry.id && playbackDuration > 0 && (
+                    <div className="flex items-center gap-2 mt-1 pl-[56px] pr-1">
+                      <span className="text-[9px] font-mono text-rmpg-500 tabular-nums w-[34px] text-right">
+                        {formatDuration(Math.floor(playbackTime))}
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={playbackDuration}
+                        step={0.1}
+                        value={playbackTime}
+                        onChange={(e) => seekPlayback(Number(e.target.value))}
+                        aria-label="Seek within recording"
+                        className="flex-1 h-[4px] accent-[#d4a017] bg-[#222222] rounded-[2px] cursor-pointer"
+                      />
+                      <span className="text-[9px] font-mono text-rmpg-500 tabular-nums w-[34px]">
+                        {formatDuration(Math.floor(playbackDuration))}
+                      </span>
+                    </div>
                   )}
                 </div>
               ))
@@ -599,19 +733,19 @@ export default function RadioPage() {
         >
           <Radio style={{ width: 16, height: 16, color: '#aaaaaa', flexShrink: 0 }} />
           <div className="flex-1">
-            <div className="text-[10px] font-mono font-bold text-blue-300 tracking-wider">
+            <div className="text-[10px] font-mono font-bold text-gray-300 tracking-wider">
               PAGE FROM {incomingPage.from_full_name || incomingPage.from_username}
               {incomingPage.from_call_sign ? ` (${incomingPage.from_call_sign})` : ''}
             </div>
             {incomingPage.message && (
-              <div className="text-[10px] font-mono text-blue-400/80 mt-0.5">
+              <div className="text-[10px] font-mono text-gray-400/80 mt-0.5">
                 {incomingPage.message}
               </div>
             )}
           </div>
           <button type="button"
             onClick={dismissPage}
-            className="text-[9px] font-mono text-blue-400 hover:text-white px-2 py-0.5"
+            className="text-[9px] font-mono text-gray-400 hover:text-white px-2 py-0.5"
             style={{ border: '1px solid #88888880' }}
           >
             DISMISS
@@ -631,10 +765,10 @@ export default function RadioPage() {
         >
           <PhoneCall style={{ width: 16, height: 16, color: '#888888', flexShrink: 0 }} />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-mono font-bold text-blue-300 truncate">
+            <div className="text-xs font-mono font-bold text-gray-300 truncate">
               PRIVATE CALL — {activeCall.partnerName}
             </div>
-            <div className="text-[10px] font-mono text-blue-400/70">
+            <div className="text-[10px] font-mono text-gray-400/70">
               {formatCallDuration(callDuration)}
               {callMuted && ' — MUTED'}
             </div>
@@ -675,7 +809,7 @@ export default function RadioPage() {
           }}
         >
           <Phone style={{ width: 14, height: 14, color: '#aaaaaa', animation: 'radioPulse 1.5s ease infinite' }} />
-          <span className="text-xs font-mono text-blue-300">
+          <span className="text-xs font-mono text-gray-300">
             Calling <strong>{ringingTarget.name}</strong>...
           </span>
           <button type="button"
@@ -1055,7 +1189,7 @@ export default function RadioPage() {
               {/* Hint text */}
               <div className="mt-4 text-center">
                 {isInCall ? (
-                  <span className="text-[10px] font-mono text-blue-400">
+                  <span className="text-[10px] font-mono text-gray-400">
                     PTT disabled during private call
                   </span>
                 ) : !micSupported ? (

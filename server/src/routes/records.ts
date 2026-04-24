@@ -8,6 +8,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { config } from '../config';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
@@ -77,9 +78,9 @@ router.use(authenticateToken);
 router.get('/persons', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', flags, archived } = req.query;
+    const { page = '1', limit = '100000', flags, archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -192,7 +193,7 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (re
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.id, 10);
+    const personId = parseInt(paramStr(req.params.id), 10);
     if (isNaN(personId)) { res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }); return; }
     let person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
 
@@ -645,7 +646,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', (req: Request, res: Response) => {
+router.delete('/persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -750,9 +751,9 @@ router.post('/persons/:id/unarchive', (req: Request, res: Response) => {
 router.get('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '100000', archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -1034,7 +1035,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', (req: Request, res: Response) => {
+router.delete('/vehicles/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1372,9 +1373,9 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
 router.get('/evidence', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '100000', archived } = req.query;
     const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -1499,7 +1500,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', (req: Request, res: Response) => {
+router.delete('/evidence/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -2230,7 +2231,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', (req: Request, res: Response) => {
+router.delete('/properties/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -2485,7 +2486,7 @@ router.post('/links', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', (req: Request, res: Response) => {
+router.delete('/links/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -2713,7 +2714,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
@@ -2870,7 +2871,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', (req: Request, res: Response) => {
+router.delete('/client-persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -3304,7 +3305,7 @@ router.get('/reports/approval-queue', (req: Request, res: Response) => {
 router.post('/reports/:id/approve', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const now = localNow();
@@ -3336,7 +3337,7 @@ router.post('/reports/:id/approve', (req: Request, res: Response) => {
 router.post('/reports/:id/return', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { reason } = req.body;
@@ -3370,7 +3371,7 @@ router.post('/reports/:id/return', (req: Request, res: Response) => {
 router.get('/cases/:id/solvability', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
@@ -3499,7 +3500,7 @@ router.get('/vehicles/bolo-check', (req: Request, res: Response) => {
 router.post('/persons/:id/photo', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { photo } = req.body; // Base64 data URL
@@ -3557,7 +3558,7 @@ router.get('/location-suggest', (req: Request, res: Response) => {
 router.post('/cases/:id/assign', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { detective_id } = req.body;
@@ -4010,10 +4011,13 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id/associates/:linkId - Remove associate link
-router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) => {
+router.delete('/persons/:id/associates/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.linkId);
+    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.linkId)), `Removed associate from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Remove associate error:', error);
@@ -4145,14 +4149,14 @@ router.post('/persons/:id/aliases', (req: Request, res: Response) => {
   } catch (error: any) { console.error('Create alias error:', error); res.status(500).json({ error: 'Failed to create alias', code: 'CREATE_ALIAS_ERROR' }); }
 });
 
-router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => {
+router.delete('/persons/:id/aliases/:aliasId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     ensurePersonAliasesTable(db);
     const alias = db.prepare('SELECT * FROM person_aliases WHERE id = ? AND person_id = ?').get(req.params.aliasId, req.params.id) as any;
     if (!alias) { res.status(404).json({ error: 'Alias not found', code: 'ALIAS_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_aliases WHERE id = ?').run(req.params.aliasId);
-    auditLog(req, 'DELETE', 'person_alias', parseInt(req.params.aliasId), `Removed alias "${alias.alias_name}" from person #${req.params.id}`);
+    auditLog(req, 'DELETE', 'person_alias', parseInt(paramStr(req.params.aliasId)), `Removed alias "${alias.alias_name}" from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) { console.error('Delete alias error:', error); res.status(500).json({ error: 'Failed to delete alias', code: 'DELETE_ALIAS_ERROR' }); }
 });
@@ -4167,17 +4171,6 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
 // silent error in the try/catch at module load. The real schema lives in
 // database.ts and is used by the handlers above.
 
-
-router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;
-    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
-    db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.assocId);
-    auditLog(req, 'DELETE', 'person_associate', parseInt(req.params.assocId), `Removed associate from person #${req.params.id}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('Delete associate error:', error); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_ASSOCIATE_ERROR' }); }
-});
 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 3: Last Known Address Tracking

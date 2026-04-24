@@ -26,7 +26,7 @@ const ACTION_CONFIG: Record<ActivityAction, { icon: React.ElementType; color: st
   call_onscene: { icon: Radio, color: 'text-purple-400' },
   call_cleared: { icon: Phone, color: 'text-rmpg-300' },
   call_closed: { icon: Phone, color: 'text-rmpg-400' },
-  unit_status_change: { icon: Radio, color: 'text-cyan-400' },
+  unit_status_change: { icon: Radio, color: 'text-gray-400' },
   incident_created: { icon: FileText, color: 'text-brand-400' },
   incident_submitted: { icon: FileText, color: 'text-brand-300' },
   incident_approved: { icon: FileText, color: 'text-green-400' },

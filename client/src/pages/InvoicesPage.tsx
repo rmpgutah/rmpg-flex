@@ -27,6 +27,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import IconButton from '../components/IconButton';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { localToday, formatDate } from '../utils/dateUtils';
@@ -130,7 +131,7 @@ const STATUSES: { value: InvoiceStatus | ''; label: string }[] = [
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  sent: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
+  sent: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -159,8 +160,8 @@ const PAYMENT_METHODS = [
 ];
 
 const PAYMENT_METHOD_COLORS: Record<string, string> = {
-  check: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
-  ach: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
+  check: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  ach: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   wire: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
   credit_card: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   cash: 'bg-green-900/40 text-green-400 border-green-700/50',
@@ -476,7 +477,7 @@ export default function InvoicesPage() {
     const actions: { label: string; status: string; icon: React.ElementType; cls: string }[] = [];
     const s = inv.status;
     if (s === 'draft') {
-      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-blue-600 hover:bg-blue-500' });
+      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-gray-600 hover:bg-gray-500' });
       actions.push({ label: 'Void', status: 'void', icon: Ban, cls: 'bg-red-900/60 hover:bg-red-800/60' });
     } else if (s === 'sent' || s === 'overdue') {
       actions.push({ label: 'Mark Paid', status: 'paid', icon: Check, cls: 'bg-green-700 hover:bg-green-600' });
@@ -642,18 +643,18 @@ export default function InvoicesPage() {
           <div>
             <div className="flex items-center gap-2">
               {isMobile && (
-                <button type="button" onClick={backToList} className="text-rmpg-400 hover:text-white mr-1">
+                <IconButton onClick={backToList} className="text-rmpg-400 hover:text-white mr-1" aria-label="Back to list">
                   <ChevronLeft size={16} />
-                </button>
+                </IconButton>
               )}
               <h2 className="text-sm font-bold text-white font-mono">{inv.invoice_number}</h2>
               <StatusBadge status={inv.status} />
             </div>
             <p className="text-xs text-rmpg-400 mt-0.5">{inv.client_name}</p>
           </div>
-          <button type="button" onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block">
+          <IconButton onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block" aria-label="Close">
             <X size={14} />
-          </button>
+          </IconButton>
         </div>
 
         {/* Action buttons */}
@@ -812,13 +813,14 @@ export default function InvoicesPage() {
                       </td>
                       {canEdit && inv.status === 'draft' && (
                         <td className="py-1 pl-1">
-                          <button type="button"
+                          <IconButton
                             onClick={() => handleDeleteLineItem(item.id)}
                             disabled={actionLoading === `delitem-${item.id}`}
                             className="text-rmpg-600 hover:text-red-400 transition-colors"
+                            aria-label="Delete line item"
                           >
                             {actionLoading === `delitem-${item.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                          </button>
+                          </IconButton>
                         </td>
                       )}
                     </tr>
@@ -933,13 +935,14 @@ export default function InvoicesPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-rmpg-600 text-[10px]">{pay.recorded_by_name}</span>
                     {canEdit && (
-                      <button type="button"
+                      <IconButton
                         onClick={() => handleDeletePayment(pay.id)}
                         disabled={actionLoading === `delpay-${pay.id}`}
                         className="text-rmpg-600 hover:text-red-400 transition-colors"
+                        aria-label="Delete payment"
                       >
                         {actionLoading === `delpay-${pay.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                      </button>
+                      </IconButton>
                     )}
                   </div>
                 </div>
@@ -1103,9 +1106,9 @@ export default function InvoicesPage() {
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1 transition-colors" title="Refresh" aria-label="Refresh">
+          <IconButton onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1 transition-colors" title="Refresh" aria-label="Refresh">
             <RefreshCw size={12} />
-          </button>
+          </IconButton>
           {canEdit && (
             <button type="button"
               onClick={() => { setMode('create'); setSelectedInvoice(null); }}
@@ -1173,7 +1176,7 @@ export default function InvoicesPage() {
       {error && (
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle size={12} /> {error}
-          <button type="button" onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white"><X size={12} /></button>
+          <IconButton onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white" aria-label="Dismiss error"><X size={12} /></IconButton>
         </div>
       )}
 
@@ -1217,20 +1220,22 @@ export default function InvoicesPage() {
             <div className="flex items-center justify-between px-3 py-1 border-t border-[#2b2b2b] text-[10px] text-rmpg-500 flex-shrink-0">
               <span>Page {page} of {totalPages}</span>
               <div className="flex items-center gap-1">
-                <button type="button"
+                <IconButton
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
                   className="p-0.5 hover:text-white disabled:opacity-30"
+                  aria-label="Previous page"
                 >
                   <ChevronLeft size={12} />
-                </button>
-                <button type="button"
+                </IconButton>
+                <IconButton
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
                   className="p-0.5 hover:text-white disabled:opacity-30"
+                  aria-label="Next page"
                 >
                   <ChevronRight size={12} />
-                </button>
+                </IconButton>
               </div>
             </div>
           )}

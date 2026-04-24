@@ -244,7 +244,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
       {/* Live Preview */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <Printer className="w-4 h-4 text-blue-400" />
+          <Printer className="w-4 h-4 text-gray-400" />
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Report Header Preview</h3>
         </div>
 

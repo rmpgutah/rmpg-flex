@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
@@ -25,8 +26,8 @@ import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
-  { value: 'open', label: 'Open', color: 'bg-blue-900/50 text-blue-400 border-blue-700/50' },
-  { value: 'assigned', label: 'Assigned', color: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50' },
+  { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
+  { value: 'assigned', label: 'Assigned', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
   { value: 'active', label: 'Active', color: 'bg-green-900/50 text-green-400 border-green-700/50' },
   { value: 'suspended', label: 'Suspended', color: 'bg-amber-900/50 text-amber-400 border-amber-700/50' },
   { value: 'under_review', label: 'Under Review', color: 'bg-purple-900/50 text-purple-400 border-purple-700/50' },
@@ -50,7 +51,7 @@ const TYPE_OPTIONS: { value: CaseType; label: string }[] = [
 
 const PRIORITY_OPTIONS: { value: CasePriority; label: string; color: string }[] = [
   { value: 'low', label: 'Low', color: 'text-rmpg-400' },
-  { value: 'normal', label: 'Normal', color: 'text-blue-400' },
+  { value: 'normal', label: 'Normal', color: 'text-gray-400' },
   { value: 'high', label: 'High', color: 'text-amber-400' },
   { value: 'critical', label: 'Critical', color: 'text-red-400' },
 ];
@@ -188,7 +189,7 @@ function LinkedEntityPanel({
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title={`Link ${entityType.slice(0, -1).replace(/^./, c => c.toUpperCase())}`} icon={Link}>
-              <button type="button" onClick={() => { setModalOpen(false); setSearchResults([]); setSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => { setModalOpen(false); setSearchResults([]); setSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
@@ -663,9 +664,9 @@ export default function CaseManagementPage() {
               className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none transition-shadow"
             />
             {searchQuery && (
-              <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+              <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
                 <X style={{ width: 10, height: 10 }} />
-              </button>
+              </IconButton>
             )}
           </div>
           <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
@@ -1189,7 +1190,7 @@ export default function CaseManagementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Return Case" icon={RotateCcw}>
-              <button type="button" onClick={() => setShowReturnModal(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setShowReturnModal(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1215,7 +1216,7 @@ export default function CaseManagementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Link Person to Case" icon={Link}>
-              <button type="button" onClick={() => { setLinkPersonOpen(false); setPersonResults([]); setPersonSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => { setLinkPersonOpen(false); setPersonResults([]); setPersonSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
@@ -1253,7 +1254,7 @@ export default function CaseManagementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Case" icon={Plus}>
-              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>

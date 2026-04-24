@@ -106,6 +106,13 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         gestureHandling: 'greedy',
       });
 
+      // Auth/quota failure can return a stub Map with no div — bail early
+      // so the existing setMapError path takes over instead of crashing in monitorTileLoading.
+      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
+        setMapError('Google Maps failed to initialize — check API key / billing.');
+        return;
+      }
+
       mapInstanceRef.current = map;
       registerMapInstance(map);
 

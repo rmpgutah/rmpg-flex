@@ -238,7 +238,11 @@ export default function FleetPage() {
 
   const fetchFuelLogs = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel`);
+      // Request the full fuel history in one shot (per_page=10000). The
+      // server raised its cap to match so the Fuel tab shows every entry
+      // rather than a paginated slice — lets operators see lifetime
+      // consumption + every flagged fill in the period selector.
+      const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel?per_page=10000`);
       setFuelLogs(data.data || []);
       setFuelSummary(data.summary || null);
     } catch { addToast('Failed to load fuel logs', 'error'); }
@@ -810,9 +814,9 @@ export default function FleetPage() {
               <span className="font-bold" style={{ color: needsService > 0 ? '#f59e0b' : '#22c55e' }}>{needsService}</span>
             </div>
             <div className="flex items-center gap-1.5" title="Monthly Costs (Maintenance + Fuel)">
-              <DollarSign className="w-3.5 h-3.5 text-cyan-400" />
+              <DollarSign className="w-3.5 h-3.5 text-gray-400" />
               <span className="text-rmpg-400">Costs:</span>
-              <span className="font-bold text-cyan-400">
+              <span className="font-bold text-gray-400">
                 {fleetAnalytics ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
               </span>
             </div>

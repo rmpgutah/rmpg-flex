@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { broadcast } from '../utils/websocket';
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 // ─── GET / — List messages for current user ──────────────────
@@ -13,7 +15,7 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const userId = req.user!.userId;
     const { channel, call_id, limit: limitStr = '50' } = req.query;
-    const limitNum = Math.min(200, Math.max(1, parseInt(limitStr as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limitStr as string, 10)) || 100000));
 
     // Get the user's assigned unit ID (if any)
     let userUnitId: number | null = null;

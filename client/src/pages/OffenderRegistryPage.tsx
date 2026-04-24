@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { OffenderAlert, OffenderAlertType, AlertSeverity } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -32,7 +33,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   danger: 'bg-red-900/60 text-red-300 border-red-600/50',
   warning: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   caution: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
-  info: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  info: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -40,8 +41,8 @@ const TYPE_COLORS: Record<string, string> = {
   watch_list: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   sex_offender: 'bg-purple-900/60 text-purple-300 border-purple-600/50',
   gang_member: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
-  probation: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
-  parole: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  probation: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  parole: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   mental_health: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   violent_history: 'bg-red-900/70 text-red-300 border-red-600/50',
   warrant_flag: 'bg-rose-900/50 text-rose-400 border-rose-700/50',
@@ -105,9 +106,9 @@ function CdocSearchPanel() {
             placeholder="First name"
             className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
           />
-          <button type="button" onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2">
+          <IconButton onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2" aria-label="Search">
             {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -129,7 +130,7 @@ function CdocSearchPanel() {
                   <span className={`inline-block mt-1 text-[9px] px-1.5 py-0.5 font-bold border ${
                     selectedOffender.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                    'bg-blue-900/40 text-blue-400 border-blue-700/40'
+                    'bg-gray-900/40 text-gray-400 border-gray-700/40'
                   }`}>
                     {selectedOffender.status.toUpperCase()}
                   </span>
@@ -357,7 +358,7 @@ export default function OffenderRegistryPage() {
     switch (severity) {
       case 'danger': return <ShieldAlert style={{ width: 14, height: 14 }} className="text-red-400" />;
       case 'warning': return <AlertTriangle style={{ width: 14, height: 14 }} className="text-amber-400" />;
-      default: return <Shield style={{ width: 14, height: 14 }} className="text-blue-400" />;
+      default: return <Shield style={{ width: 14, height: 14 }} className="text-gray-400" />;
     }
   };
 
@@ -378,7 +379,7 @@ export default function OffenderRegistryPage() {
       {fetchError && (
         <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3 flex-shrink-0" /> <span>{fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+          <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error"><X style={{ width: 12, height: 12 }} /></IconButton>
         </div>
       )}
       {/* ── Left Panel ── */}
@@ -399,7 +400,7 @@ export default function OffenderRegistryPage() {
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">PERSONS</div>
-              <div className="text-sm font-bold text-blue-400">{stats.total_persons || 0}</div>
+              <div className="text-sm font-bold text-gray-400">{stats.total_persons || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">DANGER</div>
@@ -418,9 +419,9 @@ export default function OffenderRegistryPage() {
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
             <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
             {searchQuery && (
-              <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+              <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
                 <X style={{ width: 12, height: 12 }} />
-              </button>
+              </IconButton>
             )}
           </div>
           <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none focus:border-brand-600">
@@ -591,7 +592,7 @@ export default function OffenderRegistryPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Offender Alert" icon={Plus}>
-              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close form"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {/* Person search */}
@@ -601,9 +602,9 @@ export default function OffenderRegistryPage() {
                   <div className="mt-1 flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <User style={{ width: 12, height: 12 }} className="text-rmpg-500" />
                     <span className="text-xs text-white">{selectedPerson.first_name} {selectedPerson.last_name}</span>
-                    <button type="button" onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-white">
+                    <IconButton onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-white" aria-label="Clear selected person">
                       <X style={{ width: 10, height: 10 }} />
-                    </button>
+                    </IconButton>
                   </div>
                 ) : (
                   <div className="relative">

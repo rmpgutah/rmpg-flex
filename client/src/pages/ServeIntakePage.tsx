@@ -10,6 +10,7 @@ import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Bu
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 
 interface UploadedFile {
   name: string;
@@ -20,25 +21,32 @@ interface UploadedFile {
 
 interface IntakeResult {
   success: boolean;
-  person_id: number;
+  defendant_person_id: number;
+  plaintiff_person_id: number | null;
+  attorney_person_id: number | null;
   property_id: number | null;
+  case_id: number;
   call_id: number;
   call_number: string;
+  serve_queue_id: number | null;
+  serve_attempt_ids: number[];
   latitude: number | null;
   longitude: number | null;
+  weather: string | null;
+  lighting: string | null;
+  warnings: string[];
   extracted: {
-    name: { first: string; middle: string; last: string };
-    dob: string;
+    defendant: { first: string; middle: string; last: string; dob: string };
     address: string;
     plaintiff: string;
     court: string;
-    docs: string;
-    instructions: string;
+    documents: string;
+    primaryDoc: string;
+    serviceType: string;
+    clientJobNumber: string;
     jobNumber: string;
-    caseNumber: string;
     dueDate: string;
-    attorney: { name: string; phone: string; email: string; bar: string };
-    fee: string;
+    attorney: { name: string; firm: string; barNumber: string; tel: string; email: string };
   };
 }
 
@@ -132,7 +140,11 @@ export default function ServeIntakePage() {
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-rmpg-600 rounded-sm p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 transition-all"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload PDF documents: drag and drop or press Enter to browse"
+        className="border-2 border-dashed border-rmpg-600 rounded-sm p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 focus:outline-none focus:border-rmpg-400 focus:ring-2 focus:ring-[#d4a017]/40 transition-all"
         style={{ background: 'var(--surface-sunken)' }}
       >
         <Upload className="w-10 h-10 text-rmpg-500 mx-auto mb-3" />
@@ -170,7 +182,7 @@ export default function ServeIntakePage() {
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
               )}
               <span className="text-[9px] text-rmpg-500">{f.text.length} chars</span>
-              <button onClick={() => removeFile(i)} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+              <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
             </div>
           ))}
         </div>
@@ -215,10 +227,10 @@ export default function ServeIntakePage() {
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Person Created</span>
                 </div>
                 <p className="text-sm font-bold text-white">
-                  {result.extracted.name.first} {result.extracted.name.middle} {result.extracted.name.last}
+                  {result.extracted.defendant.first} {result.extracted.defendant.middle} {result.extracted.defendant.last}
                 </p>
-                {result.extracted.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.dob}</p>}
-                <button onClick={() => navigate('/records')} className="text-[9px] text-brand-400 mt-1 hover:underline">
+                {result.extracted.defendant.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.defendant.dob}</p>}
+                <button onClick={() => navigate(`/records?person=${result.defendant_person_id}`)} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Records →
                 </button>
               </div>
@@ -251,11 +263,44 @@ export default function ServeIntakePage() {
               </div>
             </div>
 
+            {/* Quick-nav buttons */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2 text-[10px]">
+              <button onClick={() => navigate(`/records?person=${result.defendant_person_id}`)} className="toolbar-btn justify-center">
+                <User className="w-3 h-3" /> Defendant
+              </button>
+              {result.plaintiff_person_id && (
+                <button onClick={() => navigate(`/records?person=${result.plaintiff_person_id}`)} className="toolbar-btn justify-center">
+                  <Building2 className="w-3 h-3" /> Plaintiff
+                </button>
+              )}
+              {result.attorney_person_id && (
+                <button onClick={() => navigate(`/records?person=${result.attorney_person_id}`)} className="toolbar-btn justify-center">
+                  <User className="w-3 h-3" /> Attorney
+                </button>
+              )}
+              <button onClick={() => navigate(`/cases?case=${result.case_id}`)} className="toolbar-btn justify-center">
+                <FileText className="w-3 h-3" /> Case
+              </button>
+              {result.serve_queue_id && (
+                <button onClick={() => navigate(`/serve?queue=${result.serve_queue_id}`)} className="toolbar-btn justify-center">
+                  <Phone className="w-3 h-3" /> Serve Queue
+                </button>
+              )}
+            </div>
+
+            {result.warnings && result.warnings.length > 0 && (
+              <div className="bg-amber-900/20 border border-amber-700/40 rounded-sm p-2 text-[10px] text-amber-300 mt-2">
+                <AlertTriangle className="w-3 h-3 inline mr-1" /> Warnings:
+                <ul className="list-disc list-inside">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+              </div>
+            )}
+
             {/* Extracted Details */}
             <div className="mt-3 pt-3 border-t border-rmpg-700 grid grid-cols-2 gap-2 text-[10px]">
               {result.extracted.court && <div><span className="text-rmpg-500">Court:</span> <span className="text-rmpg-300">{result.extracted.court}</span></div>}
               {result.extracted.plaintiff && <div><span className="text-rmpg-500">Plaintiff:</span> <span className="text-rmpg-300">{result.extracted.plaintiff.substring(0, 60)}</span></div>}
-              {result.extracted.docs && <div><span className="text-rmpg-500">Documents:</span> <span className="text-rmpg-300">{result.extracted.docs}</span></div>}
+              {result.extracted.documents && <div><span className="text-rmpg-500">Documents:</span> <span className="text-rmpg-300">{result.extracted.documents}</span></div>}
+              {result.extracted.clientJobNumber && <div><span className="text-rmpg-500">Case #:</span> <span className="text-rmpg-300">{result.extracted.clientJobNumber}</span></div>}
               {result.extracted.jobNumber && <div><span className="text-rmpg-500">Job #:</span> <span className="text-rmpg-300">{result.extracted.jobNumber}</span></div>}
               {result.extracted.dueDate && <div><span className="text-rmpg-500">Due:</span> <span className="text-rmpg-300">{result.extracted.dueDate}</span></div>}
               {result.extracted.attorney.name && <div><span className="text-rmpg-500">Attorney:</span> <span className="text-rmpg-300">{result.extracted.attorney.name}</span></div>}

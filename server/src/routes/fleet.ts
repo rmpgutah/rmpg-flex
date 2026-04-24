@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastFleetUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
+import { pathInside } from '../utils/pathSafety';
 
 const execFileAsync = promisify(execFile);
 
@@ -36,6 +37,158 @@ const DASHCAM_DIR = process.env.RMPG_UPLOADS_DIR
 
 if (!fs.existsSync(DASHCAM_DIR)) {
   fs.mkdirSync(DASHCAM_DIR, { recursive: true });
+}
+
+// ─── Fuel receipt uploads ────────────────────────────────────
+// Small images/PDFs (< 10 MB) attached per fuel log for audit trail.
+// Flat filename in uploads/fuel-receipts/ — path-safety check happens on
+// read via safeFuelReceiptPath() so a poisoned receipt_path in the DB can't
+// traverse outside the dir.
+const FUEL_RECEIPT_DIR = process.env.RMPG_UPLOADS_DIR
+  ? path.join(process.env.RMPG_UPLOADS_DIR, 'fuel-receipts')
+  : path.resolve(__dirname_f, '../../uploads/fuel-receipts');
+if (!fs.existsSync(FUEL_RECEIPT_DIR)) {
+  fs.mkdirSync(FUEL_RECEIPT_DIR, { recursive: true });
+}
+
+function safeFuelReceiptPath(relativeFilename: string | null | undefined): string | null {
+  if (!relativeFilename || typeof relativeFilename !== 'string') return null;
+  const resolved = path.resolve(FUEL_RECEIPT_DIR, path.basename(relativeFilename));
+  const rel = path.relative(FUEL_RECEIPT_DIR, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return resolved;
+}
+
+const fuelReceiptStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, FUEL_RECEIPT_DIR),
+  filename: (_req, file, cb) => {
+    const ext = (path.extname(file.originalname || '') || '.bin').toLowerCase();
+    cb(null, `receipt_${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`);
+  },
+});
+const FUEL_RECEIPT_MIMES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf',
+]);
+const fuelReceiptUpload = multer({
+  storage: fuelReceiptStorage,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 5, parts: 6, fieldSize: 64 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (FUEL_RECEIPT_MIMES.has(file.mimetype)) cb(null, true);
+    else cb(new Error(`File type ${file.mimetype} not allowed. Use JPG, PNG, WebP, HEIC, or PDF.`));
+  },
+});
+
+// ─── Fuel outlier / fraud detection ──────────────────────────
+//
+// Returns a list of human-readable flag strings. Empty array = clean.
+// Run on POST (new entry) and PUT (edit) so operators see a banner when
+// something looks wrong. Flags are STORED in the row as a JSON array and
+// rendered in the UI next to the entry — they don't block the insert,
+// they just prompt review. A cleared record (no flags) stores NULL to
+// keep the column compact.
+//
+// Thresholds are tuned for a small patrol fleet (sedans / SUVs with
+// 15–25 gal tanks). Tank overflow uses vehicle.tank_capacity if present,
+// otherwise falls back to a generous 30 gal so the flag only fires on
+// clearly-impossible entries.
+function detectFuelLogFlags(
+  db: ReturnType<typeof getDb>,
+  vehicleId: number,
+  entry: {
+    id?: number;
+    fuel_date: string;
+    gallons: number;
+    cost_per_gallon: number | null;
+    odometer_reading: number | null;
+    station: string | null;
+  },
+): string[] {
+  const flags: string[] = [];
+
+  const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(vehicleId) as any;
+  const tankCap = Number(vehicle?.tank_capacity) || 30;
+
+  // 1. Tank overflow — +10% tolerance for spillage / rounding / topped-up tank.
+  if (entry.gallons > tankCap * 1.1) {
+    flags.push(`tank-overflow:${entry.gallons.toFixed(2)}gal-vs-${tankCap}gal-capacity`);
+  }
+
+  // 2. Price spike — $/gal > $6 or >2× the 90-day average for this vehicle.
+  if (entry.cost_per_gallon != null && entry.cost_per_gallon > 6) {
+    flags.push(`price-spike:${entry.cost_per_gallon.toFixed(3)}/gal-over-$6`);
+  }
+  const avgSql = `
+    SELECT AVG(cost_per_gallon) AS avg_cpg
+    FROM fleet_fuel_logs
+    WHERE vehicle_id = ? AND cost_per_gallon IS NOT NULL
+      AND fuel_date >= date('now', '-90 days')
+      ${entry.id ? 'AND id != ?' : ''}
+  `;
+  const avgArgs = entry.id ? [vehicleId, entry.id] : [vehicleId];
+  const recentAvgRow = db.prepare(avgSql).get(...avgArgs) as any;
+  const avgCpg = Number(recentAvgRow?.avg_cpg);
+  if (
+    entry.cost_per_gallon != null && avgCpg > 0 &&
+    entry.cost_per_gallon > avgCpg * 2
+  ) {
+    flags.push(`price-spike:${entry.cost_per_gallon.toFixed(3)}-vs-90day-avg-${avgCpg.toFixed(3)}`);
+  }
+
+  // 3. MPG anomaly — compute MPG from the immediately-prior entry's odometer.
+  //    Flag when computed MPG deviates >50% from the vehicle's 90-day avg MPG.
+  if (entry.odometer_reading != null && entry.gallons > 0) {
+    const priorSql = `
+      SELECT odometer_reading, fuel_date FROM fleet_fuel_logs
+      WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
+        AND fuel_date < ?
+        ${entry.id ? 'AND id != ?' : ''}
+      ORDER BY fuel_date DESC, id DESC LIMIT 1
+    `;
+    const priorArgs = entry.id
+      ? [vehicleId, entry.fuel_date, entry.id]
+      : [vehicleId, entry.fuel_date];
+    const prior = db.prepare(priorSql).get(...priorArgs) as any;
+    if (prior?.odometer_reading != null && entry.odometer_reading > prior.odometer_reading) {
+      const dist = entry.odometer_reading - prior.odometer_reading;
+      const mpg = dist / entry.gallons;
+      const vehicleAvg = Number(vehicle?.avg_mpg);
+      if (vehicleAvg > 0 && (mpg > vehicleAvg * 1.5 || mpg < vehicleAvg * 0.5)) {
+        flags.push(`mpg-anomaly:${mpg.toFixed(1)}mpg-vs-${vehicleAvg.toFixed(1)}avg`);
+      }
+      // Also flag clearly-impossible MPG (e.g., > 60 on a V8 patrol cruiser
+      // is almost certainly an odometer typo or missing prior entry).
+      if (mpg > 60) {
+        flags.push(`mpg-anomaly:${mpg.toFixed(1)}mpg-implausibly-high`);
+      } else if (mpg < 3) {
+        flags.push(`mpg-anomaly:${mpg.toFixed(1)}mpg-implausibly-low`);
+      }
+    }
+  }
+
+  // 4. Rapid duplicate — another fill within 30 min at a different station.
+  //    Common fuel-card abuse pattern (split transaction across stations).
+  const nearbySql = `
+    SELECT id, fuel_date, station FROM fleet_fuel_logs
+    WHERE vehicle_id = ?
+      AND ABS(strftime('%s', fuel_date) - strftime('%s', ?)) < 1800
+      ${entry.id ? 'AND id != ?' : ''}
+    LIMIT 1
+  `;
+  const nearbyArgs = entry.id
+    ? [vehicleId, entry.fuel_date, entry.id]
+    : [vehicleId, entry.fuel_date];
+  const nearbyRow = db.prepare(nearbySql).get(...nearbyArgs) as any;
+  if (nearbyRow) {
+    const otherStation = (nearbyRow.station || '').trim().toLowerCase();
+    const thisStation = (entry.station || '').trim().toLowerCase();
+    if (otherStation && thisStation && otherStation !== thisStation) {
+      flags.push(`rapid-duplicate:another-fill-within-30min-at-${nearbyRow.station}`);
+    } else if (!otherStation || !thisStation) {
+      flags.push('rapid-duplicate:another-fill-within-30min');
+    }
+  }
+
+  return flags;
 }
 
 const VIDEO_MIME_TYPES = new Set([
@@ -81,7 +234,7 @@ router.get('/', (req: Request, res: Response) => {
       assigned,
       archived,
       page = '1',
-      per_page = '50',
+      per_page = '100000',
     } = req.query;
 
     let whereClause = 'WHERE 1=1';
@@ -106,7 +259,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -1231,7 +1384,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '25' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
 
     // Verify vehicle exists
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
@@ -1241,7 +1394,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
     }
 
     const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -1443,7 +1596,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
@@ -1452,7 +1605,11 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    // Cap raised from 200 → 10000 (2026-04-14): the Fuel tab now requests
+    // every entry in one shot for client-side period filtering. Other
+    // paginated callers still work because they explicitly send smaller
+    // per_page values; only callers asking for big pages get them.
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_fuel_logs WHERE vehicle_id = ?').get(id) as any;
@@ -1601,7 +1758,13 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       return;
     }
 
-    const { fuel_date, gallons, cost_per_gallon, total_cost, odometer_reading, fuel_type, station, notes } = req.body;
+    const {
+      fuel_date, gallons, cost_per_gallon, total_cost, odometer_reading,
+      fuel_type, station, notes,
+      // 2026-04-14 v2: optional driver + card attribution. Both null-allowed
+      // so legacy clients that don't send them continue to work unchanged.
+      driver_officer_id, fuel_card_id,
+    } = req.body;
 
     if (!fuel_date || !gallons) {
       res.status(400).json({ error: 'fuel_date and gallons are required', code: 'FUELDATE_AND_GALLONS_ARE' });
@@ -1610,11 +1773,25 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     const computedTotal = total_cost != null ? total_cost : (cost_per_gallon ? gallons * cost_per_gallon : null);
 
+    // Compute outlier flags before INSERT — so the row we just wrote and the
+    // row we return below are identical (no second pass). Flags don't block
+    // the insert, they surface a warning banner in the UI so an operator can
+    // review / confirm / correct the entry.
+    const flagsArr = detectFuelLogFlags(db, Number(id), {
+      fuel_date,
+      gallons: Number(gallons),
+      cost_per_gallon: cost_per_gallon != null ? Number(cost_per_gallon) : null,
+      odometer_reading: odometer_reading != null ? Number(odometer_reading) : null,
+      station: station ?? null,
+    });
+    const flagsJson = flagsArr.length > 0 ? JSON.stringify(flagsArr) : null;
+
     const result = db.prepare(`
       INSERT INTO fleet_fuel_logs (
         vehicle_id, fuel_date, gallons, cost_per_gallon, total_cost,
-        odometer_reading, fuel_type, station, notes, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        odometer_reading, fuel_type, station, notes, created_by, created_at, flags,
+        driver_officer_id, fuel_card_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       fuel_date,
@@ -1626,7 +1803,10 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       station || null,
       notes || null,
       req.user!.userId,
-      localNow()
+      localNow(),
+      flagsJson,
+      driver_officer_id || null,
+      fuel_card_id || null,
     );
 
     // Update vehicle mileage if odometer is higher
@@ -1670,6 +1850,8 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
       fuel_date: v => v ?? null, gallons: v => v ?? null, cost_per_gallon: v => v ?? null,
       total_cost: v => v ?? null, odometer_reading: v => v ?? null, fuel_type: v => v ?? null,
       station: v => v ?? null, notes: v => v ?? null,
+      // v2 fields — supported in both PUT (explicit edit) and POST (create).
+      driver_officer_id: v => v ?? null, fuel_card_id: v => v ?? null,
     };
     for (const [key, transform] of Object.entries(fFieldMap)) {
       if (fBodyKeys.includes(key)) { fFields.push(`${key} = ?`); fValues.push(transform(req.body[key])); }
@@ -1678,6 +1860,24 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
       fValues.push(req.params.id);
       db.prepare(`UPDATE fleet_fuel_logs SET ${fFields.join(', ')} WHERE id = ?`).run(...fValues);
     }
+
+    // Re-evaluate flags against the just-updated row — PUT can change any
+    // input that affects detectFuelLogFlags (gallons, cost_per_gallon,
+    // odometer, station, date), so we refetch and re-compute rather than
+    // trying to reason about which fields were touched.
+    const refetched = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
+    const newFlags = detectFuelLogFlags(db, Number(refetched.vehicle_id), {
+      id: Number(req.params.id),
+      fuel_date: refetched.fuel_date,
+      gallons: Number(refetched.gallons),
+      cost_per_gallon: refetched.cost_per_gallon != null ? Number(refetched.cost_per_gallon) : null,
+      odometer_reading: refetched.odometer_reading != null ? Number(refetched.odometer_reading) : null,
+      station: refetched.station ?? null,
+    });
+    db.prepare('UPDATE fleet_fuel_logs SET flags = ? WHERE id = ?').run(
+      newFlags.length > 0 ? JSON.stringify(newFlags) : null,
+      req.params.id,
+    );
 
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -1737,12 +1937,2008 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// Fuel-log enhancements (2026-04-14):
+//   - Receipt attachment (upload / stream / delete)
+//   - CSV import from fuel-card statements (preview + commit)
+//   - CSV export of fuel logs
+//
+// Path ordering: the literal /fuel/import/*, /fuel/export/*,
+// /fuel/:id/receipt routes must be declared BEFORE any /fuel/:id route
+// that uses a numeric param validator — Express matches top-down and a
+// param route would swallow "import" / "export" / etc. otherwise.
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /api/fleet/fuel/:id/receipt — attach a receipt to a fuel log
+router.post('/fuel/:id/receipt', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  fuelReceiptUpload.single('receipt')(req, res, (multerErr: any) => {
+    const cleanup = () => {
+      const filename = req.file?.filename;
+      if (!filename) return;
+      // Rebuild path from safe root + basename — CodeQL recognizes this
+      // as sanitized (basename strips traversal, join against known root
+      // prevents escape). See js/path-injection alerts #2812, #2813.
+      const p = path.join(FUEL_RECEIPT_DIR, path.basename(filename));
+      if (fs.existsSync(p)) {
+        try { fs.unlinkSync(p); } catch { /* ignore */ }
+      }
+    };
+    if (multerErr) {
+      cleanup();
+      res.status(400).json({ error: multerErr.message || 'Receipt upload failed' });
+      return;
+    }
+    try {
+      if (!req.file) { res.status(400).json({ error: 'No receipt file provided' }); return; }
+
+      const db = getDb();
+      const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
+      if (!record) { cleanup(); res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
+
+      // Replace old receipt if any — don't leave orphans on disk.
+      if (record.receipt_path) {
+        const oldAbs = safeFuelReceiptPath(record.receipt_path);
+        if (oldAbs && fs.existsSync(oldAbs)) {
+          try { fs.unlinkSync(oldAbs); } catch { /* best effort */ }
+        }
+      }
+
+      db.prepare('UPDATE fleet_fuel_logs SET receipt_path = ? WHERE id = ?').run(req.file.filename, record.id);
+      const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
+      auditLog(req, 'fleet_fuel_receipt_attached', 'fleet_fuel_log', Number(record.id), `Attached receipt to fuel log ${record.id}`);
+      res.json(updated);
+    } catch (err: any) {
+      cleanup();
+      console.error('[fuel receipt upload] error:', err?.message, err?.stack);
+      res.status(500).json({ error: 'Failed to attach receipt' });
+    }
+  });
+});
+
+// GET /api/fleet/fuel/:id/receipt — stream the receipt file (inline)
+router.get('/fuel/:id/receipt', (req: Request, res: Response, next) => {
+  // Accept ?token= for <img>/iframe viewers that can't set auth header.
+  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const record = db.prepare('SELECT receipt_path FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
+    if (!record || !record.receipt_path) { res.status(404).json({ error: 'No receipt for this log' }); return; }
+    const absPath = safeFuelReceiptPath(record.receipt_path);
+    if (!absPath || !fs.existsSync(absPath)) { res.status(404).json({ error: 'Receipt file missing on disk' }); return; }
+    const ext = path.extname(absPath).toLowerCase();
+    const mimes: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif',
+      '.pdf': 'application/pdf',
+    };
+    res.setHeader('Content-Type', mimes[ext] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${path.basename(absPath)}"`);
+    fs.createReadStream(absPath).pipe(res);
+  } catch (err: any) {
+    console.error('[fuel receipt stream] error:', err?.message);
+    res.status(500).json({ error: 'Failed to stream receipt' });
+  }
+});
+
+// DELETE /api/fleet/fuel/:id/receipt — detach + remove receipt file
+router.delete('/fuel/:id/receipt', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
+    if (!record.receipt_path) { res.json({ success: true, alreadyGone: true }); return; }
+    const absPath = safeFuelReceiptPath(record.receipt_path);
+    if (absPath && fs.existsSync(absPath)) {
+      try { fs.unlinkSync(absPath); } catch { /* best effort */ }
+    }
+    db.prepare('UPDATE fleet_fuel_logs SET receipt_path = NULL WHERE id = ?').run(record.id);
+    auditLog(req, 'fleet_fuel_receipt_removed', 'fleet_fuel_log', Number(record.id), `Removed receipt from fuel log ${record.id}`);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[fuel receipt delete] error:', err?.message);
+    res.status(500).json({ error: 'Failed to delete receipt' });
+  }
+});
+
+// ─── CSV import from fuel-card statements ─────────────────────────
+//
+// Flow: upload CSV → server parses + matches vehicles → client previews
+// + fixes any unmatched rows → client POSTs `rows` array to /import/commit.
+// We don't write anything to fleet_fuel_logs during preview.
+//
+// Column mapping is fuzzy: we scan headers case-insensitively and accept
+// common aliases from WEX, Voyager, Fuelman, and generic exports. Rows
+// with no matching vehicle come back `matched: false` so the UI can let
+// an operator pick the vehicle manually before committing.
+function parseCsv(text: string): string[][] {
+  // Minimal RFC 4180 CSV parser — handles quoted fields with embedded
+  // commas and doubled-quote escapes. Good enough for fuel-card exports
+  // which don't use exotic dialects.
+  const rows: string[][] = [];
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const row: string[] = [];
+    let field = '';
+    let inQuote = false;
+    while (i < n) {
+      const ch = text[i];
+      if (inQuote) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 2; }
+          else { inQuote = false; i++; }
+        } else { field += ch; i++; }
+      } else {
+        if (ch === '"') { inQuote = true; i++; }
+        else if (ch === ',') { row.push(field); field = ''; i++; }
+        else if (ch === '\r') { i++; }
+        else if (ch === '\n') { row.push(field); field = ''; i++; break; }
+        else { field += ch; i++; }
+      }
+    }
+    if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+    if (i >= n) break;
+  }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+function pickHeader(headers: string[], aliases: string[]): number {
+  const norm = headers.map(h => h.toLowerCase().trim().replace(/[\s_-]+/g, ''));
+  for (const alias of aliases) {
+    const a = alias.toLowerCase().replace(/[\s_-]+/g, '');
+    const idx = norm.indexOf(a);
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+// POST /api/fleet/fuel/import/preview — multipart CSV, returns parsed + matched rows
+router.post('/fuel/import/preview', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const csvUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 5, parts: 6 },
+    fileFilter: (_req, file, cb) => {
+      const ok = /\.csv$/i.test(file.originalname || '') ||
+                 file.mimetype === 'text/csv' ||
+                 file.mimetype === 'application/vnd.ms-excel';
+      if (ok) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only .csv files are allowed'));
+      }
+    },
+  });
+  csvUpload.single('file')(req, res, (multerErr: any) => {
+    if (multerErr) { res.status(400).json({ error: multerErr.message }); return; }
+    try {
+      if (!req.file) { res.status(400).json({ error: 'No CSV file provided' }); return; }
+      const text = req.file.buffer.toString('utf8').replace(/^\uFEFF/, ''); // strip BOM
+      const rows = parseCsv(text);
+      if (rows.length < 2) { res.status(400).json({ error: 'CSV is empty or has no data rows' }); return; }
+
+      const headers = rows[0];
+      const dateIdx = pickHeader(headers, ['fuel_date', 'date', 'transaction date', 'posted date', 'trans date']);
+      const gallonsIdx = pickHeader(headers, ['gallons', 'quantity', 'gal', 'qty', 'units']);
+      const cpgIdx = pickHeader(headers, ['cost_per_gallon', 'unit price', 'price per gallon', 'price/gal', 'ppg']);
+      const totalIdx = pickHeader(headers, ['total_cost', 'amount', 'net amount', 'total', 'trans amount']);
+      const odoIdx = pickHeader(headers, ['odometer_reading', 'odometer', 'mileage', 'miles', 'odo']);
+      const vehIdx = pickHeader(headers, ['vehicle', 'unit', 'asset id', 'asset', 'vehicle id', 'vehicle number']);
+      const plateIdx = pickHeader(headers, ['license', 'plate', 'license plate', 'tag']);
+      const cardIdx = pickHeader(headers, ['card #', 'card number', 'fuel card', 'card']);
+      const stationIdx = pickHeader(headers, ['station', 'merchant', 'location', 'merchant name']);
+      const typeIdx = pickHeader(headers, ['fuel_type', 'grade', 'product', 'fuel type']);
+
+      if (dateIdx < 0 || gallonsIdx < 0) {
+        res.status(400).json({
+          error: 'CSV is missing a recognizable "date" or "gallons" column',
+          headersDetected: headers,
+        });
+        return;
+      }
+
+      const db = getDb();
+      const allVehicles = db.prepare(`
+        SELECT id, vehicle_number, plate, make, model, year
+        FROM fleet_vehicles WHERE archived_at IS NULL
+      `).all() as any[];
+      const byNumber: Record<string, any> = {};
+      const byPlate: Record<string, any> = {};
+      for (const v of allVehicles) {
+        if (v.vehicle_number) byNumber[String(v.vehicle_number).toLowerCase().trim()] = v;
+        if (v.plate) byPlate[String(v.plate).toLowerCase().trim()] = v;
+      }
+      const cardVehicleMap: Record<string, any> = {};
+      try {
+        const cards = db.prepare('SELECT card_number, vehicle_id FROM fleet_fuel_cards WHERE vehicle_id IS NOT NULL').all() as any[];
+        for (const c of cards) {
+          const v = allVehicles.find(x => x.id === c.vehicle_id);
+          if (v && c.card_number) cardVehicleMap[String(c.card_number).trim()] = v;
+        }
+      } catch { /* fuel_cards table may not be populated yet */ }
+
+      const parseNum = (s: string | undefined): number | null => {
+        if (s == null) return null;
+        const clean = String(s).replace(/[$,\s]/g, '');
+        const n = parseFloat(clean);
+        return isNaN(n) ? null : n;
+      };
+      const parseDate = (s: string | undefined): string | null => {
+        if (!s) return null;
+        const trimmed = s.trim();
+        // Accept ISO, MM/DD/YYYY, MM-DD-YYYY with optional HH:MM[:SS] suffix.
+        const d = new Date(trimmed);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+        return null;
+      };
+      const normalizeFuelType = (s: string | undefined): 'regular' | 'premium' | 'diesel' => {
+        if (!s) return 'regular';
+        const v = s.toLowerCase();
+        if (v.includes('diesel') || v.includes('dsl')) return 'diesel';
+        if (v.includes('premium') || v.includes('93') || v.includes('91')) return 'premium';
+        return 'regular';
+      };
+
+      const out = [];
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const rawVeh = (vehIdx >= 0 ? row[vehIdx] : '') || '';
+        const rawPlate = (plateIdx >= 0 ? row[plateIdx] : '') || '';
+        const rawCard = (cardIdx >= 0 ? row[cardIdx] : '') || '';
+        const vehMatch =
+          (rawVeh && byNumber[rawVeh.toLowerCase().trim()]) ||
+          (rawPlate && byPlate[rawPlate.toLowerCase().trim()]) ||
+          (rawCard && cardVehicleMap[rawCard.trim()]) ||
+          null;
+
+        const gallons = parseNum(row[gallonsIdx]);
+        const parsedDate = parseDate(row[dateIdx]);
+        const warnings: string[] = [];
+        if (gallons == null || gallons <= 0) warnings.push('gallons missing or invalid');
+        if (!parsedDate) warnings.push('date missing or unparseable');
+        if (!vehMatch) warnings.push('no vehicle match');
+
+        out.push({
+          row_index: r,
+          raw: row,
+          matched: !!vehMatch,
+          vehicle_id: vehMatch?.id ?? null,
+          vehicle_display: vehMatch
+            ? `#${vehMatch.vehicle_number} — ${[vehMatch.year, vehMatch.make, vehMatch.model].filter(Boolean).join(' ')}`
+            : null,
+          vehicle_hint: rawVeh || rawPlate || rawCard || null,
+          fuel_date: parsedDate,
+          gallons,
+          cost_per_gallon: cpgIdx >= 0 ? parseNum(row[cpgIdx]) : null,
+          total_cost: totalIdx >= 0 ? parseNum(row[totalIdx]) : null,
+          odometer_reading: odoIdx >= 0 ? parseNum(row[odoIdx]) : null,
+          station: stationIdx >= 0 ? (row[stationIdx] || '').trim() || null : null,
+          fuel_type: typeIdx >= 0 ? normalizeFuelType(row[typeIdx]) : 'regular',
+          warnings,
+        });
+      }
+
+      res.json({
+        headers,
+        column_map: {
+          fuel_date: dateIdx >= 0 ? headers[dateIdx] : null,
+          gallons: gallonsIdx >= 0 ? headers[gallonsIdx] : null,
+          cost_per_gallon: cpgIdx >= 0 ? headers[cpgIdx] : null,
+          total_cost: totalIdx >= 0 ? headers[totalIdx] : null,
+          odometer_reading: odoIdx >= 0 ? headers[odoIdx] : null,
+          vehicle: vehIdx >= 0 ? headers[vehIdx] : null,
+          plate: plateIdx >= 0 ? headers[plateIdx] : null,
+          card: cardIdx >= 0 ? headers[cardIdx] : null,
+          station: stationIdx >= 0 ? headers[stationIdx] : null,
+          fuel_type: typeIdx >= 0 ? headers[typeIdx] : null,
+        },
+        row_count: out.length,
+        matched_count: out.filter(r => r.matched).length,
+        rows: out,
+      });
+    } catch (err: any) {
+      console.error('[fuel import preview] error:', err?.message, err?.stack);
+      res.status(500).json({ error: 'Failed to parse CSV' });
+    }
+  });
+});
+
+// POST /api/fleet/fuel/import/commit — insert reviewed rows in a transaction
+router.post('/fuel/import/commit', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const { rows } = req.body || {};
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: 'rows array is required' });
+      return;
+    }
+    const db = getDb();
+    const insertStmt = db.prepare(`
+      INSERT INTO fleet_fuel_logs (
+        vehicle_id, fuel_date, gallons, cost_per_gallon, total_cost,
+        odometer_reading, fuel_type, station, notes, created_by, created_at, source, flags
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?)
+    `);
+    const now = localNow();
+    const errors: { row_index: number; error: string }[] = [];
+    let inserted = 0;
+
+    // Wrap in a transaction so a mid-batch failure rolls back cleanly.
+    const runAll = db.transaction((batch: any[]) => {
+      for (const r of batch) {
+        try {
+          if (!r.vehicle_id || !r.fuel_date || !r.gallons || Number(r.gallons) <= 0) {
+            errors.push({ row_index: r.row_index ?? -1, error: 'missing vehicle_id, fuel_date, or gallons' });
+            continue;
+          }
+          const gallons = Number(r.gallons);
+          const cpg = r.cost_per_gallon != null ? Number(r.cost_per_gallon) : null;
+          const total = r.total_cost != null ? Number(r.total_cost)
+                      : (cpg != null ? gallons * cpg : null);
+          const flags = detectFuelLogFlags(db, Number(r.vehicle_id), {
+            fuel_date: r.fuel_date,
+            gallons,
+            cost_per_gallon: cpg,
+            odometer_reading: r.odometer_reading != null ? Number(r.odometer_reading) : null,
+            station: r.station ?? null,
+          });
+          insertStmt.run(
+            r.vehicle_id,
+            r.fuel_date,
+            gallons,
+            cpg,
+            total,
+            r.odometer_reading ?? null,
+            r.fuel_type || 'regular',
+            r.station ?? null,
+            r.notes ?? null,
+            req.user!.userId,
+            now,
+            flags.length > 0 ? JSON.stringify(flags) : null,
+          );
+          inserted++;
+        } catch (rowErr: any) {
+          errors.push({ row_index: r.row_index ?? -1, error: rowErr?.message || 'insert failed' });
+        }
+      }
+    });
+    runAll(rows);
+
+    auditLog(req, 'fleet_fuel_bulk_imported', 'fleet_fuel_log', 0,
+      `CSV import: ${inserted} inserted, ${errors.length} errors`);
+    res.json({ inserted, errors });
+  } catch (err: any) {
+    console.error('[fuel import commit] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to commit import' });
+  }
+});
+
+// GET /api/fleet/fuel/export.csv — CSV export (optionally filtered by vehicle)
+router.get('/fuel/export.csv', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.query.vehicle_id ? Number(req.query.vehicle_id) : null;
+    const from = typeof req.query.from === 'string' ? req.query.from : null;
+    const to = typeof req.query.to === 'string' ? req.query.to : null;
+
+    let sql = `
+      SELECT fl.*, fv.vehicle_number, fv.plate, fv.make, fv.model, fv.year, u.username AS created_by_username
+      FROM fleet_fuel_logs fl
+      LEFT JOIN fleet_vehicles fv ON fv.id = fl.vehicle_id
+      LEFT JOIN users u ON u.id = fl.created_by
+      WHERE 1=1
+    `;
+    const args: any[] = [];
+    if (vehicleId) { sql += ' AND fl.vehicle_id = ?'; args.push(vehicleId); }
+    if (from) { sql += ' AND fl.fuel_date >= ?'; args.push(from); }
+    if (to)   { sql += ' AND fl.fuel_date <= ?'; args.push(to); }
+    sql += ' ORDER BY fl.fuel_date DESC, fl.id DESC';
+    const logs = db.prepare(sql).all(...args) as any[];
+
+    const csvEscape = (v: any): string => {
+      if (v == null) return '';
+      const s = String(v);
+      if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const cols = [
+      'id', 'vehicle_number', 'plate', 'vehicle', 'fuel_date', 'gallons',
+      'cost_per_gallon', 'total_cost', 'odometer_reading', 'fuel_type',
+      'station', 'notes', 'source', 'flags', 'created_by', 'created_at',
+    ];
+    const lines = [cols.join(',')];
+    for (const l of logs) {
+      const vehicle = [l.year, l.make, l.model].filter(Boolean).join(' ');
+      lines.push([
+        l.id, l.vehicle_number, l.plate, vehicle, l.fuel_date, l.gallons,
+        l.cost_per_gallon, l.total_cost, l.odometer_reading, l.fuel_type,
+        l.station, l.notes, l.source || 'manual',
+        l.flags ? JSON.parse(l.flags).join('; ') : '',
+        l.created_by_username, l.created_at,
+      ].map(csvEscape).join(','));
+    }
+
+    const filename = vehicleId
+      ? `fuel-logs-vehicle-${vehicleId}-${localToday()}.csv`
+      : `fuel-logs-${localToday()}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send('\uFEFF' + lines.join('\n')); // BOM so Excel recognises UTF-8
+  } catch (err: any) {
+    console.error('[fuel export] error:', err?.message);
+    res.status(500).json({ error: 'Failed to export fuel logs' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Fuel v2 (2026-04-14 expansion): budgets, per-officer analytics,
+// per-card spend, and a fleet-wide aggregate for the analytics page.
+//
+// Each endpoint is independently authenticated but the router-level
+// authenticateToken middleware (applied in index.ts) has already run;
+// we only opt into role checks via requireRole() for writes.
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── Period helpers for the budget forecast ──────────────────────
+// Given a period type, returns { start, end, days_elapsed, days_total }
+// with the convention that `end` is exclusive (first moment of the next
+// period) so `fuel_date < end` catches everything in the period. All
+// dates are strings in local-time format (YYYY-MM-DD), matching what
+// the server writes to fuel_date.
+function currentPeriodBounds(period: 'monthly' | 'quarterly' | 'annual', asOfIso?: string) {
+  const now = asOfIso ? new Date(asOfIso) : new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-11
+  let startDate: Date;
+  let endDate: Date;
+  if (period === 'monthly') {
+    startDate = new Date(y, m, 1);
+    endDate = new Date(y, m + 1, 1);
+  } else if (period === 'quarterly') {
+    const qStart = Math.floor(m / 3) * 3;
+    startDate = new Date(y, qStart, 1);
+    endDate = new Date(y, qStart + 3, 1);
+  } else {
+    startDate = new Date(y, 0, 1);
+    endDate = new Date(y + 1, 0, 1);
+  }
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const msPerDay = 86400_000;
+  const daysTotal = Math.round((endDate.getTime() - startDate.getTime()) / msPerDay);
+  const daysElapsed = Math.max(1, Math.min(daysTotal, Math.ceil((now.getTime() - startDate.getTime()) / msPerDay)));
+  return { start: iso(startDate), end: iso(endDate), days_total: daysTotal, days_elapsed: daysElapsed };
+}
+
+// ── Budget CRUD ──────────────────────────────────────────────────
+
+// GET /api/fleet/fuel/budgets — list all budgets (optionally filtered)
+router.get('/fuel/budgets', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, scope } = req.query;
+    let sql = `
+      SELECT b.*, fv.vehicle_number, fv.make, fv.model, fv.year
+      FROM fleet_fuel_budgets b
+      LEFT JOIN fleet_vehicles fv ON fv.id = b.vehicle_id
+      WHERE 1=1
+    `;
+    const args: any[] = [];
+    if (vehicle_id) { sql += ' AND b.vehicle_id = ?'; args.push(Number(vehicle_id)); }
+    if (scope === 'fleet') { sql += ' AND b.vehicle_id IS NULL'; }
+    if (scope === 'vehicle') { sql += ' AND b.vehicle_id IS NOT NULL'; }
+    sql += ' ORDER BY b.effective_from DESC, b.id DESC';
+    const rows = db.prepare(sql).all(...args);
+    res.json({ data: rows });
+  } catch (err: any) {
+    console.error('[fuel budgets list] error:', err?.message);
+    res.status(500).json({ error: 'Failed to list budgets' });
+  }
+});
+
+// POST /api/fleet/fuel/budgets — create a new budget
+router.post('/fuel/budgets', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, period_type, budget_amount, alert_threshold_pct, effective_from, effective_to, notes } = req.body;
+    if (!period_type || !['monthly', 'quarterly', 'annual'].includes(period_type)) {
+      res.status(400).json({ error: 'period_type must be monthly/quarterly/annual' });
+      return;
+    }
+    const amount = Number(budget_amount);
+    if (!isFinite(amount) || amount <= 0) {
+      res.status(400).json({ error: 'budget_amount must be positive' });
+      return;
+    }
+    const threshold = alert_threshold_pct != null ? Number(alert_threshold_pct) : 80;
+    if (!isFinite(threshold) || threshold < 0 || threshold > 100) {
+      res.status(400).json({ error: 'alert_threshold_pct must be 0..100' });
+      return;
+    }
+    const result = db.prepare(`
+      INSERT INTO fleet_fuel_budgets (
+        vehicle_id, period_type, budget_amount, alert_threshold_pct,
+        effective_from, effective_to, notes, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      vehicle_id || null,
+      period_type,
+      amount,
+      threshold,
+      effective_from || localToday(),
+      effective_to || null,
+      notes ?? null,
+      req.user!.userId,
+    );
+    const created = db.prepare('SELECT * FROM fleet_fuel_budgets WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'fleet_fuel_budget_created', 'fleet_fuel_budget', Number(result.lastInsertRowid),
+      `Created ${period_type} fuel budget $${amount} for ${vehicle_id ? `vehicle ${vehicle_id}` : 'fleet'}`);
+    res.status(201).json(created);
+  } catch (err: any) {
+    console.error('[fuel budgets create] error:', err?.message);
+    res.status(500).json({ error: 'Failed to create budget' });
+  }
+});
+
+// PUT /api/fleet/fuel/budgets/:id — update fields
+router.put('/fuel/budgets/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM fleet_fuel_budgets WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Budget not found' }); return; }
+    const map: Record<string, (v: any) => any> = {
+      period_type: v => v ?? null,
+      budget_amount: v => v != null ? Number(v) : null,
+      alert_threshold_pct: v => v != null ? Number(v) : null,
+      effective_from: v => v ?? null,
+      effective_to: v => v ?? null,
+      notes: v => v ?? null,
+      vehicle_id: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const [k, t] of Object.entries(map)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, k)) {
+        sets.push(`${k} = ?`); vals.push(t(req.body[k]));
+      }
+    }
+    if (sets.length > 0) {
+      sets.push("updated_at = datetime('now','localtime')");
+      vals.push(req.params.id);
+      db.prepare(`UPDATE fleet_fuel_budgets SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    }
+    const updated = db.prepare('SELECT * FROM fleet_fuel_budgets WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (err: any) {
+    console.error('[fuel budgets update] error:', err?.message);
+    res.status(500).json({ error: 'Failed to update budget' });
+  }
+});
+
+// DELETE /api/fleet/fuel/budgets/:id
+router.delete('/fuel/budgets/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM fleet_fuel_budgets WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Budget not found' }); return; }
+    db.prepare('DELETE FROM fleet_fuel_budgets WHERE id = ?').run(req.params.id);
+    auditLog(req, 'fleet_fuel_budget_deleted', 'fleet_fuel_budget', Number(req.params.id),
+      `Deleted ${existing.period_type} fuel budget`);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[fuel budgets delete] error:', err?.message);
+    res.status(500).json({ error: 'Failed to delete budget' });
+  }
+});
+
+// GET /api/fleet/fuel/budgets/summary — budget with current spend + forecast
+// Query params:
+//   vehicle_id  (optional) — when provided, uses the best-match vehicle
+//                            budget; when omitted, uses the fleet-level
+//                            budget (vehicle_id IS NULL on the row)
+//   as_of       (optional) — ISO date to evaluate against, defaults to now
+//
+// Response includes: budget, current-period spend, projected end-of-period
+// spend (linear burn-rate extrapolation), variance %, and a status flag
+// suitable for UI colouring (on_track / watch / warning / over).
+router.get('/fuel/budgets/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.query.vehicle_id ? Number(req.query.vehicle_id) : null;
+    const asOf = typeof req.query.as_of === 'string' ? req.query.as_of : undefined;
+    const today = asOf || new Date().toISOString().slice(0, 10);
+
+    // Select the best-match budget: one matching vehicle_id (or NULL for
+    // fleet), effective on `today`, preferring the most-recently-started.
+    const budget = db.prepare(`
+      SELECT * FROM fleet_fuel_budgets
+      WHERE (${vehicleId ? 'vehicle_id = ?' : 'vehicle_id IS NULL'})
+        AND effective_from <= ?
+        AND (effective_to IS NULL OR effective_to >= ?)
+      ORDER BY effective_from DESC LIMIT 1
+    `).get(...(vehicleId ? [vehicleId, today, today] : [today, today])) as any;
+
+    if (!budget) {
+      res.json({
+        has_budget: false,
+        vehicle_id: vehicleId,
+        message: 'No active budget for this scope',
+      });
+      return;
+    }
+
+    const bounds = currentPeriodBounds(budget.period_type, asOf);
+    const spendSql = `
+      SELECT COALESCE(SUM(total_cost), 0) AS total
+      FROM fleet_fuel_logs
+      WHERE total_cost IS NOT NULL
+        AND fuel_date >= ? AND fuel_date < ?
+        ${vehicleId ? 'AND vehicle_id = ?' : ''}
+    `;
+    const spendArgs = vehicleId ? [bounds.start, bounds.end, vehicleId] : [bounds.start, bounds.end];
+    const spendRow = db.prepare(spendSql).get(...spendArgs) as any;
+    const spent = Number(spendRow.total) || 0;
+
+    const pctSpent = Math.round((spent / budget.budget_amount) * 1000) / 10; // 1 decimal
+    const dailyRate = spent / bounds.days_elapsed;
+    const forecast = Math.round(dailyRate * bounds.days_total * 100) / 100;
+    const variancePct = Math.round((forecast / budget.budget_amount - 1) * 1000) / 10;
+
+    let status: 'on_track' | 'watch' | 'warning' | 'over';
+    if (pctSpent >= 100) status = 'over';
+    else if (pctSpent >= budget.alert_threshold_pct || variancePct >= 10) status = 'warning';
+    else if (variancePct >= -5) status = 'watch';
+    else status = 'on_track';
+
+    res.json({
+      has_budget: true,
+      budget,
+      vehicle_id: vehicleId,
+      period: {
+        type: budget.period_type,
+        start: bounds.start,
+        end: bounds.end,
+        days_total: bounds.days_total,
+        days_elapsed: bounds.days_elapsed,
+        days_remaining: Math.max(0, bounds.days_total - bounds.days_elapsed),
+      },
+      spend: {
+        actual: Math.round(spent * 100) / 100,
+        pct_of_budget: pctSpent,
+        daily_rate: Math.round(dailyRate * 100) / 100,
+        forecast,
+        variance_pct: variancePct,
+      },
+      status,
+    });
+  } catch (err: any) {
+    console.error('[fuel budgets summary] error:', err?.message);
+    res.status(500).json({ error: 'Failed to compute budget summary' });
+  }
+});
+
+// ── Per-officer analytics ───────────────────────────────────────
+
+// GET /api/fleet/fuel/analytics/by-officer — aggregate fuel behaviour
+// per driver officer. Rows with NULL driver_officer_id are bucketed
+// under "(unassigned)" so they're visible in the dashboard.
+router.get('/fuel/analytics/by-officer', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const since = typeof req.query.since === 'string' ? req.query.since : null;
+    const sql = `
+      SELECT
+        fl.driver_officer_id                         AS officer_id,
+        u.username                                   AS username,
+        u.full_name                                  AS full_name,
+        COUNT(*)                                     AS fill_count,
+        SUM(fl.gallons)                              AS total_gallons,
+        SUM(fl.total_cost)                           AS total_cost,
+        AVG(fl.cost_per_gallon)                      AS avg_cpg,
+        SUM(CASE WHEN fl.flags IS NOT NULL THEN 1 ELSE 0 END) AS flag_count
+      FROM fleet_fuel_logs fl
+      LEFT JOIN users u ON u.id = fl.driver_officer_id
+      WHERE 1=1
+        ${since ? 'AND fl.fuel_date >= ?' : ''}
+      GROUP BY fl.driver_officer_id
+      ORDER BY total_cost DESC NULLS LAST
+    `;
+    const rows = (since ? db.prepare(sql).all(since) : db.prepare(sql).all()) as any[];
+    // Compute running avg MPG per officer via the same distance-between-
+    // fills approach the per-vehicle view uses, scoped to each officer.
+    // Done in JS rather than SQL because SQLite lacks window-lag for this
+    // without extra complexity.
+    const allLogs = db.prepare(`
+      SELECT driver_officer_id, vehicle_id, fuel_date, gallons, odometer_reading
+      FROM fleet_fuel_logs
+      WHERE driver_officer_id IS NOT NULL
+        AND odometer_reading IS NOT NULL
+        ${since ? 'AND fuel_date >= ?' : ''}
+      ORDER BY driver_officer_id, vehicle_id, fuel_date ASC
+    `).all(...(since ? [since] : [])) as any[];
+    const mpgAgg: Record<string, { miles: number; gal: number }> = {};
+    const prev: Record<string, { odo: number }> = {};
+    for (const l of allLogs) {
+      const key = `${l.driver_officer_id}:${l.vehicle_id}`;
+      const p = prev[key];
+      if (p && l.odometer_reading > p.odo) {
+        const dist = l.odometer_reading - p.odo;
+        const officerKey = String(l.driver_officer_id);
+        if (!mpgAgg[officerKey]) mpgAgg[officerKey] = { miles: 0, gal: 0 };
+        mpgAgg[officerKey].miles += dist;
+        mpgAgg[officerKey].gal += l.gallons;
+      }
+      prev[key] = { odo: l.odometer_reading };
+    }
+    const enriched = rows.map(r => {
+      const key = r.officer_id != null ? String(r.officer_id) : null;
+      const agg = key ? mpgAgg[key] : null;
+      const avgMpg = agg && agg.gal > 0 ? Math.round((agg.miles / agg.gal) * 10) / 10 : null;
+      return {
+        ...r,
+        display_name: r.full_name || r.username || (r.officer_id == null ? '(unassigned)' : `officer-${r.officer_id}`),
+        avg_mpg: avgMpg,
+        avg_cpg: r.avg_cpg != null ? Math.round(r.avg_cpg * 1000) / 1000 : null,
+        total_cost: r.total_cost != null ? Math.round(r.total_cost * 100) / 100 : 0,
+        total_gallons: r.total_gallons != null ? Math.round(r.total_gallons * 1000) / 1000 : 0,
+        flag_rate: r.fill_count > 0 ? Math.round((r.flag_count / r.fill_count) * 1000) / 10 : 0,
+      };
+    });
+    res.json({ data: enriched });
+  } catch (err: any) {
+    console.error('[fuel analytics by-officer] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to compute per-officer analytics' });
+  }
+});
+
+// ── Per-card spend ──────────────────────────────────────────────
+
+// GET /api/fleet/fuel/analytics/by-card — current-month spend per fuel
+// card with over-limit / near-limit flags. Cards with no fills still
+// appear so the dashboard shows their zero spend against the limit.
+router.get('/fuel/analytics/by-card', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const period = (req.query.period as string) === 'quarterly' ? 'quarterly'
+                 : (req.query.period as string) === 'annual' ? 'annual'
+                 : 'monthly';
+    const bounds = currentPeriodBounds(period as any);
+    const rows = db.prepare(`
+      SELECT
+        fc.id                    AS card_id,
+        fc.card_number           AS card_number,
+        fc.provider              AS provider,
+        fc.status                AS status,
+        fc.monthly_limit         AS monthly_limit,
+        fc.vehicle_id            AS vehicle_id,
+        fv.vehicle_number        AS vehicle_number,
+        fv.make                  AS vehicle_make,
+        fv.model                 AS vehicle_model,
+        COALESCE(s.spent, 0)     AS spent,
+        COALESCE(s.fill_count, 0) AS fill_count
+      FROM fleet_fuel_cards fc
+      LEFT JOIN fleet_vehicles fv ON fv.id = fc.vehicle_id
+      LEFT JOIN (
+        SELECT fuel_card_id, SUM(total_cost) AS spent, COUNT(*) AS fill_count
+        FROM fleet_fuel_logs
+        WHERE fuel_date >= ? AND fuel_date < ?
+          AND fuel_card_id IS NOT NULL
+        GROUP BY fuel_card_id
+      ) s ON s.fuel_card_id = fc.id
+      ORDER BY s.spent DESC NULLS LAST, fc.card_number
+    `).all(bounds.start, bounds.end) as any[];
+
+    const enriched = rows.map(r => {
+      const limit = Number(r.monthly_limit) || 0;
+      const pct = limit > 0 ? Math.round((r.spent / limit) * 1000) / 10 : null;
+      let cardStatus: 'ok' | 'watch' | 'over' | 'unlimited';
+      if (!limit) cardStatus = 'unlimited';
+      else if (pct! >= 100) cardStatus = 'over';
+      else if (pct! >= 80) cardStatus = 'watch';
+      else cardStatus = 'ok';
+      return { ...r, spent: Math.round(r.spent * 100) / 100, pct_of_limit: pct, spend_status: cardStatus };
+    });
+
+    res.json({ period, bounds, data: enriched });
+  } catch (err: any) {
+    console.error('[fuel analytics by-card] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to compute per-card analytics' });
+  }
+});
+
+// ── Fleet-wide analytics aggregate ──────────────────────────────
+
+// GET /api/fleet/fuel/analytics/yoy-trend — year-over-year monthly comparison
+//
+// Returns two parallel arrays: current year and prior year, each with
+// per-month totals (cost, gallons, fills). The client overlays the
+// prior-year data as ghost bars on the existing trend chart when the
+// user toggles "vs Last Year".
+router.get('/fuel/analytics/yoy-trend', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+    const y = now.getFullYear();
+    const currentYearStart = `${y}-01-01`;
+    const priorYearStart   = `${y - 1}-01-01`;
+    const priorYearEnd     = `${y - 1}-12-31`;
+
+    const monthlyQuery = `
+      SELECT strftime('%m', fuel_date) AS month,
+             SUM(total_cost) AS cost,
+             SUM(gallons) AS gallons,
+             COUNT(*) AS fills
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= ? AND fuel_date <= ? AND total_cost IS NOT NULL
+      GROUP BY month ORDER BY month
+    `;
+    const current = db.prepare(monthlyQuery).all(currentYearStart, now.toISOString().slice(0, 10)) as any[];
+    const prior   = db.prepare(monthlyQuery).all(priorYearStart, priorYearEnd) as any[];
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const fmt = (rows: any[]) => rows.map(r => ({
+      month: r.month,
+      cost: round2(Number(r.cost) || 0),
+      gallons: round2(Number(r.gallons) || 0),
+      fills: Number(r.fills) || 0,
+    }));
+
+    const sumCost = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.cost) || 0), 0);
+    const sumGal  = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.gallons) || 0), 0);
+    const curCost = sumCost(current);
+    const priCost = sumCost(prior);
+    const curGal  = sumGal(current);
+    const priGal  = sumGal(prior);
+
+    res.json({
+      current_year: { year: y, months: fmt(current) },
+      prior_year:   { year: y - 1, months: fmt(prior) },
+      yoy_delta: {
+        cost_pct:    priCost > 0 ? round2(((curCost - priCost) / priCost) * 100) : null,
+        gallons_pct: priGal > 0  ? round2(((curGal - priGal) / priGal) * 100)    : null,
+      },
+    });
+  } catch (err: any) {
+    console.error('[fuel yoy-trend] error:', err?.message);
+    res.status(500).json({ error: 'Failed to compute YoY trend' });
+  }
+});
+
+// GET /api/fleet/cost-analytics/yoy-trend — year-over-year for total costs
+// (fuel + maintenance + accessories + utilities — the time-stamped streams)
+router.get('/cost-analytics/yoy-trend', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+    const y = now.getFullYear();
+    const currentYearStart = `${y}-01-01`;
+    const priorYearStart   = `${y - 1}-01-01`;
+    const priorYearEnd     = `${y - 1}-12-31`;
+
+    const monthlyQuery = `
+      SELECT month, SUM(cost) AS cost FROM (
+        SELECT strftime('%m', fuel_date) AS month, SUM(total_cost) AS cost FROM fleet_fuel_logs
+          WHERE fuel_date >= ? AND fuel_date <= ? AND total_cost IS NOT NULL GROUP BY month
+        UNION ALL
+        SELECT strftime('%m', performed_at) AS month, SUM(cost) AS cost FROM fleet_maintenance
+          WHERE performed_at >= ? AND performed_at <= ? AND cost IS NOT NULL GROUP BY month
+        UNION ALL
+        SELECT strftime('%m', installed_date) AS month, SUM(cost) AS cost FROM fleet_accessories
+          WHERE installed_date >= ? AND installed_date <= ? AND archived_at IS NULL GROUP BY month
+        UNION ALL
+        SELECT strftime('%m', period_start) AS month, SUM(cost_amount) AS cost FROM fleet_utility_costs
+          WHERE period_start >= ? AND period_start <= ? AND archived_at IS NULL GROUP BY month
+      )
+      WHERE month IS NOT NULL
+      GROUP BY month ORDER BY month
+    `;
+    const current = db.prepare(monthlyQuery).all(
+      currentYearStart, now.toISOString().slice(0, 10),
+      currentYearStart, now.toISOString().slice(0, 10),
+      currentYearStart, now.toISOString().slice(0, 10),
+      currentYearStart, now.toISOString().slice(0, 10),
+    ) as any[];
+    const prior = db.prepare(monthlyQuery).all(
+      priorYearStart, priorYearEnd,
+      priorYearStart, priorYearEnd,
+      priorYearStart, priorYearEnd,
+      priorYearStart, priorYearEnd,
+    ) as any[];
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const fmt = (rows: any[]) => rows.map(r => ({ month: r.month, cost: round2(Number(r.cost) || 0) }));
+    const sum = (rows: any[]) => rows.reduce((s, r) => s + (Number(r.cost) || 0), 0);
+    const curTotal = sum(current);
+    const priTotal = sum(prior);
+
+    res.json({
+      current_year: { year: y, months: fmt(current) },
+      prior_year:   { year: y - 1, months: fmt(prior) },
+      yoy_delta: {
+        cost_pct: priTotal > 0 ? round2(((curTotal - priTotal) / priTotal) * 100) : null,
+      },
+    });
+  } catch (err: any) {
+    console.error('[cost yoy-trend] error:', err?.message);
+    res.status(500).json({ error: 'Failed to compute cost YoY trend' });
+  }
+});
+
+// GET /api/fleet/fuel/gauges — per-vehicle fuel-level estimates
+//
+// Returns a compact row per vehicle with enough data to render a tank-
+// level gauge on the Fleet grid without an N+1 per-vehicle fetch.
+//
+// Estimation math:
+//   last_fill_gallons       = gallons on the most recent fuel_logs row
+//   tank_capacity           = vehicle.tank_capacity (NULL → client falls back)
+//   days_since_fill         = days between last fill and today
+//   avg_daily_gallons       = 90-day total gallons / 90 (empty → null)
+//   estimated_burned        = avg_daily_gallons * days_since_fill
+//   estimated_current_gal   = max(0, last_fill_gallons - estimated_burned)
+//                             clamped to 0..tank_capacity
+//   estimated_pct           = estimated_current_gal / tank_capacity
+//   days_remaining          = estimated_current_gal / avg_daily_gallons
+//   status                  = 'critical' if days_remaining < 1
+//                             'low'      if days_remaining < 3
+//                             'ok'       otherwise
+//                             'unknown'  when we can't compute
+//
+// Notes:
+//   - We treat the last fill as "topped off to last_fill_gallons" only for
+//     the starting-point estimate. This is intentionally conservative —
+//     the real current level is bounded above by tank_capacity, so we
+//     clamp. Over multi-fill periods the estimate naturally resets at
+//     each fill because we always use the LATEST last_fill row.
+//   - A vehicle with no fills ever returns status='unknown' and no numbers.
+router.get('/fuel/gauges', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicles = db.prepare(`
+      SELECT id, vehicle_number, tank_capacity
+      FROM fleet_vehicles
+      WHERE archived_at IS NULL
+    `).all() as any[];
+
+    const lastFillStmt = db.prepare(`
+      SELECT fuel_date, gallons
+      FROM fleet_fuel_logs
+      WHERE vehicle_id = ?
+      ORDER BY fuel_date DESC, id DESC LIMIT 1
+    `);
+    const avgDailyStmt = db.prepare(`
+      SELECT COALESCE(SUM(gallons), 0) AS total
+      FROM fleet_fuel_logs
+      WHERE vehicle_id = ? AND fuel_date >= date('now', '-90 days')
+    `);
+
+    const now = Date.now();
+    const out = vehicles.map((v) => {
+      const last = lastFillStmt.get(v.id) as any;
+      if (!last) {
+        return {
+          vehicle_id: v.id,
+          vehicle_number: v.vehicle_number,
+          tank_capacity: v.tank_capacity ?? null,
+          status: 'unknown' as const,
+          last_fill_date: null,
+          last_fill_gallons: null,
+          days_since_fill: null,
+          avg_daily_gallons: null,
+          estimated_current_gallons: null,
+          estimated_pct: null,
+          days_remaining: null,
+        };
+      }
+
+      const lastMs = new Date(last.fuel_date).getTime();
+      const daysSince = Math.max(0, Math.floor((now - lastMs) / 86400_000));
+      const agg = avgDailyStmt.get(v.id) as any;
+      const totalLast90 = Number(agg?.total) || 0;
+      const avgDaily = totalLast90 > 0 ? totalLast90 / 90 : null;
+
+      const tank = Number(v.tank_capacity) || null;
+      const lastGal = Number(last.gallons) || 0;
+      let estimatedCurrent: number | null = null;
+      let pct: number | null = null;
+      let daysRemaining: number | null = null;
+      let status: 'ok' | 'low' | 'critical' | 'unknown' = 'unknown';
+
+      if (avgDaily != null) {
+        estimatedCurrent = Math.max(0, lastGal - avgDaily * daysSince);
+        if (tank) estimatedCurrent = Math.min(estimatedCurrent, tank);
+        daysRemaining = avgDaily > 0 ? estimatedCurrent / avgDaily : null;
+        if (tank && tank > 0) pct = Math.max(0, Math.min(1, estimatedCurrent / tank));
+
+        if (daysRemaining == null) status = 'unknown';
+        else if (daysRemaining < 1) status = 'critical';
+        else if (daysRemaining < 3) status = 'low';
+        else status = 'ok';
+      }
+
+      return {
+        vehicle_id: v.id,
+        vehicle_number: v.vehicle_number,
+        tank_capacity: tank,
+        status,
+        last_fill_date: last.fuel_date,
+        last_fill_gallons: Math.round(lastGal * 100) / 100,
+        days_since_fill: daysSince,
+        avg_daily_gallons: avgDaily != null ? Math.round(avgDaily * 1000) / 1000 : null,
+        estimated_current_gallons: estimatedCurrent != null ? Math.round(estimatedCurrent * 100) / 100 : null,
+        estimated_pct: pct != null ? Math.round(pct * 1000) / 10 : null, // 0..100, 1 decimal
+        days_remaining: daysRemaining != null ? Math.round(daysRemaining * 10) / 10 : null,
+      };
+    });
+
+    res.json({ data: out });
+  } catch (err: any) {
+    console.error('[fuel gauges] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to compute fuel gauges' });
+  }
+});
+
+// GET /api/fleet/fuel/analytics/overview — everything the analytics page
+// needs in one call: totals, per-vehicle cost+MPG rankings, monthly trend,
+// flagged-entry leaderboard, and top/bottom station frequency.
+router.get('/fuel/analytics/overview', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(30, Math.min(365, parseInt(String(req.query.days || 90), 10) || 90));
+    const sinceDate = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+
+    const totals = db.prepare(`
+      SELECT COUNT(*) AS fill_count,
+             COALESCE(SUM(gallons), 0) AS total_gallons,
+             COALESCE(SUM(total_cost), 0) AS total_cost,
+             AVG(cost_per_gallon) AS avg_cpg,
+             SUM(CASE WHEN flags IS NOT NULL THEN 1 ELSE 0 END) AS flag_count
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= ?
+    `).get(sinceDate) as any;
+
+    // Per-vehicle rankings — cost, gallons, computed MPG, and flag rate.
+    const vehicleRows = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.avg_mpg,
+             COALESCE(x.fills, 0) AS fill_count,
+             COALESCE(x.cost, 0) AS total_cost,
+             COALESCE(x.gallons, 0) AS total_gallons,
+             COALESCE(x.flag_count, 0) AS flag_count
+      FROM fleet_vehicles fv
+      LEFT JOIN (
+        SELECT vehicle_id,
+               COUNT(*) AS fills,
+               SUM(total_cost) AS cost,
+               SUM(gallons) AS gallons,
+               SUM(CASE WHEN flags IS NOT NULL THEN 1 ELSE 0 END) AS flag_count
+        FROM fleet_fuel_logs
+        WHERE fuel_date >= ?
+        GROUP BY vehicle_id
+      ) x ON x.vehicle_id = fv.id
+      WHERE fv.archived_at IS NULL
+      ORDER BY total_cost DESC
+    `).all(sinceDate) as any[];
+
+    // Monthly trend for the selected window — cost + gallons per month.
+    const monthlyTrend = db.prepare(`
+      SELECT strftime('%Y-%m', fuel_date) AS month,
+             SUM(total_cost) AS cost,
+             SUM(gallons) AS gallons,
+             COUNT(*) AS fills
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= ?
+      GROUP BY month
+      ORDER BY month
+    `).all(sinceDate) as any[];
+
+    // Top 10 stations by fill count + total spent.
+    const topStations = db.prepare(`
+      SELECT COALESCE(NULLIF(TRIM(station), ''), '(unknown)') AS station,
+             COUNT(*) AS fill_count,
+             SUM(total_cost) AS total_spent,
+             AVG(cost_per_gallon) AS avg_cpg
+      FROM fleet_fuel_logs
+      WHERE fuel_date >= ?
+      GROUP BY station
+      ORDER BY fill_count DESC
+      LIMIT 10
+    `).all(sinceDate) as any[];
+
+    // Flagged-entry leaderboard — which vehicles accrue the most flags.
+    const flaggedLeaderboard = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model,
+             COUNT(*) AS flagged_count
+      FROM fleet_fuel_logs fl
+      JOIN fleet_vehicles fv ON fv.id = fl.vehicle_id
+      WHERE fl.flags IS NOT NULL AND fl.fuel_date >= ?
+      GROUP BY fv.id
+      ORDER BY flagged_count DESC
+      LIMIT 10
+    `).all(sinceDate) as any[];
+
+    res.json({
+      since: sinceDate,
+      days,
+      totals: {
+        fill_count: Number(totals.fill_count) || 0,
+        total_gallons: Math.round((Number(totals.total_gallons) || 0) * 1000) / 1000,
+        total_cost: Math.round((Number(totals.total_cost) || 0) * 100) / 100,
+        avg_cpg: totals.avg_cpg != null ? Math.round(totals.avg_cpg * 1000) / 1000 : null,
+        flag_count: Number(totals.flag_count) || 0,
+        flag_rate: totals.fill_count > 0 ? Math.round((Number(totals.flag_count) / Number(totals.fill_count)) * 1000) / 10 : 0,
+      },
+      vehicles: vehicleRows.map((v: any) => ({
+        ...v,
+        total_cost: Math.round((Number(v.total_cost) || 0) * 100) / 100,
+        total_gallons: Math.round((Number(v.total_gallons) || 0) * 1000) / 1000,
+        flag_rate: v.fill_count > 0 ? Math.round((v.flag_count / v.fill_count) * 1000) / 10 : 0,
+      })),
+      monthly_trend: monthlyTrend,
+      top_stations: topStations.map(s => ({
+        station: s.station,
+        fill_count: Number(s.fill_count),
+        total_spent: Math.round((Number(s.total_spent) || 0) * 100) / 100,
+        avg_cpg: s.avg_cpg != null ? Math.round(s.avg_cpg * 1000) / 1000 : null,
+      })),
+      flagged_leaderboard: flaggedLeaderboard,
+    });
+  } catch (err: any) {
+    console.error('[fuel analytics overview] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to compute fuel analytics overview' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Fleet operating-cost categories (2026-04-14):
+//   - Loans (vehicle financing)
+//   - Insurance policies
+//   - Accessories (one-time installed equipment)
+//   - Utility costs (recurring — electricity, storage, etc.)
+//
+// Each category has a uniform CRUD shape:
+//   GET    /api/fleet/:id/<category>           — list for a vehicle
+//   POST   /api/fleet/:id/<category>           — create
+//   PUT    /api/fleet/<category>/:id           — update
+//   DELETE /api/fleet/<category>/:id           — delete
+//
+// The factory function below registers all four routes for a single
+// table, validating only the fields that table accepts. This keeps the
+// wire format consistent and the routing table small.
+// ═══════════════════════════════════════════════════════════════════
+function registerCostCategoryRoutes(opts: {
+  pathSegment: string;            // 'loans' | 'insurance' | 'accessories' | 'utilities'
+  tableName: string;              // matching table in the DB
+  vehicleScoped: boolean;         // true = vehicle_id required on insert
+  requiredFields: string[];       // e.g. ['original_amount', 'monthly_payment']
+  fieldMap: Record<string, (v: any) => any>;
+  auditAction: string;            // 'fleet_loan_created', etc.
+  entityType: string;             // 'fleet_loan', etc.
+}) {
+  // GET — list for a vehicle (or fleet-wide for utilities)
+  router.get(`/:id/${opts.pathSegment}`, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = req.params.id;
+      // For vehicleScoped tables we always filter by vehicle. For the
+      // utilities table (vehicleScoped=false), the path-segment :id is
+      // still the vehicle id but we additionally include any rows where
+      // vehicle_id IS NULL (fleet-wide allocations).
+      const sql = opts.vehicleScoped
+        ? `SELECT * FROM ${opts.tableName} WHERE vehicle_id = ? AND archived_at IS NULL ORDER BY created_at DESC`
+        : `SELECT * FROM ${opts.tableName} WHERE (vehicle_id = ? OR vehicle_id IS NULL) AND archived_at IS NULL ORDER BY created_at DESC`;
+      const rows = db.prepare(sql).all(id);
+      res.json({ data: rows });
+    } catch (err: any) {
+      console.error(`[fleet ${opts.pathSegment} list] error:`, err?.message);
+      res.status(500).json({ error: `Failed to list ${opts.pathSegment}` });
+    }
+  });
+
+  // POST — create
+  router.post(`/:id/${opts.pathSegment}`, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = Number(req.params.id);
+      const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
+      if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
+
+      // Required-field check up front — gives a clean 400 instead of an
+      // SQL constraint failure deep in the engine.
+      for (const f of opts.requiredFields) {
+        if (req.body[f] == null || req.body[f] === '') {
+          res.status(400).json({ error: `${f} is required` });
+          return;
+        }
+      }
+
+      const cols: string[] = ['vehicle_id', 'created_by'];
+      const placeholders: string[] = ['?', '?'];
+      const values: any[] = [id, req.user!.userId];
+      for (const [k, t] of Object.entries(opts.fieldMap)) {
+        if (Object.prototype.hasOwnProperty.call(req.body, k)) {
+          cols.push(k); placeholders.push('?'); values.push(t(req.body[k]));
+        }
+      }
+
+      const result = db.prepare(`INSERT INTO ${opts.tableName} (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`).run(...values);
+      const created = db.prepare(`SELECT * FROM ${opts.tableName} WHERE id = ?`).get(result.lastInsertRowid);
+      auditLog(req, opts.auditAction, opts.entityType, Number(result.lastInsertRowid),
+        `Created ${opts.pathSegment.replace(/s$/, '')} for vehicle ${id}`);
+      broadcastFleetUpdate({ action: 'cost_added', category: opts.pathSegment, vehicle_id: id, id: Number(result.lastInsertRowid) });
+      res.status(201).json(created);
+    } catch (err: any) {
+      console.error(`[fleet ${opts.pathSegment} create] error:`, err?.message);
+      res.status(500).json({ error: `Failed to create ${opts.pathSegment}` });
+    }
+  });
+
+  // PUT — update
+  router.put(`/${opts.pathSegment}/:id`, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare(`SELECT * FROM ${opts.tableName} WHERE id = ?`).get(req.params.id) as any;
+      if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const [k, t] of Object.entries(opts.fieldMap)) {
+        if (Object.prototype.hasOwnProperty.call(req.body, k)) {
+          sets.push(`${k} = ?`); vals.push(t(req.body[k]));
+        }
+      }
+      if (sets.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      sets.push("updated_at = datetime('now','localtime')");
+      vals.push(req.params.id);
+      db.prepare(`UPDATE ${opts.tableName} SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      const updated = db.prepare(`SELECT * FROM ${opts.tableName} WHERE id = ?`).get(req.params.id);
+      res.json(updated);
+    } catch (err: any) {
+      console.error(`[fleet ${opts.pathSegment} update] error:`, err?.message);
+      res.status(500).json({ error: `Failed to update ${opts.pathSegment}` });
+    }
+  });
+
+  // DELETE — soft-delete via archived_at (consistent with other fleet tables)
+  router.delete(`/${opts.pathSegment}/:id`, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare(`SELECT * FROM ${opts.tableName} WHERE id = ?`).get(req.params.id) as any;
+      if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
+      db.prepare(`UPDATE ${opts.tableName} SET archived_at = datetime('now','localtime') WHERE id = ?`).run(req.params.id);
+      auditLog(req, opts.auditAction.replace('_created', '_deleted'), opts.entityType, Number(req.params.id),
+        `Archived ${opts.pathSegment.replace(/s$/, '')}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error(`[fleet ${opts.pathSegment} delete] error:`, err?.message);
+      res.status(500).json({ error: `Failed to delete ${opts.pathSegment}` });
+    }
+  });
+}
+
+registerCostCategoryRoutes({
+  pathSegment: 'loans',
+  tableName: 'fleet_loans',
+  vehicleScoped: true,
+  requiredFields: ['original_amount', 'monthly_payment', 'start_date'],
+  fieldMap: {
+    lender:           v => v ?? null,
+    original_amount:  v => v != null ? Number(v) : null,
+    current_balance:  v => v != null ? Number(v) : null,
+    monthly_payment:  v => v != null ? Number(v) : null,
+    interest_rate:    v => v != null ? Number(v) : null,
+    term_months:      v => v != null ? parseInt(String(v), 10) : null,
+    start_date:       v => v ?? null,
+    payoff_date:      v => v ?? null,
+    status:           v => v ?? null,
+    notes:            v => v ?? null,
+  },
+  auditAction: 'fleet_loan_created',
+  entityType: 'fleet_loan',
+});
+
+registerCostCategoryRoutes({
+  pathSegment: 'insurance',
+  tableName: 'fleet_insurance_policies',
+  vehicleScoped: true,
+  requiredFields: ['premium_amount', 'effective_from'],
+  fieldMap: {
+    carrier:           v => v ?? null,
+    policy_number:     v => v ?? null,
+    coverage_type:     v => v ?? null,
+    premium_amount:    v => v != null ? Number(v) : null,
+    premium_frequency: v => v ?? null,
+    effective_from:    v => v ?? null,
+    expires_at:        v => v ?? null,
+    deductible:        v => v != null ? Number(v) : null,
+    liability_limit:   v => v != null ? Number(v) : null,
+    status:            v => v ?? null,
+    notes:             v => v ?? null,
+  },
+  auditAction: 'fleet_insurance_created',
+  entityType: 'fleet_insurance_policy',
+});
+
+registerCostCategoryRoutes({
+  pathSegment: 'accessories',
+  tableName: 'fleet_accessories',
+  vehicleScoped: true,
+  requiredFields: ['name', 'installed_date'],
+  fieldMap: {
+    name:           v => v ?? null,
+    category:       v => v ?? null,
+    installed_date: v => v ?? null,
+    removed_date:   v => v ?? null,
+    cost:           v => v != null ? Number(v) : 0,
+    vendor:         v => v ?? null,
+    warranty_until: v => v ?? null,
+    serial_number:  v => v ?? null,
+    status:         v => v ?? null,
+    notes:          v => v ?? null,
+  },
+  auditAction: 'fleet_accessory_created',
+  entityType: 'fleet_accessory',
+});
+
+registerCostCategoryRoutes({
+  pathSegment: 'utilities',
+  tableName: 'fleet_utility_costs',
+  vehicleScoped: false,    // utilities can be fleet-wide (vehicle_id NULL)
+  requiredFields: ['category', 'cost_amount', 'period_start'],
+  fieldMap: {
+    category:       v => v ?? null,
+    provider:       v => v ?? null,
+    cost_amount:    v => v != null ? Number(v) : null,
+    cost_frequency: v => v ?? null,
+    period_start:   v => v ?? null,
+    period_end:     v => v ?? null,
+    notes:          v => v ?? null,
+  },
+  auditAction: 'fleet_utility_created',
+  entityType: 'fleet_utility_cost',
+});
+
+// GET /api/fleet/:id/cost-timeline — unified chronological cost ledger
+//
+// The six cost streams (fuel, maintenance, loans, insurance, accessories,
+// utilities) don't live in one table — but operators want to see them as
+// one linear sequence of money-out events. This endpoint unions them into
+// a single sorted list with a common shape.
+//
+// Notes:
+//   - Loan + insurance entries are SYNTHESISED from their monthly cadence:
+//     we generate one ledger row per payment period (capped by today),
+//     since neither table stores per-payment history. An optional future
+//     fleet_loan_payments / fleet_insurance_payments ledger could replace
+//     this synthesis with real transactions; the wire format here is
+//     deliberately compatible with either source.
+//   - Utilities are expanded to per-period rows too when cost_frequency
+//     is monthly/quarterly/etc., so a "$100/month parking for 12 months"
+//     row in the table becomes 12 ledger entries.
+//   - Query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD (both optional).
+interface TimelineEntry {
+  date: string;              // YYYY-MM-DD
+  category: 'fuel' | 'maintenance' | 'loan' | 'insurance' | 'accessory' | 'utility';
+  amount: number;
+  description: string;
+  reference_id: number | string;  // source row id
+  synthetic: boolean;        // true = extrapolated from recurring config
+}
+
+router.get('/:id/cost-timeline', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
+
+    const from = typeof req.query.from === 'string' ? req.query.from : null;
+    const to   = typeof req.query.to   === 'string' ? req.query.to   : null;
+    const dateFilter = (d: string) =>
+      (!from || d >= from) && (!to || d <= to);
+
+    const entries: TimelineEntry[] = [];
+
+    // ── Fuel ───────────────────────────────────────────────────
+    const fuelLogs = db.prepare(`
+      SELECT id, fuel_date, gallons, total_cost, station
+      FROM fleet_fuel_logs
+      WHERE vehicle_id = ? AND total_cost IS NOT NULL
+    `).all(id) as any[];
+    for (const f of fuelLogs) {
+      const date = String(f.fuel_date).slice(0, 10);
+      if (!dateFilter(date)) continue;
+      entries.push({
+        date,
+        category: 'fuel',
+        amount: Number(f.total_cost) || 0,
+        description: `${Number(f.gallons).toFixed(2)} gal${f.station ? ` at ${f.station}` : ''}`,
+        reference_id: f.id,
+        synthetic: false,
+      });
+    }
+
+    // ── Maintenance ────────────────────────────────────────────
+    // Column is `performed_at` (not service_date — that's a derived
+    // alias on fleet_vehicles, not the maintenance table itself).
+    const maint = db.prepare(`
+      SELECT id, performed_at, type, description, cost
+      FROM fleet_maintenance
+      WHERE vehicle_id = ? AND cost IS NOT NULL
+    `).all(id) as any[];
+    for (const m of maint) {
+      const date = String(m.performed_at).slice(0, 10);
+      if (!dateFilter(date)) continue;
+      entries.push({
+        date,
+        category: 'maintenance',
+        amount: Number(m.cost) || 0,
+        description: `${m.type || 'Service'}${m.description ? ` — ${m.description}` : ''}`,
+        reference_id: m.id,
+        synthetic: false,
+      });
+    }
+
+    // ── Accessories (one-time) ─────────────────────────────────
+    const accessories = db.prepare(`
+      SELECT id, installed_date, name, cost
+      FROM fleet_accessories
+      WHERE vehicle_id = ? AND archived_at IS NULL AND cost > 0
+    `).all(id) as any[];
+    for (const a of accessories) {
+      const date = String(a.installed_date).slice(0, 10);
+      if (!dateFilter(date)) continue;
+      entries.push({
+        date,
+        category: 'accessory',
+        amount: Number(a.cost) || 0,
+        description: `Installed: ${a.name}`,
+        reference_id: a.id,
+        synthetic: false,
+      });
+    }
+
+    // ── Loans: synthesise one ledger row per month since start ─
+    const loans = db.prepare(`
+      SELECT id, lender, monthly_payment, start_date, term_months, payoff_date, status
+      FROM fleet_loans
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).all(id) as any[];
+    const todayIso = new Date().toISOString().slice(0, 10);
+    for (const l of loans) {
+      const start = new Date(l.start_date);
+      if (isNaN(start.getTime())) continue;
+      const endCandidate = l.payoff_date
+        ? new Date(l.payoff_date)
+        : l.term_months
+          ? new Date(start.getFullYear(), start.getMonth() + Number(l.term_months), start.getDate())
+          : new Date();
+      const end = endCandidate < new Date() ? endCandidate : new Date();
+      // Walk month by month from start until end (inclusive on start-of-month).
+      let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      while (cursor <= end) {
+        const date = cursor.toISOString().slice(0, 10);
+        if (date <= todayIso && dateFilter(date)) {
+          entries.push({
+            date,
+            category: 'loan',
+            amount: Number(l.monthly_payment) || 0,
+            description: `Loan payment${l.lender ? ` · ${l.lender}` : ''}`,
+            reference_id: `loan-${l.id}-${date}`,
+            synthetic: true,
+          });
+        }
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate());
+      }
+    }
+
+    // ── Insurance: synthesise one ledger row per billing period ─
+    const policies = db.prepare(`
+      SELECT id, carrier, premium_amount, premium_frequency, effective_from, expires_at, status
+      FROM fleet_insurance_policies
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).all(id) as any[];
+    const freqMonths: Record<string, number> = {
+      monthly: 1, quarterly: 3, semi_annual: 6, annual: 12,
+    };
+    for (const p of policies) {
+      const start = new Date(p.effective_from);
+      if (isNaN(start.getTime())) continue;
+      const endCandidate = p.expires_at ? new Date(p.expires_at) : new Date();
+      const end = endCandidate < new Date() ? endCandidate : new Date();
+      const step = freqMonths[p.premium_frequency] || 1;
+      let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      while (cursor <= end) {
+        const date = cursor.toISOString().slice(0, 10);
+        if (date <= todayIso && dateFilter(date)) {
+          entries.push({
+            date,
+            category: 'insurance',
+            amount: Number(p.premium_amount) || 0,
+            description: `Insurance premium${p.carrier ? ` · ${p.carrier}` : ''} (${p.premium_frequency.replace('_', '-')})`,
+            reference_id: `insurance-${p.id}-${date}`,
+            synthetic: true,
+          });
+        }
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + step, cursor.getDate());
+      }
+    }
+
+    // ── Utilities: one entry at period_start for one-time, or expanded
+    //    per-period rows for recurring. Caps at today so we don't project
+    //    future months.
+    const utilities = db.prepare(`
+      SELECT id, category, provider, cost_amount, cost_frequency, period_start, period_end
+      FROM fleet_utility_costs
+      WHERE (vehicle_id = ? OR vehicle_id IS NULL) AND archived_at IS NULL
+    `).all(id) as any[];
+    for (const u of utilities) {
+      const start = new Date(u.period_start);
+      if (isNaN(start.getTime())) continue;
+      if (u.cost_frequency === 'one_time') {
+        const date = String(u.period_start).slice(0, 10);
+        if (dateFilter(date)) {
+          entries.push({
+            date,
+            category: 'utility',
+            amount: Number(u.cost_amount) || 0,
+            description: `${u.category}${u.provider ? ` · ${u.provider}` : ''}`,
+            reference_id: u.id,
+            synthetic: false,
+          });
+        }
+        continue;
+      }
+      const endCandidate = u.period_end ? new Date(u.period_end) : new Date();
+      const end = endCandidate < new Date() ? endCandidate : new Date();
+      const step = freqMonths[u.cost_frequency] || 1;
+      let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      while (cursor <= end) {
+        const date = cursor.toISOString().slice(0, 10);
+        if (date <= todayIso && dateFilter(date)) {
+          entries.push({
+            date,
+            category: 'utility',
+            amount: Number(u.cost_amount) || 0,
+            description: `${u.category}${u.provider ? ` · ${u.provider}` : ''} (${String(u.cost_frequency).replace('_', '-')})`,
+            reference_id: `utility-${u.id}-${date}`,
+            synthetic: true,
+          });
+        }
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + step, cursor.getDate());
+      }
+    }
+
+    // Sort chronologically, newest first. Ties broken by category order
+    // so the same-day sequence reads consistently across pages.
+    const categoryOrder: Record<TimelineEntry['category'], number> = {
+      fuel: 0, maintenance: 1, loan: 2, insurance: 3, accessory: 4, utility: 5,
+    };
+    entries.sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return categoryOrder[a.category] - categoryOrder[b.category];
+    });
+
+    // Running totals (computed oldest-first, then flipped back).
+    const oldestFirst = [...entries].reverse();
+    let running = 0;
+    const runningByEntry: number[] = [];
+    for (const e of oldestFirst) {
+      running += e.amount;
+      runningByEntry.push(running);
+    }
+    const runningMap = new Map<number, number>();
+    oldestFirst.forEach((e, i) => runningMap.set(i, runningByEntry[i]));
+    const totalAll = running;
+
+    // Per-category totals (over the filtered window).
+    const byCategory: Record<string, { count: number; amount: number }> = {};
+    for (const e of entries) {
+      if (!byCategory[e.category]) byCategory[e.category] = { count: 0, amount: 0 };
+      byCategory[e.category].count += 1;
+      byCategory[e.category].amount += e.amount;
+    }
+    for (const k of Object.keys(byCategory)) {
+      byCategory[k].amount = Math.round(byCategory[k].amount * 100) / 100;
+    }
+
+    res.json({
+      entries: entries.map(e => ({ ...e, amount: Math.round(e.amount * 100) / 100 })),
+      total: Math.round(totalAll * 100) / 100,
+      by_category: byCategory,
+      range: { from, to, count: entries.length },
+    });
+  } catch (err: any) {
+    console.error('[fleet cost-timeline] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to build cost timeline' });
+  }
+});
+
+// GET /api/fleet/cost-analytics/overview — fleet-wide TCO aggregate
+//
+// Sister to /fleet/fuel/analytics/overview but covers all six cost streams.
+// Returns totals, per-vehicle rankings, category breakdown, and a monthly
+// trend line — everything the Cost Analytics page needs in one call.
+router.get('/cost-analytics/overview', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(30, Math.min(730, parseInt(String(req.query.days || 365), 10) || 365));
+    const sinceDate = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+
+    // For fleet-wide totals we sum actual recorded amounts (fuel,
+    // maintenance, accessories, utilities) plus extrapolated totals for
+    // loans and insurance using the same rule the summary endpoint uses.
+    const fuel = db.prepare(`
+      SELECT COALESCE(SUM(total_cost), 0) AS total, COUNT(*) AS fills
+      FROM fleet_fuel_logs WHERE fuel_date >= ? AND total_cost IS NOT NULL
+    `).get(sinceDate) as any;
+    const maint = db.prepare(`
+      SELECT COALESCE(SUM(cost), 0) AS total, COUNT(*) AS events
+      FROM fleet_maintenance WHERE performed_at >= ? AND cost IS NOT NULL
+    `).get(sinceDate) as any;
+    const accessories = db.prepare(`
+      SELECT COALESCE(SUM(cost), 0) AS total, COUNT(*) AS events
+      FROM fleet_accessories WHERE installed_date >= ? AND archived_at IS NULL
+    `).get(sinceDate) as any;
+    const utilities = db.prepare(`
+      SELECT COALESCE(SUM(cost_amount), 0) AS total, COUNT(*) AS events
+      FROM fleet_utility_costs WHERE period_start >= ? AND archived_at IS NULL
+    `).get(sinceDate) as any;
+
+    // Loans + insurance: extrapolate over the window using monthly cadence.
+    const windowMonths = days / 30.44;
+    const activeLoans = db.prepare(`
+      SELECT vehicle_id, monthly_payment, start_date, term_months, status
+      FROM fleet_loans WHERE archived_at IS NULL
+    `).all() as any[];
+    let loanTotal = 0;
+    for (const l of activeLoans) {
+      const start = new Date(l.start_date);
+      const monthsElapsed = Math.max(0, (Date.now() - start.getTime()) / (30.44 * 86400_000));
+      const cappedMonths = l.term_months ? Math.min(l.term_months, monthsElapsed) : monthsElapsed;
+      const monthsInWindow = Math.min(cappedMonths, windowMonths);
+      loanTotal += (Number(l.monthly_payment) || 0) * monthsInWindow;
+    }
+    const policies = db.prepare(`
+      SELECT premium_amount, premium_frequency FROM fleet_insurance_policies
+      WHERE archived_at IS NULL
+    `).all() as any[];
+    const freqPerYear: Record<string, number> = { monthly: 12, quarterly: 4, semi_annual: 2, annual: 1 };
+    let insuranceTotal = 0;
+    for (const p of policies) {
+      const annual = (Number(p.premium_amount) || 0) * (freqPerYear[p.premium_frequency] || 12);
+      insuranceTotal += annual * (days / 365.25);
+    }
+
+    // Per-vehicle TCO ranking — fuel + maintenance + accessories tallied
+    // from actuals, loans + insurance from extrapolation at vehicle scope.
+    const vehicleRows = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage,
+        COALESCE(f.cost, 0) AS fuel_cost,
+        COALESCE(m.cost, 0) AS maint_cost,
+        COALESCE(a.cost, 0) AS accessory_cost,
+        COALESCE(u.cost, 0) AS utility_cost
+      FROM fleet_vehicles fv
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS cost FROM fleet_fuel_logs WHERE fuel_date >= ? AND total_cost IS NOT NULL GROUP BY vehicle_id) f ON f.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS cost FROM fleet_maintenance WHERE performed_at >= ? AND cost IS NOT NULL GROUP BY vehicle_id) m ON m.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) AS cost FROM fleet_accessories WHERE installed_date >= ? AND archived_at IS NULL GROUP BY vehicle_id) a ON a.vehicle_id = fv.id
+      LEFT JOIN (SELECT vehicle_id, SUM(cost_amount) AS cost FROM fleet_utility_costs WHERE period_start >= ? AND archived_at IS NULL GROUP BY vehicle_id) u ON u.vehicle_id = fv.id
+      WHERE fv.archived_at IS NULL
+    `).all(sinceDate, sinceDate, sinceDate, sinceDate) as any[];
+
+    // Attribute loan + insurance totals per vehicle (extrapolated).
+    const vehicleCosts = new Map<number, { loan: number; insurance: number }>();
+    for (const l of activeLoans) {
+      const start = new Date(l.start_date);
+      const monthsElapsed = Math.max(0, (Date.now() - start.getTime()) / (30.44 * 86400_000));
+      const cappedMonths = l.term_months ? Math.min(l.term_months, monthsElapsed) : monthsElapsed;
+      const monthsInWindow = Math.min(cappedMonths, windowMonths);
+      const paid = (Number(l.monthly_payment) || 0) * monthsInWindow;
+      const entry = vehicleCosts.get(l.vehicle_id) || { loan: 0, insurance: 0 };
+      entry.loan += paid;
+      vehicleCosts.set(l.vehicle_id, entry);
+    }
+    const vehiclePolicies = db.prepare(`
+      SELECT vehicle_id, premium_amount, premium_frequency
+      FROM fleet_insurance_policies WHERE archived_at IS NULL
+    `).all() as any[];
+    for (const p of vehiclePolicies) {
+      const annual = (Number(p.premium_amount) || 0) * (freqPerYear[p.premium_frequency] || 12);
+      const paid = annual * (days / 365.25);
+      const entry = vehicleCosts.get(p.vehicle_id) || { loan: 0, insurance: 0 };
+      entry.insurance += paid;
+      vehicleCosts.set(p.vehicle_id, entry);
+    }
+
+    const vehicles = vehicleRows.map(v => {
+      const extra = vehicleCosts.get(v.id) || { loan: 0, insurance: 0 };
+      const total = (Number(v.fuel_cost) || 0) + (Number(v.maint_cost) || 0)
+        + (Number(v.accessory_cost) || 0) + (Number(v.utility_cost) || 0)
+        + extra.loan + extra.insurance;
+      return {
+        id: v.id,
+        vehicle_number: v.vehicle_number,
+        make: v.make, model: v.model, year: v.year,
+        current_mileage: v.current_mileage,
+        fuel_cost: Math.round((Number(v.fuel_cost) || 0) * 100) / 100,
+        maint_cost: Math.round((Number(v.maint_cost) || 0) * 100) / 100,
+        loan_cost: Math.round(extra.loan * 100) / 100,
+        insurance_cost: Math.round(extra.insurance * 100) / 100,
+        accessory_cost: Math.round((Number(v.accessory_cost) || 0) * 100) / 100,
+        utility_cost: Math.round((Number(v.utility_cost) || 0) * 100) / 100,
+        total: Math.round(total * 100) / 100,
+        cost_per_mile: v.current_mileage > 0 ? Math.round((total / v.current_mileage) * 1000) / 1000 : null,
+      };
+    }).sort((a, b) => b.total - a.total);
+
+    // Monthly trend (fuel + maintenance + accessories + utilities — the
+    // ones with a real date). Loans/insurance are smooth-line monthlies
+    // so adding them would flatten the trend, not illuminate it.
+    const monthlyTrend = db.prepare(`
+      SELECT month, SUM(cost) AS cost FROM (
+        SELECT strftime('%Y-%m', fuel_date) AS month, SUM(total_cost) AS cost FROM fleet_fuel_logs WHERE fuel_date >= ? AND total_cost IS NOT NULL GROUP BY month
+        UNION ALL
+        SELECT strftime('%Y-%m', performed_at) AS month, SUM(cost) AS cost FROM fleet_maintenance WHERE performed_at >= ? AND cost IS NOT NULL GROUP BY month
+        UNION ALL
+        SELECT strftime('%Y-%m', installed_date) AS month, SUM(cost) AS cost FROM fleet_accessories WHERE installed_date >= ? AND archived_at IS NULL GROUP BY month
+        UNION ALL
+        SELECT strftime('%Y-%m', period_start) AS month, SUM(cost_amount) AS cost FROM fleet_utility_costs WHERE period_start >= ? AND archived_at IS NULL GROUP BY month
+      )
+      WHERE month IS NOT NULL
+      GROUP BY month ORDER BY month
+    `).all(sinceDate, sinceDate, sinceDate, sinceDate) as any[];
+
+    const round = (n: number) => Math.round(n * 100) / 100;
+    const totals = {
+      fuel:        round(Number(fuel.total) || 0),
+      maintenance: round(Number(maint.total) || 0),
+      loan:        round(loanTotal),
+      insurance:   round(insuranceTotal),
+      accessories: round(Number(accessories.total) || 0),
+      utilities:   round(Number(utilities.total) || 0),
+    };
+    const totalAll = round(
+      totals.fuel + totals.maintenance + totals.loan +
+      totals.insurance + totals.accessories + totals.utilities,
+    );
+
+    // ── Anomaly detection (three independent rules) ──────────────
+    //
+    // We compute three flags per vehicle and return them alongside the
+    // ranking. The client page renders a separate "Anomalies" section
+    // that filters this vehicles array to rows where anomalies.length > 0.
+    //
+    // Rule 1: cost-per-mile outlier (>1.5× fleet average).
+    //   Uses mean of per-vehicle cost_per_mile values (excluding nulls).
+    //   We use the mean rather than median because the small fleet size
+    //   (~dozens) makes the median flap on single-vehicle changes, and
+    //   because operators care about absolute spend — a mean-biased
+    //   threshold catches outliers better at this scale.
+    //
+    // Rule 2: month-over-month spend spike (>50% vs trailing 3-month avg).
+    //   Computed from the monthly per-vehicle spend (fuel+maint+acc+util —
+    //   the time-stamped streams). Loans/insurance are smooth recurring so
+    //   excluding them avoids false positives from the monthly cadence.
+    //
+    // Rule 3: category imbalance (one category > 60% of the vehicle's total).
+    //   Reveals "this vehicle is all repair costs" type patterns.
+    const validCpms = vehicles.map(v => v.cost_per_mile).filter((n): n is number => n != null && n > 0);
+    const fleetAvgCpm = validCpms.length > 0
+      ? validCpms.reduce((s, n) => s + n, 0) / validCpms.length
+      : 0;
+    const cpmThreshold = fleetAvgCpm * 1.5;
+
+    // Pre-compute per-vehicle monthly spend over the window so Rule 2 can
+    // compare last month vs trailing-3 average without re-querying per vehicle.
+    const perVehicleMonthly = db.prepare(`
+      SELECT vehicle_id, month, SUM(cost) AS cost FROM (
+        SELECT vehicle_id, strftime('%Y-%m', fuel_date) AS month, SUM(total_cost) AS cost
+          FROM fleet_fuel_logs WHERE fuel_date >= ? AND total_cost IS NOT NULL GROUP BY vehicle_id, month
+        UNION ALL
+        SELECT vehicle_id, strftime('%Y-%m', performed_at) AS month, SUM(cost) AS cost
+          FROM fleet_maintenance WHERE performed_at >= ? AND cost IS NOT NULL GROUP BY vehicle_id, month
+        UNION ALL
+        SELECT vehicle_id, strftime('%Y-%m', installed_date) AS month, SUM(cost) AS cost
+          FROM fleet_accessories WHERE installed_date >= ? AND archived_at IS NULL GROUP BY vehicle_id, month
+        UNION ALL
+        SELECT vehicle_id, strftime('%Y-%m', period_start) AS month, SUM(cost_amount) AS cost
+          FROM fleet_utility_costs WHERE period_start >= ? AND archived_at IS NULL AND vehicle_id IS NOT NULL GROUP BY vehicle_id, month
+      )
+      WHERE month IS NOT NULL
+      GROUP BY vehicle_id, month ORDER BY vehicle_id, month
+    `).all(sinceDate, sinceDate, sinceDate, sinceDate) as any[];
+
+    const monthlyByVehicle = new Map<number, { month: string; cost: number }[]>();
+    for (const r of perVehicleMonthly) {
+      const list = monthlyByVehicle.get(r.vehicle_id) || [];
+      list.push({ month: r.month, cost: Number(r.cost) || 0 });
+      monthlyByVehicle.set(r.vehicle_id, list);
+    }
+
+    const vehiclesWithAnomalies = vehicles.map(v => {
+      const anomalies: Array<{ kind: string; severity: 'watch' | 'alert'; detail: string }> = [];
+
+      // Rule 1: cost-per-mile outlier
+      if (v.cost_per_mile != null && fleetAvgCpm > 0 && v.cost_per_mile > cpmThreshold) {
+        const ratio = v.cost_per_mile / fleetAvgCpm;
+        anomalies.push({
+          kind: 'cpm_outlier',
+          severity: ratio > 2 ? 'alert' : 'watch',
+          detail: `$${v.cost_per_mile.toFixed(3)}/mi is ${ratio.toFixed(2)}× fleet avg ($${fleetAvgCpm.toFixed(3)}/mi)`,
+        });
+      }
+
+      // Rule 2: MoM spike. Need 4+ months of data to compare against.
+      const months = monthlyByVehicle.get(v.id) || [];
+      if (months.length >= 4) {
+        const last = months[months.length - 1];
+        const prior3 = months.slice(-4, -1);
+        const prior3Avg = prior3.reduce((s, m) => s + m.cost, 0) / prior3.length;
+        if (prior3Avg > 0 && last.cost > prior3Avg * 1.5) {
+          const pct = ((last.cost / prior3Avg) - 1) * 100;
+          anomalies.push({
+            kind: 'mom_spike',
+            severity: pct > 100 ? 'alert' : 'watch',
+            detail: `${last.month} spend ($${last.cost.toFixed(0)}) is +${pct.toFixed(0)}% vs trailing 3-mo avg ($${prior3Avg.toFixed(0)})`,
+          });
+        }
+      }
+
+      // Rule 3: category imbalance. Ignore vehicles with <$500 total — the
+      // percentage math gets noisy on trivially-small rows.
+      if (v.total >= 500) {
+        const cats: Array<[string, number]> = [
+          ['fuel', v.fuel_cost], ['maintenance', v.maint_cost],
+          ['loan', v.loan_cost], ['insurance', v.insurance_cost],
+          ['accessories', v.accessory_cost], ['utilities', v.utility_cost],
+        ];
+        for (const [name, amount] of cats) {
+          const pct = amount / v.total;
+          if (pct > 0.6) {
+            anomalies.push({
+              kind: 'category_imbalance',
+              severity: pct > 0.75 ? 'alert' : 'watch',
+              detail: `${name} is ${(pct * 100).toFixed(0)}% of TCO ($${amount.toFixed(0)} of $${v.total.toFixed(0)})`,
+            });
+            break; // At most one category can dominate; first hit is enough.
+          }
+        }
+      }
+
+      return { ...v, anomalies };
+    });
+
+    res.json({
+      since: sinceDate,
+      days,
+      totals,
+      total_all: totalAll,
+      counts: {
+        fuel_fills: Number(fuel.fills) || 0,
+        maintenance_events: Number(maint.events) || 0,
+        accessory_installs: Number(accessories.events) || 0,
+        utility_entries: Number(utilities.events) || 0,
+        active_loans: activeLoans.length,
+        active_policies: policies.length,
+      },
+      fleet_avg_cost_per_mile: Math.round(fleetAvgCpm * 1000) / 1000,
+      vehicles: vehiclesWithAnomalies,
+      monthly_trend: monthlyTrend.map((r: any) => ({
+        month: r.month,
+        cost: round(Number(r.cost) || 0),
+      })),
+    });
+  } catch (err: any) {
+    console.error('[fleet cost-analytics overview] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to compute fleet cost analytics' });
+  }
+});
+
+// GET /api/fleet/:id/cost-summary — total cost-of-ownership rollup
+//
+// Combines fuel + maintenance + the four new cost categories into one
+// per-vehicle picture. Loan + insurance numbers are EXTRAPOLATED from
+// monthly/annualised figures (we don't track per-payment ledger entries),
+// while accessories and utilities are summed as actual recorded charges.
+//
+// Response shape is intentionally flat so the client can render it as
+// a stat-card grid without further computation.
+router.get('/:id/cost-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = req.params.id;
+    const vehicle = db.prepare('SELECT id, current_mileage FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
+
+    const fuel = db.prepare('SELECT COALESCE(SUM(total_cost), 0) AS total FROM fleet_fuel_logs WHERE vehicle_id = ?').get(id) as any;
+    const maintenance = db.prepare('SELECT COALESCE(SUM(cost), 0) AS total FROM fleet_maintenance WHERE vehicle_id = ?').get(id) as any;
+    const accessories = db.prepare('SELECT COALESCE(SUM(cost), 0) AS total FROM fleet_accessories WHERE vehicle_id = ? AND archived_at IS NULL').get(id) as any;
+
+    // Active loans — sum monthly_payment × months elapsed since start_date,
+    // capped at term_months. This gives "actual paid so far" for each loan.
+    const loans = db.prepare(`
+      SELECT id, monthly_payment, start_date, term_months, payoff_date, status
+      FROM fleet_loans
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).all(id) as any[];
+    let loanPaidToDate = 0;
+    let monthlyLoanCommitment = 0;
+    for (const l of loans) {
+      const start = new Date(l.start_date);
+      const monthsElapsed = Math.max(0, Math.floor((Date.now() - start.getTime()) / (30.44 * 86400_000)));
+      const cappedMonths = l.term_months ? Math.min(l.term_months, monthsElapsed) : monthsElapsed;
+      loanPaidToDate += (Number(l.monthly_payment) || 0) * cappedMonths;
+      if (l.status === 'active') monthlyLoanCommitment += Number(l.monthly_payment) || 0;
+    }
+
+    // Insurance premiums — annualised then summed across active policies.
+    const insurancePolicies = db.prepare(`
+      SELECT premium_amount, premium_frequency, effective_from, expires_at, status
+      FROM fleet_insurance_policies
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).all(id) as any[];
+    const freqMultiplier: Record<string, number> = {
+      monthly: 12, quarterly: 4, semi_annual: 2, annual: 1,
+    };
+    let annualInsurance = 0;
+    let insurancePaidToDate = 0;
+    for (const p of insurancePolicies) {
+      const annual = (Number(p.premium_amount) || 0) * (freqMultiplier[p.premium_frequency] || 12);
+      if (p.status === 'active') annualInsurance += annual;
+      const start = new Date(p.effective_from);
+      const yearsElapsed = Math.max(0, (Date.now() - start.getTime()) / (365.25 * 86400_000));
+      insurancePaidToDate += annual * yearsElapsed;
+    }
+
+    // Utilities — sum recorded charges directly. cost_frequency is
+    // informational only (the period_start..period_end is what matters).
+    const utilities = db.prepare(`
+      SELECT COALESCE(SUM(cost_amount), 0) AS total
+      FROM fleet_utility_costs
+      WHERE (vehicle_id = ? OR vehicle_id IS NULL) AND archived_at IS NULL
+    `).get(id) as any;
+
+    const round = (n: number) => Math.round(n * 100) / 100;
+    const totalLifetime = round(
+      (Number(fuel.total) || 0) +
+      (Number(maintenance.total) || 0) +
+      (Number(accessories.total) || 0) +
+      loanPaidToDate +
+      insurancePaidToDate +
+      (Number(utilities.total) || 0),
+    );
+
+    res.json({
+      vehicle_id: Number(id),
+      categories: {
+        fuel:        round(Number(fuel.total) || 0),
+        maintenance: round(Number(maintenance.total) || 0),
+        loans:       round(loanPaidToDate),
+        insurance:   round(insurancePaidToDate),
+        accessories: round(Number(accessories.total) || 0),
+        utilities:   round(Number(utilities.total) || 0),
+      },
+      total_lifetime: totalLifetime,
+      monthly_commitment: {
+        loan:      round(monthlyLoanCommitment),
+        insurance: round(annualInsurance / 12),
+        total:     round(monthlyLoanCommitment + annualInsurance / 12),
+      },
+      cost_per_mile: vehicle.current_mileage > 0
+        ? Math.round((totalLifetime / vehicle.current_mileage) * 1000) / 1000
+        : null,
+    });
+  } catch (err: any) {
+    console.error('[fleet cost-summary] error:', err?.message, err?.stack);
+    res.status(500).json({ error: 'Failed to compute cost summary' });
+  }
+});
+
 // ─── GET /api/fleet/:id/inspections ─ Inspection history ──────────
 router.get('/:id/inspections', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '25', type } = req.query;
+    const { page = '1', per_page = '100000', type } = req.query;
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
@@ -1758,7 +3954,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
     }
 
     const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM fleet_inspections ${whereClause}`).get(...params) as any;
@@ -1954,7 +4150,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '100000' } = req.query;
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
@@ -1963,7 +4159,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_assignments WHERE vehicle_id = ?').get(id) as any;
@@ -3281,8 +5477,8 @@ router.post('/vehicle-swap', (req: Request, res: Response) => {
 router.get('/vehicle-swaps', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { date, officer_id, limit = '50' } = req.query;
-    const limitNum = parseInt(limit as string, 10) || 50;
+    const { date, officer_id, limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];

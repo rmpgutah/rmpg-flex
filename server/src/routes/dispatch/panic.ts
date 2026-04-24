@@ -143,7 +143,9 @@ async function emailSupervisors(panicId: number, panic: any): Promise<void> {
 
     for (const sup of supervisors) {
       if (!sup.email) continue;
-      await sendEmail({
+      // Panic escalation runs from a server-side timer (no req in scope) —
+      // send from admin mailbox (user 1). Per Phase 4 per-user Graph design.
+      await sendEmail(1, {
         to: sup.email,
         subject: `EMERGENCY: Unacknowledged Panic Alert - ${user?.full_name || 'Unknown Officer'}`,
         html: `<h2 style="color:red;">Panic Alert - Unacknowledged</h2>
@@ -595,7 +597,7 @@ router.get('/panic/active', requireRole('admin', 'supervisor', 'manager', 'dispa
 router.get('/panic/history', requireRole('admin', 'supervisor', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+    const limit = Math.min(100000, Math.max(1, (Number(req.query.limit)) || 100000));
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     const total = (db.prepare('SELECT COUNT(*) as count FROM panic_alerts').get() as any)?.count || 0;

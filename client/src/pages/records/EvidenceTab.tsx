@@ -628,7 +628,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                     collected: 'bg-green-500',
                     transferred: 'bg-gray-500',
                     checked_out: 'bg-amber-500',
-                    returned: 'bg-cyan-500',
+                    returned: 'bg-gray-500',
                     released: 'bg-purple-500',
                     destroyed: 'bg-red-500',
                   };
@@ -747,7 +747,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   <div
                     key={idx}
                     className="aspect-square bg-surface-sunken border border-rmpg-600 rounded-sm overflow-hidden cursor-pointer hover:border-brand-500 transition-colors"
-                    onClick={() => window.open(photo, '_blank')}
+                    onClick={() => window.open(photo, '_blank', 'noopener,noreferrer')}
                   >
                     <img src={photo} alt={`Evidence photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
                   </div>

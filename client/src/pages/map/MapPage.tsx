@@ -71,13 +71,18 @@ import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
+import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useMapRouting } from '../../hooks/useMapRouting';
+import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
+import { usePersistedState } from '../../hooks/usePersistedState';
+import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
+import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
+import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
@@ -121,6 +126,14 @@ import PerimeterToolsPanel from './components/PerimeterToolsPanel';
 import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
+import HeatmapLegend from './components/HeatmapLegend';
+import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
+import RouteComparePanel from './components/RouteComparePanel';
+import { useMapHotspots } from './hooks/useMapHotspots';
+import { useMapDimBase } from './hooks/useMapDimBase';
+import { useMapIdleZones } from './hooks/useMapIdleZones';
+import { computeTrailStats, formatTrailStats, downloadTrailAsGpx } from './utils/trailStats';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
@@ -128,6 +141,9 @@ import AdvancedHeatmapPanel from './components/AdvancedHeatmapPanel';
 import WeatherPanel from './components/WeatherPanel';
 import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
 import { useAnalysisSummary } from './hooks/useAnalysisSummary';
+import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
+import SpeedGraphOverlay from './components/SpeedGraphOverlay';
+import CoverageTimeline from './components/CoverageTimeline';
 
 // ============================================================
 // Constants
@@ -147,7 +163,7 @@ const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
 const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
   red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
   amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
-  blue: { active: 'bg-blue-900/40 text-blue-400 border border-blue-700/40' },
+  blue: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
   gray: { active: 'bg-[#0c0c0c]/40 text-gray-400 border border-gray-700/40' },
 };
 
@@ -182,6 +198,18 @@ const speedToColor = (mps: number | null): string => {
   if (mph < 35) return '#eab308';   // City — yellow
   if (mph < 55) return '#f97316';   // Arterial — orange
   return '#ef4444';                 // Highway/pursuit — red
+};
+
+// Acceleration-to-color mapping for breadcrumb accel mode (m/s² → hex)
+const accelToColor = (accelMps2: number | null): string => {
+  if (accelMps2 == null) return '#666666';
+  if (accelMps2 < -4) return '#dc2626';   // hard brake
+  if (accelMps2 < -2) return '#f97316';   // decel
+  if (accelMps2 < -0.5) return '#eab308'; // mild decel
+  if (accelMps2 < 0.5) return '#22c55e';  // steady
+  if (accelMps2 < 2) return '#84cc16';    // mild accel
+  if (accelMps2 < 3) return '#f97316';    // accel
+  return '#fbbf24';                         // rapid accel
 };
 
 // Unit status to color for breadcrumb status mode
@@ -221,10 +249,13 @@ export default function MapPage() {
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  // Determine if the error is an API key/auth issue vs a connectivity issue.
-  // Auth errors → show config dialog.  Connectivity errors → show Leaflet fallback.
-  const isAuthError = mapError != null && (mapError.includes('API key') || mapError.includes('authentication') || mapError.includes('not configured'));
-  const showOfflineFallback = mapError != null && !isAuthError;
+  // All map errors route to the Leaflet fallback — no blocking config dialog.
+  // "No API key configured" is a normal operating mode for deployments without
+  // Google Maps billing enabled. gm_authFailure and network errors likewise
+  // degrade gracefully to Leaflet + CartoDB tiles. The config dialog was a
+  // holdover from an earlier era when Google Maps was mandatory.
+  const isAuthError = false;
+  const showOfflineFallback = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
@@ -270,9 +301,10 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Heat map state
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [showTrackingLines, setShowTrackingLines] = useState(true);
+  // Heat map state — overlay toggles persist across sessions so officers
+  // don't have to re-enable their usual layers every shift.
+  const [showHeatmap, setShowHeatmap] = usePersistedState<boolean>('rmpg_map_showHeatmap', false);
+  const [showTrackingLines, setShowTrackingLines] = usePersistedState<boolean>('rmpg_map_showTrackingLines', true);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
@@ -310,19 +342,79 @@ export default function MapPage() {
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
-  const [breadcrumbHours, setBreadcrumbHours] = useState(8);
+  const [breadcrumbHours, setBreadcrumbHours] = useState(24);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status'>('unit');
+  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
+  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
+
+  // Speed analytics integration
+  const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
-  const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
+  const [playbackTrailsRaw, setPlaybackTrailsRaw] = useState<PlaybackTrail[]>([]);
+
+  // Breadcrumb fetch-window presets. Labels are compact per operator request
+  // (24h / 48h / 7d / 14d / 21d / 1mo / 3mo / 1y). Values are hours — the
+  // server /dispatch/gps/trails endpoint still takes ?hours= so upstream
+  // doesn't need to change. Month = 30d, year = 365d rounded in hours.
+  const BREADCRUMB_HOUR_PRESETS: ReadonlyArray<{ hours: number; label: string }> = [
+    { hours: 24,   label: '24h' },
+    { hours: 48,   label: '48h' },
+    { hours: 168,  label: '7d' },
+    { hours: 336,  label: '14d' },
+    { hours: 504,  label: '21d' },
+    { hours: 720,  label: '1mo' },
+    { hours: 2160, label: '3mo' },
+    { hours: 8760, label: '1y' },
+  ];
+
+  // Trail scrubber — lets dispatchers narrow the rendered trails to a
+  // time sub-window without a re-fetch. Values are "hours ago relative to
+  // now": fromH is the older edge (larger), toH is the newer edge (smaller),
+  // so [fromH=8, toH=0] means "last 8h through now". Default matches
+  // breadcrumbHours so the scrubber starts showing everything and the
+  // dispatcher narrows from there.
+  const [trailWindowFromH, setTrailWindowFromH] = useState<number>(breadcrumbHours);
+  const [trailWindowToH, setTrailWindowToH] = useState<number>(0);
+
+  // Keep the scrubber's "from" handle aligned with the fetched window —
+  // if the user bumps breadcrumbHours from 8 to 24, extend the scrubber
+  // range too so they can actually see the newer data.
+  useEffect(() => {
+    setTrailWindowFromH((prev) => (prev > breadcrumbHours ? breadcrumbHours : prev));
+  }, [breadcrumbHours]);
+
+  // Derived, window-filtered view of the trails. Render effects read this;
+  // the fetch effect writes the unfiltered Raw state. Filter is cheap for
+  // typical point counts (≤2k per unit), so recomputing on every scrubber
+  // drag is fine — no debounce needed.
+  const playbackTrails = useMemo<PlaybackTrail[]>(() => {
+    if (playbackTrailsRaw.length === 0) return playbackTrailsRaw;
+    const now = Date.now();
+    const windowStart = now - trailWindowFromH * 3600 * 1000;
+    const windowEnd = now - trailWindowToH * 3600 * 1000;
+    // Fast path: default window covers everything.
+    if (trailWindowFromH >= breadcrumbHours && trailWindowToH <= 0) {
+      return playbackTrailsRaw;
+    }
+    return playbackTrailsRaw
+      .map((t) => {
+        const filtered = t.points.filter((p) => {
+          const ts = Date.parse(p.time);
+          return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
+        });
+        return { ...t, points: filtered };
+      })
+      .filter((t) => t.points.length > 0);
+  }, [playbackTrailsRaw, trailWindowFromH, trailWindowToH, breadcrumbHours]);
   const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
   const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
+  const playbackSpeedLabelRef = useRef<google.maps.InfoWindow | null>(null);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -344,7 +436,82 @@ export default function MapPage() {
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
-  const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
+  // Multi-unit routing: when multiple units are assigned to a call, show an
+  // ETA-colored polyline for each simultaneously (green=fastest, amber=mid,
+  // red=slowest) so the dispatcher can see who's closest at a glance.
+  // Each Route click in the call info window adds to the current set rather
+  // than replacing — clicking Route on unit B while unit A is already routed
+  // shows both polylines.
+  const { activeRoutes, routeLoading, showRoute, clearAllRoutes, updateOrigin } =
+    useMultiUnitRouting({ map: mapInstanceRef.current });
+
+  // Auto-pan the map to newly-dispatched P1 calls so dispatchers don't miss
+  // high-priority events while looking at another part of the map. Existing
+  // P1s at page-load do NOT trigger a pan — only calls that arrive after
+  // this mount. No-op until the Map instance is ready.
+  useAutoPanToP1(mapInstanceRef.current, calls);
+
+  // Audible chirp when a new P1 dispatches — paired with the auto-pan above
+  // so dispatchers who aren't looking at the map still get cued. Defaults on;
+  // user can toggle via localStorage key `rmpg_map_p1AudioEnabled`.
+  const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
+  useP1AudioAlert(calls, { enabled: p1AudioEnabled });
+
+  // Hotspot markers — numbered red pins at the top-5 heatmap peaks. Only
+  // rendered when the basic heatmap layer is on (Advanced heatmap has its
+  // own built-in cluster overlay). Reuses heatmapData — no extra fetch.
+  useMapHotspots({
+    mapInstanceRef,
+    data: heatmapData,
+    enabled: showHeatmap && !advancedHeatmapEnabled,
+    mode: heatmapMode === 'risk' ? 'risk' : 'calls',
+    topN: 5,
+  });
+
+  // Dim-base mode: slightly darken the base tiles when the heatmap is on
+  // so hot peaks pop without muting our own marker colors. Toggle persists.
+  const [dimBaseEnabled, setDimBaseEnabled] = usePersistedState<boolean>('rmpg_map_dimBaseEnabled', true);
+  useMapDimBase({
+    mapInstanceRef,
+    enabled: dimBaseEnabled && showHeatmap,
+    opacity: 0.35,
+  });
+
+  // Idle-zone detection: highlight stretches >=10min where a unit stayed
+  // within ~50m as orange circles. Reuses playbackTrails — pure client-side.
+  const [showIdleZones, setShowIdleZones] = usePersistedState<boolean>('rmpg_map_showIdleZones', false);
+
+  // Route comparison — pick two units from the active breadcrumb set and see
+  // side-by-side stats. Visibility is session-only; IDs are not persisted
+  // because their meaning depends on who's on shift right now.
+  const [showRouteCompare, setShowRouteCompare] = useState(false);
+  const [compareUnitA, setCompareUnitA] = useState<string | number | null>(null);
+  const [compareUnitB, setCompareUnitB] = useState<string | number | null>(null);
+  useMapIdleZones({
+    mapInstanceRef,
+    trails: playbackTrails,
+    enabled: showIdleZones && showBreadcrumbs,
+    minIdleSec: 600,
+    clusterRadiusM: 50,
+  });
+
+  // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
+  // F=field interviews, D=daylight, I=incidents, E=enforcement, ?=help.
+  // No-op when an input is focused or a modifier key is held.
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  useMapKeyboardShortcuts(
+    {
+      toggleHeatmap: () => setShowHeatmap((v) => !v),
+      toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
+      toggleClustering: () => setClusteringEnabled((v) => !v),
+      togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
+      toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
+      toggleDaylight: () => setShowDaylight((v) => !v),
+      toggleIncidentReports: () => setShowIncidentReports((v) => !v),
+      toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
+    },
+    () => setShowShortcutsHelp(true),
+  );
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -441,7 +608,7 @@ export default function MapPage() {
   const [showGeofences, setShowGeofences] = useState(false);
   const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
-  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+  const [clusteringEnabled, setClusteringEnabled] = usePersistedState<boolean>('rmpg_map_clusteringEnabled', false);
 
   // Separate marker tracking for clustering & drag dispatch
   const unitMarkersMapRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
@@ -454,13 +621,14 @@ export default function MapPage() {
     setIntelLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   };
 
-  // New tactical layer toggles
-  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
-  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
+  // New tactical layer toggles — persist across reload so officers don't
+  // have to re-enable their usual layers every shift.
+  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = usePersistedState<boolean>('rmpg_map_showPatrolCheckpoints', false);
+  const [showFieldInterviews, setShowFieldInterviews] = usePersistedState<boolean>('rmpg_map_showFieldInterviews', false);
   const [fiDays, setFiDays] = useState(30);
-  const [showDwellTime, setShowDwellTime] = useState(false);
-  const [showResponseRadius, setShowResponseRadius] = useState(false);
-  const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
+  const [showDwellTime, setShowDwellTime] = usePersistedState<boolean>('rmpg_map_showDwellTime', false);
+  const [showResponseRadius, setShowResponseRadius] = usePersistedState<boolean>('rmpg_map_showResponseRadius', false);
+  const [showEnforcementClusters, setShowEnforcementClusters] = usePersistedState<boolean>('rmpg_map_showEnforcementClusters', false);
   const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
   const [enforcementDays, setEnforcementDays] = useState(90);
   const [showCoverage, setShowCoverage] = useState(false);
@@ -470,7 +638,7 @@ export default function MapPage() {
   const [repeatDays, setRepeatDays] = useState(30);
   const [repeatMinCount, setRepeatMinCount] = useState(3);
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
-  const [showDaylight, setShowDaylight] = useState(false);
+  const [showDaylight, setShowDaylight] = usePersistedState<boolean>('rmpg_map_showDaylight', false);
 
   // Historical call & incident report layers
   const [showCallHistory, setShowCallHistory] = useState(false);
@@ -478,7 +646,7 @@ export default function MapPage() {
   const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
   const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
   const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
-  const [showIncidentReports, setShowIncidentReports] = useState(false);
+  const [showIncidentReports, setShowIncidentReports] = usePersistedState<boolean>('rmpg_map_showIncidentReports', false);
   const [incidentDays, setIncidentDays] = useState(30);
   const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
   const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
@@ -820,6 +988,13 @@ export default function MapPage() {
         gestureHandling: 'greedy',
       });
 
+      // Auth/quota failure can hand back a stub Map with no div — route to the
+      // existing error UI instead of crashing in monitorTileLoading.
+      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
+        setMapError('Google Maps failed to initialize — check API key / billing.');
+        return;
+      }
+
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
@@ -1112,6 +1287,14 @@ export default function MapPage() {
                      ▶ Route to ${escapeHtml(assignedCall.call_number)}
                    </button>`
                 : '';
+              const omBtnLabel = isAndroidNative() ? 'Navigate (Organic Maps)' : 'Open Directions';
+              const omBtnHtml = (assignedCall && assignedCall.latitude != null && assignedCall.longitude != null)
+                ? `<button type="button" data-om-lat="${assignedCall.latitude}" data-om-lng="${assignedCall.longitude}"
+                     data-om-label="${escapeHtml(assignedCall.call_number)}"
+                     style="margin-top:4px;width:100%;padding:3px 0;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:9px;font-weight:900;font-family:monospace;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;">
+                     \u{1F9ED} ${omBtnLabel}
+                   </button>`
+                : '';
 
               infoWindowRef.current?.setContent(`
                 <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
@@ -1130,6 +1313,7 @@ export default function MapPage() {
                     </div>
                   ` : `<div style="font-size:9px;color:#5a6e80;margin-top:4px;">${escapeHtml(location)}</div>`}
                   ${routeBtnHtml}
+                  ${omBtnHtml}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
@@ -1158,6 +1342,57 @@ export default function MapPage() {
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
             onClick: () => {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
+              // Compute the 3 nearest units with GPS that are NOT already
+              // assigned to this call. Straight-line haversine — cheap enough
+              // to recompute on every info-window open (unit count is small).
+              // This intentionally ignores unit status: the dispatcher can see
+              // the status dot and make their own call on whether an on-break
+              // unit can roll. "Closest by road" would require Directions
+              // calls per unit — too expensive for a tap-to-preview panel.
+              const assignedIds = new Set(assignedUnits.map(u => String(u.id)));
+              const nearestUnits = (call.latitude != null && call.longitude != null)
+                ? units
+                    .filter(u => !assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null)
+                    .map(u => {
+                      const dLat = ((u.latitude! - call.latitude!) * Math.PI) / 180;
+                      const dLng = ((u.longitude! - call.longitude!) * Math.PI) / 180;
+                      const a = Math.sin(dLat / 2) ** 2
+                        + Math.cos((u.latitude! * Math.PI) / 180)
+                        * Math.cos((call.latitude! * Math.PI) / 180)
+                        * Math.sin(dLng / 2) ** 2;
+                      const meters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                      return { unit: u, meters };
+                    })
+                    .sort((a, b) => a.meters - b.meters)
+                    .slice(0, 3)
+                : [];
+
+              let nearestHtml = '';
+              if (nearestUnits.length > 0) {
+                nearestHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
+                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">NEAREST UNITS</div>
+                  ${nearestUnits.map(({ unit: u, meters }) => {
+                    const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
+                    const miles = (meters / 1609.344).toFixed(1);
+                    const routeBtn = (call.latitude != null && call.longitude != null)
+                      ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
+                           data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
+                           data-route-clat="${call.latitude}" data-route-clng="${call.longitude}"
+                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#a0a0a0;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           ▶ ROUTE
+                         </button>`
+                      : '';
+                    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                      <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
+                      <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
+                      <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name || '')}</span>
+                      <span style="font-size:9px;color:#6b7280;">${miles} mi</span>
+                      ${routeBtn}
+                    </div>`;
+                  }).join('')}
+                </div>`;
+              }
+
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
@@ -1172,11 +1407,20 @@ export default function MapPage() {
                            ▶ ROUTE
                          </button>`
                       : '';
+                    const omBtn = (call.latitude != null && call.longitude != null)
+                      ? `<button type="button" data-om-lat="${call.latitude}" data-om-lng="${call.longitude}"
+                           data-om-label="${escapeHtml(call.call_number)}"
+                           title="${isAndroidNative() ? 'Open in Organic Maps' : 'Open Google Maps directions'}"
+                           style="padding:1px 5px;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
+                           \u{1F9ED} NAV
+                         </button>`
+                      : '';
                     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
                       <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
                       <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
                       <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name)}</span>
                       ${routeBtn}
+                      ${omBtn}
                     </div>`;
                   }).join('')}
                 </div>`;
@@ -1195,6 +1439,7 @@ export default function MapPage() {
                   ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
                   <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
                   ${unitsHtml}
+                  ${nearestHtml}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
@@ -1382,17 +1627,39 @@ export default function MapPage() {
     return () => document.removeEventListener('click', handleRouteClick);
   }, [showRoute]);
 
+  // Delegated handler for "Navigate with Organic Maps" buttons rendered inside
+  // info-window HTML. Android-native only; TS wrapper no-ops on other platforms.
+  useEffect(() => {
+    function handleOmClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest('[data-om-lat]') as HTMLElement | null;
+      if (!btn) return;
+      const lat = parseFloat(btn.getAttribute('data-om-lat') || '');
+      const lng = parseFloat(btn.getAttribute('data-om-lng') || '');
+      const label = btn.getAttribute('data-om-label') || '';
+      if (isNaN(lat) || isNaN(lng)) return;
+      navigateTo(lat, lng, label).then((res) => {
+        if (!res.ok) devWarn('[Nav] launch failed:', res.reason);
+        else devLog('[Nav] launched via', res.mode);
+      });
+      infoWindowRef.current?.close();
+    }
+    document.addEventListener('click', handleOmClick);
+    return () => document.removeEventListener('click', handleOmClick);
+  }, []);
+
   // ============================================================
-  // Update Route When Routed Unit GPS Changes
+  // Update Routes When Routed Unit GPS Changes (multi-unit)
   // ============================================================
 
   useEffect(() => {
-    if (!activeRoute) return;
-    const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
-    if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
-      updateOrigin(routedUnit.latitude, routedUnit.longitude);
+    if (activeRoutes.length === 0) return;
+    for (const route of activeRoutes) {
+      const routedUnit = units.find(u => u.call_sign === route.unitCallSign);
+      if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+        updateOrigin(route.unitCallSign, routedUnit.latitude, routedUnit.longitude);
+      }
     }
-  }, [activeRoute, units, updateOrigin]);
+  }, [activeRoutes, units, updateOrigin]);
 
   // ============================================================
   // Heat Map Circles
@@ -1550,8 +1817,10 @@ export default function MapPage() {
     breadcrumbMarkersRef.current = [];
     breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
     breadcrumbArrowsRef.current = [];
+    speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+    speedAlertMarkersRef.current = [];
 
-    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
+    if (!showBreadcrumbs) { setPlaybackTrailsRaw([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
@@ -1591,11 +1860,13 @@ export default function MapPage() {
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current = [];
 
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         if (!trails) return;
-        setPlaybackTrails(trails);
+        setPlaybackTrailsRaw(trails);
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
@@ -1614,6 +1885,15 @@ export default function MapPage() {
               segColor = speedToColor(p1.speed);
             } else if (breadcrumbColorMode === 'status') {
               segColor = statusToColor(p1.status);
+            } else if (breadcrumbColorMode === 'accel') {
+              // Compute inline acceleration between consecutive points
+              const dt = (new Date(p2.time).getTime() - new Date(p1.time).getTime()) / 1000;
+              if (dt > 0 && p1.speed != null && p2.speed != null) {
+                const accel = (p2.speed - p1.speed) / dt;
+                segColor = accelToColor(accel);
+              } else {
+                segColor = accelToColor(null);
+              }
             } else {
               segColor = unitColor;
             }
@@ -1640,7 +1920,7 @@ export default function MapPage() {
                 path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                 scale: 2.5,
                 rotation: pt.heading,
-                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : unitColor,
+                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor,
                 fillOpacity: 0.3 + freshness * 0.5,
                 strokeColor: '#fff',
                 strokeWeight: 0.5,
@@ -1658,7 +1938,16 @@ export default function MapPage() {
             let dotColor: string;
             if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
             else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
-            else dotColor = unitColor;
+            else if (breadcrumbColorMode === 'accel') {
+              // Compute accel from prev point
+              if (ptIdx > 0) {
+                const prev = trail.points[ptIdx - 1];
+                const dt = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+                if (dt > 0 && pt.speed != null && prev.speed != null) {
+                  dotColor = accelToColor((pt.speed - prev.speed) / dt);
+                } else { dotColor = accelToColor(null); }
+              } else { dotColor = accelToColor(null); }
+            } else dotColor = unitColor;
 
             const dot = new google.maps.Circle({
               center: { lat: pt.lat, lng: pt.lng },
@@ -1678,23 +1967,89 @@ export default function MapPage() {
               const locationRow = pt.road_name
                 ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
                 : '';
+
+              // Compute acceleration and distance from previous point
+              let accelHtml = '';
+              let distHtml = '';
+              if (ptIdx > 0) {
+                const prev = trail.points[ptIdx - 1];
+                const dtSec = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+                // Distance (Haversine approx)
+                const dLat = (pt.lat - prev.lat) * Math.PI / 180;
+                const dLng = (pt.lng - prev.lng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(pt.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+                const distM = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                distHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Distance</td><td style="color:#e0e0e0">${Math.round(distM)}m from last ping (${dtSec.toFixed(1)}s)</td></tr>`;
+                // Acceleration
+                if (dtSec > 0 && pt.speed != null && prev.speed != null) {
+                  const accelVal = (pt.speed - prev.speed) / dtSec;
+                  const accelColor = accelToColor(accelVal);
+                  const arrow = accelVal >= 0 ? '\u2191' : '\u2193';
+                  const sign = accelVal >= 0 ? '+' : '';
+                  accelHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accel</td><td style="color:${accelColor};font-weight:bold">${arrow} ${sign}${accelVal.toFixed(1)} m/s\u00B2</td></tr>`;
+                }
+              }
+
+              // GPS quality badge
+              const acc = pt.accuracy;
+              let gpsLabel = 'N/A'; let gpsColor = '#666666';
+              if (acc != null) {
+                if (acc < 10) { gpsLabel = 'GPS'; gpsColor = '#22c55e'; }
+                else if (acc < 30) { gpsLabel = 'GOOD'; gpsColor = '#84cc16'; }
+                else if (acc < 100) { gpsLabel = 'FAIR'; gpsColor = '#eab308'; }
+                else { gpsLabel = 'POOR'; gpsColor = '#ef4444'; }
+              }
+              const gpsRow = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">GPS</td><td><span style="font-size:9px;font-weight:bold;color:${gpsColor};padding:0 4px;border:1px solid ${gpsColor}40;border-radius:2px">${gpsLabel}</span> ${acc != null ? `\u00B1${Math.round(acc)}m` : ''}</td></tr>`;
+
+              // Heading compass
+              const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+              const headingDir = pt.heading != null ? dirs[Math.round(pt.heading / 45) % 8] : '';
+              const headingCompass = pt.heading != null
+                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0"><span style="display:inline-block;transform:rotate(${Math.round(pt.heading)}deg);font-size:13px">\u2191</span> ${headingDir} (${Math.round(pt.heading)}\u00B0)</td></tr>`
+                : `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">\u2014</td></tr>`;
+
+              // Mini speed sparkline SVG (surrounding ~20 points)
+              const sparkStart = Math.max(0, ptIdx - 10);
+              const sparkEnd = Math.min(trail.points.length, ptIdx + 10);
+              const sparkPoints = trail.points.slice(sparkStart, sparkEnd);
+              let sparkSvg = '';
+              if (sparkPoints.length > 2) {
+                const maxSpd = Math.max(...sparkPoints.map(p => (p.speed ?? 0) * 2.237), 10);
+                const svgW = 180; const svgH = 36;
+                const coords = sparkPoints.map((p, i) => {
+                  const x = (i / (sparkPoints.length - 1)) * svgW;
+                  const y = svgH - ((p.speed ?? 0) * 2.237 / maxSpd) * (svgH - 4) - 2;
+                  return `${x.toFixed(1)},${y.toFixed(1)}`;
+                });
+                const highlightIdx = ptIdx - sparkStart;
+                const hx = sparkPoints.length > 1 ? (highlightIdx / (sparkPoints.length - 1)) * svgW : svgW / 2;
+                const hy = svgH - (((sparkPoints[highlightIdx]?.speed ?? 0) * 2.237) / maxSpd) * (svgH - 4) - 2;
+                sparkSvg = `<svg width="${svgW}" height="${svgH}" style="display:block;margin:4px 0">` +
+                  `<polyline points="${coords.join(' ')}" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>` +
+                  `<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="3" fill="#fbbf24" stroke="#fff" stroke-width="1"/>` +
+                  `</svg>`;
+              }
+
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:240px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
                   <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
-                    ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
+                    ${escapeHtml(trail.call_sign)} \u2014 ${escapeHtml(trail.officer_name || 'Unknown')}
                   </div>
                   <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
                   ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
                   <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
+                  ${sparkSvg}
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMph(pt.speed)}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeadingDir(pt.heading)}</td></tr>
+                    ${accelHtml}
+                    ${headingCompass}
                     ${locationRow}
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
+                    ${distHtml}
+                    ${gpsRow}
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} — ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
+                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} \u2014 ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
                   </table>
                 </div>
               `;
@@ -1704,6 +2059,33 @@ export default function MapPage() {
             });
 
             breadcrumbMarkersRef.current.push(dot);
+          });
+        });
+
+        // Speed alert triangle markers (>= 80 mph)
+        speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+        speedAlertMarkersRef.current = [];
+        trails.forEach((trail) => {
+          trail.points.forEach((pt) => {
+            const mph = pt.speed != null ? pt.speed * 2.237 : 0;
+            if (mph >= 80) {
+              const marker = new google.maps.Marker({
+                position: { lat: pt.lat, lng: pt.lng },
+                map,
+                icon: {
+                  path: 'M 0,-8 L 7,5 L -7,5 Z',
+                  scale: 1.4,
+                  fillColor: '#dc2626',
+                  fillOpacity: 0.9,
+                  strokeColor: '#fbbf24',
+                  strokeWeight: 1.5,
+                },
+                label: { text: '!', color: '#fff', fontSize: '9px', fontWeight: 'bold' },
+                title: `Speed alert: ${Math.round(mph)} mph — ${trail.call_sign}`,
+                zIndex: 5000,
+              });
+              speedAlertMarkersRef.current.push(marker);
+            }
           });
         });
       } catch {
@@ -1723,6 +2105,8 @@ export default function MapPage() {
       breadcrumbMarkersRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
       breadcrumbArrowsRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current = [];
     };
   }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
 
@@ -1747,14 +2131,19 @@ export default function MapPage() {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 5,
           rotation: pt.heading || 0,
-          fillColor: '#00ff88',
+          fillColor: speedToColor(pt.speed),
           fillOpacity: 1,
           strokeColor: '#fff',
           strokeWeight: 2,
         },
         zIndex: 9999,
-        title: `${trail.call_sign} — Playback`,
+        title: `${trail.call_sign} \u2014 Playback`,
       });
+    }
+
+    // Create speed label InfoWindow
+    if (!playbackSpeedLabelRef.current) {
+      playbackSpeedLabelRef.current = new google.maps.InfoWindow({ disableAutoPan: true });
     }
 
     let currentIdx = playbackIdx;
@@ -1762,6 +2151,7 @@ export default function MapPage() {
       if (currentIdx >= trail.points.length) {
         setIsPlaying(false);
         setPlaybackIdx(trail.points.length - 1);
+        if (playbackSpeedLabelRef.current) playbackSpeedLabelRef.current.close();
         return;
       }
 
@@ -1772,18 +2162,30 @@ export default function MapPage() {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 5,
           rotation: pt.heading || 0,
-          fillColor: '#00ff88',
+          fillColor: speedToColor(pt.speed),
           fillOpacity: 1,
           strokeColor: '#fff',
           strokeWeight: 2,
         });
       }
 
+      // Floating speed readout above playback marker
+      if (playbackSpeedLabelRef.current) {
+        const mphStr = pt.speed != null ? `${(pt.speed * 2.237).toFixed(0)} mph` : '\u2014';
+        playbackSpeedLabelRef.current.setContent(
+          `<div style="font-family:monospace;font-size:12px;font-weight:900;color:${speedToColor(pt.speed)};background:#0d0d0d;padding:2px 6px;border-radius:3px;border:1px solid #282828;white-space:nowrap">${mphStr}</div>`
+        );
+        playbackSpeedLabelRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+        playbackSpeedLabelRef.current.open(map);
+      }
+
       setPlaybackIdx(currentIdx);
       currentIdx++;
 
-      // Speed: base 200ms per point, divided by playback speed multiplier
-      const delay = 200 / playbackSpeed;
+      // Speed-proportional playback: faster vehicle = faster animation
+      const ptSpeed = pt.speed != null ? pt.speed * 2.237 : 10;
+      const speedFactor = Math.max(ptSpeed / 30, 0.2);
+      const delay = (200 / playbackSpeed) / speedFactor;
       playbackAnimRef.current = window.setTimeout(step, delay) as unknown as number;
     };
 
@@ -1797,15 +2199,193 @@ export default function MapPage() {
     };
   }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
 
-  // Cleanup playback marker when playback unit changes or stops
+  // Cleanup playback marker and speed label when playback unit changes or stops
   useEffect(() => {
     if (playbackUnit == null) {
       if (playbackMarkerRef.current) {
         playbackMarkerRef.current.setMap(null);
         playbackMarkerRef.current = null;
       }
+      if (playbackSpeedLabelRef.current) {
+        playbackSpeedLabelRef.current.close();
+        playbackSpeedLabelRef.current = null;
+      }
     }
   }, [playbackUnit]);
+
+  // ============================================================
+  // Speed Heatmap Layer (grid rectangles)
+  // ============================================================
+
+  const heatmapRectsRef = useRef<google.maps.Rectangle[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    heatmapRectsRef.current.forEach((r) => r.setMap(null));
+    heatmapRectsRef.current = [];
+
+    if (!speedAnalytics.showSpeedHeatmap || speedAnalytics.heatmapCells.length === 0) return;
+
+    const GRID_SIZE = 0.002; // ~200m grid cells
+    speedAnalytics.heatmapCells.forEach((cell) => {
+      const rect = new google.maps.Rectangle({
+        bounds: {
+          north: cell.grid_lat + GRID_SIZE,
+          south: cell.grid_lat,
+          east: cell.grid_lng + GRID_SIZE,
+          west: cell.grid_lng,
+        },
+        fillColor: speedToColor(cell.avg_speed / 2.237), // convert mph to m/s for speedToColor
+        fillOpacity: Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5),
+        strokeColor: speedToColor(cell.avg_speed / 2.237),
+        strokeWeight: 0.5,
+        strokeOpacity: 0.3,
+        map,
+        clickable: false,
+        zIndex: 50,
+      });
+      heatmapRectsRef.current.push(rect);
+    });
+
+    return () => {
+      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current = [];
+    };
+  }, [speedAnalytics.showSpeedHeatmap, speedAnalytics.heatmapCells, mapLoaded]);
+
+  // ============================================================
+  // Pursuit Corridor Polylines
+  // ============================================================
+
+  const pursuitLinesRef = useRef<google.maps.Polyline[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    pursuitLinesRef.current.forEach((l) => l.setMap(null));
+    pursuitLinesRef.current = [];
+
+    if (speedAnalytics.pursuitSegments.length === 0) return;
+
+    speedAnalytics.pursuitSegments.forEach((seg) => {
+      if (seg.points.length < 2) return;
+      const line = new google.maps.Polyline({
+        path: seg.points.map((p) => ({ lat: p.lat, lng: p.lng })),
+        geodesic: true,
+        strokeColor: '#dc2626',
+        strokeOpacity: 0.8,
+        strokeWeight: 6,
+        map,
+        zIndex: 100,
+      });
+      pursuitLinesRef.current.push(line);
+    });
+
+    return () => {
+      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current = [];
+    };
+  }, [speedAnalytics.pursuitSegments, mapLoaded]);
+
+  // ============================================================
+  // Speed Zone Polygons
+  // ============================================================
+
+  const speedZonePolysRef = useRef<google.maps.Polygon[]>([]);
+  const speedZoneLabelsRef = useRef<google.maps.Marker[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) {
+      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current = [];
+      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current = [];
+      return;
+    }
+
+    // Clean previous
+    speedZonePolysRef.current.forEach((p) => p.setMap(null));
+    speedZonePolysRef.current = [];
+    speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+    speedZoneLabelsRef.current = [];
+
+    if (speedAnalytics.speedZones.length === 0) return;
+
+    const ZONE_TYPE_COLORS: Record<string, string> = {
+      school: '#eab308',
+      residential: '#22c55e',
+      highway: '#f97316',
+      construction: '#ef4444',
+      parking: '#6b7280',
+    };
+
+    speedAnalytics.speedZones.forEach((zone) => {
+      if (!zone.is_active || !zone.polygon_coords) return;
+      try {
+        const coords: { lat: number; lng: number }[] = JSON.parse(zone.polygon_coords);
+        if (coords.length < 3) return;
+
+        const zoneColor = ZONE_TYPE_COLORS[zone.zone_type] || '#888888';
+        const poly = new google.maps.Polygon({
+          paths: coords,
+          fillColor: zoneColor,
+          fillOpacity: 0.15,
+          strokeColor: zoneColor,
+          strokeWeight: 2,
+          strokeOpacity: 0.6,
+          map,
+          zIndex: 60,
+          clickable: false,
+        });
+        speedZonePolysRef.current.push(poly);
+
+        // Centroid label
+        const cLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
+        const cLng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
+        const label = new google.maps.Marker({
+          position: { lat: cLat, lng: cLng },
+          map,
+          icon: {
+            path: 'M 0,0',
+            scale: 0,
+          },
+          label: {
+            text: `${zone.speed_limit_mph} mph`,
+            color: zoneColor,
+            fontSize: '9px',
+            fontWeight: 'bold',
+            className: 'speed-zone-label',
+          },
+          clickable: false,
+          zIndex: 61,
+        });
+        speedZoneLabelsRef.current.push(label);
+      } catch {
+        // Invalid polygon_coords JSON
+      }
+    });
+
+    return () => {
+      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current = [];
+      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current = [];
+    };
+  }, [speedAnalytics.speedZones, mapLoaded]);
 
   // ============================================================
   // GPS Self-Position Marker
@@ -2147,7 +2727,7 @@ export default function MapPage() {
                   }
                 }
               }}
-              className="ml-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-blue-400 hover:text-white hover:bg-brand-600 transition-colors"
+              className="ml-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-brand-600 transition-colors"
               style={{ borderRadius: 2 }}
             >
               Retry
@@ -2208,11 +2788,11 @@ export default function MapPage() {
               <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 2 }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
-                  1. Go to <span className="text-blue-400">console.cloud.google.com/apis/library</span><br/>
+                  1. Go to <span className="text-gray-400">console.cloud.google.com/apis/library</span><br/>
                   2. Enable <span className="text-amber-400">Maps JavaScript API</span><br/>
                   3. Enable <span className="text-amber-400">Places API (New)</span><br/>
-                  4. Go to <span className="text-blue-400">Billing</span> → ensure billing is active<br/>
-                  5. Go to <span className="text-blue-400">Credentials</span> → check key restrictions<br/>
+                  4. Go to <span className="text-gray-400">Billing</span> → ensure billing is active<br/>
+                  5. Go to <span className="text-gray-400">Credentials</span> → check key restrictions<br/>
                   6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
                   <span className="text-green-400 ml-2">GOOGLE_MAPS_API_KEY=your_key</span><br/>
                   7. Restart the dev server
@@ -2309,7 +2889,7 @@ export default function MapPage() {
                       className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
                       style={{ minHeight: 44 }}
                     >
-                      <MapPin className="w-4 h-4 text-blue-400 shrink-0" />
+                      <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
                       <span className="truncate">{r.description}</span>
                     </button>
                   ))}
@@ -2341,7 +2921,7 @@ export default function MapPage() {
                   aria-label="Search address"
                   className={`text-[11px] pl-8 pr-8 py-1.5 w-[240px] focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors ${
                     isLightMapStyle(mapStyle)
-                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-blue-400 focus:bg-white/90'
+                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-gray-400 focus:bg-white/90'
                       : 'bg-black/30 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/50'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -2375,7 +2955,7 @@ export default function MapPage() {
                       onClick={() => handleAddressSelect(r.place_id, r.description)}
                       className="w-full text-left px-3 py-2 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 hover:text-white transition-colors border-b border-rmpg-700 last:border-0 flex items-center gap-2"
                     >
-                      <MapPin className="w-3 h-3 text-blue-400 shrink-0" />
+                      <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
                       <span className="truncate">{r.description}</span>
                     </button>
                   ))}
@@ -2496,6 +3076,29 @@ export default function MapPage() {
                         {days < 365 ? `${days}d` : '1y'}
                       </button>
                     ))}
+                  </div>
+
+                  {/* Dim base map toggle — darkens base tiles so heat pops */}
+                  <button
+                    onClick={() => setDimBaseEnabled(!dimBaseEnabled)}
+                    className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                      dimBaseEnabled ? 'text-red-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                    }`}
+                  >
+                    <span className="flex-1 text-left">Dim Base Map</span>
+                    {dimBaseEnabled && <span className="led-dot led-red" style={{ width: 5, height: 5 }} />}
+                  </button>
+
+                  {/* Saved filter presets */}
+                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
+                    <HeatmapPresets
+                      current={{ days: heatmapDays, mode: heatmapMode, typeFilter: heatmapTypeFilter }}
+                      onApply={(p: HeatmapPresetValue) => {
+                        setHeatmapDays(p.days);
+                        setHeatmapMode(p.mode);
+                        setHeatmapTypeFilter(p.typeFilter);
+                      }}
+                    />
                   </div>
 
                   {/* Advanced mode toggle */}
@@ -2701,7 +3304,7 @@ export default function MapPage() {
                           {([
                             ['heat', ['#888888', '#00c864', '#c8c800', '#ff8c00', '#ff3200']],
                             ['risk', ['#4caf50', '#ffeb3b', '#ff9800', '#f44336', '#b71c1c']],
-                            ['blue', ['#cccccc', '#999999', '#888888', '#666666', '#444444']],
+                            ['gold', ['#fde047', '#facc15', '#d4a017', '#b48206', '#854d0e']],
                             ['green', ['#90ee90', '#3cb371', '#228b22', '#006400', '#003c00']],
                             ['purple', ['#d8bfd8', '#ba55d3', '#9467bd', '#6a0dad', '#4b0082']],
                           ] as [HeatmapColorScheme, string[]][]).map(([scheme, colors]) => (
@@ -2779,13 +3382,13 @@ export default function MapPage() {
                       <button
                         onClick={() => setAdvHeatmapShowClusters(!advHeatmapShowClusters)}
                         className={`flex items-center gap-1.5 w-full text-[8px] font-bold transition-colors ${
-                          advHeatmapShowClusters ? 'text-blue-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                          advHeatmapShowClusters ? 'text-gray-400' : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
                         <CircleDot className="w-2.5 h-2.5" />
                         <span className="flex-1 text-left">Hotspot Clusters</span>
                         {advHeatmapShowClusters && (
-                          <span className="text-[7px] font-mono text-blue-400">{advancedHeatmap.clusters?.length ?? 0}</span>
+                          <span className="text-[7px] font-mono text-gray-400">{advancedHeatmap.clusters?.length ?? 0}</span>
                         )}
                       </button>
 
@@ -2843,7 +3446,7 @@ export default function MapPage() {
                                 onClick={() => setAdvHeatmapComparisonDays(d)}
                                 className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                                   advHeatmapComparisonDays === d
-                                    ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                                    ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                                     : 'text-rmpg-500 hover:text-rmpg-300'
                                 }`}
                               >
@@ -2857,7 +3460,7 @@ export default function MapPage() {
                               <span className="text-[6px] text-rmpg-400 font-mono">Current</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              <div className="w-2 h-2 rounded-full bg-gray-500" />
                               <span className="text-[6px] text-rmpg-400 font-mono">Previous</span>
                             </div>
                           </div>
@@ -2979,25 +3582,26 @@ export default function MapPage() {
                   showBreadcrumbs ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                 }`}
               >
-                {showBreadcrumbs ? <Eye className="w-3 h-3 text-cyan-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                <Route className="w-3 h-3 text-cyan-400" />
+                {showBreadcrumbs ? <Eye className="w-3 h-3 text-gray-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                <Route className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-200 flex-1">Breadcrumbs</span>
               </button>
               {showBreadcrumbs && (
                 <div className="px-3 py-1 space-y-1">
-                  {/* Hours selector */}
-                  <div className="flex items-center gap-1">
-                    {[2, 4, 8, 12, 24].map((h) => (
+                  {/* Hours selector — presets extend from 24h to 1y per
+                      operator request. Label abbreviates days/months/years. */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                       <button
                         key={h}
                         onClick={() => setBreadcrumbHours(h)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbHours === h
-                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        {h}h
+                        {label}
                       </button>
                     ))}
                     <button
@@ -3022,13 +3626,13 @@ export default function MapPage() {
                   {/* Color mode selector */}
                   <div className="flex items-center gap-1">
                     <Palette className="w-2.5 h-2.5 text-rmpg-400" />
-                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status'], ['accel', 'Accel']] as const).map(([mode, label]) => (
                       <button
                         key={mode}
                         onClick={() => setBreadcrumbColorMode(mode)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbColorMode === mode
-                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -3036,16 +3640,40 @@ export default function MapPage() {
                       </button>
                     ))}
                   </div>
-                  {/* Speed color legend */}
+                  {/* Speed color legend — interactive 8-band with toggles */}
                   {breadcrumbColorMode === 'speed' && (
+                    <div className="flex flex-wrap items-center gap-1 pl-1">
+                      {[
+                        { color: '#666666', label: '0', key: 'stationary' },
+                        { color: '#999999', label: '<3', key: 'walking' },
+                        { color: '#22c55e', label: '3-25', key: 'residential' },
+                        { color: '#84cc16', label: '25-35', key: 'city' },
+                        { color: '#eab308', label: '35-45', key: 'arterial' },
+                        { color: '#f97316', label: '45-55', key: 'highway' },
+                        { color: '#ef4444', label: '55-75', key: 'freeway' },
+                        { color: '#dc2626', label: '75+', key: 'pursuit' },
+                      ].map((band) => (
+                        <button key={band.key}
+                          onClick={() => speedAnalytics.setSpeedBandToggles(prev => ({ ...prev, [band.key]: !(prev[band.key] ?? true) }))}
+                          className="flex items-center gap-0.5 cursor-pointer"
+                          style={{ opacity: (speedAnalytics.speedBandToggles[band.key] ?? true) ? 1 : 0.3 }}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ background: band.color }} />
+                          <span className="text-[7px] text-rmpg-400 font-mono">{band.label}</span>
+                        </button>
+                      ))}
+                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
+                    </div>
+                  )}
+                  {/* Accel color legend */}
+                  {breadcrumbColorMode === 'accel' && (
                     <div className="flex items-center gap-1.5 pl-1">
-                      {[['#22c55e', '<15'], ['#eab308', '15-35'], ['#f97316', '35-55'], ['#ef4444', '55+']].map(([color, label]) => (
+                      {[['#dc2626', 'Brake'], ['#eab308', 'Decel'], ['#22c55e', 'Steady'], ['#84cc16', 'Accel'], ['#fbbf24', 'Hard']].map(([color, label]) => (
                         <span key={label} className="flex items-center gap-0.5">
                           <span className="w-2 h-2 rounded-full" style={{ background: color }} />
                           <span className="text-[7px] text-rmpg-400 font-mono">{label}</span>
                         </span>
                       ))}
-                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
                     </div>
                   )}
                   {/* Playback controls */}
@@ -3061,7 +3689,7 @@ export default function MapPage() {
                             setPlaybackIdx(0);
                             setIsPlaying(false);
                           }}
-                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-cyan-600"
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-gray-600"
                           style={{ borderRadius: 2 }}
                         >
                           <option value="">Replay trail...</option>
@@ -3089,7 +3717,7 @@ export default function MapPage() {
                                     setIsPlaying(true);
                                   }
                                 }}
-                                className="p-0.5 rounded-sm hover:bg-cyan-900/40 transition-colors"
+                                className="p-0.5 rounded-sm hover:bg-gray-900/40 transition-colors"
                                 title={isPlaying ? 'Pause' : 'Play'}
                               >
                                 {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
@@ -3109,7 +3737,7 @@ export default function MapPage() {
                                     playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
                                   }
                                 }}
-                                className="flex-1 h-1 accent-cyan-400"
+                                className="flex-1 h-1 accent-gray-400"
                                 aria-label="Playback position"
                               />
                               <span className="text-[8px] font-mono text-rmpg-400 w-12 text-right">
@@ -3124,7 +3752,7 @@ export default function MapPage() {
                                   onClick={() => setPlaybackSpeed(spd)}
                                   className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                                     playbackSpeed === spd
-                                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                                       : 'text-rmpg-500 hover:text-rmpg-300'
                                   }`}
                                 >
@@ -3145,6 +3773,85 @@ export default function MapPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Speed Analytics ── */}
+            {showBreadcrumbs && (
+              <div className="border-t border-rmpg-700 p-1.5">
+                <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Speed Analytics</div>
+
+                {/* Violations badge */}
+                {speedAnalytics.unacknowledgedCount > 0 && (
+                  <div className="flex items-center gap-2 px-2 py-1 mb-1 bg-red-900/20 border border-red-800/30 rounded-sm">
+                    <AlertTriangle className="w-3 h-3 text-red-400" />
+                    <span className="text-[9px] text-red-400 font-mono font-bold flex-1">
+                      {speedAnalytics.unacknowledgedCount} speed violation{speedAnalytics.unacknowledgedCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* Speed Heatmap toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowSpeedHeatmap(!speedAnalytics.showSpeedHeatmap)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showSpeedHeatmap ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showSpeedHeatmap ? <Eye className="w-3 h-3 text-orange-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <Gauge className="w-3 h-3" />
+                  <span className="flex-1 text-left">Speed Heatmap</span>
+                </button>
+
+                {/* Zone Stats toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowZoneStats(!speedAnalytics.showZoneStats)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showZoneStats ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showZoneStats ? <Eye className="w-3 h-3 text-gray-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <BarChart3 className="w-3 h-3" />
+                  <span className="flex-1 text-left">Zone Speed Stats</span>
+                </button>
+
+                {/* Zone Stats collapsible table */}
+                {speedAnalytics.showZoneStats && speedAnalytics.zoneSpeedStats.length > 0 && (
+                  <div className="ml-2 mt-1 max-h-32 overflow-y-auto">
+                    <table className="w-full text-[8px] font-mono">
+                      <thead>
+                        <tr className="text-rmpg-500">
+                          <th className="text-left px-1 py-0.5">Zone</th>
+                          <th className="text-right px-1 py-0.5">Avg</th>
+                          <th className="text-right px-1 py-0.5">Max</th>
+                          <th className="text-right px-1 py-0.5">P95</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {speedAnalytics.zoneSpeedStats.slice(0, 15).map((z) => (
+                          <tr key={z.beat_id} className="text-rmpg-300 hover:bg-surface-raised">
+                            <td className="px-1 py-0.5 truncate max-w-[80px]" title={z.beat_name}>{z.beat_code}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.avg_speed_mph / 2.237) }}>{z.avg_speed_mph.toFixed(0)}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.max_speed_mph / 2.237) }}>{z.max_speed_mph.toFixed(0)}</td>
+                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.p95_speed_mph / 2.237) }}>{z.p95_speed_mph.toFixed(0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Coverage Timeline toggle */}
+                <button
+                  onClick={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                    speedAnalytics.showCoverageTimeline ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  }`}
+                >
+                  {speedAnalytics.showCoverageTimeline ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                  <Clock className="w-3 h-3" />
+                  <span className="flex-1 text-left">Coverage Timeline</span>
+                </button>
+              </div>
+            )}
 
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
@@ -3179,7 +3886,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowCallHistory(!showCallHistory)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showCallHistory ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showCallHistory ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Clock className="w-3 h-3" />
@@ -3204,7 +3911,7 @@ export default function MapPage() {
                         onClick={() => setCallHistoryDays(d)}
                         className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                           callHistoryDays === d
-                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -3224,7 +3931,7 @@ export default function MapPage() {
                         )}
                         className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
                           callHistoryStatuses.includes(s)
-                            ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/40'
+                            ? 'bg-gray-900/40 text-gray-300 border border-gray-700/40'
                             : 'text-rmpg-600 hover:text-rmpg-400'
                         }`}
                       >
@@ -3344,7 +4051,7 @@ export default function MapPage() {
                 <button
                   onClick={() => setShowGeofences(!showGeofences)}
                   className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    showGeofences ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                    showGeofences ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                   }`}
                 >
                   <Radar className="w-3 h-3" />
@@ -3357,7 +4064,7 @@ export default function MapPage() {
                   <button
                     onClick={() => geofences.setDrawingMode(!geofences.drawingMode)}
                     className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
-                      geofences.drawingMode ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                      geofences.drawingMode ? 'bg-gray-900/50 text-gray-300 border border-gray-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
                     }`}
                   >
                     Draw
@@ -3408,7 +4115,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowFieldInterviews(!showFieldInterviews)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showFieldInterviews ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showFieldInterviews ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <FileSearch className="w-3 h-3" />
@@ -3425,7 +4132,7 @@ export default function MapPage() {
                       onClick={() => setFiDays(d)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         fiDays === d
-                          ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                          ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
                           : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
@@ -3453,7 +4160,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowResponseRadius(!showResponseRadius)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showResponseRadius ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Target className="w-3 h-3" />
@@ -3546,7 +4253,7 @@ export default function MapPage() {
               <button
                 onClick={() => setShowFleetVehicles(!showFleetVehicles)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  showFleetVehicles ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <Car className="w-3 h-3" />
@@ -3635,7 +4342,7 @@ export default function MapPage() {
               <button
                 onClick={() => setClusteringEnabled(!clusteringEnabled)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  clusteringEnabled ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                  clusteringEnabled ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
                 }`}
               >
                 <CircleDot className="w-3 h-3" />
@@ -3714,7 +4421,7 @@ export default function MapPage() {
                 onClick={() => setShowGeoPanel(!showGeoPanel)}
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
               >
-                <Globe2 className="w-3 h-3 text-cyan-400" />
+                <Globe2 className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
                 <span className="text-[9px] text-rmpg-500">
                   {Object.values(geoLayerStates).filter((s) => s.visible).length}/{geoConfigs.length}
@@ -3998,7 +4705,7 @@ export default function MapPage() {
                                           key={unit.id}
                                           className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                             assignUnitIds.includes(unit.id)
-                                              ? 'bg-blue-900/30 text-blue-300'
+                                              ? 'bg-gray-900/30 text-gray-300'
                                               : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                           }`}
                                         >
@@ -4012,7 +4719,7 @@ export default function MapPage() {
                                                 setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                               }
                                             }}
-                                            className="w-2.5 h-2.5 accent-blue-500"
+                                            className="w-2.5 h-2.5 accent-gray-500"
                                           />
                                           <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                           {unit.officer_name && (
@@ -4128,7 +4835,7 @@ export default function MapPage() {
                                   <span className="text-emerald-400 font-bold">{stats.assigned}</span> areas
                                 </span>
                                 <span className="text-[7px] text-rmpg-500">
-                                  <span className="text-blue-400 font-bold">{stats.officers}</span> officers
+                                  <span className="text-gray-400 font-bold">{stats.officers}</span> officers
                                 </span>
                                 <span className="text-[7px] text-rmpg-500">
                                   <span className="text-amber-400 font-bold">{stats.units}</span> units
@@ -4359,7 +5066,7 @@ export default function MapPage() {
                 <Crosshair className="w-3 h-3" /> Threat Assessment
               </button>
 
-              <button type="button" onClick={() => setShowUnitMonitoring(!showUnitMonitoring)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showUnitMonitoring ? 'bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+              <button type="button" onClick={() => setShowUnitMonitoring(!showUnitMonitoring)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showUnitMonitoring ? 'bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
                 <Target className="w-3 h-3" /> Unit Monitoring
                 {unitSafety.loneOfficers?.length > 0 && <span className="led-dot led-amber ml-auto animate-led-pulse" />}
               </button>
@@ -4368,7 +5075,7 @@ export default function MapPage() {
                 <Radar className="w-3 h-3" /> Perimeter Tools
               </button>
 
-              <button type="button" onClick={() => setShowCorridorAnalysis(!showCorridorAnalysis)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showCorridorAnalysis ? 'bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+              <button type="button" onClick={() => setShowCorridorAnalysis(!showCorridorAnalysis)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showCorridorAnalysis ? 'bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
                 <Route className="w-3 h-3" /> Corridor Analysis
               </button>
 
@@ -4465,6 +5172,26 @@ export default function MapPage() {
             onBroadcast={(type, lat, lng, details, radius) => alerts.broadcastAlert(type as SafetyAlertType, lat, lng, details, radius)}
             defaultLat={mapInstanceRef.current?.getCenter()?.lat() ?? DEFAULT_CENTER.lat}
             defaultLng={mapInstanceRef.current?.getCenter()?.lng() ?? DEFAULT_CENTER.lng}
+          />
+        )}
+
+        {/* Speed Graph Overlay */}
+        {speedAnalytics.speedGraphUnit != null && (
+          <SpeedGraphOverlay
+            unitId={speedAnalytics.speedGraphUnit}
+            callSign={playbackTrails.find(t => t.unit_id === speedAnalytics.speedGraphUnit)?.call_sign || ''}
+            hours={breadcrumbHours}
+            onClose={() => speedAnalytics.setSpeedGraphUnit(null)}
+            playbackIdx={playbackUnit === speedAnalytics.speedGraphUnit ? playbackIdx : undefined}
+          />
+        )}
+
+        {/* Coverage Timeline */}
+        {speedAnalytics.showCoverageTimeline && (
+          <CoverageTimeline
+            data={speedAnalytics.coverageTimeline.length > 0 ? { intervals: speedAnalytics.coverageTimeline, total_beats: 719 } : null}
+            expanded={speedAnalytics.showCoverageTimeline}
+            onToggle={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
           />
         )}
 
@@ -4866,8 +5593,8 @@ export default function MapPage() {
 
               {showTrackingLines && trackingLineCount > 0 && (
                 <div className="flex items-center gap-1 px-1.5">
-                  <Navigation2 className="w-2.5 h-2.5 text-cyan-400" />
-                  <span className="text-cyan-400 text-[8px] font-mono font-bold">{trackingLineCount}</span>
+                  <Navigation2 className="w-2.5 h-2.5 text-gray-400" />
+                  <span className="text-gray-400 text-[8px] font-mono font-bold">{trackingLineCount}</span>
                 </div>
               )}
 
@@ -4885,14 +5612,218 @@ export default function MapPage() {
           </div>
         </div>}
 
+        {/* ── Keyboard Shortcuts Help (triggered by `?` key) ── */}
+        <KeyboardShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
+
+        {/* ── Breadcrumb Status Chip + Trail Stats/Export (top-left) ── */}
+        {/* Shows unit count + window + color mode; hovering reveals per-unit
+            stats (miles/duration/max-mph). Clicking EXPORT downloads one
+            .gpx file per trail into the browser downloads folder — good for
+            shift reports or legal discovery. */}
+        {showBreadcrumbs && playbackTrails.length > 0 && (
+          <div
+            className="absolute z-[999]"
+            style={{
+              top: 64,
+              left: 16,
+              background: 'rgba(6,12,20,0.92)',
+              border: '1px solid #2b2b2b',
+              padding: '4px 10px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              fontSize: 10,
+              color: '#9ca3af',
+              letterSpacing: '0.08em',
+              borderRadius: 2,
+            }}
+            title={playbackTrails
+              .map((t) => {
+                const stats = computeTrailStats(t);
+                return `${t.call_sign}: ${formatTrailStats(stats)}`;
+              })
+              .join('\n')}
+          >
+            <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
+            <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
+            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
+            <span>last {BREADCRUMB_HOUR_PRESETS.find((p) => p.hours === breadcrumbHours)?.label || `${breadcrumbHours}h`}</span>
+            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
+            <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
+            <button
+              type="button"
+              onClick={() => setShowIdleZones(!showIdleZones)}
+              style={{
+                marginLeft: 8,
+                padding: '1px 6px',
+                background: showIdleZones ? '#f59e0b30' : '#88888820',
+                border: showIdleZones ? '1px solid #f59e0b80' : '1px solid #88888850',
+                color: showIdleZones ? '#f59e0b' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Highlight stretches where a unit was stationary >10min"
+            >
+              IDLE
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                for (const trail of playbackTrails) downloadTrailAsGpx(trail);
+              }}
+              style={{
+                marginLeft: 4,
+                padding: '1px 6px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Download each unit's trail as a GPX file"
+            >
+              ⇩ GPX
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowRouteCompare((v) => !v)}
+              style={{
+                marginLeft: 4,
+                padding: '1px 6px',
+                background: showRouteCompare ? '#d4a01730' : '#88888820',
+                border: showRouteCompare ? '1px solid #d4a01780' : '1px solid #88888850',
+                color: showRouteCompare ? '#d4a017' : '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Compare two units' trail stats side-by-side"
+            >
+              ⇆ COMPARE
+            </button>
+          </div>
+        )}
+
+        {/* ── Route Comparison Panel (bottom-right, when toggled) ── */}
+        {showBreadcrumbs && showRouteCompare && (
+          <RouteComparePanel
+            trails={playbackTrails}
+            unitAId={compareUnitA}
+            unitBId={compareUnitB}
+            onChangeA={setCompareUnitA}
+            onChangeB={setCompareUnitB}
+            onClose={() => setShowRouteCompare(false)}
+          />
+        )}
+
+        {/* ── Trail Time-Window Scrubber (top-left, below chip) ── */}
+        {/* Two range inputs that narrow the rendered trail window without
+            re-fetching. fromH is the older edge, toH the newer one. The
+            filter runs in a useMemo, so drags feel live even on ≤2k points
+            per unit. Rendered only when there's something to scrub. */}
+        {showBreadcrumbs && playbackTrailsRaw.length > 0 && (
+          <div
+            className="absolute z-[999]"
+            style={{
+              top: 90,
+              left: 16,
+              background: 'rgba(6,12,20,0.92)',
+              border: '1px solid #2b2b2b',
+              padding: '4px 10px',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+              fontSize: 9,
+              color: '#9ca3af',
+              letterSpacing: '0.05em',
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 320,
+            }}
+          >
+            <span style={{ color: '#d4a017', fontWeight: 900 }}>WINDOW</span>
+            <span title="From (hours ago)" style={{ color: '#6b7280' }}>{trailWindowFromH.toFixed(1)}h</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowFromH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowFromH(Math.max(v, trailWindowToH + 0.1));
+              }}
+              aria-label="Trail window start (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span style={{ color: '#6b7280' }}>now</span>
+            <input
+              type="range"
+              min={0}
+              max={breadcrumbHours}
+              step={0.25}
+              value={trailWindowToH}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setTrailWindowToH(Math.min(v, trailWindowFromH - 0.1));
+              }}
+              aria-label="Trail window end (hours ago)"
+              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
+            />
+            <span title="To (hours ago)" style={{ color: '#6b7280' }}>{trailWindowToH.toFixed(1)}h</span>
+            <button
+              type="button"
+              onClick={() => { setTrailWindowFromH(breadcrumbHours); setTrailWindowToH(0); }}
+              style={{
+                padding: '1px 5px',
+                background: '#88888820',
+                border: '1px solid #88888850',
+                color: '#a0a0a0',
+                fontSize: 8,
+                fontWeight: 900,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                borderRadius: 2,
+              }}
+              title="Reset window to full fetched range"
+            >
+              RESET
+            </button>
+          </div>
+        )}
+
+        {/* ── Heatmap Legend (bottom-right) ── */}
+        {/* Visible whenever any heatmap variant is on; swaps gradient for
+            the "risk" mode so the legend always matches what's on the map. */}
+        {showHeatmap && (
+          <HeatmapLegend
+            mode={heatmapMode === 'risk' ? 'risk' : 'calls'}
+            hint={`last ${heatmapDays} day${heatmapDays === 1 ? '' : 's'}`}
+            position="bottom-right"
+          />
+        )}
+
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
-        {activeRoute && (
+        {/* Lists one row per active unit route; colors match the polylines
+            (green=fastest, amber=mid, red=slowest) for instant "who's closest"
+            read. Single Clear All action collapses the whole set. */}
+        {activeRoutes.length > 0 && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 200 }),
+                : { bottom: 48, left: 16, minWidth: 220 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
@@ -4901,22 +5832,51 @@ export default function MapPage() {
               boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
-                {activeRoute.unitCallSign} → {activeRoute.callNumber}
+                ROUTES ({activeRoutes.length})
               </span>
               <button
-                onClick={clearRoute}
+                onClick={clearAllRoutes}
                 style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
-                title="Clear route"
+                title="Clear all routes"
               >
                 ✕
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
-            </div>
+            {activeRoutes
+              .slice()
+              .sort((a, b) => a.durationSec - b.durationSec)
+              .map((r) => (
+                <div
+                  key={r.unitCallSign}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '3px 0',
+                    borderTop: '1px solid ' + (isLightMapStyle(mapStyle) ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'),
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      background: r.color,
+                      display: 'inline-block',
+                      borderRadius: 2,
+                      flexShrink: 0,
+                      boxShadow: `0 0 6px ${r.color}80`,
+                    }}
+                    title="Route color"
+                  />
+                  <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em', minWidth: 70 }}>
+                    {r.unitCallSign}
+                  </span>
+                  <span style={{ fontSize: 13, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{r.eta}</span>
+                  <span style={{ fontSize: 10, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999', marginLeft: 'auto' }}>{r.distance}</span>
+                </div>
+              ))}
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
             )}
@@ -4978,8 +5938,8 @@ export default function MapPage() {
               }}
               className={`backdrop-blur-md shadow-xl transition-colors ${
                 isLightMapStyle(mapStyle)
-                  ? 'bg-white/90 border border-blue-300 hover:bg-blue-50'
-                  : 'bg-surface-deep/95 border border-blue-500/50 hover:bg-blue-900/30'
+                  ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
+                  : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
               }`}
               style={isMobile
                 ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -4987,7 +5947,7 @@ export default function MapPage() {
               }
               title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
             >
-              <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
+              <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
             </button>
           )}
           {/* Reset to default view */}
@@ -5098,7 +6058,7 @@ export default function MapPage() {
               <div className="w-px h-3 bg-rmpg-700" />
               {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-400">P1:{callsByPriority['P1']}</span> : null}
               {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-400">P2:{callsByPriority['P2']}</span> : null}
-              {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
+              {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-gray-400">P3:{callsByPriority['P3']}</span> : null}
             </div>
 
             <div className="tab-bar">
@@ -5151,14 +6111,14 @@ export default function MapPage() {
                           />
                           <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                           {unit.gps_source === 'clearpathgps' && (
-                            <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                            <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                           )}
                           <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                         </div>
                         <div className="ml-5 mt-0.5">
                           <span className="text-[9px] text-rmpg-400">{unit.officer_name}</span>
                           {unit.call_number && (
-                            <span className="text-[9px] text-blue-400 ml-2 font-mono">{unit.call_number}</span>
+                            <span className="text-[9px] text-gray-400 ml-2 font-mono">{unit.call_number}</span>
                           )}
                         </div>
                         {unit.current_call_type && (
@@ -5204,7 +6164,7 @@ export default function MapPage() {
                         </div>
                         <div className="ml-8 text-[8px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>
                         {call.property_name && (
-                          <div className="ml-8 text-[8px] text-blue-400 truncate mt-0.5">{call.property_name}</div>
+                          <div className="ml-8 text-[8px] text-gray-400 truncate mt-0.5">{call.property_name}</div>
                         )}
                         {/* Quick actions */}
                         <div className="ml-8 mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -5219,7 +6179,7 @@ export default function MapPage() {
                           {call.status === 'dispatched' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-blue-900/30 text-blue-400 border border-blue-700/40 hover:bg-blue-800/40 transition-colors"
+                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-gray-700/40 hover:bg-gray-800/40 transition-colors"
                             >
                               EN ROUTE
                             </button>
@@ -5356,37 +6316,37 @@ export default function MapPage() {
                     minHeight: 44,
                   }}
                 >
-                  {showBreadcrumbs ? <Eye className="w-4 h-4 text-cyan-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-                  <Route style={{ width: 16, height: 16 }} className="text-cyan-400" />
+                  {showBreadcrumbs ? <Eye className="w-4 h-4 text-gray-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                  <Route style={{ width: 16, height: 16 }} className="text-gray-400" />
                   <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
                 </button>
 
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
                   <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
-                    <div className="flex gap-1">
-                      {[2, 4, 8, 12, 24].map((h) => (
+                    <div className="flex gap-1 flex-wrap">
+                      {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
                         <button
                           key={h}
                           onClick={() => setBreadcrumbHours(h)}
-                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
+                          className={`flex-1 min-w-[44px] py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
-                              ? 'bg-cyan-600 text-white'
+                              ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
-                          {h}h
+                          {label}
                         </button>
                       ))}
                     </div>
                     <div className="flex gap-1">
-                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status'], ['accel', 'Accel']] as const).map(([mode, label]) => (
                         <button
                           key={mode}
                           onClick={() => setBreadcrumbColorMode(mode)}
                           className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
                             breadcrumbColorMode === mode
-                              ? 'bg-cyan-600 text-white'
+                              ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
@@ -5458,7 +6418,7 @@ export default function MapPage() {
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                         <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                         {unit.gps_source === 'clearpathgps' && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
                         <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>

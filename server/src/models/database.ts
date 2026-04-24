@@ -11,6 +11,8 @@ import { seedUtahStatutes } from '../seeds/utahStatutes';
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
+import { registerSqliteFunctions } from './sqliteFunctions';
+import { backfillCaseLinks } from '../migrations/2026-04-19-case-links-backfill';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +38,7 @@ export function initDatabase(): Database.Database {
   }
 
   db = new Database(DB_PATH);
+  registerSqliteFunctions(db);
 
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
@@ -1411,6 +1414,31 @@ function createTables(): void {
       FOREIGN KEY (resolved_by) REFERENCES users(id)
     )
   `).run();
+
+  // ─── GPS STALE ALERTS TABLE ───────────────────────
+  // Server-side watchdog for officer GPS heartbeat loss.
+  // Uses db.prepare().run() pattern per CLAUDE.md Gotcha #42.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS gps_stale_alerts (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id             INTEGER NOT NULL,
+      call_sign           TEXT NOT NULL,
+      officer_id          INTEGER,
+      officer_name        TEXT,
+      last_gps_at         TEXT NOT NULL,
+      stale_detected_at   TEXT NOT NULL,
+      last_escalated_at   TEXT NOT NULL,
+      escalation_level    INTEGER NOT NULL DEFAULT 1,
+      recovered_at        TEXT,
+      duration_sec        INTEGER,
+      last_lat            REAL,
+      last_lng            REAL,
+      last_source         TEXT,
+      notes               TEXT
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_open ON gps_stale_alerts(unit_id, recovered_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_time ON gps_stale_alerts(stale_detected_at)`).run();
 }
 
 /**
@@ -1811,6 +1839,18 @@ function migrateSchema(): void {
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer
 
+  // ── USERS — Voice persona (Dispatcher Brain TTS preferences) ──
+  addCol('users', 'voice_persona', "TEXT DEFAULT 'en-US-JennyNeural'");
+  addCol('users', 'voice_rate', 'REAL DEFAULT 1.0');
+  addCol('users', 'voice_pitch', 'REAL DEFAULT 0');
+  addCol('users', 'voice_terseness', "TEXT DEFAULT 'standard'");
+  addCol('users', 'voice_brain_enabled', 'INTEGER DEFAULT 0');
+  // Assigned beat for geofence-breach detection (Phase 3). When NULL
+  // the breach check is skipped for that unit so this is opt-in per
+  // unit — e.g. a utility/admin unit with no specific beat has no
+  // expected area.
+  addCol('units', 'assigned_beat', 'TEXT');
+
   // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
   try {
     // SQLite can't ALTER CHECK constraints, so recreate the table
@@ -1865,6 +1905,42 @@ function migrateSchema(): void {
   addCol('clients', 'account_manager', 'TEXT');
   addCol('clients', 'priority_client', 'INTEGER DEFAULT 0');
   addCol('clients', 'client_since', 'TEXT');
+
+  // ── SERVE INTAKE: vendor lookup columns ──────────────────
+  addCol('clients', 'billing_code', 'TEXT');
+  addCol('clients', 'requestor_email', 'TEXT');
+  addCol('clients', 'vendor_fingerprint', 'TEXT');
+  addCol('clients', 'caller_phone', 'TEXT');
+
+  // ── SERVE INTAKE: role-tagged persons for legal parties ──
+  addCol('persons', 'role_tag', 'TEXT');        // 'defendant' | 'plaintiff' | 'attorney' | 'resident'
+  addCol('persons', 'entity_type', 'TEXT');     // 'individual' | 'organization'
+  addCol('persons', 'bar_number', 'TEXT');
+  addCol('persons', 'firm_name', 'TEXT');
+
+  // ── SERVE INTAKE: pre-planned attempt windows ─────────────
+  addCol('serve_attempts', 'planned_at', 'TEXT');
+  addCol('serve_attempts', 'window', 'TEXT');
+  addCol('serve_attempts', 'status', 'TEXT');   // 'planned' | 'attempted' | 'served' | 'failed'
+
+  // Seed ICU Investigations vendor fingerprint (idempotent — only fills null/empty fields)
+  try {
+    const existing = db.prepare("SELECT id FROM clients WHERE name LIKE 'ICU Investigations%' OR vendor_fingerprint = ? LIMIT 1").get('ICU Investigations, LLC') as any;
+    if (existing) {
+      db.prepare(`UPDATE clients SET
+        billing_code = COALESCE(NULLIF(billing_code, ''), '0175'),
+        requestor_email = COALESCE(NULLIF(requestor_email, ''), 'a1processserver@gmail.com'),
+        vendor_fingerprint = COALESCE(NULLIF(vendor_fingerprint, ''), 'ICU Investigations, LLC'),
+        caller_phone = COALESCE(NULLIF(caller_phone, ''), '(435) 986-1200')
+        WHERE id = ?`).run(existing.id);
+    } else {
+      db.prepare(`INSERT INTO clients (name, billing_code, requestor_email, vendor_fingerprint, caller_phone, status)
+        VALUES (?, ?, ?, ?, ?, 'active')`).run(
+        'ICU Investigations, LLC', '0175', 'a1processserver@gmail.com', 'ICU Investigations, LLC', '(435) 986-1200');
+    }
+  } catch (err) {
+    // Non-fatal on first run before addCol() has completed
+  }
 
   // ── UNITS — missing columns ────────────────────────────
   addCol('units', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
@@ -2407,6 +2483,26 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_created ON trespass_orders(created_at)`);
   } catch { /* table already exists */ }
 
+  // ── PSO QR Tokens (mobile quick-login for field PSOs) ──
+  try {
+    db.prepare(`CREATE TABLE IF NOT EXISTS pso_qr_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      scans_used INTEGER NOT NULL DEFAULT 0,
+      max_scans INTEGER NOT NULL DEFAULT 5,
+      admin_override INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      expires_at TEXT,
+      last_scanned_at TEXT,
+      last_scanned_by INTEGER,
+      revoked_at TEXT
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pso_qr_token ON pso_qr_tokens(token)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pso_qr_call ON pso_qr_tokens(call_id)`).run();
+  } catch { /* table already exists */ }
+
   // ── FIX CORRUPTED DATA — undo HTML entity encoding of quotes/apostrophes ──
   // The old sanitize middleware was encoding ' → &#x27; and " → &quot; in stored data
   const corruptionTables = ['persons', 'incidents', 'warrants', 'calls_for_service', 'bolos', 'vehicles_records', 'properties', 'clients'];
@@ -2515,6 +2611,94 @@ function migrateSchema(): void {
       );
     `);
   } catch { /* table already exists */ }
+
+  // ── CASE JUNCTION TABLES — indexed replacement for JSON LIKE scans in Connections traversal ──
+  // Task 3.1 of Connections Analyst Tool. Task 3.2 backfills from cases.linked_persons/
+  // linked_incidents/linked_evidence JSON arrays; Task 3.3 switches routes/connections.ts
+  // to these indexed joins instead of `LIKE '%id%'` full-table scans.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_person_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      person_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, person_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpl_case ON case_person_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpl_person ON case_person_links(person_id)`).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_incident_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      incident_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, incident_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cil_case ON case_incident_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cil_incident ON case_incident_links(incident_id)`).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS case_evidence_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      evidence_id INTEGER NOT NULL,
+      relationship TEXT DEFAULT 'linked',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(case_id, evidence_id),
+      FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (evidence_id) REFERENCES evidence(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_case ON case_evidence_links(case_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cel_evidence ON case_evidence_links(evidence_id)`).run();
+
+  // Connections Analyst Tool — saved investigations (Phase 4.2)
+  // An investigation is a user-owned graph workspace: seed nodes + pinned
+  // layout + free-text annotations. Private by default; read-shared via the
+  // explicit `shared_user_ids` JSON array. Only the owner can update/delete.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS connection_investigations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      seed_nodes TEXT NOT NULL DEFAULT '[]',
+      pinned_layout TEXT,
+      annotations TEXT,
+      shared_user_ids TEXT NOT NULL DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_ci_user ON connection_investigations(user_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_ci_updated ON connection_investigations(updated_at)`).run();
+
+  // Backfill case_*_links from legacy JSON columns (idempotent, one-time).
+  // Only runs when junction tables are empty AND there is legacy JSON data to
+  // migrate. Safe to leave in place: the guard short-circuits after first run.
+  try {
+    const linksCount = db.prepare('SELECT COUNT(*) as c FROM case_person_links').get() as any;
+    const anyJsonPopulated = db.prepare(
+      "SELECT COUNT(*) as c FROM cases WHERE (linked_persons IS NOT NULL AND linked_persons != '[]' AND linked_persons != '') OR (linked_incidents IS NOT NULL AND linked_incidents != '[]' AND linked_incidents != '') OR (linked_evidence IS NOT NULL AND linked_evidence != '[]' AND linked_evidence != '')"
+    ).get() as any;
+
+    if (linksCount.c === 0 && anyJsonPopulated.c > 0) {
+      backfillCaseLinks(db);
+    }
+  } catch (err: any) {
+    console.error('[DB] case links backfill failed:', err?.message);
+    // Non-fatal — leave legacy JSON columns and proceed
+  }
 
   // ── CODE VIOLATIONS — municipal code enforcement ──
   try {
@@ -2723,6 +2907,59 @@ function migrateSchema(): void {
   // Tracks how each breadcrumb position was obtained for audit trail visibility
   // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
   addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
+
+  // ── SPEED VIOLATIONS — logs when officers exceed speed thresholds ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS speed_violations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id INTEGER NOT NULL,
+      officer_id INTEGER,
+      call_sign TEXT,
+      officer_name TEXT,
+      badge_number TEXT,
+      speed_mps REAL NOT NULL,
+      speed_mph REAL NOT NULL,
+      speed_limit_mph REAL NOT NULL DEFAULT 80,
+      overage_mph REAL NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      road_name TEXT,
+      nearest_intersection TEXT,
+      beat_id INTEGER,
+      zone_id INTEGER,
+      duration_seconds INTEGER DEFAULT 0,
+      current_call_id INTEGER,
+      current_call_number TEXT,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      acknowledged_by INTEGER,
+      acknowledged_at TEXT,
+      notes TEXT,
+      FOREIGN KEY (unit_id) REFERENCES units(id),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (acknowledged_by) REFERENCES users(id)
+    )
+  `).run();
+
+  // ── SPEED ZONES — geographic areas with custom speed limits ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS speed_zones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      speed_limit_mph REAL NOT NULL,
+      polygon_coords TEXT NOT NULL,
+      zone_type TEXT NOT NULL DEFAULT 'custom',
+      active_hours TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `).run();
+
+  // ── Speed violation indexes ──
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_speed_violations_unit_time ON speed_violations (unit_id, recorded_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_speed_violations_officer ON speed_violations (officer_id, recorded_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_speed_violations_unack ON speed_violations (acknowledged_by) WHERE acknowledged_by IS NULL`).run();
 
   // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
   // Runs in the background after startup so it doesn't block the server.
@@ -2990,6 +3227,53 @@ function migrateSchema(): void {
     `);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_address ON premise_alerts(address)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_premise_alerts_coords ON premise_alerts(latitude, longitude)`);
+
+    // Utah Roads import (AGRC): authoritative street centerlines with address ranges,
+    // postal/MSAG community, ESN, ZIP, one-way, speed limit, and DOT functional class.
+    db.prepare(`CREATE TABLE IF NOT EXISTS roads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      utah_road_unique_id TEXT UNIQUE NOT NULL,
+      unique_id TEXT,
+      full_name TEXT,
+      street_name TEXT,
+      pre_dir TEXT,
+      post_type TEXT,
+      post_dir TEXT,
+      left_from INTEGER,
+      left_to INTEGER,
+      right_from INTEGER,
+      right_to INTEGER,
+      parity_left TEXT,
+      parity_right TEXT,
+      postal_community_left TEXT,
+      postal_community_right TEXT,
+      zip_left TEXT,
+      zip_right TEXT,
+      esn_left TEXT,
+      esn_right TEXT,
+      msag_community_left TEXT,
+      msag_community_right TEXT,
+      one_way TEXT,
+      posted_speed INTEGER,
+      dot_functional_class TEXT,
+      county_left TEXT,
+      county_right TEXT
+    )`).run();
+
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_street_community
+      ON roads(street_name, postal_community_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_zip_left
+      ON roads(zip_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_esn_left
+      ON roads(esn_left)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_roads_esn_right
+      ON roads(esn_right)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS road_segments_geom (
+      utah_road_unique_id TEXT PRIMARY KEY,
+      geom_json TEXT NOT NULL,
+      FOREIGN KEY (utah_road_unique_id) REFERENCES roads(utah_road_unique_id)
+    )`).run();
   } catch (err) {
     console.log('[migrate] Dispatch geography tables:', (err as Error).message);
   }
@@ -3599,6 +3883,17 @@ function migrateSchema(): void {
   addCol('cases', 'deadline', 'TEXT');
   addCol('cases', 'sla_hours', 'INTEGER');
 
+  // ── SERVE INTAKE: civil-case metadata ─────────────────────
+  addCol('cases', 'court_case_number', 'TEXT');
+  addCol('cases', 'court_id', 'INTEGER');
+  addCol('cases', 'plaintiff_person_id', 'INTEGER');
+  addCol('cases', 'defendant_person_id', 'INTEGER');
+  addCol('cases', 'attorney_person_id', 'INTEGER');
+  addCol('cases', 'signed_filed_date', 'TEXT');
+  addCol('cases', 'response_deadline_days', 'INTEGER');
+  addCol('cases', 'amount_demanded', 'REAL');
+  addCol('cases', 'cause_of_action', 'TEXT');
+
   // ── USERS/EMPLOYEES — territory + performance fields ──────
   addCol('users', 'photo', 'TEXT');
   addCol('users', 'territory_zips', "TEXT DEFAULT '[]'");
@@ -3622,6 +3917,179 @@ function migrateSchema(): void {
   addCol('court_events', 'court_fees', "TEXT DEFAULT '{}'");
   addCol('court_events', 'prosecutor_phone', 'TEXT');
   addCol('court_events', 'prosecutor_email', 'TEXT');
+
+  // Defensive: these tables existed historically but had no CREATE in source.
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    graph_id TEXT UNIQUE NOT NULL,
+    conversation_id TEXT,
+    folder_id TEXT,
+    subject TEXT,
+    from_address TEXT,
+    from_name TEXT,
+    to_addresses TEXT,
+    cc_addresses TEXT,
+    body_preview TEXT,
+    body_html TEXT,
+    has_attachments INTEGER DEFAULT 0,
+    is_read INTEGER DEFAULT 0,
+    is_flagged INTEGER DEFAULT 0,
+    importance TEXT DEFAULT 'normal',
+    received_at TEXT,
+    sent_at TEXT,
+    synced_at TEXT
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_folder ON email_cache(folder_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_received ON email_cache(received_at DESC)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_conv ON email_cache(conversation_id)`).run();
+
+  // FTS5 standalone table for full-text search over email bodies.
+  // We cannot use external-content=email_cache because `body_text` is
+  // derived (html_to_text(body_html)) and not a real column — FTS5
+  // bookkeeping would fail with `no such column: T.body_text` at init.
+  // Standalone trades ~2x disk for correctness; triggers below keep it synced.
+  db.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS email_cache_fts USING fts5(
+    subject, from_address, from_name, body_text,
+    tokenize='porter unicode61'
+  )`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_ai AFTER INSERT ON email_cache BEGIN
+    INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    VALUES (new.id, COALESCE(new.subject,''), COALESCE(new.from_address,''), COALESCE(new.from_name,''), html_to_text(new.body_html));
+  END`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_ad AFTER DELETE ON email_cache BEGIN
+    INSERT INTO email_cache_fts(email_cache_fts, rowid, subject, from_address, from_name, body_text)
+    VALUES ('delete', old.id, COALESCE(old.subject,''), COALESCE(old.from_address,''), COALESCE(old.from_name,''), html_to_text(old.body_html));
+  END`).run();
+
+  db.prepare(`CREATE TRIGGER IF NOT EXISTS email_cache_au AFTER UPDATE ON email_cache BEGIN
+    INSERT INTO email_cache_fts(email_cache_fts, rowid, subject, from_address, from_name, body_text)
+    VALUES ('delete', old.id, COALESCE(old.subject,''), COALESCE(old.from_address,''), COALESCE(old.from_name,''), html_to_text(old.body_html));
+    INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    VALUES (new.id, COALESCE(new.subject,''), COALESCE(new.from_address,''), COALESCE(new.from_name,''), html_to_text(new.body_html));
+  END`).run();
+
+  // Idempotent backfill — any rows already in email_cache that aren't indexed yet
+  db.prepare(`INSERT INTO email_cache_fts(rowid, subject, from_address, from_name, body_text)
+    SELECT id, COALESCE(subject,''), COALESCE(from_address,''), COALESCE(from_name,''), html_to_text(body_html)
+    FROM email_cache
+    WHERE id NOT IN (SELECT rowid FROM email_cache_fts)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 100,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    conditions_json TEXT NOT NULL,
+    actions_json TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rules_enabled ON email_rules(enabled, priority)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_rule_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_cache_id INTEGER NOT NULL,
+    rule_id INTEGER NOT NULL,
+    executed_at TEXT NOT NULL,
+    action_result TEXT,
+    FOREIGN KEY (email_cache_id) REFERENCES email_cache(id) ON DELETE CASCADE,
+    FOREIGN KEY (rule_id) REFERENCES email_rules(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rule_matches_email ON email_rule_matches(email_cache_id)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    graph_id TEXT UNIQUE NOT NULL,
+    display_name TEXT,
+    parent_folder_id TEXT,
+    total_count INTEGER DEFAULT 0,
+    unread_count INTEGER DEFAULT 0,
+    synced_at TEXT
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS email_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_graph_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    created_by INTEGER,
+    created_at TEXT
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_email ON email_links(email_graph_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_links_entity ON email_links(entity_type, entity_id)`).run();
+  addCol('email_links', 'auto_linked', 'INTEGER DEFAULT 0');
+
+  addCol('email_cache',      'owner_user_id', 'INTEGER');
+  addCol('email_folders',    'owner_user_id', 'INTEGER');
+  addCol('email_rules',      'owner_user_id', 'INTEGER');
+
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_cache_owner    ON email_cache(owner_user_id, folder_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_folders_owner  ON email_folders(owner_user_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_rules_owner    ON email_rules(owner_user_id, enabled, priority)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS user_graph_tokens (
+  user_id INTEGER PRIMARY KEY,
+  access_token_enc TEXT NOT NULL,
+  refresh_token_enc TEXT,
+  token_expires_at INTEGER NOT NULL,
+  mailbox TEXT,
+  scopes TEXT,
+  enrolled_at TEXT NOT NULL,
+  last_sync_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)`).run();
+
+  // Seed email auto-link allowlist + tip-line folder config if missing.
+  const existingAllowlist = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_autolink_allowlist'`).get();
+  if (!existingAllowlist) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`)
+      .run('email_autolink_allowlist', JSON.stringify(['rmpgutah.us', '.gov', '.state.ut.us', 'ut.gov', 'slco.org']));
+  }
+  const existingTipFolder = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_tip_line_folder_id'`).get();
+  if (!existingTipFolder) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_folder_id', '');
+  }
+  const existingTipOwner = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'email_tip_line_owner_user_id'`).get();
+  if (!existingTipOwner) {
+    db.prepare(`INSERT INTO system_config (config_key, config_value) VALUES (?, ?)`).run('email_tip_line_owner_user_id', '');
+  }
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    to_addresses TEXT NOT NULL,
+    cc_addresses TEXT,
+    bcc_addresses TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    attachments TEXT,
+    scheduled_at TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    sent_at TEXT,
+    error_message TEXT,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status, scheduled_at)`).run();
+  addCol('scheduled_emails', 'owner_user_id', 'INTEGER');
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_scheduled_owner      ON scheduled_emails(owner_user_id, status)`).run();
+
+  // ── PHASE 4: pre-Phase-4 email data isolation ──
+  // The original Phase 4 design called for wiping pre-Phase-4 email data on
+  // first deploy, but the wipe failed in production because the existing
+  // email_cache_fts virtual table's AFTER DELETE trigger references a
+  // contentless FTS5 'delete' command path that errored on real prod data
+  // (commit ddc6fcb7 / 2026-04-18 deploy). Since every per-user route filters
+  // by `WHERE owner_user_id = ?` and pre-Phase-4 rows have owner_user_id=NULL,
+  // the dormant data is already invisible to officers' inboxes, rule queries,
+  // schedule listings, and link lookups. No wipe is needed.
+  //
+  // The shared-mailbox OAuth tokens (ms_email_access_token, etc.) also stay
+  // in system_config — they are dead code under Phase 4 (no caller invokes
+  // the global getGraphClient()) and will be cleaned up by an admin tool in a
+  // follow-up rather than by an automatic destructive migration.
 
   // ── EMAIL_CACHE — categories for auto-tagging ──
   addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");
@@ -4023,6 +4491,10 @@ function migrateSchema(): void {
   // Dashcam videos — incident linkage
   addCol('dashcam_videos', 'incident_id', 'INTEGER');
 
+  // Serve queue — person/property FK links for connection graph
+  addCol('serve_queue', 'recipient_person_id', 'INTEGER');
+  addCol('serve_queue', 'property_id', 'INTEGER');
+
   // Training records/requirements — missing columns
   addCol('training_records', 'training_type', 'TEXT');
   addCol('training_records', 'expiration_date', 'TEXT');
@@ -4079,6 +4551,9 @@ function migrateSchema(): void {
   addCol('forensic_exhibits', 'is_biohazard', 'INTEGER DEFAULT 0');
   addCol('forensic_exhibits', 'current_custodian', 'TEXT');
   addCol('forensic_exhibits', 'current_custodian_id', 'INTEGER');
+  // Client form sends `examination_requested` (what examination the intake officer
+  // wants performed) — was silently dropped before 2026-04-19.
+  addCol('forensic_exhibits', 'examination_requested', 'TEXT');
 
   // Feature 42-43: Vehicle registration & insurance
   addCol('vehicles_records', 'registration_expiry', 'TEXT');
@@ -4604,11 +5079,324 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
   addCol('warrant_scraper_config', 'last_error', 'TEXT');
+  // `source_type` ('api'|'html'|'search_form') needed by the seed below and
+  // the circuit-breaker query in servemanager; wasn't in CREATE TABLE so it
+  // must be lazy-added before the INSERT references it.
+  addCol('warrant_scraper_config', 'source_type', 'TEXT');
 
+  // Warrant scraper enhancement — Phase 1 columns
+  addCol('warrant_scraper_config', 'priority', 'INTEGER DEFAULT 3');
+  addCol('warrant_scraper_config', 'content_hash', 'TEXT');
+  addCol('warrant_scraper_config', 'content_hash_updated_at', 'TEXT');
+  addCol('warrant_scraper_config', 'etag', 'TEXT');
+  addCol('warrant_scraper_config', 'last_modified', 'TEXT');
+  addCol('warrant_scraper_config', 'last_success_at', 'TEXT');
+  addCol('warrant_scraper_config', 'avg_parse_count', 'REAL');
+  addCol('warrant_scraper_config', 'p95_latency_ms', 'INTEGER');
+  addCol('warrant_scraper_config', 'jitter_seed', 'INTEGER');
+
+  // Warrant scraper enhancement — Phase 1 runs metrics table
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS warrant_scraper_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        duration_ms INTEGER,
+        http_status INTEGER,
+        bytes_received INTEGER,
+        parsed_count INTEGER DEFAULT 0,
+        inserted_count INTEGER DEFAULT 0,
+        updated_count INTEGER DEFAULT 0,
+        skipped_reason TEXT,
+        error_message TEXT,
+        parser_used TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_scraper_runs_source_time
+        ON warrant_scraper_runs (source_key, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_scraper_runs_started_at
+        ON warrant_scraper_runs (started_at DESC);
+    `);
+  } catch (e) { /* */ }
+
+  // ── scraped_warrants missing columns ──
+  addCol('scraped_warrants', 'middle_name', 'TEXT');
+  addCol('scraped_warrants', 'age', 'INTEGER');
+  addCol('scraped_warrants', 'gender', 'TEXT');
+  addCol('scraped_warrants', 'race', 'TEXT');
+  addCol('scraped_warrants', 'city', 'TEXT');
+  addCol('scraped_warrants', 'state', 'TEXT');
+  addCol('scraped_warrants', 'photo_url', 'TEXT');
+  addCol('scraped_warrants', 'detail_url', 'TEXT');
+  addCol('scraped_warrants', 'first_seen_at', 'TEXT');
+  addCol('scraped_warrants', 'last_seen_at', 'TEXT');
+  addCol('scraped_warrants', 'cleared_at', 'TEXT');
+  addCol('scraped_warrants', 'dob_verified', 'INTEGER DEFAULT 0');
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)'); } catch (e) { /* */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_offense ON scraped_warrants(offense_level)'); } catch (e) { /* */ }
+
+  // ── Seed warrant scraper sources — All 50 US States + Federal ──
+  {
+    const s = db.prepare('INSERT OR IGNORE INTO warrant_scraper_config (source_key, state, county, source_url, source_name, source_type, scrape_interval_minutes, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    // Federal
+    s.run('federal_fbi_wanted', 'US', '', 'https://api.fbi.gov/wanted/v1/list', 'FBI Most Wanted', 'api', 360, 1);
+    s.run('federal_usmarshals', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/15-most-wanted-fugitive', 'US Marshals Most Wanted', 'html', 1440, 0);
+    // Alabama
+    s.run('al_jefferson_warrants', 'AL', 'Jefferson', 'https://www.jeffcosheriffal.com/most-wanted', 'Jefferson County AL', 'html', 720, 0);
+    // Alaska
+    s.run('ak_anchorage_warrants', 'AK', 'Anchorage', 'https://www.muni.org/departments/prior/APD/Pages/MostWanted.aspx', 'Anchorage PD', 'html', 720, 0);
+    // Arizona
+    s.run('az_maricopa_warrants', 'AZ', 'Maricopa', 'https://www.mcso.org/Most-Wanted', 'Maricopa County SO', 'html', 720, 1);
+    s.run('az_pima_warrants', 'AZ', 'Pima', 'https://88crime.org/category/wanted-fugitives/', 'Pima County 88-CRIME', 'html', 720, 1);
+    // Arkansas
+    s.run('ar_pulaski_warrants', 'AR', 'Pulaski', 'https://www.littlerock.gov/city-administration/city-departments/police/most-wanted/', 'Little Rock PD', 'html', 720, 0);
+    // California
+    s.run('ca_los_angeles_warrants', 'CA', 'Los Angeles', 'https://www.lapdonline.org/most-wanted/', 'LAPD Most Wanted', 'html', 720, 1);
+    s.run('ca_san_diego_warrants', 'CA', 'San Diego', 'https://www.sdcda.org/helping/fugitives.html', 'San Diego DA Fugitives', 'html', 720, 0);
+    // Colorado
+    s.run('co_el_paso_warrants', 'CO', 'El Paso', 'https://www.epcsheriffsoffice.com/active-warrants', 'El Paso County SO', 'html', 720, 1);
+    s.run('co_denver_warrants', 'CO', 'Denver', 'https://www.metrodenvercrimestoppers.com/', 'Metro Denver Crime Stoppers', 'html', 720, 1);
+    s.run('co_adams_warrants', 'CO', 'Adams', 'https://adamscosheriff.net/portal/MostWanted', 'Adams County SO', 'html', 720, 0);
+    // Connecticut
+    s.run('ct_hartford_warrants', 'CT', 'Hartford', 'https://www.manchesterct.gov/Police-Department/Most-Wanted', 'Hartford Area', 'html', 720, 0);
+    // Delaware
+    s.run('de_new_castle_warrants', 'DE', 'New Castle', 'https://www.tipsubmit.com/WebTips.aspx?AgencyID=256', 'Delaware Crime Stoppers', 'html', 720, 0);
+    // Florida
+    s.run('fl_miami_warrants', 'FL', 'Miami-Dade', 'https://www.crimestoppersmiami.com/mostwanted', 'Miami-Dade Crime Stoppers', 'html', 720, 1);
+    s.run('fl_hillsborough_warrants', 'FL', 'Hillsborough', 'https://www.hcso.tampa.fl.us/Community/Most-Wanted', 'Hillsborough County SO', 'html', 720, 0);
+    // Georgia
+    s.run('ga_fulton_warrants', 'GA', 'Fulton', 'https://www.fultoncountyga.gov/services/sheriff-s-office/most-wanted', 'Fulton County GA', 'html', 720, 0);
+    // Hawaii
+    s.run('hi_honolulu_warrants', 'HI', 'Honolulu', 'https://www.crimestoppershonolulu.org/', 'Honolulu Crime Stoppers', 'html', 1440, 0);
+    // Idaho
+    s.run('id_ada_warrants', 'ID', 'Ada', 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx', 'Ada County', 'search_form', 720, 0);
+    // Illinois
+    s.run('il_cook_warrants', 'IL', 'Cook', 'https://www.cookcountysheriff.org/most-wanted/', 'Cook County SO', 'html', 720, 1);
+    // Indiana
+    s.run('in_marion_warrants', 'IN', 'Marion', 'https://www.indycrimestoppers.org/', 'Indianapolis Crime Stoppers', 'html', 720, 0);
+    // Iowa
+    s.run('ia_polk_warrants', 'IA', 'Polk', 'https://www.polkcountyiowa.gov/county-sheriff/most-wanted/', 'Polk County IA', 'html', 720, 0);
+    // Kansas
+    s.run('ks_sedgwick_warrants', 'KS', 'Sedgwick', 'https://www.sedgwickcounty.org/sheriff/most-wanted/', 'Sedgwick County KS', 'html', 720, 0);
+    // Kentucky
+    s.run('ky_jefferson_warrants', 'KY', 'Jefferson', 'https://www.lmpd.org/wanted.html', 'Louisville Metro PD', 'html', 720, 0);
+    // Louisiana
+    s.run('la_orleans_warrants', 'LA', 'Orleans', 'https://www.crimestoppersgno.org/mostwanted', 'New Orleans Crime Stoppers', 'html', 720, 0);
+    // Maine
+    s.run('me_cumberland_warrants', 'ME', 'Cumberland', 'https://www.maine.gov/dps/msp/wanted-missing', 'Maine State Police', 'html', 720, 0);
+    // Maryland
+    s.run('md_baltimore_warrants', 'MD', 'Baltimore', 'https://www.baltimorepolice.org/most-wanted', 'Baltimore PD', 'html', 720, 0);
+    // Massachusetts
+    s.run('ma_suffolk_warrants', 'MA', 'Suffolk', 'https://www.mass.gov/most-wanted', 'Massachusetts Most Wanted', 'html', 720, 1);
+    // Michigan
+    s.run('mi_wayne_warrants', 'MI', 'Wayne', 'https://www.crimestoppers.com/', 'Detroit Crime Stoppers', 'html', 720, 0);
+    // Minnesota
+    s.run('mn_hennepin_warrants', 'MN', 'Hennepin', 'https://www.hennepinsheriff.org/jail-warrants/warrants', 'Hennepin County', 'html', 720, 0);
+    // Mississippi
+    s.run('ms_hinds_warrants', 'MS', 'Hinds', 'https://www.mscrimestoppers.com/mostwanted', 'Mississippi Crime Stoppers', 'html', 720, 0);
+    // Missouri
+    s.run('mo_jackson_warrants', 'MO', 'Jackson', 'https://www.kcpd.org/crime/most-wanted/', 'Kansas City PD', 'html', 720, 0);
+    // Montana
+    s.run('mt_flathead_warrants', 'MT', 'Flathead', 'https://apps.flathead.mt.gov/warrants/warrants_list.php', 'Flathead County', 'html', 720, 1);
+    // Nebraska
+    s.run('ne_douglas_warrants', 'NE', 'Douglas', 'https://www.omahacrimestoppers.org/mostwanted', 'Omaha Crime Stoppers', 'html', 720, 0);
+    // Nevada
+    s.run('nv_clark_warrants', 'NV', 'Clark', 'https://www.lvmpd.com/en-us/Pages/MostWanted.aspx', 'LVMPD Most Wanted', 'html', 720, 1);
+    s.run('nv_washoe_warrants', 'NV', 'Washoe', 'https://secretwitness.com/current-cases/current-fugitive-cases/', 'Washoe County Secret Witness', 'html', 720, 1);
+    // New Hampshire
+    s.run('nh_hillsborough_warrants', 'NH', 'Hillsborough', 'https://www.manchesternh.gov/Departments/Police/Most-Wanted', 'Manchester NH PD', 'html', 720, 0);
+    // New Jersey
+    s.run('nj_essex_warrants', 'NJ', 'Essex', 'https://www.njsp.org/wanted/index.shtml', 'NJ State Police', 'html', 720, 1);
+    // New Mexico
+    s.run('nm_bernalillo_warrants', 'NM', 'Bernalillo', 'https://bcapp.bernco.gov/BCSO_WarrantInterWITS/', 'Bernalillo County WITS', 'search_form', 720, 0);
+    // New York
+    s.run('ny_new_york_warrants', 'NY', 'New York', 'https://www.nyc.gov/nypd/most-wanted', 'NYPD Most Wanted', 'html', 720, 1);
+    // North Carolina
+    s.run('nc_mecklenburg_warrants', 'NC', 'Mecklenburg', 'https://www.crimestoppersofcharlotte.org/', 'Charlotte Crime Stoppers', 'html', 720, 0);
+    // North Dakota
+    s.run('nd_cass_warrants', 'ND', 'Cass', 'https://www.fargond.gov/city-government/departments/police/most-wanted', 'Fargo PD', 'html', 720, 0);
+    // Ohio
+    s.run('oh_cuyahoga_warrants', 'OH', 'Cuyahoga', 'https://www.cuyahogacounty.gov/sheriff/most-wanted', 'Cuyahoga County', 'html', 720, 0);
+    // Oklahoma
+    s.run('ok_oklahoma_warrants', 'OK', 'Oklahoma', 'https://www.okcpd.org/about-us/most-wanted/', 'Oklahoma City PD', 'html', 720, 0);
+    // Oregon
+    s.run('or_multnomah_warrants', 'OR', 'Multnomah', 'https://www.mcso.us/warrants/', 'Multnomah County', 'html', 720, 0);
+    // Pennsylvania
+    s.run('pa_philadelphia_warrants', 'PA', 'Philadelphia', 'https://www.phillypolice.com/forms/most-wanted/', 'Philadelphia PD', 'html', 720, 1);
+    // Rhode Island
+    s.run('ri_providence_warrants', 'RI', 'Providence', 'https://www.riag.ri.gov/most-wanted', 'Rhode Island AG', 'html', 720, 0);
+    // South Carolina
+    s.run('sc_richland_warrants', 'SC', 'Richland', 'https://www.rcsd.net/most-wanted', 'Richland County SC', 'html', 720, 0);
+    // South Dakota
+    s.run('sd_minnehaha_warrants', 'SD', 'Minnehaha', 'https://www.siouxfallspolice.com/resources/most-wanted', 'Sioux Falls PD', 'html', 720, 0);
+    // Tennessee
+    s.run('tn_davidson_warrants', 'TN', 'Davidson', 'https://www.nashville.gov/departments/police/most-wanted', 'Nashville PD', 'html', 720, 0);
+    // Texas
+    s.run('tx_harris_warrants', 'TX', 'Harris', 'https://www.crime-stoppers.org/mostwanted', 'Houston Crime Stoppers', 'html', 720, 1);
+    s.run('tx_dallas_warrants', 'TX', 'Dallas', 'https://www.ntcrimestoppers.com/fugitives', 'North Texas Crime Stoppers', 'html', 720, 0);
+    // Utah (statewide API handled by utahWarrantScraper.ts)
+    s.run('ut_statewide', 'UT', '', 'https://warrants.utah.gov/api/v1', 'Utah State Warrants API', 'api', 360, 1);
+    // Vermont
+    s.run('vt_chittenden_warrants', 'VT', 'Chittenden', 'https://www.burlingtonvt.gov/Police/Most-Wanted', 'Burlington VT PD', 'html', 1440, 0);
+    // Virginia
+    s.run('va_fairfax_warrants', 'VA', 'Fairfax', 'https://www.fairfaxcounty.gov/police/wanted', 'Fairfax County PD', 'html', 720, 0);
+    // Washington
+    s.run('wa_king_warrants', 'WA', 'King', 'https://www.kingcounty.gov/en/dept/dajd/courts-jails-legal/warrants', 'King County WA', 'html', 720, 0);
+    // West Virginia
+    s.run('wv_kanawha_warrants', 'WV', 'Kanawha', 'https://www.wvsp.gov/pages/Most-Wanted.aspx', 'WV State Police', 'html', 720, 0);
+    // Wisconsin
+    s.run('wi_milwaukee_warrants', 'WI', 'Milwaukee', 'https://www.milwaukeecountywi.gov/county-departments/sheriff/most-wanted/', 'Milwaukee County', 'html', 720, 0);
+    // Wyoming
+    s.run('wy_laramie_warrants', 'WY', 'Laramie', 'https://www.laramiecountywy.gov/County-Government/Elected-Officials/Laramie-County-Sheriffs-Office/Most-Wanted', 'Laramie County', 'html', 720, 0);
+
+    // ── Additional State Sources (expanded coverage) ──────────────────
+    // Alaska
+    s.run('ak_state_troopers', 'AK', '', 'https://www.prior.dps.alaska.gov/ast/AKMostWanted/MostWanted.aspx', 'Alaska State Troopers', 'html', 1440, 1);
+    s.run('ak_mat_su_warrants', 'AK', 'Mat-Su', 'https://www.prior.matsugov.us/sheriff/wanted', 'Mat-Su Borough', 'html', 720, 1);
+    // Alabama
+    s.run('al_mobile_warrants', 'AL', 'Mobile', 'https://www.mobilecountysheriffal.com/most-wanted/', 'Mobile County SO', 'html', 720, 1);
+    s.run('al_state_crimestop', 'AL', '', 'https://www.crime-stoppers.org/al/mostwanted', 'Alabama Crime Stoppers', 'html', 720, 1);
+    // Arizona
+    s.run('az_yavapai_warrants', 'AZ', 'Yavapai', 'https://yavapaisw.com/wanted-fugitives/', 'Yavapai Silent Witness', 'html', 720, 1);
+    // Arkansas
+    s.run('ar_benton_warrants', 'AR', 'Benton', 'https://www.bentoncountycrimestoppers.org/', 'Benton County Crime Stoppers', 'html', 720, 1);
+    // California
+    s.run('ca_riverside_warrants', 'CA', 'Riverside', 'https://www.riversidesheriff.org/810/Most-Wanted', 'Riverside County SO', 'html', 720, 1);
+    s.run('ca_sacramento_warrants', 'CA', 'Sacramento', 'https://www.sacsheriff.com/pages/most_wanted.aspx', 'Sacramento County SO', 'html', 720, 1);
+    s.run('ca_fresno_warrants', 'CA', 'Fresno', 'https://www.valleycrimestoppers.org/most-wanted', 'Fresno Valley Crime Stoppers', 'html', 720, 1);
+    s.run('ca_kern_warrants', 'CA', 'Kern', 'https://www.kerncounty.com/government/sheriff/most-wanted', 'Kern County SO', 'html', 720, 1);
+    s.run('ca_san_bernardino_warrants', 'CA', 'San Bernardino', 'https://www.ieanonymoustips.org/', 'IE Crime Stoppers', 'html', 720, 1);
+    // Colorado
+    s.run('co_pueblo_warrants', 'CO', 'Pueblo', 'https://www.pueblocrimestoppers.com/', 'Pueblo Crime Stoppers', 'html', 720, 1);
+    s.run('co_larimer_warrants', 'CO', 'Larimer', 'https://www.nococrimestoppers.com/', 'Northern CO Crime Stoppers', 'html', 720, 1);
+    s.run('co_weld_warrants', 'CO', 'Weld', 'https://www.weldcountysheriff.com/most-wanted', 'Weld County SO', 'html', 720, 1);
+    s.run('co_mesa_warrants', 'CO', 'Mesa', 'https://www.mesacounty.us/sheriff/most-wanted', 'Mesa County SO', 'html', 720, 1);
+    s.run('co_arapahoe_warrants', 'CO', 'Arapahoe', 'https://www.arapahoegov.com/847/Most-Wanted', 'Arapahoe County', 'html', 720, 1);
+    s.run('co_jefferson_warrants', 'CO', 'Jefferson', 'https://www.jeffco.us/3847/Most-Wanted', 'Jefferson County SO', 'html', 720, 1);
+    s.run('co_boulder_warrants', 'CO', 'Boulder', 'https://www.northerncoloradocrimestoppers.com/', 'Boulder Area Crime Stoppers', 'html', 720, 1);
+    s.run('co_springs_warrants', 'CO', 'El Paso', 'https://www.crimestoppersandpikespeakregion.com/', 'Pikes Peak Crime Stoppers', 'html', 720, 1);
+    // Connecticut
+    s.run('ct_state_police', 'CT', '', 'https://portal.ct.gov/DESPP/Division-of-State-Police/Most-Wanted', 'CT State Police', 'html', 720, 1);
+    // Delaware
+    s.run('de_state_police', 'DE', '', 'https://dsp.delaware.gov/crime-stoppers/', 'Delaware State Police', 'html', 720, 1);
+    // Florida
+    s.run('fl_broward_warrants', 'FL', 'Broward', 'https://www.browardsheriff.org/community/most-wanted', 'Broward County SO', 'html', 720, 1);
+    s.run('fl_orange_warrants', 'FL', 'Orange', 'https://www.ocso.com/most-wanted/', 'Orange County SO', 'html', 720, 1);
+    s.run('fl_duval_warrants', 'FL', 'Duval', 'https://www.fccrimestoppers.com/', 'First Coast Crime Stoppers', 'html', 720, 1);
+    // Georgia
+    s.run('ga_dekalb_warrants', 'GA', 'DeKalb', 'https://www.dekalbcountyga.gov/sheriff/most-wanted', 'DeKalb County SO', 'html', 720, 1);
+    s.run('ga_gwinnett_warrants', 'GA', 'Gwinnett', 'https://www.atlantacrimestoppers.com/', 'Atlanta Crime Stoppers', 'html', 720, 1);
+    // Hawaii
+    s.run('hi_maui_warrants', 'HI', 'Maui', 'https://www.mpd.maui.gov/crime-stoppers/', 'Maui Crime Stoppers', 'html', 1440, 1);
+    // Idaho
+    s.run('id_canyon_warrants', 'ID', 'Canyon', 'https://www.canyoncounty.id.gov/sheriff/most-wanted', 'Canyon County SO', 'html', 720, 1);
+    s.run('id_bonneville_warrants', 'ID', 'Bonneville', 'https://www.co.bonneville.id.us/sheriff/most-wanted', 'Bonneville County SO', 'html', 720, 1);
+    s.run('id_kootenai_warrants', 'ID', 'Kootenai', 'https://www.kcgov.us/154/Most-Wanted', 'Kootenai County SO', 'html', 720, 1);
+    s.run('id_twin_falls_warrants', 'ID', 'Twin Falls', 'https://www.twinfallscounty.org/sheriff/most-wanted', 'Twin Falls County SO', 'html', 720, 1);
+    s.run('id_state_police', 'ID', '', 'https://isp.idaho.gov/wanted/', 'Idaho State Police', 'html', 720, 1);
+    // Illinois
+    s.run('il_dupage_warrants', 'IL', 'DuPage', 'https://www.crimestoppersil.com/', 'Illinois Crime Stoppers', 'html', 720, 1);
+    // Indiana
+    s.run('in_allen_warrants', 'IN', 'Allen', 'https://www.allencountyindianawarrants.org/', 'Allen County Warrants', 'html', 720, 1);
+    // Iowa
+    s.run('ia_linn_warrants', 'IA', 'Linn', 'https://www.linncountyiowa.gov/1112/Most-Wanted', 'Linn County SO', 'html', 720, 1);
+    s.run('ia_state_crimestop', 'IA', '', 'https://iowacrimestoppers.org/', 'Iowa Crime Stoppers', 'html', 720, 1);
+    // Kansas
+    s.run('ks_johnson_warrants', 'KS', 'Johnson', 'https://www.jocosheriff.org/most-wanted', 'Johnson County SO', 'html', 720, 1);
+    // Kentucky
+    s.run('ky_fayette_warrants', 'KY', 'Fayette', 'https://www.bluegrasscrimestoppers.com/', 'Bluegrass Crime Stoppers', 'html', 720, 1);
+    // Louisiana
+    s.run('la_east_baton_rouge', 'LA', 'East Baton Rouge', 'https://www.crimestoppersbr.org/most-wanted', 'Baton Rouge Crime Stoppers', 'html', 720, 1);
+    // Maine
+    s.run('me_state_police', 'ME', '', 'https://www.maine.gov/dps/msp/wanted-missing', 'Maine State Police', 'html', 720, 1);
+    // Maryland
+    s.run('md_prince_georges', 'MD', 'Prince Georges', 'https://www.pgcrimesolvers.com/most-wanted', 'Prince Georges Crime Solvers', 'html', 720, 1);
+    // Michigan
+    s.run('mi_kent_warrants', 'MI', 'Kent', 'https://www.silentobserver.org/', 'Kent County Silent Observer', 'html', 720, 1);
+    s.run('mi_oakland_warrants', 'MI', 'Oakland', 'https://www.oaklandsheriff.com/most-wanted', 'Oakland County SO', 'html', 720, 1);
+    // Minnesota
+    s.run('mn_ramsey_warrants', 'MN', 'Ramsey', 'https://www.crimestoppersmn.org/', 'Minnesota Crime Stoppers', 'html', 720, 1);
+    // Mississippi
+    s.run('ms_harrison_warrants', 'MS', 'Harrison', 'https://www.mscoastcrimestoppers.com/', 'MS Coast Crime Stoppers', 'html', 720, 1);
+    // Missouri
+    s.run('mo_st_louis_warrants', 'MO', 'St. Louis', 'https://www.stlrcs.org/most-wanted', 'St. Louis Crime Stoppers', 'html', 720, 1);
+    // Montana
+    s.run('mt_cascade_warrants', 'MT', 'Cascade', 'https://www.cascadecountymt.gov/departments/sheriff/most-wanted', 'Cascade County SO', 'html', 720, 1);
+    s.run('mt_yellowstone_warrants', 'MT', 'Yellowstone', 'https://www.co.yellowstone.mt.gov/sheriff/most-wanted', 'Yellowstone County SO', 'html', 720, 1);
+    // Nebraska
+    s.run('ne_lancaster_warrants', 'NE', 'Lancaster', 'https://www.lincoln.ne.gov/City/Departments/Police-Department/Most-Wanted', 'Lincoln PD', 'html', 720, 1);
+    // New Hampshire
+    s.run('nh_state_police', 'NH', '', 'https://www.nh.gov/safety/divisions/nhsp/wanted/', 'NH State Police', 'html', 720, 1);
+    // New Jersey
+    s.run('nj_camden_warrants', 'NJ', 'Camden', 'https://www.camdencountypd.org/most-wanted', 'Camden County PD', 'html', 720, 1);
+    s.run('nj_passaic_warrants', 'NJ', 'Passaic', 'https://www.passaicsheriff.com/wanted/', 'Passaic County SO', 'html', 720, 1);
+    // New Mexico
+    s.run('nm_state_police', 'NM', '', 'https://www.nmsp.dps.state.nm.us/', 'NM State Police', 'html', 720, 1);
+    // New York
+    s.run('ny_suffolk_warrants', 'NY', 'Suffolk', 'https://www.suffolkcountyny.gov/sheriff/most-wanted', 'Suffolk County SO', 'html', 720, 1);
+    // North Carolina
+    s.run('nc_wake_warrants', 'NC', 'Wake', 'https://www.raleighcrimestoppers.org/', 'Raleigh Crime Stoppers', 'html', 720, 1);
+    s.run('nc_guilford_warrants', 'NC', 'Guilford', 'https://www.crimestoppersgso.org/', 'Greensboro Crime Stoppers', 'html', 720, 1);
+    // North Dakota
+    s.run('nd_burleigh_warrants', 'ND', 'Burleigh', 'https://www.bismarcknd.gov/1082/Most-Wanted', 'Bismarck PD', 'html', 720, 1);
+    // Ohio
+    s.run('oh_hamilton_warrants', 'OH', 'Hamilton', 'https://www.crimestoppers.com/cincinnati', 'Cincinnati Crime Stoppers', 'html', 720, 1);
+    s.run('oh_franklin_warrants', 'OH', 'Franklin', 'https://www.centralohiocrimestoppers.org/', 'Central Ohio Crime Stoppers', 'html', 720, 1);
+    // Oklahoma
+    s.run('ok_tulsa_warrants', 'OK', 'Tulsa', 'https://www.tulsacrimestoppers.org/most-wanted', 'Tulsa Crime Stoppers', 'html', 720, 1);
+    // Oregon
+    s.run('or_clackamas_warrants', 'OR', 'Clackamas', 'https://www.clackamas.us/sheriff/mostwanted', 'Clackamas County SO', 'html', 720, 1);
+    s.run('or_lane_warrants', 'OR', 'Lane', 'https://www.lanecountyor.gov/sheriff/most-wanted', 'Lane County SO', 'html', 720, 1);
+    // Pennsylvania
+    s.run('pa_allegheny_warrants', 'PA', 'Allegheny', 'https://www.pittsburghcrimestoppers.com/', 'Pittsburgh Crime Stoppers', 'html', 720, 1);
+    // Rhode Island
+    s.run('ri_state_police', 'RI', '', 'https://www.risp.ri.gov/most-wanted', 'RI State Police', 'html', 720, 1);
+    // South Carolina
+    s.run('sc_charleston_warrants', 'SC', 'Charleston', 'https://www.charlestoncrimestoppers.com/', 'Charleston Crime Stoppers', 'html', 720, 1);
+    // South Dakota
+    s.run('sd_pennington_warrants', 'SD', 'Pennington', 'https://www.rapidcity.com/police-department/most-wanted', 'Rapid City PD', 'html', 720, 1);
+    // Tennessee
+    s.run('tn_shelby_warrants', 'TN', 'Shelby', 'https://www.crimestopmem.org/mostwanted', 'Memphis Crime Stoppers', 'html', 720, 1);
+    s.run('tn_knox_warrants', 'TN', 'Knox', 'https://www.knoxcrimestoppers.com/', 'Knoxville Crime Stoppers', 'html', 720, 1);
+    // Texas
+    s.run('tx_bexar_warrants', 'TX', 'Bexar', 'https://www.sacrimestoppers.com/most-wanted', 'San Antonio Crime Stoppers', 'html', 720, 1);
+    s.run('tx_tarrant_warrants', 'TX', 'Tarrant', 'https://www.tarrantcrimestoppers.org/', 'Tarrant County Crime Stoppers', 'html', 720, 1);
+    s.run('tx_el_paso_warrants', 'TX', 'El Paso', 'https://www.crimestoppersofelpaso.org/most-wanted', 'El Paso Crime Stoppers', 'html', 720, 1);
+    s.run('tx_travis_warrants', 'TX', 'Travis', 'https://www.austincrimestoppers.org/', 'Austin Crime Stoppers', 'html', 720, 1);
+    // US Federal (additional)
+    s.run('federal_dea_fugitives', 'US', '', 'https://www.dea.gov/fugitives', 'DEA Fugitives', 'html', 1440, 1);
+    s.run('federal_atf_wanted', 'US', '', 'https://www.atf.gov/most-wanted', 'ATF Most Wanted', 'html', 1440, 1);
+    s.run('federal_ice_wanted', 'US', '', 'https://www.ice.gov/most-wanted', 'ICE Most Wanted', 'html', 1440, 1);
+    s.run('federal_secret_service', 'US', '', 'https://www.secretservice.gov/investigation/most-wanted', 'Secret Service Most Wanted', 'html', 1440, 1);
+    s.run('federal_usms_top15', 'US', '', 'https://www.usmarshals.gov/what-we-do/fugitive-investigations/most-wanted-fugitives', 'US Marshals 15 Most Wanted', 'html', 1440, 1);
+    s.run('federal_postal_inspectors', 'US', '', 'https://www.uspis.gov/investigations/wanted-fugitives', 'US Postal Inspectors', 'html', 1440, 1);
+    // Virginia
+    s.run('va_henrico_warrants', 'VA', 'Henrico', 'https://henrico.us/police/most-wanted/', 'Henrico County PD', 'html', 720, 1);
+    // Vermont
+    s.run('vt_state_police', 'VT', '', 'https://vsp.vermont.gov/wanted', 'Vermont State Police', 'html', 1440, 1);
+    // Washington
+    s.run('wa_pierce_warrants', 'WA', 'Pierce', 'https://www.piercecountywa.gov/2090/Most-Wanted', 'Pierce County SO', 'html', 720, 1);
+    s.run('wa_spokane_warrants', 'WA', 'Spokane', 'https://www.crimestoppersinlandnw.org/', 'Inland NW Crime Stoppers', 'html', 720, 1);
+    s.run('wa_snohomish_warrants', 'WA', 'Snohomish', 'https://snohomishcountywa.gov/282/Most-Wanted', 'Snohomish County SO', 'html', 720, 1);
+    // West Virginia
+    s.run('wv_kanawha_crimestop', 'WV', 'Kanawha', 'https://www.p3tips.com/TipForm.aspx?ID=104', 'Charleston WV Crime Stoppers', 'html', 720, 1);
+    // Wisconsin
+    s.run('wi_dane_warrants', 'WI', 'Dane', 'https://www.madisoncrimestoppers.com/', 'Madison Crime Stoppers', 'html', 720, 1);
+    // Wyoming
+    s.run('wy_natrona_warrants', 'WY', 'Natrona', 'https://www.natronacounty-wy.gov/603/Most-Wanted', 'Natrona County SO', 'html', 720, 1);
+    s.run('wy_sweetwater_warrants', 'WY', 'Sweetwater', 'https://www.sweet.wy.us/sheriff/most-wanted', 'Sweetwater County SO', 'html', 720, 1);
+    s.run('wy_albany_warrants', 'WY', 'Albany', 'https://www.co.albany.wy.us/sheriff/most-wanted', 'Albany County SO', 'html', 720, 1);
+    s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
+  }
+
+  // Enable ALL warrant scraper sources — circuit breaker auto-disables sources that fail 5 times
+  db.prepare("UPDATE warrant_scraper_config SET enabled = 1 WHERE enabled = 0 AND source_type != 'search_form'").run();
   // ── Radio transcripts — audio recording columns ──
-  addCol('radio_transcripts', 'audio_file', 'TEXT');
-  addCol('radio_transcripts', 'file_size', 'INTEGER');
-  addCol('radio_transcripts', 'linked_call_id', 'INTEGER');
+  addCol("radio_transcripts", "audio_file", "TEXT");
+  addCol("radio_transcripts", "file_size", "INTEGER");
+  addCol("radio_transcripts", "linked_call_id", "INTEGER");
 
   // ── ClearPathGPS dashcam events + officer mappings ──
   db.exec(`
@@ -4682,6 +5470,18 @@ function migrateSchema(): void {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
+
+  // ── FIELD INTERVIEWS — columns referenced by INSERT but missing from CREATE TABLE ──
+  // Route handler (server/src/routes/fieldInterviews.ts) inserts these; production DB
+  // has them via ad-hoc ALTER, but fresh DBs would crash with
+  // "table field_interviews has no column named X" on first FI creation.
+  addCol('field_interviews', 'date', 'TEXT');
+  addCol('field_interviews', 'gang_affiliation', 'TEXT');
+  addCol('field_interviews', 'section_id', 'INTEGER');
+  addCol('field_interviews', 'zone_id', 'INTEGER');
+  addCol('field_interviews', 'beat_id', 'INTEGER');
+  addCol('field_interviews', 'zone_beat', 'TEXT');
+  addCol('field_interviews', 'updated_at', 'TEXT');
 
   console.log('Schema migration completed.');
 }

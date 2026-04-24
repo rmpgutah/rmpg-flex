@@ -322,7 +322,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                 <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
               </div>
               <div className="text-center p-1.5 bg-surface-sunken rounded">
-                <div className="text-sm font-bold font-mono text-cyan-400">{fuelEfficiency.data?.length || 0}</div>
+                <div className="text-sm font-bold font-mono text-gray-400">{fuelEfficiency.data?.length || 0}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Fill-ups</div>
               </div>
             </div>
@@ -354,7 +354,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                 <div className="text-[7px] text-rmpg-500 uppercase">Parts</div>
               </div>
               <div className="text-center p-1.5 bg-surface-sunken rounded">
-                <div className="text-sm font-bold font-mono text-cyan-400">${maintenanceCosts.total_labor_cost?.toLocaleString() || 0}</div>
+                <div className="text-sm font-bold font-mono text-gray-400">${maintenanceCosts.total_labor_cost?.toLocaleString() || 0}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Labor</div>
               </div>
             </div>
@@ -437,7 +437,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
             <div className="space-y-2">
               {maintenance.map((m) => {
                 const typeColors: Record<string, string> = {
-                  oil_change: 'bg-gray-500', tire_rotation: 'bg-cyan-500',
+                  oil_change: 'bg-gray-500', tire_rotation: 'bg-gray-500',
                   brake_service: 'bg-red-500', inspection: 'bg-green-500',
                   repair: 'bg-amber-500', other: 'bg-rmpg-500',
                 };

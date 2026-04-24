@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { config } from '../config';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
@@ -855,7 +856,7 @@ router.get('/account-stats', (req: Request, res: Response) => {
 router.delete('/users/:id/totp', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const targetId = parseInt(req.params.id, 10);
+    const targetId = parseInt(paramStr(req.params.id), 10);
     if (isNaN(targetId)) {
       res.status(400).json({ error: 'Invalid user ID', code: 'INVALID_USER_ID' });
       return;
@@ -890,7 +891,7 @@ router.delete('/users/:id/totp', authenticateToken, requireRole('admin'), (req: 
 router.put('/users/:id/totp-exempt', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const targetId = parseInt(req.params.id, 10);
+    const targetId = parseInt(paramStr(req.params.id), 10);
     if (isNaN(targetId)) {
       res.status(400).json({ error: 'Invalid user ID', code: 'INVALID_USER_ID' });
       return;
@@ -1000,8 +1001,8 @@ router.get('/audit/export', (req: Request, res: Response) => {
 router.get('/config-history', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '50' } = req.query;
-    const limitNum = Math.min(500, parseInt(limit as string, 10) || 50);
+    const { limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     const rows = db.prepare(`
       SELECT cch.*, u.full_name as changed_by_name
@@ -1097,8 +1098,8 @@ router.get('/backup-status', (req: Request, res: Response) => {
 router.get('/error-logs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '50' } = req.query;
-    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+    const { limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     // Use activity_log entries that contain 'error' in action/details
     const rows = db.prepare(`
@@ -1371,7 +1372,7 @@ router.get('/system-health', (req: Request, res: Response) => {
 router.get('/user-activity/:userId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.userId, 10);
+    const userId = parseInt(paramStr(req.params.userId), 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID', code: 'INVALID_USER_ID' }); return; }
 
     const user = db.prepare(`
@@ -1747,7 +1748,7 @@ router.get('/users', requireRole('admin', 'manager', 'supervisor'), (req: Reques
 // POST /api/admin/users/:userId/reset-2fa
 router.post('/users/:userId/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(req.params.userId, 10);
+  const userId = parseInt(paramStr(req.params.userId), 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   db.prepare(`UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_backup_codes = NULL, totp_pending_secret = NULL, totp_setup_required = 1, webauthn_enabled = 0 WHERE id = ?`).run(userId);
   db.prepare(`DELETE FROM webauthn_credentials WHERE user_id = ?`).run(userId);
@@ -1757,7 +1758,7 @@ router.post('/users/:userId/reset-2fa', requireRole('admin'), (req: Request, res
 // POST /api/admin/users/:userId/force-password-change
 router.post('/users/:userId/force-password-change', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(req.params.userId, 10);
+  const userId = parseInt(paramStr(req.params.userId), 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   db.prepare('UPDATE users SET force_password_change = 1 WHERE id = ?').run(userId);
   res.json({ message: 'Password change required on next login' });
@@ -1766,7 +1767,7 @@ router.post('/users/:userId/force-password-change', requireRole('admin', 'manage
 // POST /api/admin/users/:userId/revoke-sessions
 router.post('/users/:userId/revoke-sessions', requireRole('admin'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(req.params.userId, 10);
+  const userId = parseInt(paramStr(req.params.userId), 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   const result = db.prepare('UPDATE sessions SET is_active = 0, revoked_at = datetime(\'now\') WHERE user_id = ? AND is_active = 1').run(userId);
   res.json({ message: 'Sessions revoked', count: result.changes });
@@ -1775,7 +1776,7 @@ router.post('/users/:userId/revoke-sessions', requireRole('admin'), (req: Reques
 // PUT /api/admin/users/:userId/role
 router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(req.params.userId, 10);
+  const userId = parseInt(paramStr(req.params.userId), 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   const { role } = req.body;
   const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
@@ -1857,7 +1858,7 @@ router.get('/third-party-keys', requireRole('admin'), (_req: Request, res: Respo
 
 // GET /api/admin/third-party-keys/:key — check single key
 router.get('/third-party-keys/:key', requireRole('admin'), (req: Request, res: Response) => {
-  const { key } = req.params;
+  const key = paramStr(req.params.key);
   if (!ALLOWED_THIRD_PARTY_KEYS.includes(key)) {
     res.status(400).json({ error: 'Unknown key' }); return;
   }
@@ -1930,7 +1931,7 @@ router.delete('/third-party-keys', requireRole('admin'), (req: Request, res: Res
 router.post('/impersonate/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const targetId = parseInt(req.params.userId, 10);
+    const targetId = parseInt(paramStr(req.params.userId), 10);
     if (isNaN(targetId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
 
     const target = db.prepare('SELECT id, username, full_name, role, badge_number, call_sign, email, status FROM users WHERE id = ?').get(targetId) as any;
@@ -2145,7 +2146,8 @@ router.get('/database/backups', requireRole('admin'), (req: Request, res: Respon
 router.delete('/database/backups/:filename', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const dataDir = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
-    const filename = req.params.filename;
+    // Security: strip path components to prevent directory traversal
+    const filename = path.basename(paramStr(req.params.filename));
 
     // Security: only allow deleting backup files
     if (!filename.startsWith('rmpg-flex-backup-') || !filename.endsWith('.db')) {
@@ -2669,7 +2671,7 @@ router.get('/export/full', requireRole('admin'), (req: Request, res: Response) =
 router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '50'), 10)) || 100000));
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const rows = db.prepare(`
@@ -2879,7 +2881,7 @@ router.post('/records/clone', requireRole('admin'), (req: Request, res: Response
 router.get('/schema/:table', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const table = req.params.table;
+    const table = paramStr(req.params.table);
     const columns = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '')}")`).all() as any[];
     if (!columns.length) { res.status(404).json({ error: 'Table not found' }); return; }
 
@@ -3297,7 +3299,7 @@ router.post('/users/toggle-status', requireRole('admin'), (req: Request, res: Re
 router.get('/users/login-history/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.userId, 10);
+    const userId = parseInt(paramStr(req.params.userId), 10);
     const rows = db.prepare(`SELECT * FROM activity_log WHERE user_id = ? AND (action LIKE '%login%' OR action LIKE '%LOGIN%' OR action LIKE '%auth%') ORDER BY created_at DESC LIMIT 100`).all(userId);
     res.json({ user_id: userId, logins: rows });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -3497,8 +3499,8 @@ router.post('/audit/purge-before', requireRole('admin'), (req: Request, res: Res
 router.get('/audit/user/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '200'), 10), 1000);
-    const rows = db.prepare('SELECT * FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(parseInt(req.params.userId, 10), limit);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '200'), 10)) || 100000));
+    const rows = db.prepare('SELECT * FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(parseInt(paramStr(req.params.userId), 10), limit);
     res.json({ entries: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -3507,7 +3509,7 @@ router.get('/audit/user/:userId', requireRole('admin'), (req: Request, res: Resp
 router.get('/audit/entity/:type/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const rows = db.prepare('SELECT al.*, u.username, u.full_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 200').all(req.params.type, parseInt(req.params.id, 10));
+    const rows = db.prepare('SELECT al.*, u.username, u.full_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 200').all(paramStr(req.params.type), parseInt(paramStr(req.params.id), 10));
     res.json({ trail: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });

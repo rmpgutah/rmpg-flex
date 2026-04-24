@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';
+import IconButton from '../components/IconButton';
 import IncidentFormModal, { type IncidentFormData } from '../components/IncidentFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import FileAttachments from '../components/FileAttachments';
@@ -370,7 +371,7 @@ export default function IncidentsPage() {
   const fetchIncidents = useCallback(async (options?: { silent?: boolean }) => {
     try {
       if (!options?.silent) setError(null);
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/incidents?limit=200&archived=${showArchived}`);
+      const res = await apiFetch<{ data: any[]; pagination: any }>(`/incidents?limit=100000&archived=${showArchived}`);
       setIncidents((Array.isArray(res?.data) ? res.data : []).map(mapDbIncident));
     } catch (err: any) {
       if (!options?.silent) setError(err.message ?? 'Failed to load incidents');
@@ -892,9 +893,9 @@ export default function IncidentsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+            <IconButton onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
               <X className="w-3.5 h-3.5" />
-            </button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -1332,7 +1333,7 @@ export default function IncidentsPage() {
             {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
             {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">Mental Health</span>}
             {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
-            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
+            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">Juvenile</span>}
             {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
             {inc.hazmat && <span className="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 text-[10px] uppercase font-bold border border-yellow-700/40">HAZMAT</span>}
             {inc.body_camera_active && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">BWC</span>}
@@ -1388,7 +1389,7 @@ export default function IncidentsPage() {
               {selectedIncident.call_number ? (
                 <button type="button"
                   onClick={() => navigate('/dispatch')}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-cyan-400 bg-cyan-900/20 border border-cyan-700/40 hover:bg-cyan-900/40 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-gray-400 bg-gray-900/20 border border-gray-700/40 hover:bg-gray-900/40 transition-colors"
                   title="Go to dispatch"
                 >
                   <ExternalLink className="w-3 h-3" />
@@ -1648,13 +1649,14 @@ export default function IncidentsPage() {
                       })}
                     </div>
                     {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
-                      <button type="button"
+                      <IconButton
                         onClick={() => handleUnlinkPerson(lp.person_id)}
                         className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                         title="Unlink person"
+                        aria-label="Unlink person"
                       >
                         <X className="w-3.5 h-3.5" />
-                      </button>
+                      </IconButton>
                     )}
                   </div>
                 );
@@ -1698,13 +1700,14 @@ export default function IncidentsPage() {
                     )}
                   </div>
                   {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
-                    <button type="button"
+                    <IconButton
                       onClick={() => handleUnlinkVehicle(lv.vehicle_id)}
                       className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                       title="Unlink vehicle"
+                      aria-label="Unlink vehicle"
                     >
                       <X className="w-3.5 h-3.5" />
-                    </button>
+                    </IconButton>
                   )}
                 </div>
               ))}
@@ -1748,16 +1751,16 @@ export default function IncidentsPage() {
                       {offense.statute_number && <span className="font-mono">§{offense.statute_number}</span>}
                       {offense.ucr_code && <span>UCR: {offense.ucr_code}</span>}
                       {offense.suspect_first && <span className="text-red-300">Suspect: {offense.suspect_first} {offense.suspect_last}</span>}
-                      {offense.victim_first && <span className="text-blue-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
+                      {offense.victim_first && <span className="text-gray-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
                       {offense.disposition && <span className="text-green-400">Disp: {offense.disposition}</span>}
                     </div>
                   </div>
                   {(isAdmin || isGodMode) && (
-                    <button type="button" onClick={async () => {
+                    <IconButton onClick={async () => {
                       if (!confirm('Remove this offense?')) return;
                       await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
                       fetchIncidentDetail(selectedIncident.id);
-                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove offense"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
                 </div>
               ))}
@@ -1793,17 +1796,17 @@ export default function IncidentsPage() {
                   }`}>{officer.role}</span>
                   <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
-                  {officer.call_sign && <span className="text-[10px] text-cyan-400">{officer.call_sign}</span>}
+                  {officer.call_sign && <span className="text-[10px] text-gray-400">{officer.call_sign}</span>}
                   {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
                   {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {new Date(officer.arrived_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
                   {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {new Date(officer.departed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
                   {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
                   {(isAdmin || isGodMode) && (
-                    <button type="button" onClick={async () => {
+                    <IconButton onClick={async () => {
                       if (!confirm('Remove this officer?')) return;
                       await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
                       fetchIncidentDetail(selectedIncident.id);
-                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove officer"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
                 </div>
               ))}
@@ -1848,11 +1851,11 @@ export default function IncidentsPage() {
                     {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{link.detail.status}</span>}
                     {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
                     {(isAdmin || isGodMode) && (
-                      <button type="button" onClick={async () => {
+                      <IconButton onClick={async () => {
                         if (!confirm('Remove this link?')) return;
                         await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
                         fetchIncidentDetail(selectedIncident.id);
-                      }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                      }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove link"><Trash2 className="w-3 h-3" /></IconButton>
                     )}
                   </div>
                 );
@@ -2326,9 +2329,9 @@ export default function IncidentsPage() {
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
                 Custody Action — {custodyTransfer.evidenceNumber}
               </h3>
-              <button type="button" onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white">
+              <IconButton onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white" aria-label="Close custody transfer">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -2422,7 +2425,7 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Offense / Charge</h3>
-              <button type="button" onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-white" aria-label="Close add offense"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -2492,7 +2495,7 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
-              <button type="button" onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-white" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
@@ -2560,7 +2563,7 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
-              <button type="button" onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-white" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record Type *</label>

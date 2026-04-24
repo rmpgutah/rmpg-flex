@@ -93,7 +93,7 @@ export default function TrustedDevicesList() {
           style={{ background: '#0a0a0a' }}
         >
           {/* Device icon */}
-          <div className="p-1.5 panel-inset" style={{ color: '#888888', background: 'rgba(74,144,196,0.1)' }}>
+          <div className="p-1.5 panel-inset" style={{ color: '#888888', background: 'rgba(136,136,136,0.1)' }}>
             {deviceIcon(device.device_name)}
           </div>
 

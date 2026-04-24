@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import multer from 'multer';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 
 const VALID_RECORD_TYPES = new Set(['case', 'incident', 'warrant', 'evidence']);
@@ -32,6 +33,7 @@ const upload = multer({
 });
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 router.post('/', upload.single('pdf'), (req: Request, res: Response) => {
@@ -51,11 +53,28 @@ router.post('/', upload.single('pdf'), (req: Request, res: Response) => {
   const now = new Date();
   const yyyy = String(now.getUTCFullYear());
   const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const dir = path.join(uploadsDir(), String(form_type), yyyy, mm);
-  fs.mkdirSync(dir, { recursive: true });
-  const blobPath = path.join(dir, `${sha256}.pdf`);
-  if (!fs.existsSync(blobPath)) {
-    fs.writeFileSync(blobPath, buffer);
+  // form_type comes from req.body — restrict to safe chars before joining
+  // to prevent path traversal, then verify the final path stays inside
+  // uploadsDir (CodeQL js/http-to-file-access #2759).
+  const safeFormType = String(form_type).replace(/[^a-z0-9_-]/gi, '').slice(0, 64);
+  if (!safeFormType) {
+    return res.status(400).json({ error: 'invalid form_type' });
+  }
+  const root = uploadsDir();
+  const dir = path.join(root, safeFormType, yyyy, mm);
+  const resolvedDir = path.resolve(dir);
+  if (!resolvedDir.startsWith(path.resolve(root) + path.sep)) {
+    return res.status(400).json({ error: 'invalid path' });
+  }
+  fs.mkdirSync(resolvedDir, { recursive: true });
+  const blobPath = path.join(resolvedDir, `${sha256}.pdf`);
+  // Atomic create-if-missing — the prior fs.existsSync + fs.writeFileSync
+  // pattern was a TOCTOU race (CodeQL js/file-system-race #2760). Using
+  // wx fails if the file exists, which we treat as "already deduped".
+  try {
+    fs.writeFileSync(blobPath, buffer, { flag: 'wx' });
+  } catch (err: any) {
+    if (err?.code !== 'EEXIST') throw err;
   }
 
   const db = getDb();
@@ -99,8 +118,14 @@ router.get('/:id/blob', (req: Request, res: Response) => {
   if (!row?.blob_path || !fs.existsSync(row.blob_path)) {
     return res.status(404).json({ error: 'not found' });
   }
+  // Security: ensure resolved path is within expected uploads directory
+  const baseDir = path.resolve(process.cwd(), 'uploads', 'pdf');
+  const resolved = path.resolve(row.blob_path);
+  if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
   res.setHeader('Content-Type', 'application/pdf');
-  return fs.createReadStream(row.blob_path).pipe(res);
+  return fs.createReadStream(resolved).pipe(res);
 });
 
 export default router;

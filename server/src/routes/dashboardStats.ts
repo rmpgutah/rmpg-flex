@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 // GET /api/dashboard/stats — Unified dashboard stats aggregator

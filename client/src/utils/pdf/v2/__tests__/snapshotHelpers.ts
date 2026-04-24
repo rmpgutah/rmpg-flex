@@ -13,12 +13,16 @@ const SNAPSHOT_DIR = join(__dirname, '__snapshots__');
  * against a saved snapshot. If UPDATE_SNAPSHOTS=1 is set, the new hash
  * replaces the saved one instead.
  */
+// Fixed timestamp injected into the footer's "Generated YYYY-MM-DD" text so
+// snapshot bytes don't drift every day. Any date works; pick a stable one.
+const PINNED_GENERATED_AT = new Date('2026-01-01T00:00:00Z');
+
 export async function assertPdfSnapshot<T>(
   schema: FormSchema<T>,
   data: T,
   snapshotName: string,
 ): Promise<void> {
-  const doc = await renderPdfV2(schema, data);
+  const doc = await renderPdfV2(schema, data, { generatedAt: PINNED_GENERATED_AT });
   // Pin non-deterministic PDF metadata so byte output is stable across runs.
   // jsPDF exposes setCreationDate() and setFileId() — the file ID is derived
   // from a timestamp+UUID by default, and creation date defaults to "now".

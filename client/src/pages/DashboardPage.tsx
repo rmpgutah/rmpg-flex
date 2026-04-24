@@ -769,11 +769,11 @@ export default function DashboardPage() {
                   )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
-                    <div className="flex items-center gap-2 p-2.5 bg-blue-900/20 border border-blue-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-blue-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
                       <div>
-                        <div className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Road Conditions Warning</div>
-                        <div className="text-[10px] text-blue-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
                       </div>
                     </div>
                   )}
@@ -1193,10 +1193,10 @@ export default function DashboardPage() {
           aria-label={`Patrol coverage: ${patrolCoverage?.coverage ?? 0}%`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <Navigation className="w-3 h-3 text-cyan-400" />
+            <Navigation className="w-3 h-3 text-gray-400" />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Coverage</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center text-cyan-400 tabular-nums">
+          <div className="text-xl font-bold font-mono text-center text-gray-400 tabular-nums">
             {patrolCoverage?.coverage ?? 0}%
           </div>
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
@@ -1261,7 +1261,7 @@ export default function DashboardPage() {
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Calls</span>
-                          <span className="text-xs font-bold font-mono text-blue-400 tabular-nums">{s.calls}</span>
+                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Incidents</span>
@@ -1349,12 +1349,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-lg font-bold font-mono text-brand-400 tabular-nums">{psoStats.activeCalls}</div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-blue-500">
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-gray-500">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3 h-3 text-blue-400" />
+                    <Phone className="w-3 h-3 text-gray-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-blue-400 tabular-nums">{psoStats.todayCalls}</div>
+                  <div className="text-lg font-bold font-mono text-gray-400 tabular-nums">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">

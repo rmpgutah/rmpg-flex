@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 router.post('/pdf-engine-fallback', (req: Request, res: Response) => {

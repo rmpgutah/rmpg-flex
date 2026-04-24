@@ -948,7 +948,7 @@ export default function PersonnelPage() {
                   )}
                   {/* Line 4: Compliance row */}
                   <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
-                    {yrsOfService !== null && <span className="font-mono text-cyan-400">{yrsOfService} yr{yrsOfService !== 1 ? 's' : ''}</span>}
+                    {yrsOfService !== null && <span className="font-mono text-gray-400">{yrsOfService} yr{yrsOfService !== 1 ? 's' : ''}</span>}
                     {officerCreds.length > 0 && (
                       <>
                         <span className="text-rmpg-600">&middot;</span>

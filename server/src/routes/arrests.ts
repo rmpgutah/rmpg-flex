@@ -671,7 +671,7 @@ router.get('/recent', (req: Request, res: Response) => {
     const parsedPage = parseInt(req.query.page as string, 10);
     const page = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
     const parsedLimit = parseInt(req.query.limit as string, 10);
-    const limit = Math.min(100, Math.max(1, isNaN(parsedLimit) ? 50 : parsedLimit));
+    const limit = Math.min(100000, Math.max(1, (parsedLimit) || 100000));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
@@ -1180,9 +1180,11 @@ router.get('/manual/:id/linked-records', validateParamIdMiddleware, (req: Reques
     if (record.full_name) {
       try {
         links.warrants = db.prepare(`
-          SELECT id, warrant_number, warrant_type, status, subject_name FROM warrants
-          WHERE subject_name LIKE ? AND status = 'active' LIMIT 10
-        `).all(`%${record.last_name}%`);
+          SELECT w.id, w.warrant_number, w.type as warrant_type, w.status,
+            COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name
+          FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+          WHERE (p.last_name LIKE ? OR p.first_name LIKE ?) AND w.status = 'active' LIMIT 10
+        `).all(`%${record.last_name}%`, `%${record.last_name}%`);
       } catch { /* warrants table may not exist */ }
     }
 

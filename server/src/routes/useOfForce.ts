@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 // GET /api/use-of-force/stats — Dashboard stats
@@ -29,9 +31,9 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, officer_id, force_type, force_level, page = '1', per_page = '50', search } = req.query;
+    const { status, officer_id, force_type, force_level, page = '1', per_page = '100000', search } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     let where = 'WHERE 1=1';

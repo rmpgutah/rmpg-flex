@@ -107,8 +107,8 @@ router.post('/messages', (req: Request, res: Response) => {
 router.get('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { channel, unreadOnly, thread_id, limit = '50' } = req.query;
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
+    const { channel, unreadOnly, thread_id, limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     let whereClause = 'WHERE (m.to_user_id = ? OR m.to_user_id IS NULL OR m.from_user_id = ?)';
     const params: any[] = [req.user!.userId, req.user!.userId];
@@ -583,7 +583,7 @@ router.get('/activity-feed', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { limit = '50', offset = '0', entityType } = req.query;
-    const limitNum = parseInt(limit as string, 10);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offsetNum = parseInt(offset as string, 10);
 
     let whereClause = '';
@@ -652,7 +652,7 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
       params.push(to);
     }
 
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offsetNum = Math.max(0, parseInt(offset as string, 10) || 0);
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM radio_transcripts rt ${whereClause}`).get(...params) as any;
@@ -825,8 +825,8 @@ router.post('/messages/scheduled', requireRole('admin', 'manager', 'supervisor',
 router.get('/messages/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { q, date_from, date_to, sender_id, channel, priority, limit = '50' } = req.query;
-    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+    const { q, date_from, date_to, sender_id, channel, priority, limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
@@ -893,9 +893,9 @@ router.post('/alerts/escalation-check', requireRole('admin', 'manager', 'supervi
 router.get('/messages/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { date_from, date_to, channel = 'broadcast', page = '1', limit = '50' } = req.query;
+    const { date_from, date_to, channel = 'broadcast', page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE m.channel = ?';
@@ -1154,6 +1154,11 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
       // audio_file stores relative path like "radio/filename.webm" — resolve against uploads dir
       const uploadsDir = path.resolve(__dirname_comms, '../../uploads');
       const audioPath = path.resolve(uploadsDir, entry.audio_file);
+      // Security: ensure resolved path stays within uploads directory
+      const rel = path.relative(uploadsDir, audioPath);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        res.status(403).json({ error: 'Forbidden', code: 'PATH_TRAVERSAL_BLOCKED' }); return;
+      }
       if (fs.existsSync(audioPath)) {
         const stat = fs.statSync(audioPath);
         res.setHeader('Content-Type', 'audio/webm');
@@ -1279,8 +1284,8 @@ router.post('/bolos/auto-archive', requireRole('admin', 'manager', 'supervisor',
 router.get('/messages/threads', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '20' } = req.query;
-    const limitNum = Math.min(100, parseInt(limit as string, 10) || 20);
+    const { limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     const threads = db.prepare(`
       SELECT

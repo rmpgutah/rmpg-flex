@@ -291,7 +291,7 @@ router.post('/', (req: Request, res: Response) => {
       console.error('[Intake] Auto-send to serve queue failed (non-fatal):', serveErr instanceof Error ? serveErr.message : serveErr);
     }
 
-    console.log(`[Intake] Process service received: ${call_number} (source_id: ${body.source_id}, key_id: ${apiKeyRow.id})`);
+    console.log(`[Intake] Process service received: ${String(call_number ?? "").replace(/[\r\n]/g, " ").slice(0, 200)} (source_id: ${String(body.source_id ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}, key_id: ${apiKeyRow.id})`);
 
     res.status(201).json({
       success: true,

@@ -50,11 +50,35 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
+    // Legacy event retained for compat with any future emitter.
     unsubs.push(subscribe('radio_transmission', (msg) => {
       const data = (msg.data || msg.payload) as { source?: string; text?: string } | undefined;
       addEntry({
         source: data?.source || 'UNKNOWN',
         text: data?.text || 'Transmission received',
+        type: 'unit',
+      });
+    }));
+
+    // Actual live radio traffic — emitted by server/websocket.ts when a
+    // unit un-keys. We only log on transmit_end so we have the final
+    // transcript + duration; transmit_start alone has neither.
+    unsubs.push(subscribe('radio_transmit_end', (msg) => {
+      const data = (msg.data || msg.payload) as {
+        userId?: number;
+        username?: string;
+        fullName?: string;
+        transcript?: string;
+        duration?: number;
+        hasAudio?: boolean;
+      } | undefined;
+      if (!data?.userId) return;
+      const who = data.fullName || data.username || `UNIT ${data.userId}`;
+      const dur = data.duration ? ` · ${data.duration}s` : '';
+      const rec = data.hasAudio ? ' · REC' : '';
+      addEntry({
+        source: who.toUpperCase().slice(0, 10),
+        text: (data.transcript || 'Voice transmission') + dur + rec,
         type: 'unit',
       });
     }));

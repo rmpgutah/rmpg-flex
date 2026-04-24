@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -157,7 +157,7 @@ router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string)) || 100000));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
@@ -745,7 +745,7 @@ router.put('/:id/line-items/:itemId', (req: Request, res: Response) => {
 });
 
 // ─── DELETE /api/invoices/:id/line-items/:itemId ──────────
-router.delete('/:id/line-items/:itemId', (req: Request, res: Response) => {
+router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare(
@@ -812,7 +812,7 @@ router.post('/:id/payments', (req: Request, res: Response) => {
 
 // ─── DELETE /api/invoices/:id/payments/:paymentId ─────────
 // Reverse a payment
-router.delete('/:id/payments/:paymentId', (req: Request, res: Response) => {
+router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -1029,7 +1029,7 @@ router.post('/templates', (req: Request, res: Response) => {
   }
 });
 
-router.delete('/templates/:templateId', (req: Request, res: Response) => {
+router.delete('/templates/:templateId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const tid = parseInt(req.params.templateId as string, 10);

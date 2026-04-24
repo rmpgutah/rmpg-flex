@@ -31,15 +31,14 @@ import {
   UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WarrantBadge from '../components/WarrantBadge';
-import { apiFetch, authedImageUrl } from '../hooks/useApi';
-import LinkedRecordsSection from '../components/LinkedRecordsSection';
-import FileAttachments from '../components/FileAttachments';
+import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
@@ -48,8 +47,11 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import EmptyState from '../components/EmptyState';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
-import { downloadRecordPdf } from '../utils/recordPdfGenerator';
-import type { WarrantPdfData } from '../utils/recordPdfGenerator';
+import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
+import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================
 // Types
@@ -88,6 +90,7 @@ interface Warrant {
   notes: string | null;
   archived_at: string | null;
   source?: string | null;
+  service_attempt_count: number;
   created_at: string;
   updated_at: string;
   activity?: ActivityEntry[];
@@ -197,13 +200,46 @@ interface UtahSearchResults {
   totalHits: number;
 }
 
+interface UnifiedSearchResults {
+  local: Warrant[];
+  utah: UtahWarrantResult[];
+  scraped: UtahWarrantResult[];
+  meta: {
+    duration: number;
+    sources: string[];
+    utahBlocked: boolean;
+    searchedAt: string;
+    totalHits: number;
+  };
+}
+
 interface AutoPollStatus {
   syncStatus: { lastSync: string | null; warrantCount: number; status: string; lastError: string | null };
   blocked: boolean;
   runs: WatchRun[];
-  flaggedPersons: { id: number; first_name: string; last_name: string; dob?: string; warrant_status: string; warrant_severity: string | null; local_warrant_count: number; utah_hit_count: number }[];
+  flaggedPersons: WatchPerson[];
   recentHits: { id: number; person_id: number; person_name: string; event: string; charges?: string; court_name?: string; created_at: string }[];
   totalPersons: number;
+}
+
+interface WatchPerson {
+  id: number;
+  first_name: string;
+  last_name: string;
+  dob?: string;
+  gender?: string;
+  race?: string;
+  height?: string;
+  weight?: string;
+  hair_color?: string;
+  eye_color?: string;
+  address?: string;
+  photo_url?: string | null;
+  warrant_severity: string | null;
+  local_warrant_count: number;
+  utah_hit_count: number;
+  warrants: { id: number; warrant_number: string; type: string; status: string; charge_description: string; offense_level: string | null; bail_amount: number | null; issuing_court: string | null; source: string | null; created_at: string }[];
+  utahWarrants: { utah_warrant_id: string; charges: string; court_name: string; issue_date: string }[];
 }
 
 // Coverage / Sources
@@ -275,7 +311,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   arrest: 'bg-red-900/40 text-red-300 border-red-700/50',
-  search: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  search: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
   bench: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
   civil: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -296,14 +332,15 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'utah-search' | 'watch' | 'sources';
+type TabId = 'dashboard' | 'warrants' | 'search-all' | 'watch' | 'sources' | 'scrapers';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
-  { id: 'utah-search', label: 'UTAH SEARCH', icon: Globe },
+  { id: 'search-all', label: 'SEARCH ALL', icon: Globe },
   { id: 'watch', label: 'WATCH LIST', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
+  { id: 'scrapers', label: 'SCRAPERS', icon: Zap, roleGated: true },
 ];
 
 const FEED_RANGES = ['1H', '8H', '24H', '7D'] as const;
@@ -416,14 +453,19 @@ const timeAgo = (date: string): string => {
 export default function WarrantsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
+
+  const [searchParams] = useSearchParams();
+  const initialPersonId = searchParams.get('personId');
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabId>(initialPersonId ? 'warrants' : 'dashboard');
+  const [filterPersonId, setFilterPersonId] = useState<string | null>(initialPersonId);
 
   // ============================================================
   // DASHBOARD STATE
@@ -437,6 +479,11 @@ export default function WarrantsPage() {
   const [priorityWarrants, setPriorityWarrants] = useState<PriorityWarrant[]>([]);
   const [priorityLoading, setPriorityLoading] = useState(false);
   const [dashSearch, setDashSearch] = useState('');
+  const [expiringCount, setExpiringCount] = useState<number | null>(null);
+  const [summaryReportOpen, setSummaryReportOpen] = useState(false);
+  const [summaryFrom, setSummaryFrom] = useState('');
+  const [summaryTo, setSummaryTo] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   // ============================================================
   // WARRANTS TAB STATE
@@ -448,6 +495,7 @@ export default function WarrantsPage() {
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [filterSource, setFilterSource] = useState<string>('');
+  const [filterCourt, setFilterCourt] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -535,15 +583,29 @@ export default function WarrantsPage() {
   const [checkingPerson, setCheckingPerson] = useState(false);
 
   // ============================================================
-  // UTAH SEARCH TAB STATE
+  // UNIFIED SEARCH TAB STATE
   // ============================================================
-  const [utahSearchFirst, setUtahSearchFirst] = useState('');
-  const [utahSearchLast, setUtahSearchLast] = useState('');
-  const [utahSearching, setUtahSearching] = useState(false);
-  const [utahResults, setUtahResults] = useState<UtahSearchResults | null>(null);
-  const [utahSearchHistory, setUtahSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
+  const [uniSearchFirst, setUniSearchFirst] = useState('');
+  const [uniSearchLast, setUniSearchLast] = useState('');
+  const [uniSearchDob, setUniSearchDob] = useState('');
+  const [uniSearchWarrantNum, setUniSearchWarrantNum] = useState('');
+  const [uniSearchCourt, setUniSearchCourt] = useState('');
+  const [uniSearchSource, setUniSearchSource] = useState('');
+  const [uniSearchOffenseLevel, setUniSearchOffenseLevel] = useState('');
+  const [uniSearchStatus, setUniSearchStatus] = useState('');
+  const [uniSearchType, setUniSearchType] = useState('');
+  const [uniSearchCharge, setUniSearchCharge] = useState('');
+  const [uniSearchDateFrom, setUniSearchDateFrom] = useState('');
+  const [uniSearchDateTo, setUniSearchDateTo] = useState('');
+  const [uniSearching, setUniSearching] = useState(false);
+  const [uniResults, setUniResults] = useState<UnifiedSearchResults | null>(null);
+  const [uniAdvancedOpen, setUniAdvancedOpen] = useState(false);
+  const [uniSearchHistory, setUniSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
+  const [nameTypeahead, setNameTypeahead] = useState<Person[]>([]);
+  const [nameTypeaheadLoading, setNameTypeaheadLoading] = useState(false);
+  const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Utah warrant detail modal
+  // Utah warrant detail modal (shared for unified search results)
   const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
   const [addingToLocal, setAddingToLocal] = useState(false);
   const [addedToLocal, setAddedToLocal] = useState(false);
@@ -553,6 +615,11 @@ export default function WarrantsPage() {
   // ============================================================
   const [autoPollStatus, setAutoPollStatus] = useState<AutoPollStatus | null>(null);
   const [autoPollLoading, setAutoPollLoading] = useState(false);
+  const [watchSort, setWatchSort] = useState<'severity' | 'recent' | 'name'>('severity');
+  const [watchMapOpen, setWatchMapOpen] = useState(false);
+  const [expandedWatchPersons, setExpandedWatchPersons] = useState<Set<number>>(new Set());
+  const watchMapRef = useRef<HTMLDivElement>(null);
+  const watchMapInstance = useRef<any>(null);
 
   // ============================================================
   // SOURCES TAB STATE
@@ -601,6 +668,7 @@ export default function WarrantsPage() {
     if (activeTab !== 'dashboard') return;
     fetchDashStats();
     fetchPriority();
+    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => setExpiringCount(r.count)).catch(() => {});
     const interval = setInterval(fetchDashStats, 30_000);
     return () => clearInterval(interval);
   }, [activeTab, fetchDashStats, fetchPriority]);
@@ -622,42 +690,36 @@ export default function WarrantsPage() {
       if (filterStatus) params.set('status', filterStatus);
       if (filterType) params.set('type', filterType);
       if (filterSource) params.set('source', filterSource);
+      if (filterCourt) params.set('court', filterCourt);
       if (filterSeverity) params.set('severity', filterSeverity);
+      if (filterPersonId) params.set('person_id', filterPersonId);
       if (searchQuery) params.set('subject_name', searchQuery);
       params.set('archived', showArchived ? 'true' : 'false');
       params.set('page', String(page));
       params.set('per_page', '50');
 
-      // Try unified endpoint first, fall back to standard
-      try {
-        const res = await apiFetch<{ warrants: UnifiedWarrant[]; total: number }>(
-          `/warrants/unified?${params.toString()}`
-        );
-        setWarrants(res.warrants || []);
-        setTotalCount(res.total || 0);
-        setTotalPages(Math.ceil((res.total || 0) / 50) || 1);
-      } catch {
-        // Fallback to standard endpoint
-        const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
-          `/warrants?${params.toString()}`
-        );
-        setWarrants(res.data || []);
-        setTotalPages(res.pagination?.totalPages || 1);
-        setTotalCount(res.pagination?.total || 0);
-      }
+      const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
+        `/warrants?${params.toString()}`
+      );
+      setWarrants(res.data || []);
+      setTotalPages(res.pagination?.totalPages || 1);
+      setTotalCount(res.pagination?.total || 0);
     } catch (err: any) {
       if (!options?.silent) setError(err?.message || 'Failed to load warrants');
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterSeverity, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
   }, [activeTab, fetchWarrants]);
 
-  // Live sync
-  const silentRefreshWarrants = useCallback(() => fetchWarrants({ silent: true }), [fetchWarrants]);
+  // Live sync — skip while form modal is open to prevent UI freezes during person search
+  const silentRefreshWarrants = useCallback(() => {
+    if (formOpen) return; // Don't refresh list while editing
+    fetchWarrants({ silent: true });
+  }, [fetchWarrants, formOpen]);
   useLiveSync('alerts', silentRefreshWarrants);
 
   // Fetch warrant detail
@@ -668,7 +730,7 @@ export default function WarrantsPage() {
     } catch { /* keep existing */ }
   }, []);
 
-  // Person search for form
+  // Person search for form — uses the dedicated search endpoint
   useEffect(() => {
     if (!personSearch || personSearch.length < 2) {
       setPersonResults([]);
@@ -677,8 +739,8 @@ export default function WarrantsPage() {
     const timer = setTimeout(async () => {
       setPersonSearchLoading(true);
       try {
-        const res = await apiFetch<{ data: Person[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&limit=10`);
-        setPersonResults(res.data || res as any || []);
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(personSearch)}`);
+        setPersonResults(Array.isArray(res) ? res.slice(0, 10) : []);
       } catch { setPersonResults([]); }
       finally { setPersonSearchLoading(false); }
     }, 300);
@@ -718,23 +780,56 @@ export default function WarrantsPage() {
   // SOURCES TAB FETCHES
   // ============================================================
 
-  // ── Utah Search ──
-  const runUtahSearch = useCallback(async () => {
-    if (!utahSearchFirst.trim() || !utahSearchLast.trim()) return;
-    setUtahSearching(true);
+  // ── Unified Search ──
+  const runUnifiedSearch = useCallback(async () => {
+    if (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim()) return;
+    setUniSearching(true);
     try {
-      const res = await apiFetch<UtahSearchResults>('/warrants/utah-search', {
+      const body: Record<string, string> = {};
+      if (uniSearchFirst.trim()) body.firstName = uniSearchFirst.trim();
+      if (uniSearchLast.trim()) body.lastName = uniSearchLast.trim();
+      if (uniSearchDob.trim()) body.dob = uniSearchDob.trim();
+      if (uniSearchWarrantNum.trim()) body.warrantNumber = uniSearchWarrantNum.trim();
+      if (uniSearchCourt.trim()) body.court = uniSearchCourt.trim();
+      if (uniSearchSource) body.source = uniSearchSource;
+      if (uniSearchOffenseLevel) body.offenseLevel = uniSearchOffenseLevel;
+      if (uniSearchStatus) body.status = uniSearchStatus;
+      if (uniSearchType) body.type = uniSearchType;
+      if (uniSearchCharge.trim()) body.chargeKeyword = uniSearchCharge.trim();
+      if (uniSearchDateFrom) body.dateFrom = uniSearchDateFrom;
+      if (uniSearchDateTo) body.dateTo = uniSearchDateTo;
+
+      const res = await apiFetch<UnifiedSearchResults>('/warrants/search-all', {
         method: 'POST',
-        body: JSON.stringify({ firstName: utahSearchFirst.trim(), lastName: utahSearchLast.trim() }),
+        body: JSON.stringify(body),
       });
-      setUtahResults(res);
-      setUtahSearchHistory(prev => [
-        { first: utahSearchFirst.trim(), last: utahSearchLast.trim(), hits: res.totalHits, at: new Date().toISOString() },
-        ...prev.slice(0, 19),
-      ]);
-    } catch { /* error handled by apiFetch */ }
-    finally { setUtahSearching(false); }
-  }, [utahSearchFirst, utahSearchLast]);
+      setUniResults(res);
+      if (uniSearchFirst.trim() && uniSearchLast.trim()) {
+        setUniSearchHistory(prev => [
+          { first: uniSearchFirst.trim(), last: uniSearchLast.trim(), hits: res.meta.totalHits, at: new Date().toISOString() },
+          ...prev.filter(h => !(h.first === uniSearchFirst.trim() && h.last === uniSearchLast.trim())),
+        ].slice(0, 10));
+      }
+    } finally { setUniSearching(false); }
+  }, [uniSearchFirst, uniSearchLast, uniSearchDob, uniSearchWarrantNum, uniSearchCourt,
+      uniSearchSource, uniSearchOffenseLevel, uniSearchStatus, uniSearchType,
+      uniSearchCharge, uniSearchDateFrom, uniSearchDateTo]);
+
+  // ── Typeahead for unified search name fields ──
+  const [nameFieldFocused, setNameFieldFocused] = useState(false);
+  useEffect(() => {
+    if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+    const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
+    if (query.length < 2) { setNameTypeahead([]); return; }
+    typeaheadTimer.current = setTimeout(async () => {
+      setNameTypeaheadLoading(true);
+      try {
+        const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
+        setNameTypeahead(Array.isArray(res) ? res.slice(0, 8) : []);
+      } finally { setNameTypeaheadLoading(false); }
+    }, 300);
+    return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
+  }, [uniSearchFirst, uniSearchLast]);
 
   // ── Utah Warrant Detail Modal Handlers ──
 
@@ -816,12 +911,13 @@ export default function WarrantsPage() {
 
   const handleCheckPerson = useCallback(() => {
     if (!utahDetailWarrant) return;
-    // Switch to utah search with this person's name
-    setUtahSearchFirst(utahDetailWarrant.first_name);
-    setUtahSearchLast(utahDetailWarrant.last_name);
+    // Switch to unified search with this person's name
+    setUniSearchFirst(utahDetailWarrant.first_name);
+    setUniSearchLast(utahDetailWarrant.last_name);
     setUtahDetailWarrant(null);
-    setTimeout(() => runUtahSearch(), 100);
-  }, [utahDetailWarrant, runUtahSearch]);
+    setActiveTab('search-all');
+    setTimeout(() => runUnifiedSearch(), 100);
+  }, [utahDetailWarrant, runUnifiedSearch]);
 
   // ── Auto-Poll Status ──
   const fetchAutoPollStatus = useCallback(async () => {
@@ -834,7 +930,7 @@ export default function WarrantsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'utah-search') { /* nothing to auto-fetch */ }
+    if (activeTab === 'search-all') { /* nothing to auto-fetch */ }
   }, [activeTab]);
 
   useEffect(() => {
@@ -1158,26 +1254,26 @@ export default function WarrantsPage() {
       </div>
 
       {/* ---- STATS BAR ---- */}
-      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#2b2b2b] text-[10px] font-mono flex-wrap">
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
+      <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#222222] text-[10px] font-mono flex-wrap">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className={`led-dot ${(dashStats?.activeWarrants || 0) > 0 ? 'led-red' : 'led-off'}`} />
           <span className="text-rmpg-400">ACTIVE</span>
           <span className={`font-bold tabular-nums ${(dashStats?.activeWarrants || 0) > 0 ? 'text-red-400' : 'text-rmpg-300'}`}>
             {dashStats?.activeWarrants ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className={`led-dot ${(dashStats?.hitsToday || 0) > 0 ? 'led-amber animate-led-blink' : 'led-off'}`} />
           <span className="text-rmpg-400">HITS TODAY</span>
           <span className={`font-bold tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-rmpg-300'}`}>
             {dashStats?.hitsToday ?? '-'}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className="text-rmpg-400">FLAGGED</span>
           <span className="font-bold tabular-nums text-rmpg-300">{dashStats?.personsFlagged ?? '-'}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#2b2b2b]">
+        <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#222222]">
           <span className={`led-dot ${(dashStats?.sourcesOnline || 0) > 0 ? 'led-green' : 'led-off'}`} />
           <span className="text-rmpg-400">SOURCES</span>
           <span className={`font-bold tabular-nums ${(dashStats?.sourcesOnline || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -1197,7 +1293,7 @@ export default function WarrantsPage() {
           TAB 1: DASHBOARD
          ================================================================ */}
       {activeTab === 'dashboard' && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
           <div className="p-4 space-y-4">
             {/* Quick Search */}
             <div className="relative">
@@ -1216,9 +1312,75 @@ export default function WarrantsPage() {
                 }}
               />
               {dashSearch && (
-                <button type="button" onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                <IconButton onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear dash search">
                   <X className="w-3.5 h-3.5" />
-                </button>
+                </IconButton>
+              )}
+            </div>
+
+            {/* Export Report */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="toolbar-btn text-[10px]"
+                onClick={() => setSummaryReportOpen(!summaryReportOpen)}
+              >
+                <Download className="w-3 h-3" /> Export Report
+              </button>
+              {summaryReportOpen && (
+                <div className="flex items-center gap-2 bg-surface-sunken border border-surface-border rounded-sm px-2 py-1">
+                  <input
+                    type="date"
+                    className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
+                    value={summaryFrom}
+                    onChange={(e) => setSummaryFrom(e.target.value)}
+                    placeholder="From"
+                  />
+                  <span className="text-[10px] text-rmpg-500">to</span>
+                  <input
+                    type="date"
+                    className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
+                    value={summaryTo}
+                    onChange={(e) => setSummaryTo(e.target.value)}
+                    placeholder="To"
+                  />
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[9px] bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30"
+                    disabled={summaryLoading}
+                    onClick={async () => {
+                      setSummaryLoading(true);
+                      try {
+                        const params = new URLSearchParams();
+                        if (summaryFrom) params.set('from', summaryFrom);
+                        if (summaryTo) params.set('to', summaryTo);
+                        const res = await apiFetch<WarrantSummaryData>(`/warrants/summary-report?${params.toString()}`);
+                        if (!res) throw new Error('No data returned');
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
+                        const branding = await fetchPdfBranding();
+                        setActiveBranding(branding);
+                        await loadPdfAssets();
+                        const pdf = generateWarrantSummaryPdf(res);
+                        const blob = pdf.output('blob');
+                        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `Warrant_Summary_${summaryFrom || 'all'}_to_${summaryTo || 'present'}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        setSummaryReportOpen(false);
+                      } catch (err) {
+                        console.error('Summary report failed:', err);
+                      } finally {
+                        setSummaryLoading(false);
+                      }
+                    }}
+                  >
+                    {summaryLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1247,6 +1409,13 @@ export default function WarrantsPage() {
                   {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
+              </div>
+              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors" onClick={() => { setActiveTab('warrants'); }}>
+                <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
+                  {expiringCount ?? '\u2014'}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Expiring Soon</div>
+                <div className="text-[9px] text-rmpg-500 mt-0.5">within 30 days</div>
               </div>
             </div>
 
@@ -1285,7 +1454,7 @@ export default function WarrantsPage() {
                   </div>
                 </div>
 
-                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                   {feedLoading ? (
                     <div className="flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading feed...
@@ -1333,7 +1502,7 @@ export default function WarrantsPage() {
                   Priority Warrants
                 </h2>
 
-                <div className="space-y-2 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                <div className="space-y-2 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
                   {priorityLoading ? (
                     <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...
@@ -1366,13 +1535,13 @@ export default function WarrantsPage() {
                                 {(pw.offense_level || pw.type || 'WARRANT').toUpperCase()}
                               </span>
                             </div>
-                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{pw.charge_description}</div>
+                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{chargesFromJson(pw.charge_description)}</div>
                             <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
                               {pw.bail_amount != null && pw.bail_amount > 0 && (
                                 <span className="text-green-400 font-mono font-bold">{formatCurrency(pw.bail_amount)}</span>
                               )}
                               {pw.source && (
-                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded-sm bg-blue-900/30 text-blue-300 border border-blue-700/30">
+                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded-sm bg-gray-900/30 text-gray-300 border border-gray-700/30">
                                   {pw.source}
                                 </span>
                               )}
@@ -1409,9 +1578,9 @@ export default function WarrantsPage() {
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
                 {searchQuery && (
-                  <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+                  <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
                     <X className="w-3.5 h-3.5" />
-                  </button>
+                  </IconButton>
                 )}
               </div>
               <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
@@ -1448,14 +1617,44 @@ export default function WarrantsPage() {
                     <option key={l.value} value={l.value}>{l.label}</option>
                   ))}
                 </select>
+                {/* Court filter */}
+                <input
+                  type="text"
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                  placeholder="Court..."
+                  value={filterCourt}
+                  onChange={(e) => { setFilterCourt(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                />
+                {/* Source filter */}
+                <select
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                  value={filterSource}
+                  onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                >
+                  <option value="">All Sources</option>
+                  <option value="manual">Local</option>
+                  <option value="utah_api">Utah API</option>
+                  <option value="scraper">Scraped</option>
+                </select>
               </div>
             </div>
+
+            {/* Person filter indicator */}
+            {filterPersonId && (
+              <div className="px-3 py-1.5 bg-brand-900/30 border-b border-brand-700/50 text-brand-300 text-xs flex items-center gap-2">
+                <User className="w-3 h-3" />
+                <span>Filtered by person #{filterPersonId}</span>
+                <button type="button" onClick={() => { setFilterPersonId(null); setPage(1); }} className="ml-auto text-brand-400 hover:text-white text-[10px] underline">Clear filter</button>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
               <div className="px-3 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-3 h-3" /> {error}
-                <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                <IconButton onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></IconButton>
               </div>
             )}
 
@@ -1478,7 +1677,7 @@ export default function WarrantsPage() {
             )}
 
             {/* Table */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
               {loading ? (
                 <div className="flex items-center justify-center h-full text-rmpg-400">
                   <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading warrants...
@@ -1511,7 +1710,7 @@ export default function WarrantsPage() {
                         </div>
                       </div>
                       <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
-                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{w.charge_description}</div>
+                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{chargesFromJson(w.charge_description)}</div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
                         {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
@@ -1528,7 +1727,7 @@ export default function WarrantsPage() {
                 </div>
               ) : (
                 <table className="table-dark">
-                  <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
+                  <thead className="sticky top-0 z-10 bg-[#050505]">
                     <tr>
                       {(isGodMode || isAdminOrManager) && (
                         <th style={{ width: 30 }}>
@@ -1543,6 +1742,7 @@ export default function WarrantsPage() {
                       <th style={{ width: 80 }}>Severity</th>
                       <th style={{ width: 90 }}>Court</th>
                       <th style={{ width: 80 }}>Bail</th>
+                      <th style={{ width: 60 }}>Attempts</th>
                       <th style={{ width: 95 }}>Date</th>
                     </tr>
                   </thead>
@@ -1551,7 +1751,7 @@ export default function WarrantsPage() {
                       <tr
                         key={w.id}
                         onClick={() => fetchWarrantDetail(w.id)}
-                        className={`cursor-pointer hover:bg-[#181818]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
+                        className={`cursor-pointer hover:bg-[#141414]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
                         {(isGodMode || isAdminOrManager) && (
                           <td onClick={e => e.stopPropagation()}>
@@ -1562,6 +1762,12 @@ export default function WarrantsPage() {
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
                           </span>
+                          {w.expires_at && w.status === 'active' && (() => {
+                            const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            if (daysLeft < 0) return <span className="ml-1 text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1 py-0.5 rounded-sm font-bold">EXPIRED</span>;
+                            if (daysLeft <= 7) return <span className="ml-1 text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1 py-0.5 rounded-sm font-bold">{daysLeft}d</span>;
+                            return null;
+                          })()}
                         </td>
                         <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
                         <td className="text-xs">
@@ -1586,7 +1792,7 @@ export default function WarrantsPage() {
                             {w.type.toUpperCase()}
                           </span>
                         </td>
-                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
+                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{chargesFromJson(w.charge_description)}</td>
                         <td>
                           {w.offense_level ? (
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
@@ -1596,6 +1802,13 @@ export default function WarrantsPage() {
                         </td>
                         <td className="text-[10px] text-rmpg-400 truncate">{w.issuing_court || '-'}</td>
                         <td className="text-xs text-rmpg-400 font-mono">{w.bail_amount ? formatCurrency(w.bail_amount) : '-'}</td>
+                        <td className="text-center">
+                          {w.service_attempt_count > 0 ? (
+                            <span className="text-amber-400 font-mono">{w.service_attempt_count}</span>
+                          ) : (
+                            <span className="text-rmpg-500">&mdash;</span>
+                          )}
+                        </td>
                         <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
                       </tr>
                     ))}
@@ -1620,7 +1833,7 @@ export default function WarrantsPage() {
 
           {/* RIGHT: Warrant Detail */}
           <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
-            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#2b2b2b] bg-[var(--grid-header-bg)]`}>
+            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#222222] bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
               <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Warrant Detail</span>
               <span className="flex-1" />
@@ -1663,7 +1876,7 @@ export default function WarrantsPage() {
             </div>
 
             {selectedWarrant ? (
-              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
                 {/* Header */}
                 <div className="panel-beveled p-4">
                   <div className="flex items-start justify-between mb-3">
@@ -1710,7 +1923,7 @@ export default function WarrantsPage() {
                   )}
                   <div className="mb-3">
                     <span className="text-[10px] text-[#d4a017] uppercase font-bold tracking-wider">Charge Description</span>
-                    <p className="text-sm text-white mt-0.5">{selectedWarrant.charge_description}</p>
+                    <p className="text-sm text-white mt-0.5">{chargesFromJson(selectedWarrant.charge_description)}</p>
                   </div>
 
                   {/* Dates row */}
@@ -1801,6 +2014,16 @@ export default function WarrantsPage() {
                         </div>
                       )}
                     </div>
+                    {selectedWarrant.subject_person_id && (
+                      <div className="flex gap-2 flex-wrap mt-3">
+                        <button type="button" onClick={() => navigate(`/records?tab=persons&personId=${selectedWarrant.subject_person_id}`)}
+                          className="toolbar-btn text-[9px]"><User className="w-3 h-3" /> View Record</button>
+                        <button type="button" onClick={() => navigate(`/dispatch?personId=${selectedWarrant.subject_person_id}`)}
+                          className="toolbar-btn text-[9px]"><Activity className="w-3 h-3" /> View Calls</button>
+                        <button type="button" onClick={() => navigate(`/records?tab=arrests&personId=${selectedWarrant.subject_person_id}`)}
+                          className="toolbar-btn text-[9px]"><Shield className="w-3 h-3" /> View Arrests</button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1852,18 +2075,6 @@ export default function WarrantsPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Linked Records */}
-                <LinkedRecordsSection
-                  entityType="warrant"
-                  entityId={String(selectedWarrant.id)}
-                  onOpenLinkModal={() => {}}
-                />
-
-                {/* File Attachments */}
-                <div className="panel-beveled p-3 bg-surface-base">
-                  <FileAttachments entityType="warrant" entityId={String(selectedWarrant.id)} />
-                </div>
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-rmpg-400">
@@ -1880,94 +2091,265 @@ export default function WarrantsPage() {
       )}
 
       {/* ================================================================
-          TAB: UTAH SEARCH
+          TAB: SEARCH ALL (Unified Cross-Source)
          ================================================================ */}
-      {activeTab === 'utah-search' && (
+      {activeTab === 'search-all' && (
         <div className="flex-1 overflow-auto">
           <div className="p-4 space-y-4">
             {/* Search Form */}
             <div className="panel-raised p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Globe className="w-4 h-4 text-brand-blue" />
-                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Utah State Warrant Search</span>
-                <span className="text-[9px] text-rmpg-400 ml-auto">warrants.utah.gov</span>
+                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Cross-Source Warrant Search</span>
+                <span className="text-[9px] text-rmpg-400 ml-auto">Local + Utah API + Multi-State</span>
               </div>
-              <form onSubmit={(e) => { e.preventDefault(); runUtahSearch(); }} className="flex gap-2 items-end flex-wrap">
-                <div className="flex-1 min-w-[120px]">
-                  <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
-                  <input
-                    type="text"
-                    className="input-dark w-full"
-                    placeholder="First name..."
-                    value={utahSearchFirst}
-                    onChange={(e) => setUtahSearchFirst(e.target.value)}
-                    autoFocus
-                  />
+              <form onSubmit={(e) => { e.preventDefault(); runUnifiedSearch(); }}>
+                {/* Row 1: First Name, Last Name, DOB */}
+                <div className="flex gap-2 items-end flex-wrap mb-2 relative">
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="First name..."
+                      value={uniSearchFirst}
+                      onChange={(e) => setUniSearchFirst(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
+                      autoComplete="off"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="Last name..."
+                      value={uniSearchLast}
+                      onChange={(e) => setUniSearchLast(e.target.value)}
+                      onFocus={() => setNameFieldFocused(true)}
+                      onBlur={() => setTimeout(() => setNameFieldFocused(false), 200)}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="w-[140px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">DOB</label>
+                    <input
+                      type="date"
+                      className="input-dark w-full"
+                      value={uniSearchDob}
+                      onChange={(e) => setUniSearchDob(e.target.value)}
+                    />
+                  </div>
+                  {/* Typeahead dropdown — only visible when name fields are focused */}
+                  {nameTypeahead.length > 0 && nameFieldFocused && (
+                    <div className="absolute top-full left-0 z-50 mt-1 w-[320px] panel-raised border border-[var(--border-strong)] shadow-lg max-h-48 overflow-auto">
+                      {nameTypeaheadLoading && (
+                        <div className="p-2 text-[10px] text-rmpg-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
+                      )}
+                      {nameTypeahead.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-surface-raised/80 transition-colors flex items-center gap-2"
+                          onClick={() => {
+                            setUniSearchFirst(p.first_name);
+                            setUniSearchLast(p.last_name);
+                            if (p.dob) setUniSearchDob(p.dob);
+                            setNameTypeahead([]);
+                          }}
+                        >
+                          <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                          <span className="text-xs text-white">{p.last_name}, {p.first_name}</span>
+                          {p.dob && <span className="text-[10px] text-rmpg-400 ml-auto">{p.dob}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1 min-w-[120px]">
-                  <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
-                  <input
-                    type="text"
-                    className="input-dark w-full"
-                    placeholder="Last name..."
-                    value={utahSearchLast}
-                    onChange={(e) => setUtahSearchLast(e.target.value)}
-                  />
+
+                {/* Row 2: Warrant #, Court, Source */}
+                <div className="flex gap-2 items-end flex-wrap mb-2">
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Warrant #</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="Warrant number..."
+                      value={uniSearchWarrantNum}
+                      onChange={(e) => setUniSearchWarrantNum(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Court</label>
+                    <input
+                      type="text"
+                      className="input-dark w-full"
+                      placeholder="Court name..."
+                      value={uniSearchCourt}
+                      onChange={(e) => setUniSearchCourt(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-[160px]">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Source</label>
+                    <select className="input-dark w-full" value={uniSearchSource} onChange={(e) => setUniSearchSource(e.target.value)}>
+                      <option value="">All Sources</option>
+                      <option value="local">Local System</option>
+                      <option value="utah">Utah State API</option>
+                      <option value="scraped">Multi-State Scraped</option>
+                    </select>
+                  </div>
                 </div>
+
+                {/* Advanced Filters (collapsible) */}
                 <button
-                  type="submit"
-                  disabled={utahSearching || !utahSearchFirst.trim() || !utahSearchLast.trim()}
-                  className="toolbar-btn !h-8 !px-4 text-xs font-bold bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30 disabled:opacity-40"
+                  type="button"
+                  className="text-[10px] text-rmpg-400 hover:text-rmpg-200 flex items-center gap-1 mb-2 transition-colors"
+                  onClick={() => setUniAdvancedOpen(!uniAdvancedOpen)}
                 >
-                  {utahSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                  <span className="ml-1">{utahSearching ? 'Searching...' : 'Search'}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${uniAdvancedOpen ? 'rotate-180' : ''}`} />
+                  Advanced Filters
                 </button>
+                {uniAdvancedOpen && (
+                  <div className="flex gap-2 items-end flex-wrap mb-2 border-t border-surface-border pt-2">
+                    <div className="w-[140px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date From</label>
+                      <input type="date" className="input-dark w-full" value={uniSearchDateFrom} onChange={(e) => setUniSearchDateFrom(e.target.value)} />
+                    </div>
+                    <div className="w-[140px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date To</label>
+                      <input type="date" className="input-dark w-full" value={uniSearchDateTo} onChange={(e) => setUniSearchDateTo(e.target.value)} />
+                    </div>
+                    <div className="w-[140px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Offense Level</label>
+                      <select className="input-dark w-full" value={uniSearchOffenseLevel} onChange={(e) => setUniSearchOffenseLevel(e.target.value)}>
+                        <option value="">Any</option>
+                        {OFFENSE_LEVELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex-1 min-w-[120px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Charge Keyword</label>
+                      <input type="text" className="input-dark w-full" placeholder="e.g. theft, DUI..." value={uniSearchCharge} onChange={(e) => setUniSearchCharge(e.target.value)} />
+                    </div>
+                    <div className="w-[120px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Status</label>
+                      <select className="input-dark w-full" value={uniSearchStatus} onChange={(e) => setUniSearchStatus(e.target.value)}>
+                        <option value="">Any</option>
+                        {WARRANT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="w-[120px]">
+                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Type</label>
+                      <select className="input-dark w-full" value={uniSearchType} onChange={(e) => setUniSearchType(e.target.value)}>
+                        <option value="">Any</option>
+                        {WARRANT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2 items-center">
+                  <button
+                    type="submit"
+                    disabled={uniSearching || (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim())}
+                    className="toolbar-btn !h-8 !px-4 text-xs font-bold bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30 disabled:opacity-40"
+                  >
+                    {uniSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                    <span className="ml-1">{uniSearching ? 'Searching...' : 'Search All'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-btn !h-8 !px-3 text-xs text-rmpg-400 hover:text-white"
+                    onClick={() => {
+                      setUniSearchFirst(''); setUniSearchLast(''); setUniSearchDob('');
+                      setUniSearchWarrantNum(''); setUniSearchCourt(''); setUniSearchSource('');
+                      setUniSearchOffenseLevel(''); setUniSearchStatus(''); setUniSearchType('');
+                      setUniSearchCharge(''); setUniSearchDateFrom(''); setUniSearchDateTo('');
+                      setUniResults(null); setNameTypeahead([]);
+                    }}
+                  >
+                    <X className="w-3 h-3" />
+                    <span className="ml-1">Clear</span>
+                  </button>
+                </div>
               </form>
             </div>
 
             {/* Results */}
-            {utahResults && (
+            {uniResults && (
               <div className="space-y-3">
                 {/* Summary bar */}
                 <div className="panel-raised p-3 flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${utahResults.source === 'live' ? 'bg-green-400' : 'bg-amber-400'}`} />
-                    <span className="text-[10px] text-rmpg-300 uppercase tracking-wider">
-                      Source: {utahResults.source === 'live' ? 'Live API' : 'Cached Data'}
-                    </span>
+                    {uniResults.meta.sources.map(s => (
+                      <span key={s} className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50">{s}</span>
+                    ))}
                   </div>
                   <span className="text-[10px] text-rmpg-400">
-                    {utahResults.totalHits} total hit{utahResults.totalHits !== 1 ? 's' : ''}
+                    {uniResults.meta.totalHits} total hit{uniResults.meta.totalHits !== 1 ? 's' : ''}
                   </span>
-                  {utahResults.blocked && (
+                  <span className="text-[10px] text-rmpg-400">
+                    {uniResults.meta.duration}ms
+                  </span>
+                  {uniResults.meta.utahBlocked && (
                     <span className="text-[10px] text-amber-400 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> API rate-limited — using cache
+                      <AlertTriangle className="w-3 h-3" /> Utah API rate-limited
                     </span>
                   )}
                   <span className="text-[10px] text-rmpg-500 ml-auto">
-                    Searched {formatDateTime(utahResults.searchedAt)}
+                    Searched {formatDateTime(uniResults.meta.searchedAt)}
                   </span>
                 </div>
 
-                {/* Utah State Results */}
-                {utahResults.utahResults.length > 0 && (
+                {/* LOCAL SYSTEM results */}
+                {uniResults.local.length > 0 && (
                   <div className="panel-raised">
                     <div className="p-3 border-b border-surface-border flex items-center gap-2">
-                      <Globe className="w-3.5 h-3.5 text-red-400" />
-                      <span className="text-xs font-bold text-white">Utah State Warrants</span>
-                      <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono">
-                        {utahResults.utahResults.length}
+                      <Shield className="w-3.5 h-3.5 text-brand-blue" />
+                      <span className="text-xs font-bold text-white">Local System</span>
+                      <span className="ml-auto text-[10px] bg-brand-blue/20 text-brand-blue border border-brand-blue/40 px-1.5 py-0.5 rounded font-mono">
+                        {uniResults.local.length}
                       </span>
                     </div>
                     <div className="divide-y divide-surface-border">
-                      {utahResults.utahResults.map((w, i) => (
+                      {uniResults.local.map((w) => (
+                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white">{w.warrant_number}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{w.status}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{w.type}</span>
+                          </div>
+                          <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
+                          <div className="text-[10px] text-rmpg-400 mt-1">
+                            {w.subject_first_name && <span>{w.subject_last_name}, {w.subject_first_name} • </span>}
+                            {w.issuing_court && <span>Court: {w.issuing_court} • </span>}
+                            Created {formatDateTime(w.created_at)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* UTAH STATE API results */}
+                {uniResults.utah.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <Globe className="w-3.5 h-3.5 text-red-400" />
+                      <span className="text-xs font-bold text-white">Utah State API</span>
+                      <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono">
+                        {uniResults.utah.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-surface-border">
+                      {uniResults.utah.map((w, i) => (
                         <div key={`utah-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'utah')}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-bold text-white">
-                                  {w.last_name}, {w.first_name} {w.middle_name || ''}
-                                </span>
+                                <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name} {w.middle_name || ''}</span>
                                 {w.age && <span className="text-[10px] text-rmpg-400">Age: {w.age}</span>}
                                 {w.city && <span className="text-[10px] text-rmpg-400">{w.city}</span>}
                               </div>
@@ -1981,14 +2363,18 @@ export default function WarrantsPage() {
                                 )}
                               </div>
                             </div>
-                            <div className="flex-shrink-0">
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-green-900/30 text-green-400 border-green-700/40 hover:bg-green-900/50 transition-colors"
+                                title="Import to local system"
+                                onClick={(e) => { e.stopPropagation(); openUtahDetail(w, 'utah'); }}
+                              >
+                                <Download className="w-3 h-3 inline mr-0.5" />Import
+                              </button>
                               {w.offense_level ? (
-                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                                  w.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                                  w.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                                  'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                                }`}>
-                                  {(w.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>
+                                  {w.offense_level}
                                 </span>
                               ) : (
                                 <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded font-bold uppercase">ACTIVE</span>
@@ -2001,57 +2387,50 @@ export default function WarrantsPage() {
                   </div>
                 )}
 
-                {/* Local System Warrants */}
-                {utahResults.localWarrants.length > 0 && (
-                  <div className="panel-raised">
-                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
-                      <Shield className="w-3.5 h-3.5 text-brand-blue" />
-                      <span className="text-xs font-bold text-white">Local System Warrants</span>
-                      <span className="ml-auto text-[10px] bg-brand-blue/20 text-brand-blue border border-brand-blue/40 px-1.5 py-0.5 rounded font-mono">
-                        {utahResults.localWarrants.length}
-                      </span>
-                    </div>
-                    <div className="divide-y divide-surface-border">
-                      {utahResults.localWarrants.map((w) => (
-                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-white">{w.warrant_number}</span>
-                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                              STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                            }`}>{(w.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                              TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                            }`}>{(w.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                          </div>
-                          <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
-                          <div className="text-[10px] text-rmpg-400 mt-1">
-                            {w.issuing_court && <span>Court: {w.issuing_court} • </span>}
-                            Created {formatDateTime(w.created_at)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Scraped Warrants */}
-                {utahResults.scrapedWarrants.length > 0 && (
+                {/* MULTI-STATE SCRAPED results */}
+                {uniResults.scraped.length > 0 && (
                   <div className="panel-raised">
                     <div className="p-3 border-b border-surface-border flex items-center gap-2">
                       <Radar className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-xs font-bold text-white">Multi-Source Warrants</span>
+                      <span className="text-xs font-bold text-white">Multi-State Scraped</span>
                       <span className="ml-auto text-[10px] bg-amber-900/40 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded font-mono">
-                        {utahResults.scrapedWarrants.length}
+                        {uniResults.scraped.length}
                       </span>
                     </div>
                     <div className="divide-y divide-surface-border">
-                      {utahResults.scrapedWarrants.map((w, i) => (
+                      {uniResults.scraped.map((w, i) => (
                         <div key={`scraped-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail(w, 'scraped')}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
-                            {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
+                                {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
+                              </div>
+                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || '—'}</div>
+                              <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
+                                {w.court_name && <span>Court: {w.court_name}</span>}
+                                {w.issue_date && <span>Issued: {w.issue_date}</span>}
+                                {w.bail_amount != null && w.bail_amount > 0 && (
+                                  <span className="text-amber-400 font-bold">Bail: ${Number(w.bail_amount).toLocaleString()}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-green-900/30 text-green-400 border-green-700/40 hover:bg-green-900/50 transition-colors"
+                                title="Import to local system"
+                                onClick={(e) => { e.stopPropagation(); openUtahDetail(w, 'scraped'); }}
+                              >
+                                <Download className="w-3 h-3 inline mr-0.5" />Import
+                              </button>
+                              {w.offense_level && (
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>
+                                  {w.offense_level}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || '—'}</div>
                         </div>
                       ))}
                     </div>
@@ -2059,12 +2438,12 @@ export default function WarrantsPage() {
                 )}
 
                 {/* No results */}
-                {utahResults.totalHits === 0 && (
+                {uniResults.meta.totalHits === 0 && (
                   <div className="panel-raised p-8 text-center">
                     <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
                     <div className="text-sm font-bold text-green-400">No Active Warrants Found</div>
                     <div className="text-xs text-rmpg-400 mt-1">
-                      No warrants found for {utahSearchFirst} {utahSearchLast} across Utah state, local system, or multi-source databases.
+                      No warrants found for {uniSearchFirst} {uniSearchLast} across local system, Utah state, or multi-source databases.
                     </div>
                   </div>
                 )}
@@ -2072,18 +2451,18 @@ export default function WarrantsPage() {
             )}
 
             {/* Search History */}
-            {utahSearchHistory.length > 0 && (
+            {uniSearchHistory.length > 0 && (
               <div className="panel-raised p-3">
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 flex items-center gap-1">
                   <History className="w-3 h-3" /> Recent Searches
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {utahSearchHistory.map((h, i) => (
+                  {uniSearchHistory.map((h, i) => (
                     <button
                       key={i}
                       type="button"
                       className="text-[10px] bg-surface-base/80 text-rmpg-300 hover:text-white border border-surface-border hover:border-brand-blue/40 px-2 py-1 rounded transition-colors"
-                      onClick={() => { setUtahSearchFirst(h.first); setUtahSearchLast(h.last); }}
+                      onClick={() => { setUniSearchFirst(h.first); setUniSearchLast(h.last); }}
                     >
                       {h.last}, {h.first}
                       {h.hits > 0 && <span className="text-red-400 ml-1">({h.hits})</span>}
@@ -2133,8 +2512,8 @@ export default function WarrantsPage() {
                   </div>
                 </div>
 
-                {/* Trigger Scan Button */}
-                <div className="flex items-center gap-2">
+                {/* Trigger Scan + Sort + Map Controls */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     className="toolbar-btn text-xs bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30"
@@ -2153,67 +2532,277 @@ export default function WarrantsPage() {
                   <button type="button" className="toolbar-btn text-[10px]" onClick={fetchAutoPollStatus}>
                     <RotateCcw className="w-3 h-3" /> Refresh
                   </button>
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[10px] bg-red-900/20 text-red-400 border-red-700/40 hover:bg-red-900/30"
+                    disabled={!autoPollStatus?.flaggedPersons?.length}
+                    onClick={async () => {
+                      if (!autoPollStatus?.flaggedPersons?.length) return;
+                      try {
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
+                        const branding = await fetchPdfBranding();
+                        setActiveBranding(branding);
+                        await loadPdfAssets();
+                        const subjects: BoloSubject[] = autoPollStatus.flaggedPersons.map(p => ({
+                          first_name: p.first_name,
+                          last_name: p.last_name,
+                          dob: p.dob,
+                          gender: p.gender,
+                          race: p.race,
+                          height: p.height,
+                          weight: p.weight,
+                          hair_color: p.hair_color,
+                          eye_color: p.eye_color,
+                          address: p.address,
+                          photo_url: p.photo_url,
+                          warrants: p.warrants.map(w => ({
+                            warrant_number: w.warrant_number,
+                            type: w.type,
+                            charge_description: w.charge_description,
+                            offense_level: w.offense_level,
+                            issuing_court: w.issuing_court,
+                            bail_amount: w.bail_amount,
+                          })),
+                        }));
+                        const pdf = generateBoloPdf(subjects);
+                        const blob = pdf.output('blob');
+                        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `BOLO_Packet_${new Date().toISOString().slice(0, 10)}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      } catch (err) {
+                        console.error('BOLO PDF generation failed:', err);
+                      }
+                    }}
+                  >
+                    <Printer className="w-3 h-3" /> Print BOLO
+                  </button>
+                  <div className="flex items-center gap-1 ml-2 border-l border-surface-border pl-2">
+                    <span className="text-[9px] text-rmpg-500 uppercase tracking-wider mr-1">Sort:</span>
+                    {(['severity', 'recent', 'name'] as const).map(s => (
+                      <button key={s} type="button"
+                        className={`toolbar-btn text-[9px] ${watchSort === s ? 'bg-brand-blue/20 text-brand-blue border-brand-blue/40' : ''}`}
+                        onClick={() => setWatchSort(s)}
+                      >{s === 'severity' ? 'Severity' : s === 'recent' ? 'Recent' : 'Name'}</button>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => setWatchMapOpen(prev => !prev)}
+                    className={`toolbar-btn text-[9px] ${watchMapOpen ? 'bg-brand-blue/20 text-brand-blue border-brand-blue/40' : ''}`}
+                  >
+                    <MapPin className="w-3 h-3" /> {watchMapOpen ? 'Hide Map' : 'Show Map'}
+                  </button>
                   <span className="text-[10px] text-rmpg-500 ml-auto">Auto-scans every 4 hours</span>
                 </div>
 
-                {/* Flagged Persons */}
+                {/* Embedded Watch Map */}
+                {watchMapOpen && (
+                  <div className="panel-inset bg-surface-sunken rounded-sm overflow-hidden" style={{ height: 280 }}>
+                    <div ref={watchMapRef} className="w-full h-full" />
+                  </div>
+                )}
+
+                {/* Flagged Persons -- Rich Cards */}
                 {autoPollStatus.flaggedPersons.length > 0 && (
-                  <div className="panel-raised">
-                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
                       <span className="text-xs font-bold text-white">Persons with Active Warrants</span>
                       <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono font-bold">
                         {autoPollStatus.flaggedPersons.length}
                       </span>
                     </div>
-                    <div className="divide-y divide-surface-border max-h-[400px] overflow-auto">
-                      {autoPollStatus.flaggedPersons.map((p) => (
-                        <div key={p.id} className="p-3 hover:bg-surface-raised/50 transition-colors flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-900/40 border border-red-700/50 flex items-center justify-center">
-                            <User className="w-4 h-4 text-red-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-white">{p.last_name}, {p.first_name}</span>
-                              {p.dob && <span className="text-[10px] text-rmpg-400">DOB: {p.dob}</span>}
+                    <div className="space-y-2">
+                      {[...autoPollStatus.flaggedPersons].sort((a, b) => {
+                        if (watchSort === 'severity') {
+                          const order: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
+                          const aO = order[a.warrant_severity || ''] ?? 4;
+                          const bO = order[b.warrant_severity || ''] ?? 4;
+                          return aO - bO;
+                        }
+                        if (watchSort === 'recent') {
+                          const aDate = [...(a.warrants || [])].sort((x, y) => y.created_at.localeCompare(x.created_at))[0]?.created_at || '';
+                          const bDate = [...(b.warrants || [])].sort((x, y) => y.created_at.localeCompare(x.created_at))[0]?.created_at || '';
+                          return bDate.localeCompare(aDate);
+                        }
+                        return (a.last_name || '').localeCompare(b.last_name || '');
+                      }).map((p) => {
+                        const isExpanded = expandedWatchPersons.has(p.id);
+                        const severityColor = p.warrant_severity === 'felony' ? 'border-l-red-500' :
+                          p.warrant_severity === 'misdemeanor' ? 'border-l-amber-500' :
+                          'border-l-rmpg-500';
+                        const severityBg = p.warrant_severity === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                          p.warrant_severity === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                          'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50';
+                        const allWarrants = [...(p.warrants || [])];
+                        const allUtah = [...(p.utahWarrants || [])];
+                        return (
+                          <div key={p.id} id={`watch-person-${p.id}`} className={`panel-raised border-l-4 ${severityColor}`}>
+                            {/* Card Header */}
+                            <div className="p-3 flex items-start gap-3">
+                              {/* Photo */}
+                              <div className="flex-shrink-0">
+                                {p.photo_url ? (
+                                  <img src={p.photo_url} alt="" className="w-12 h-12 rounded-sm object-cover border border-rmpg-600" />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-sm bg-rmpg-700/60 border border-rmpg-600 flex items-center justify-center">
+                                    <User className="w-6 h-6 text-rmpg-400" />
+                                  </div>
+                                )}
+                              </div>
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-bold text-white">{p.last_name}, {p.first_name}</span>
+                                  {p.warrant_severity && (
+                                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${severityBg}`}>
+                                      {p.warrant_severity}
+                                    </span>
+                                  )}
+                                  {p.local_warrant_count > 0 && (
+                                    <span className="text-[9px] bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-1.5 py-0.5 rounded">
+                                      {p.local_warrant_count} local
+                                    </span>
+                                  )}
+                                  {p.utah_hit_count > 0 && (
+                                    <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">
+                                      {p.utah_hit_count} Utah
+                                    </span>
+                                  )}
+                                </div>
+                                {p.dob && <div className="text-[10px] text-rmpg-400 mt-0.5">DOB: {p.dob}</div>}
+                                {(() => {
+                                  const descs = [p.gender, p.race, p.height, p.weight, p.hair_color ? `${p.hair_color} hair` : null, p.eye_color ? `${p.eye_color} eyes` : null].filter(Boolean);
+                                  return descs.length > 0 ? (
+                                    <div className="text-[10px] text-rmpg-400 mt-0.5">{descs.join(' / ')}</div>
+                                  ) : null;
+                                })()}
+                                {p.address && (
+                                  <div className="flex items-center gap-1 mt-0.5 text-[10px] text-rmpg-400">
+                                    <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {p.address}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Expand toggle */}
+                              <button type="button" className="flex-shrink-0 toolbar-btn text-[9px]"
+                                onClick={() => setExpandedWatchPersons(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                                  return next;
+                                })}
+                              >
+                                <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                {isExpanded ? 'Less' : 'Warrants'}
+                              </button>
                             </div>
-                            <div className="flex items-center gap-2 mt-1 text-[10px] text-rmpg-400">
-                              {p.local_warrant_count > 0 && (
-                                <span className="bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-1.5 py-0.5 rounded">
-                                  {p.local_warrant_count} local
-                                </span>
-                              )}
-                              {p.utah_hit_count > 0 && (
-                                <span className="bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">
-                                  {p.utah_hit_count} Utah
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex-shrink-0">
-                            {p.warrant_severity && (
-                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                                p.warrant_severity === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                                p.warrant_severity === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                                'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                              }`}>{p.warrant_severity}</span>
+
+                            {/* Expanded warrants list */}
+                            {isExpanded && (allWarrants.length > 0 || allUtah.length > 0) && (
+                              <div className="border-t border-surface-border">
+                                {allWarrants.length > 0 && (
+                                  <div className="panel-beveled m-2 p-2">
+                                    <div className="text-[9px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Local Warrants</div>
+                                    <div className="space-y-1">
+                                      {allWarrants.map(w => (
+                                        <div key={w.id} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-surface-sunken/50">
+                                          <span className="font-mono text-rmpg-200">{w.warrant_number}</span>
+                                          <span className="text-rmpg-400">{w.type}</span>
+                                          <span className="text-rmpg-200 flex-1 truncate">{w.charge_description}</span>
+                                          {w.issuing_court && <span className="text-rmpg-400 truncate">{w.issuing_court}</span>}
+                                          {w.bail_amount != null && w.bail_amount > 0 && (
+                                            <span className="text-amber-400 font-mono">${w.bail_amount.toLocaleString()}</span>
+                                          )}
+                                          {w.offense_level && (
+                                            <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded border ${
+                                              w.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                                              w.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                                              'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                                            }`}>{w.offense_level}</span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {allUtah.length > 0 && (
+                                  <div className="panel-beveled m-2 p-2">
+                                    <div className="text-[9px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Utah State Warrants</div>
+                                    <div className="space-y-1">
+                                      {allUtah.map((uw, i) => (
+                                        <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-surface-sunken/50">
+                                          <span className="font-mono text-rmpg-200">{uw.utah_warrant_id}</span>
+                                          <span className="text-rmpg-200 flex-1 truncate">{uw.charges}</span>
+                                          <span className="text-rmpg-400 truncate">{uw.court_name}</span>
+                                          <span className="text-rmpg-500">{uw.issue_date}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             )}
+
+                            {/* Action buttons */}
+                            <div className="p-2 border-t border-surface-border flex items-center gap-1 flex-wrap">
+                              <button type="button" className="toolbar-btn text-[9px]" title="Search All"
+                                onClick={() => {
+                                  setUniSearchFirst(p.first_name);
+                                  setUniSearchLast(p.last_name);
+                                  setActiveTab('search-all');
+                                  setTimeout(() => runUnifiedSearch(), 100);
+                                }}
+                              >
+                                <Search className="w-3 h-3" /> Search All
+                              </button>
+                              <button type="button" className="toolbar-btn text-[9px]" title="Print Sheet"
+                                onClick={() => {
+                                  const pdfData: WarrantPdfData = {
+                                    warrant_number: allWarrants[0]?.warrant_number || 'N/A',
+                                    type: allWarrants[0]?.type || 'arrest',
+                                    status: allWarrants[0]?.status || 'active',
+                                    subject_first_name: p.first_name,
+                                    subject_last_name: p.last_name,
+                                    subject_dob: p.dob || undefined,
+                                    subject_gender: p.gender || undefined,
+                                    subject_race: p.race || undefined,
+                                    subject_height: p.height || undefined,
+                                    subject_weight: p.weight || undefined,
+                                    subject_hair_color: p.hair_color || undefined,
+                                    subject_eye_color: p.eye_color || undefined,
+                                    subject_address: p.address || undefined,
+                                    subject_photo_url: p.photo_url || undefined,
+                                    charge_description: allWarrants[0]?.charge_description || allUtah[0]?.charges || '',
+                                    offense_level: allWarrants[0]?.offense_level as any || undefined,
+                                    bail_amount: allWarrants[0]?.bail_amount || undefined,
+                                    issuing_court: allWarrants[0]?.issuing_court || allUtah[0]?.court_name || undefined,
+                                    issuing_judge: undefined,
+                                    entered_by_name: undefined,
+                                    created_at: allWarrants[0]?.created_at || new Date().toISOString(),
+                                    notes: undefined,
+                                  };
+                                  downloadRecordPdf('warrant', pdfData, pdfData.warrant_number);
+                                }}
+                              >
+                                <Printer className="w-3 h-3" /> Print Sheet
+                              </button>
+                              <button type="button" className="toolbar-btn text-[9px]" title="View Record"
+                                onClick={() => navigate(`/records?tab=persons&personId=${p.id}`)}
+                              >
+                                <FileText className="w-3 h-3" /> View Record
+                              </button>
+                              <button type="button" className="toolbar-btn text-[9px]" title="View Calls"
+                                onClick={() => navigate(`/dispatch?personId=${p.id}`)}
+                              >
+                                <Gavel className="w-3 h-3" /> View Calls
+                              </button>
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            className="flex-shrink-0 text-[10px] text-rmpg-400 hover:text-white"
-                            title="Search Utah warrants"
-                            onClick={() => {
-                              setUtahSearchFirst(p.first_name);
-                              setUtahSearchLast(p.last_name);
-                              setActiveTab('utah-search');
-                              setTimeout(() => runUtahSearch(), 100);
-                            }}
-                          >
-                            <Search className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -2296,7 +2885,7 @@ export default function WarrantsPage() {
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
       {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {/* Coverage Section */}
             {coverageLoading ? (
@@ -2418,7 +3007,7 @@ export default function WarrantsPage() {
                     </summary>
                     <div className="mt-3 overflow-x-auto">
                       <table className="table-dark text-[10px] w-full">
-                        <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
+                        <thead className="sticky top-0 z-10 bg-[#050505]">
                           <tr>
                             <th className="text-left px-2 py-1">Source</th>
                             <th className="text-left px-2 py-1">State</th>
@@ -2432,7 +3021,7 @@ export default function WarrantsPage() {
                         </thead>
                         <tbody>
                           {coverageSources.map(src => (
-                            <tr key={src.source_key} className="border-t border-rmpg-800/50 hover:bg-[#181818]/30 transition-colors">
+                            <tr key={src.source_key} className="border-t border-rmpg-800/50 hover:bg-[#141414]/30 transition-colors">
                               <td className="px-2 py-1 font-mono text-rmpg-300">{src.source_key}</td>
                               <td className="px-2 py-1">{src.state}</td>
                               <td className="px-2 py-1 text-rmpg-400">{src.county || '-'}</td>
@@ -2489,12 +3078,12 @@ export default function WarrantsPage() {
                         <span className="font-mono text-xs text-rmpg-200 font-bold">{run.run_id}</span>
                         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${
                           run.status === 'completed' ? 'bg-green-900/50 text-green-400 border-green-700/50'
-                            : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                            : run.status === 'running' ? 'bg-gray-900/50 text-gray-400 border-gray-700/50'
                             : 'bg-red-900/50 text-red-400 border-red-700/50'
                         }`}>
                           {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />}
                           <span className={`led-dot ${
-                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-blue animate-led-pulse' : 'led-red'
+                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-gray animate-led-pulse' : 'led-red'
                           }`} />
                           {run.status.toUpperCase()}
                         </span>
@@ -2545,6 +3134,13 @@ export default function WarrantsPage() {
       )}
 
       {/* ================================================================
+          TAB 4: SCRAPERS — admin/manager only, phase 5 dashboard
+         ================================================================ */}
+      {activeTab === 'scrapers' && (isGodMode || isAdminOrManager) && (
+        <ScrapersTab />
+      )}
+
+      {/* ================================================================
           PERSON PROFILE SLIDE-OUT
          ================================================================ */}
       {personProfileOpen && (
@@ -2558,9 +3154,9 @@ export default function WarrantsPage() {
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <User className="w-4 h-4 text-brand-400" /> Person Warrant Profile
               </h2>
-              <button type="button" onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
+              <IconButton onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close person profile">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
 
             {personProfileLoading ? (
@@ -2568,7 +3164,7 @@ export default function WarrantsPage() {
                 <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading profile...
               </div>
             ) : personProfile ? (
-              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
                 {/* Person header */}
                 <div className="panel-beveled p-4 flex items-start gap-3">
                   {personProfile.person.photo_url ? (
@@ -2654,7 +3250,7 @@ export default function WarrantsPage() {
                               {w.type.toUpperCase()}
                             </span>
                           </div>
-                          <div className="text-xs text-rmpg-300">{w.charge_description}</div>
+                          <div className="text-xs text-rmpg-300">{chargesFromJson(w.charge_description)}</div>
                           <div className="text-[10px] text-rmpg-500 mt-1">
                             {formatDate(w.created_at)}
                             {w.issuing_court && ` \u2022 ${w.issuing_court}`}
@@ -2709,7 +3305,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X className="w-4 h-4" /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Type + Offense Level */}
@@ -2758,7 +3354,7 @@ export default function WarrantsPage() {
                       onFocus={() => setShowPersonDropdown(true)}
                     />
                     {showPersonDropdown && personResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
+                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
                         {personResults.map((p) => (
                           <button
                             key={p.id}
@@ -2870,7 +3466,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
-              <button type="button" onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close serve modal"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-4">
               <p className="text-xs text-rmpg-300">
@@ -2900,9 +3496,9 @@ export default function WarrantsPage() {
 
       {/* MOBILE FAB */}
       {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && (
-        <button type="button" onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
+        <IconButton onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
-        </button>
+        </IconButton>
       )}
 
       {/* DELETE CONFIRM */}
@@ -2923,35 +3519,35 @@ export default function WarrantsPage() {
       {utahDetailWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setUtahDetailWarrant(null)}>
           <div
-            className="bg-[#0c0c0c] border border-[#2b2b2b] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
+            className="bg-[#050505] border border-[#222222] rounded w-full max-w-2xl max-h-[90vh] overflow-auto shadow-md"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b] bg-[#141414]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222222] bg-[#0a0a0a]">
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <span className="text-base font-bold text-white truncate">
                   {utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}
                 </span>
                 <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border flex-shrink-0 ${
                   utahDetailWarrant._source === 'utah' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
-                  utahDetailWarrant._source === 'local' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50' :
+                  utahDetailWarrant._source === 'local' ? 'bg-gray-900/50 text-gray-400 border-gray-700/50' :
                   'bg-amber-900/50 text-amber-400 border-amber-700/50'
                 }`}>
                   {utahDetailWarrant._source === 'utah' ? 'UTAH STATE' : utahDetailWarrant._source === 'local' ? 'LOCAL' : 'SCRAPED'}
                 </span>
               </div>
-              <button type="button" onClick={() => setUtahDetailWarrant(null)} className="text-rmpg-400 hover:text-white p-1">
+              <IconButton onClick={() => setUtahDetailWarrant(null)} className="text-rmpg-400 hover:text-white p-1" aria-label="Close warrant detail">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
 
             <div className="p-4 space-y-4">
               {/* SUBJECT INFORMATION */}
               <div>
-                <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Subject Information</span>
                 </div>
-                <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Full Name</span>
@@ -2975,10 +3571,10 @@ export default function WarrantsPage() {
 
               {/* WARRANT DETAILS */}
               <div>
-                <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Warrant Details</span>
                 </div>
-                <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     {(utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id) && (
                       <div>
@@ -3032,10 +3628,10 @@ export default function WarrantsPage() {
               {/* COURT INFORMATION */}
               {(utahDetailWarrant.court_name || utahDetailWarrant.case_id || utahDetailWarrant.issue_date) && (
                 <div>
-                  <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
+                  <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                     <span className="text-[10px] font-bold text-white uppercase tracking-widest">Court Information</span>
                   </div>
-                  <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
+                  <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                       {utahDetailWarrant.court_name && (
                         <div>
@@ -3066,10 +3662,10 @@ export default function WarrantsPage() {
 
               {/* SOURCE / VERIFICATION */}
               <div>
-                <div className="bg-[#2a2a2a] px-3 py-1.5 rounded-t-sm">
+                <div className="bg-[#2e2e2e] px-3 py-1.5 rounded-t-sm">
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Source / Verification</span>
                 </div>
-                <div className="border border-t-0 border-[#2b2b2b] rounded-b-sm p-3">
+                <div className="border border-t-0 border-[#222222] rounded-b-sm p-3">
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Data Source</span>
@@ -3095,7 +3691,7 @@ export default function WarrantsPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#2b2b2b] bg-[#141414] flex-wrap">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#222222] bg-[#0a0a0a] flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"

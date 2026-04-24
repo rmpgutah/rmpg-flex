@@ -1,10 +1,14 @@
 // ============================================================
 // RMPG Flex — Edge-TTS Client Audio Player
 //
-// Fetches neural TTS audio from the server's /api/tts endpoint,
-// applies a radio bandpass filter (1350Hz, Q 2.5) for authentic
-// dispatch sound, and manages a priority queue where major alerts
-// interrupt lower-priority audio.
+// Fetches neural TTS audio from the server's /api/tts endpoint and
+// processes it through a P25 Motorola APX-style chain:
+//   - 800Hz triple-chirp talk-permit on key-up
+//   - IMBE/AMBE-style bandpass (300-3400Hz) + 1.8kHz metallic presence
+//   - 12-bit bitcrusher for codec quantization color
+//   - Near-silent noise floor (digital, not analog hiss)
+//   - Short band-limited squelch-tail burst on un-key
+// Manages a priority queue where major alerts interrupt lower ones.
 //
 // Falls back to browser SpeechSynthesis if the server is unreachable.
 // ============================================================
@@ -32,6 +36,44 @@ let currentSource: AudioBufferSourceNode | null = null;
 
 // Preferred female voices for SpeechSynthesis fallback
 const PREFERRED_VOICES = ['Samantha', 'Karen', 'Zira', 'Jenny'];
+
+// ─── Persona payload helper (Task 1.4) ──────────────────────
+// Reads voice persona from localStorage (written by useVoicePersona.ts)
+// and produces the server-facing payload with rate/pitch already
+// formatted as Edge-TTS strings. Urgent adds a fixed boost
+// (+10% rate, +5Hz pitch) on top of the persona baseline.
+
+export interface EdgeTTSPayload {
+  text: string;
+  urgent: boolean;
+  voice: string;
+  rate: string;   // e.g. '+10%', '-5%'
+  pitch: string;  // e.g. '+5Hz', '-10Hz'
+}
+
+function safeNum(raw: string | null, fallback: number): number {
+  if (raw == null) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function getEdgeTTSPayload(text: string, urgent: boolean = false): EdgeTTSPayload {
+  const voice = localStorage.getItem('rmpg-voice-persona') || 'en-US-JennyNeural';
+  const rateNum = safeNum(localStorage.getItem('rmpg-voice-rate'), 1.0);
+  const pitchNum = safeNum(localStorage.getItem('rmpg-voice-pitch'), 0);
+
+  let ratePct = Math.round((rateNum - 1) * 100);
+  let pitchHz = Math.round(pitchNum);
+  if (urgent) {
+    ratePct += 10;
+    pitchHz += 5;
+  }
+
+  const rate = `${ratePct >= 0 ? '+' : ''}${ratePct}%`;
+  const pitch = `${pitchHz >= 0 ? '+' : ''}${pitchHz}Hz`;
+
+  return { text, urgent, voice, rate, pitch };
+}
 
 // ─── AudioWorklet Registration ─────────────────────────────
 // Inline processor code as Blob URLs to avoid separate public files.
@@ -172,51 +214,69 @@ function speakFallback(text: string): Promise<void> {
   });
 }
 
-// ─── Radio Squelch Beep Generator ───────────────────────────
-// Authentic police radio open/close beep — short dual-tone burst
+// ─── P25 Motorola Key-In / Key-Out Tones ────────────────────
+// Authentic Motorola APX P25 channel-grant ("talk-permit") and
+// end-of-transmission squelch tail. This is digital-radio behavior,
+// not analog FM — no rising/falling sweep, no continuous hiss.
 
-function playSquelchBeep(ctx: AudioContext, startTime: number, type: 'open' | 'close'): void {
-  // Open squelch: rising tone (900→1400Hz over 80ms)
-  // Close squelch: falling tone (1400→900Hz over 80ms)
-  const duration = 0.08;
-  const osc1 = ctx.createOscillator();
-  const osc2 = ctx.createOscillator();
-  const gain = ctx.createGain();
+/**
+ * P25 talk-permit tone — the sound an APX radio plays when the
+ * trunked system grants the channel. Three rapid 800Hz sine chirps,
+ * ~35ms each with ~25ms gaps. Total duration ~155ms.
+ */
+function playP25KeyUp(ctx: AudioContext, startTime: number): void {
+  const beepDur = 0.035;
+  const gap = 0.025;
+  for (let i = 0; i < 3; i++) {
+    const t0 = startTime + i * (beepDur + gap);
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, t0);
 
-  osc1.type = 'sine';
-  osc2.type = 'sine';
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.18, t0 + 0.003);
+    g.gain.setValueAtTime(0.18, t0 + beepDur - 0.003);
+    g.gain.linearRampToValueAtTime(0, t0 + beepDur);
 
-  if (type === 'open') {
-    osc1.frequency.setValueAtTime(900, startTime);
-    osc1.frequency.linearRampToValueAtTime(1400, startTime + duration);
-    osc2.frequency.setValueAtTime(1800, startTime);
-    osc2.frequency.linearRampToValueAtTime(2200, startTime + duration);
-  } else {
-    osc1.frequency.setValueAtTime(1400, startTime);
-    osc1.frequency.linearRampToValueAtTime(900, startTime + duration);
-    osc2.frequency.setValueAtTime(2200, startTime);
-    osc2.frequency.linearRampToValueAtTime(1800, startTime + duration);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + beepDur + 0.005);
   }
+}
 
-  // Quick envelope: fade in 5ms, hold, fade out 10ms
-  gain.gain.setValueAtTime(0, startTime);
-  gain.gain.linearRampToValueAtTime(0.12, startTime + 0.005);
-  gain.gain.setValueAtTime(0.12, startTime + duration - 0.01);
-  gain.gain.linearRampToValueAtTime(0, startTime + duration);
+/** Total duration of playP25KeyUp — used to align voice start. */
+const P25_KEYUP_DURATION = 0.035 * 3 + 0.025 * 2; // 0.155s
 
-  osc1.connect(gain);
-  osc2.connect(gain);
-  gain.connect(ctx.destination);
+/**
+ * P25 end-of-transmission courtesy beep — a single soft 600Hz sine
+ * pip (~80ms) signaling "over" to other units. Common on Motorola
+ * profiles where the system is configured to emit an audible EOT
+ * tone rather than a silent drop or noise-tail.
+ */
+function playP25KeyDown(ctx: AudioContext, startTime: number): void {
+  const dur = 0.08;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
 
-  osc1.start(startTime);
-  osc1.stop(startTime + duration + 0.01);
-  osc2.start(startTime);
-  osc2.stop(startTime + duration + 0.01);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(600, startTime);
+
+  g.gain.setValueAtTime(0, startTime);
+  g.gain.linearRampToValueAtTime(0.14, startTime + 0.005);
+  g.gain.setValueAtTime(0.14, startTime + dur - 0.005);
+  g.gain.linearRampToValueAtTime(0, startTime + dur);
+
+  osc.connect(g);
+  g.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + dur + 0.01);
 }
 
 // ─── Edge-TTS Fetch + Radio Processing ──────────────────────
 
-async function fetchAndPlay(text: string): Promise<void> {
+async function fetchAndPlay(text: string, urgent: boolean = false): Promise<void> {
   const token = localStorage.getItem('rmpg_token');
   const ctx = getAudioContext();
 
@@ -229,7 +289,7 @@ async function fetchAndPlay(text: string): Promise<void> {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(getEdgeTTSPayload(text, urgent)),
   });
 
   if (!res.ok) throw new Error(`TTS request failed: ${res.status}`);
@@ -243,14 +303,17 @@ async function fetchAndPlay(text: string): Promise<void> {
     currentSource = source;
 
     const now = ctx.currentTime;
-    const voiceDelay = 0.15; // Start voice 150ms after open squelch
+    // Voice starts right after the 155ms P25 talk-permit triple-chirp,
+    // plus a tiny 20ms gap so the last chirp doesn't bleed into speech.
+    const voiceDelay = P25_KEYUP_DURATION + 0.02;
     const voiceDuration = audioBuffer.duration;
 
-    // ── 1. OPEN SQUELCH BEEP ──────────────────────────────
-    playSquelchBeep(ctx, now, 'open');
+    // ── 1. P25 TALK-PERMIT (KEY-UP) ───────────────────────
+    playP25KeyUp(ctx, now);
 
-    // ── 2. RADIO FREQUENCY PROCESSING ─────────────────────
-    // Bandpass filter: 300Hz–3400Hz (standard radio bandwidth)
+    // ── 2. P25 VOCODER FREQUENCY PROCESSING ───────────────
+    // IMBE/AMBE vocoder band: ~300Hz–3400Hz, with a characteristic
+    // metallic resonance around 2kHz from the codec quantization.
     const highpass = ctx.createBiquadFilter();
     highpass.type = 'highpass';
     highpass.frequency.value = 300;
@@ -261,12 +324,13 @@ async function fetchAndPlay(text: string): Promise<void> {
     lowpass.frequency.value = 3400;
     lowpass.Q.value = 0.7;
 
-    // Presence/clarity boost at 1.5kHz (radio intelligibility)
+    // Presence/clarity boost at 1.8kHz — slightly higher than analog
+    // to give the "metallic" P25 codec coloration.
     const presence = ctx.createBiquadFilter();
     presence.type = 'peaking';
-    presence.frequency.value = 1500;
-    presence.Q.value = 1.0;
-    presence.gain.value = 3;
+    presence.frequency.value = 1800;
+    presence.Q.value = 1.4;
+    presence.gain.value = 4;
 
     // Slight compression feel via gain staging
     const voiceGain = ctx.createGain();
@@ -311,15 +375,15 @@ async function fetchAndPlay(text: string): Promise<void> {
     noiseLP.type = 'lowpass';
     noiseLP.frequency.value = 3000;
 
-    // Noise volume — audible but not overpowering
+    // P25 noise profile — much quieter than analog FM. The digital
+    // vocoder sends near-silence between voice samples; the tiny bed
+    // of noise here is just receiver-path hiss for realism, not the
+    // continuous analog pink-noise wash of the old mix.
     const noiseGain = ctx.createGain();
     noiseGain.gain.setValueAtTime(0, now);
-    // Fade in with squelch open
-    noiseGain.gain.linearRampToValueAtTime(0.018, now + 0.05);
-    // Hold during voice
-    noiseGain.gain.setValueAtTime(0.018, now + voiceDelay + voiceDuration);
-    // Fade out after voice ends
-    noiseGain.gain.linearRampToValueAtTime(0, now + voiceDelay + voiceDuration + 0.3);
+    noiseGain.gain.linearRampToValueAtTime(0.004, now + voiceDelay);
+    noiseGain.gain.setValueAtTime(0.004, now + voiceDelay + voiceDuration);
+    noiseGain.gain.linearRampToValueAtTime(0, now + voiceDelay + voiceDuration + 0.1);
 
     // Noise chain: source → HP → LP → gain → output
     noiseSource.connect(noiseHP);
@@ -354,9 +418,9 @@ async function fetchAndPlay(text: string): Promise<void> {
       voiceGain.connect(ctx.destination);
     }
 
-    // ── 5. CLOSE SQUELCH BEEP (after voice ends) ──────────
-    const closeTime = now + voiceDelay + voiceDuration + 0.1;
-    playSquelchBeep(ctx, closeTime, 'close');
+    // ── 5. P25 SQUELCH TAIL (KEY-DOWN / un-key) ───────────
+    const closeTime = now + voiceDelay + voiceDuration + 0.05;
+    playP25KeyDown(ctx, closeTime);
 
     source.onended = () => {
       currentSource = null;
@@ -382,7 +446,7 @@ async function processQueue(): Promise<void> {
     const entry = queue.shift()!;
     try {
       if (isEdgeTTSEnabled()) {
-        await fetchAndPlay(entry.text);
+        await fetchAndPlay(entry.text, entry.urgent);
       } else {
         await speakFallback(entry.text);
       }
@@ -410,6 +474,17 @@ async function processQueue(): Promise<void> {
 export async function speak(text: string, severity?: AlertSeverity): Promise<void> {
   if (!isSoundEnabled()) return;
   if (severity && !shouldPlayAudio(severity)) return;
+
+  // Mirror every spoken line into the transcript buffer so the
+  // DispatcherTranscript drawer and ARIA live regions stay in sync.
+  // Dynamic import avoids a circular module load (edgeTTS -> hook -> React).
+  import('../hooks/useDispatchTranscript')
+    .then((m) => m.pushTranscriptEntry({
+      text,
+      severity: severity ?? 'minor',
+      source: 'system',
+    }))
+    .catch(() => { /* transcript is best-effort */ });
 
   const urgent = severity === 'major';
 

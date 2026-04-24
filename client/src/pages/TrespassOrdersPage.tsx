@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -359,7 +360,7 @@ export default function TrespassOrdersPage() {
         <div className="px-3 py-2 border-b border-amber-700/50 bg-amber-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
             <span className="text-amber-400 font-bold text-[10px] uppercase">Expiring Orders ({expirationCalendar.total})</span>
-            <button type="button" onClick={() => setExpirationCalendar(null)} className="text-amber-500 hover:text-amber-300"><X style={{ width: 12, height: 12 }} /></button>
+            <IconButton onClick={() => setExpirationCalendar(null)} className="text-amber-500 hover:text-amber-300" aria-label="Close expiration calendar"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
           {Object.entries(expirationCalendar.by_month || {}).map(([month, orders]: [string, any]) => (
             <div key={month} className="mb-1">
@@ -381,10 +382,10 @@ export default function TrespassOrdersPage() {
 
       {/* Feature 19: Bulk Create Panel */}
       {bulkMode && (
-        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs">
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-blue-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
-            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-blue-500 hover:text-blue-300"><X style={{ width: 12, height: 12 }} /></button>
+            <span className="text-gray-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
+            <IconButton onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-gray-500 hover:text-gray-300" aria-label="Cancel bulk mode"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
@@ -393,7 +394,7 @@ export default function TrespassOrdersPage() {
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], first_name: e.target.value }; setBulkPersons(arr); }} />
                 <input className="input-dark flex-1 text-xs min-h-[36px]" placeholder="Last name" value={p.last_name}
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], last_name: e.target.value }; setBulkPersons(arr); }} />
-                <button type="button" onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1"><X style={{ width: 10, height: 10 }} /></button>
+                <IconButton onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1" aria-label={`Remove person ${i + 1}`}><X style={{ width: 10, height: 10 }} /></IconButton>
               </div>
             ))}
           </div>
@@ -547,9 +548,9 @@ export default function TrespassOrdersPage() {
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}
-                <button type="button" onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                <IconButton onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }} aria-label="Close details">
                   <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
-                </button>
+                </IconButton>
               </div>
             </div>
 
@@ -614,7 +615,7 @@ export default function TrespassOrdersPage() {
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
               <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
-              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {/* Person search */}
@@ -712,7 +713,7 @@ export default function TrespassOrdersPage() {
                 <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(212,160,23,0.25)', borderColor: 'rgba(212,160,23,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>

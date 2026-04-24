@@ -9,7 +9,19 @@ import type {
   FormSchema, SchemaSection, RenderCallback, FieldSpec, LabeledField,
 } from './types';
 
-export async function renderPdfV2<T>(schema: FormSchema<T>, data: T): Promise<jsPDF> {
+export interface RenderOptions {
+  /**
+   * Timestamp used for the footer's "Generated YYYY-MM-DD" text. Defaults to
+   * `new Date()`. Tests pin this so snapshot byte output is stable.
+   */
+  generatedAt?: Date;
+}
+
+export async function renderPdfV2<T>(
+  schema: FormSchema<T>,
+  data: T,
+  options?: RenderOptions,
+): Promise<jsPDF> {
   // mm units so v1 helpers (drawNibrsHeader, etc.) render at their designed scale.
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
 
@@ -50,7 +62,12 @@ export async function renderPdfV2<T>(schema: FormSchema<T>, data: T): Promise<js
     if (schema.watermark === 'blank-form' && p > 1) {
       drawBlankFormWatermark(doc);
     }
-    drawDefaultFooter(doc, { pageNumber: p, totalPages: total, revision: schema.meta.revision });
+    drawDefaultFooter(doc, {
+      pageNumber: p,
+      totalPages: total,
+      revision: schema.meta.revision,
+      generatedAt: options?.generatedAt,
+    });
   }
 
   return doc;

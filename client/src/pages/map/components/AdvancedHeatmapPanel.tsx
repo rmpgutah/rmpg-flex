@@ -104,7 +104,9 @@ const MODE_CONFIG: {
 const COLOR_SCHEME_GRADIENTS: Record<HeatmapColorScheme, string[]> = {
   heat: ['#888888', '#22c55e', '#eab308', '#f97316', '#ef4444'],
   risk: ['#22c55e', '#eab308', '#f97316', '#ef4444', '#7f1d1d'],
-  blue: ['#cccccc', '#888888', '#555555', '#222222', '#171717'],
+  // Renamed from 'blue' (removed from HeatmapColorScheme union during
+  // the Spillman pure-black theme purge) to the current 'gold' variant.
+  gold: ['#cccccc', '#888888', '#555555', '#222222', '#171717'],
   green: ['#86efac', '#22c55e', '#15803d', '#14532d', '#0a2918'],
   purple: ['#c4b5fd', '#a855f7', '#7c3aed', '#5b21b6', '#232323'],
 };
@@ -137,7 +139,7 @@ interface HeatmapPreset {
 const QUICK_PRESETS: HeatmapPreset[] = [
   { key: 'crime', label: 'Crime', mode: 'density', colorScheme: 'heat', radius: 30, accent: '#f97316' },
   { key: 'risk', label: 'Risk', mode: 'risk', colorScheme: 'risk', radius: 25, accent: '#ef4444' },
-  { key: 'temporal', label: 'Temporal', mode: 'temporal', colorScheme: 'blue', radius: 20, accent: '#888888' },
+  { key: 'temporal', label: 'Temporal', mode: 'temporal', colorScheme: 'gold', radius: 20, accent: '#888888' },
   { key: 'night', label: 'Night Shift', mode: 'density', colorScheme: 'purple', radius: 30, hourRange: [19, 7], accent: '#a855f7' },
 ];
 
@@ -386,7 +388,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([Math.min(v, hourRange[1]), hourRange[1]]);
                   }}
-                  className="w-full h-1 accent-blue-500 cursor-pointer"
+                  className="w-full h-1 accent-gray-500 cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>
@@ -401,7 +403,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([hourRange[0], Math.max(v, hourRange[0])]);
                   }}
-                  className="w-full h-1 accent-blue-500 cursor-pointer"
+                  className="w-full h-1 accent-gray-500 cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>

@@ -106,14 +106,16 @@ export default function ShiftPlansPage() {
   const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
 
   useEffect(() => {
-    apiFetch('/api/shift-plans/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
-    apiFetch('/api/shift-plans/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
+    // Server mounts shiftPlanRoutes at /api/admin (see server/src/index.ts).
+    // Legacy paths under /api/shift-plans/* 404 because that prefix is not mounted.
+    apiFetch('/api/admin/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
+    apiFetch('/api/admin/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
   }, []);
 
   useEffect(() => {
-    apiFetch(`/api/shift-plans/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
-    apiFetch(`/api/shift-plans/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
-    apiFetch(`/api/shift-plans/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
+    apiFetch(`/api/admin/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
+    apiFetch(`/api/admin/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
+    apiFetch(`/api/admin/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
   }, [selectedDate]);
 
   // ── Computed ──
@@ -193,7 +195,7 @@ export default function ShiftPlansPage() {
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             aria-label="Select shift date"
-            className="bg-transparent text-white text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors"
+            className="bg-transparent text-white text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/30 transition-colors"
           />
           <button type="button"
             onClick={() => navigateDate(1)}
@@ -205,7 +207,7 @@ export default function ShiftPlansPage() {
           <span className="text-[11px] font-semibold text-rmpg-300">{formatDate(selectedDate)}</span>
           <button type="button"
             onClick={() => setSelectedDate(todayStr())}
-            className="text-[9px] text-blue-400 hover:text-blue-300 uppercase font-bold tracking-wider px-1.5 py-0.5 hover:bg-blue-900/30 transition-colors border border-transparent hover:border-blue-700/30"
+            className="text-[9px] text-gray-400 hover:text-gray-300 uppercase font-bold tracking-wider px-1.5 py-0.5 hover:bg-gray-900/30 transition-colors border border-transparent hover:border-gray-700/30"
           >
             Today
           </button>
@@ -233,7 +235,7 @@ export default function ShiftPlansPage() {
           <ExportButton exportUrl="/api/admin/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           <button type="button"
             onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
+            className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
           >
             <Plus style={{ width: 10, height: 10 }} />
             New Plan
@@ -253,7 +255,7 @@ export default function ShiftPlansPage() {
           {showCreateForm && (
             <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'rgba(136, 136, 136,0.06)' }}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold text-blue-400 uppercase">New Shift Plan</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase">New Shift Plan</span>
                 <button type="button" onClick={() => setShowCreateForm(false)} className="text-rmpg-500 hover:text-white">
                   <X style={{ width: 10, height: 10 }} />
                 </button>
@@ -263,7 +265,7 @@ export default function ShiftPlansPage() {
                 value={newPlanName}
                 onChange={(e) => setNewPlanName(e.target.value)}
                 placeholder="Plan name..."
-                className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1.5 mb-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors"
+                className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1.5 mb-2 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/30 transition-colors"
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />
@@ -286,7 +288,7 @@ export default function ShiftPlansPage() {
               <button type="button"
                 onClick={handleCreate}
                 disabled={!newPlanName.trim()}
-                className="w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors disabled:opacity-40"
+                className="w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors disabled:opacity-40"
               >
                 Create Plan
               </button>
@@ -304,7 +306,7 @@ export default function ShiftPlansPage() {
                   <p className="text-rmpg-400 font-medium">No shift plans for this date</p>
                   <button type="button"
                     onClick={() => setShowCreateForm(true)}
-                    className="text-blue-400 hover:text-blue-300 text-[10px] mt-2 hover:underline"
+                    className="text-gray-400 hover:text-gray-300 text-[10px] mt-2 hover:underline"
                   >
                     + Create one
                   </button>
@@ -389,7 +391,7 @@ export default function ShiftPlansPage() {
                   {sp.activePlan.status === 'active' && (
                     <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'completed')}
-                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50"
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50"
                     >
                       <CheckCircle style={{ width: 9, height: 9 }} /> Complete
                     </button>
@@ -484,7 +486,7 @@ export default function ShiftPlansPage() {
                             {a.officerNames.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
                                 {a.officerNames.map((name) => (
-                                  <span key={name} className="text-[9px] font-mono px-1 py-px bg-blue-900/30 text-blue-400 border border-blue-800/50">
+                                  <span key={name} className="text-[9px] font-mono px-1 py-px bg-gray-900/30 text-gray-400 border border-gray-800/50">
                                     {name}
                                   </span>
                                 ))}
@@ -532,7 +534,7 @@ export default function ShiftPlansPage() {
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Coverage Summary</div>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
                       <div className="p-2.5" style={{ background: '#080808', border: '1px solid #2b2b2b', borderRadius: '2px' }}>
-                        <div className="text-[18px] font-black text-blue-400 font-mono tabular-nums">{stats.assigned}</div>
+                        <div className="text-[18px] font-black text-gray-400 font-mono tabular-nums">{stats.assigned}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Areas Covered</div>
                       </div>
                       <div className="p-2.5" style={{ background: '#080808', border: '1px solid #2b2b2b', borderRadius: '2px' }}>
@@ -574,7 +576,7 @@ export default function ShiftPlansPage() {
         {shiftNotifs.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {shiftNotifs.slice(0, 6).map((n: any, i: number) => (
-              <span key={i} className={`text-[9px] px-2 py-0.5 rounded ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : n.severity === 'warning' ? 'bg-amber-900/30 text-amber-400' : 'bg-blue-900/30 text-blue-400'}`}>
+              <span key={i} className={`text-[9px] px-2 py-0.5 rounded ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : n.severity === 'warning' ? 'bg-amber-900/30 text-amber-400' : 'bg-gray-900/30 text-gray-400'}`}>
                 {n.message}
               </span>
             ))}
@@ -604,10 +606,10 @@ export default function ShiftPlansPage() {
 
           {/* Pending Swap Requests */}
           {swapRequests.length > 0 && (
-            <div className="p-2 rounded border bg-blue-900/20 border-blue-800/30 text-center">
-              <ArrowRightLeft className="w-3 h-3 text-blue-400 mx-auto mb-0.5" />
-              <div className="text-sm font-bold font-mono text-blue-400">{swapRequests.length}</div>
-              <div className="text-[8px] text-blue-400">Swap Requests</div>
+            <div className="p-2 rounded border bg-gray-900/20 border-gray-800/30 text-center">
+              <ArrowRightLeft className="w-3 h-3 text-gray-400 mx-auto mb-0.5" />
+              <div className="text-sm font-bold font-mono text-gray-400">{swapRequests.length}</div>
+              <div className="text-[8px] text-gray-400">Swap Requests</div>
             </div>
           )}
 

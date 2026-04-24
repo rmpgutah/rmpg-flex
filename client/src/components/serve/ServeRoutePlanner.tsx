@@ -139,7 +139,7 @@ function chainClusters(clusters: StopItem[][]): StopItem[][] {
 function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
   const colors: Record<string, string> = {
     morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-    afternoon: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
+    afternoon: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
     evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
     anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
   };
@@ -640,7 +640,7 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
+              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
             >
               Apply Route
             </button>
@@ -663,14 +663,14 @@ export default function ServeRoutePlanner({
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={selectAll}
-                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
+                  className="text-[10px] text-gray-400 hover:text-gray-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
                 >
                   Select All
                 </button>
                 <span className="text-rmpg-600">|</span>
                 <button type="button"
                   onClick={deselectAll}
-                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
+                  className="text-[10px] text-gray-400 hover:text-gray-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
                 >
                   Deselect All
                 </button>
@@ -713,7 +713,7 @@ export default function ServeRoutePlanner({
                     {/* Checkbox */}
                     <button type="button" onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white transition-colors" aria-label={stop.selected ? 'Deselect stop' : 'Select stop'}>
                       {stop.selected ? (
-                        <CheckSquare size={14} className="text-blue-400" />
+                        <CheckSquare size={14} className="text-gray-400" />
                       ) : (
                         <Square size={14} />
                       )}
@@ -781,7 +781,7 @@ export default function ServeRoutePlanner({
         {/* ─── Stats Bar ──────────────────────────────────────────── */}
         <div className="flex items-center gap-6 px-4 py-2 border-t border-[#2b2b2b] bg-[#0c0c0c] text-xs" role="status" aria-label="Route statistics">
           <div className="flex items-center gap-1.5 text-rmpg-400">
-            <MapPin size={12} className="text-blue-400" />
+            <MapPin size={12} className="text-gray-400" />
             <span>Total stops:</span>
             <span className="text-white font-medium tabular-nums font-mono">{selectedCount}</span>
           </div>

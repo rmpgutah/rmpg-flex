@@ -323,10 +323,10 @@ router.get('/jobs', async (req: Request, res: Response) => {
     ensureTables();
     const db = getDb();
 
-    const { source = 'cache', page = '1', per_page = '50', q, status, service_status: svcStatus } = req.query;
+    const { source = 'cache', page = '1', per_page = '100000', q, status, service_status: svcStatus } = req.query;
 
     if (source === 'live') {
-      const cappedPerPage = Math.min(100, Math.max(1, parseInt(String(per_page), 10) || 50));
+      const cappedPerPage = Math.min(100000, Math.max(1, (parseInt(String(per_page), 10)) || 100000));
       const params: Record<string, string> = {
         page: String(Math.max(1, parseInt(String(page), 10) || 1)),
         per_page: String(cappedPerPage),
@@ -347,7 +347,7 @@ router.get('/jobs', async (req: Request, res: Response) => {
 
     // Cache mode
     const pageNum = Math.max(1, parseInt(String(page)));
-    const limit = Math.min(100, Math.max(1, parseInt(String(per_page))));
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(per_page))) || 100000));
     const offset = (pageNum - 1) * limit;
 
     const conditions: string[] = [];
@@ -1024,7 +1024,7 @@ router.get('/jobs/:id/linked-records', (req: Request, res: Response) => {
     const links: any = { warrant: null, call: null, trespass_orders: [] };
 
     if (job.linked_warrant_id) {
-      links.warrant = db.prepare('SELECT id, warrant_number, warrant_type, status, subject_name FROM warrants WHERE id = ?')
+      links.warrant = db.prepare(`SELECT w.id, w.warrant_number, w.type as warrant_type, w.status, COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id WHERE w.id = ?`)
         .get(job.linked_warrant_id);
     }
     if (job.linked_call_id) {

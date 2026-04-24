@@ -10,11 +10,20 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
+  /* Dark Mode (default) — main's pure-black Spillman palette. */
   --surface-base: #000000;
   --surface-raised: #0b0b0b;
   --surface-sunken: #000000;
   --surface-overlay: #030303;
   --surface-deep: #000000;
+  /* RGB channels (space-separated) for Tailwind's <alpha-value> substitution.
+     Needed so bg-surface-sunken/50 etc. work. Keep in sync with the hex
+     values above — same colors, different encoding. */
+  --surface-base-rgb: 0 0 0;
+  --surface-raised-rgb: 11 11 11;
+  --surface-sunken-rgb: 0 0 0;
+  --surface-overlay-rgb: 3 3 3;
+  --surface-deep-rgb: 0 0 0;
   --border-default: #232323;
   --border-subtle: #121212;
   --border-strong: #3a3a3a;
@@ -44,6 +53,9 @@
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
   --desktop-shell-subtle-text: #b7b7b7;
   --desktop-shell-icon: #8c8c8c;
+  /* Panel bevel highlight + title bar gradient — theme-aware. */
+  --bevel-highlight: #3a3a3a;
+  --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
 }
 
 /* --- Global Base Overrides --- */
@@ -927,11 +939,11 @@ body.fx-noise::after {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #050505;
-    border-left-color: #050505;
-    border-bottom-color: #2e2e2e;
-    border-right-color: #2e2e2e;
-    caret-color: var(--text-secondary);
+    border-top-color: var(--surface-sunken);
+    border-left-color: var(--surface-sunken);
+    border-bottom-color: var(--border-strong);
+    border-right-color: var(--border-strong);
+    caret-color: var(--brand-blue);
     transition: border-color 0.1s;
   }
   .input-dark:focus {
@@ -944,10 +956,10 @@ body.fx-noise::after {
     @apply w-full px-3 py-1.5 text-sm text-white focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #050505;
-    border-left-color: #050505;
-    border-bottom-color: #2e2e2e;
-    border-right-color: #2e2e2e;
+    border-top-color: var(--surface-sunken);
+    border-left-color: var(--surface-sunken);
+    border-bottom-color: var(--border-strong);
+    border-right-color: var(--border-strong);
     appearance: none;
     -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237e8995'/%3E%3C/svg%3E");
@@ -969,11 +981,11 @@ body.fx-noise::after {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #050505;
-    border-left-color: #050505;
-    border-bottom-color: #2e2e2e;
-    border-right-color: #2e2e2e;
-    caret-color: var(--text-secondary);
+    border-top-color: var(--surface-sunken);
+    border-left-color: var(--surface-sunken);
+    border-bottom-color: var(--border-strong);
+    border-right-color: var(--border-strong);
+    caret-color: var(--brand-blue);
     transition: border-color 0.1s;
   }
   .textarea-dark:focus {
@@ -1073,11 +1085,11 @@ body.fx-noise::after {
 
   /* --- Beveled Panel Borders (3D Raised / Inset) --- */
   .panel-beveled {
-    border: 1px solid #2e2e2e;
-    border-top-color: #383838;
-    border-left-color: #383838;
-    border-bottom-color: #050505;
-    border-right-color: #050505;
+    border: 1px solid var(--border-strong);
+    border-top-color: var(--bevel-highlight);
+    border-left-color: var(--bevel-highlight);
+    border-bottom-color: var(--surface-sunken);
+    border-right-color: var(--surface-sunken);
   }
 
   .panel-inset {
@@ -1094,9 +1106,9 @@ body.fx-noise::after {
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    background: linear-gradient(180deg, #171717 0%, #121212 100%);
-    border-bottom: 1px solid #050505;
-    border-top: 1px solid #383838;
+    background: var(--titlebar-gradient);
+    border-bottom: 1px solid var(--surface-sunken);
+    border-top: 1px solid var(--border-strong);
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
@@ -1537,6 +1549,27 @@ body.fx-noise::after {
   visibility: visible !important;
   opacity: 1 !important;
 }
+.leaflet-tile-pane {
+  z-index: 200 !important;
+}
+.leaflet-tile-pane img {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.beat-label-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #aaaaaa !important;
+  font-size: 9px !important;
+  font-weight: bold !important;
+  font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+  text-shadow: 0 0 3px #000, 0 0 6px #000 !important;
+  padding: 0 !important;
+}
+.beat-label-tooltip::before { display: none !important; }
 
 .beat-label-tooltip {
   background: transparent !important;
@@ -3593,44 +3626,64 @@ html.font-medium { font-size: 16px; }
 html.font-large { font-size: 19px; }
 
 /* ============================================================
-   Feature 32: Light Theme Support
+   Light Theme — "Bring back the blue" saturated-blue variant
+   ============================================================
+   NOTE: This is NOT a true white-background light theme. It's a
+   brighter, more blue-saturated dark-on-dark palette. Per user
+   preference: "bring back the blue theme as Light Mode."
+   Text remains white on dark blue surfaces (just bluer than the
+   pure-black default).
    ============================================================ */
 html.theme-light {
-  --surface-base: #f0f2f5;
-  --surface-raised: #ffffff;
-  --surface-sunken: #e0e0e0;
-  --surface-overlay: rgba(255, 255, 255, 0.95);
-  --surface-deep: #cccccc;
-  --border-default: #c0c0c0;
-  --border-subtle: #cccccc;
-  --border-strong: #999999;
-  --text-primary: #181818;
-  --text-secondary: #444444;
-  --text-muted: #666666;
-  --toolbar-gradient-start: #ffffff;
-  --toolbar-gradient-end: #e9edf2;
-  --desktop-shell-start: #ffffff;
-  --desktop-shell-end: #edf1f5;
-  --desktop-shell-raised-start: #f7f8fa;
-  --desktop-shell-raised-end: #e7ebf0;
-  --desktop-shell-border: #c7ced6;
-  --desktop-shell-accent: #9aa3ad;
-  --desktop-shell-accent-shadow: rgba(148, 163, 184, 0.18);
-  --desktop-shell-subtle-text: #6b7280;
-  --desktop-shell-icon: #6b7280;
-  color-scheme: light;
-  background-color: #f0f2f5;
+  --surface-base: #0d2a4d;
+  --surface-raised: #153a6a;
+  --surface-sunken: #081e3d;
+  --surface-overlay: #061630;
+  --surface-deep: #041022;
+  /* Light-mode RGB channels for Tailwind's <alpha-value> — same colors as
+     the hex values above, different encoding. */
+  --surface-base-rgb: 13 42 77;
+  --surface-raised-rgb: 21 58 106;
+  --surface-sunken-rgb: 8 30 61;
+  --surface-overlay-rgb: 6 22 48;
+  --surface-deep-rgb: 4 16 34;
+  --border-default: #2a5a9e;
+  --border-subtle: #234d87;
+  --border-strong: #3a75c2;
+  --border-panel: #2a5a9e;
+  --text-primary: #e5e7eb;
+  --text-secondary: #c4d3e6;
+  --text-muted: #9bb4d0;
+  --brand-blue: #2a75c2;
+  --toolbar-gradient-start: #2a75c2;
+  --toolbar-gradient-end: #3a8fd9;
+  --grid-header-bg: #102f55;
+  --grid-row-alt: #123560;
+  --surface-panel: #102f55;
+  --surface-panel-alt: #0d2644;
+  --surface-hover: #163d70;
+  --info-text: #c4d3e6;
+  --info-bg: rgba(42, 117, 194, 0.18);
+  --info-border: rgba(58, 117, 194, 0.36);
+  --desktop-shell-start: #0d2a4d;
+  --desktop-shell-end: #153a6a;
+  --desktop-shell-raised-start: #0d2a4d;
+  --desktop-shell-raised-end: #153a6a;
+  --desktop-shell-border: #2a5a9e;
+  --desktop-shell-accent: #3a75c2;
+  --desktop-shell-accent-shadow: rgba(42, 90, 158, 0.28);
+  --desktop-shell-subtle-text: #9bb4d0;
+  --desktop-shell-icon: #9bb4d0;
+  --bevel-highlight: #4a7bbf;
+  --titlebar-gradient: linear-gradient(180deg, #2a5a9e 0%, #1e4a8a 50%, #153a6a 100%);
+  color-scheme: dark;  /* still white-on-dark; blue is just hue-shifted */
+  background-color: #0d2a4d;
 }
 
 html.theme-dark,
 html:not(.theme-light) {
   color-scheme: dark;
   background-color: #000000;
-}
-
-html.theme-light body {
-  background: #f0f2f5 !important;
-  color: #181818 !important;
 }
 
 html.theme-light .bg-surface-base { background: var(--surface-base) !important; }
@@ -4286,9 +4339,11 @@ textarea {
   }
 }
 
-/* 24. Fix iOS dark mode color scheme */
+/* 24. iOS color-scheme pinning — both themes are dark-on-dark (saturated
+   blue or pure black), so we pin color-scheme to 'dark' in both modes to
+   keep native form controls and scrollbars readable on the dark surface. */
 @media (prefers-color-scheme: dark) {
-  html.theme-light { color-scheme: light; }
+  html.theme-light,
   html.theme-dark,
   html:not(.theme-light) { color-scheme: dark; }
 }
@@ -4936,4 +4991,30 @@ hr, [class*="divide-"] > * + * {
    Consistent hover glow on interactive cards. */
 [class*="hover\\:bg-"] {
   transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+/* ── iOS PWA shell polish (2026-04-20) ──────────────────── */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+@media (max-width: 767px) {
+  /* Kill iOS auto-zoom on input focus (triggered when font-size < 16px) */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+  /* Touch target minimum per Apple HIG */
+  button, a[role="button"], .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Safe-area utilities */
+  .safe-px { padding-left: var(--safe-left); padding-right: var(--safe-right); }
+  .safe-pt { padding-top: var(--safe-top); }
+  .safe-pb { padding-bottom: var(--safe-bottom); }
+  /* Prevent iOS rubber-band overscroll on full-page scrollers */
+  .no-overscroll { overscroll-behavior: none; }
 }

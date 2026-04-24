@@ -28,7 +28,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 const REPAIR_COLORS: Record<string, string> = {
   reported: 'text-gray-400', estimated: 'text-amber-400', approved: 'text-purple-400',
-  in_repair: 'text-cyan-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
+  in_repair: 'text-gray-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
 };
 
 const timeAgo = (date: string): string => {
