@@ -49,6 +49,14 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
+import {
+  priorityBucket,
+  priorityChipClass,
+  formatAge,
+  freshnessClass,
+  freshnessIcon,
+  stateFromSource,
+} from '../utils/warrantListHelpers';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ScrapersTab from './warrants/ScrapersTab';
@@ -94,6 +102,18 @@ interface Warrant {
   created_at: string;
   updated_at: string;
   activity?: ActivityEntry[];
+  // Phase 1 list extensions
+  priority_score?: number | null;
+  age_days?: number | null;
+  freshness_days?: number | null;
+  matches_person?: number | boolean | null;
+  source_scraper_name?: string | null;
+  source_state?: string | null;
+  source_url?: string | null;
+  last_scraped_at?: string | null;
+  rmpg_encounters?: any[];
+  known_associates?: any[];
+  known_vehicles?: any[];
 }
 
 interface ActivityEntry {
@@ -509,6 +529,36 @@ export default function WarrantsPage() {
   const [batchStatus, setBatchStatus] = useState('');
   const [batchSubmitting, setBatchSubmitting] = useState(false);
 
+  // Phase 1 sort + filter chips state
+  const [sortKey, setSortKey] = useState<'priority' | 'age' | 'freshness' | 'alpha'>('priority');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [filterPriority, setFilterPriority] = useState(false);
+  const [filterSinceWeek, setFilterSinceWeek] = useState(false);
+  const [filterMatches, setFilterMatches] = useState(false);
+  const [filterStateChip, setFilterStateChip] = useState<string>('');
+  const [filterFederal, setFilterFederal] = useState(false);
+  const [filterArchivedChip, setFilterArchivedChip] = useState(false);
+
+  const anyFilterActive = filterPriority || filterSinceWeek || filterMatches || !!filterStateChip || filterFederal || filterArchivedChip;
+
+  function toggleSort(key: 'priority' | 'age' | 'freshness' | 'alpha') {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortKey(key);
+      setSortOrder(key === 'priority' ? 'desc' : 'asc');
+    }
+  }
+
+  function clearAllFilters() {
+    setFilterPriority(false);
+    setFilterSinceWeek(false);
+    setFilterMatches(false);
+    setFilterStateChip('');
+    setFilterFederal(false);
+    setFilterArchivedChip(false);
+  }
+
   const toggleBatchSelect = (id: number) => {
     setBatchSelected(prev => {
       const next = new Set(prev);
@@ -697,6 +747,15 @@ export default function WarrantsPage() {
       params.set('archived', showArchived ? 'true' : 'false');
       params.set('page', String(page));
       params.set('per_page', '50');
+      // Phase 1 sort + filter chips
+      if (sortKey) params.set('sort', sortKey);
+      if (sortOrder) params.set('order', sortOrder);
+      if (filterPriority) params.set('priority_min', '70');
+      if (filterSinceWeek) params.set('since_days', '7');
+      if (filterMatches) params.set('matches_person', '1');
+      if (filterStateChip) params.set('state', filterStateChip);
+      if (filterFederal) params.set('state_prefix', 'fed_');
+      if (filterArchivedChip) params.set('include_archived', '1');
 
       const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
         `/warrants?${params.toString()}`
@@ -709,11 +768,36 @@ export default function WarrantsPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page, sortKey, sortOrder, filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
   }, [activeTab, fetchWarrants]);
+
+  // Phase 1: hydrate filter chips from URL on mount
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    setFilterPriority(p.get('priority_min') === '70');
+    setFilterSinceWeek(p.get('since_days') === '7');
+    setFilterMatches(p.get('matches_person') === '1');
+    setFilterStateChip(p.get('state') || '');
+    setFilterFederal(p.get('state_prefix') === 'fed_');
+    setFilterArchivedChip(p.get('include_archived') === '1');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Phase 1: persist filter chips to URL when they change
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (filterPriority) p.set('priority_min', '70');
+    if (filterSinceWeek) p.set('since_days', '7');
+    if (filterMatches) p.set('matches_person', '1');
+    if (filterStateChip) p.set('state', filterStateChip);
+    if (filterFederal) p.set('state_prefix', 'fed_');
+    if (filterArchivedChip) p.set('include_archived', '1');
+    const qs = p.toString();
+    window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname);
+  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
 
   // Live sync — skip while form modal is open to prevent UI freezes during person search
   const silentRefreshWarrants = useCallback(() => {
@@ -1734,6 +1818,17 @@ export default function WarrantsPage() {
                           <input type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
                         </th>
                       )}
+                      <th style={{ width: 28 }} className="text-center" title="Matches our person">★</th>
+                      <th style={{ width: 80 }} className="cursor-pointer select-none" onClick={() => toggleSort('priority')}>
+                        Priority {sortKey === 'priority' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
+                      <th style={{ width: 60 }} className="cursor-pointer select-none" onClick={() => toggleSort('age')}>
+                        Age {sortKey === 'age' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
+                      <th style={{ width: 90 }} className="cursor-pointer select-none" onClick={() => toggleSort('freshness')}>
+                        Freshness {sortKey === 'freshness' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
+                      <th style={{ width: 50 }}>Source</th>
                       <th style={{ width: 80 }}>Status</th>
                       <th style={{ width: 120 }}>Warrant #</th>
                       <th>Subject</th>
@@ -1758,6 +1853,20 @@ export default function WarrantsPage() {
                             <input type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
                           </td>
                         )}
+                        <td className="text-center">
+                          {w.matches_person ? <span className="text-amber-400" title="Matches our person">★</span> : null}
+                        </td>
+                        <td>
+                          <span className={`inline-block px-1.5 py-0.5 text-[9px] uppercase font-bold border ${priorityChipClass(priorityBucket(w.priority_score))}`}>
+                            {priorityBucket(w.priority_score)}
+                          </span>
+                        </td>
+                        <td className="text-xs text-rmpg-300 font-mono">{formatAge(w.age_days)}</td>
+                        <td className="text-xs">
+                          <span className="mr-1">{freshnessIcon(freshnessClass(w.freshness_days))}</span>
+                          <span className="text-rmpg-400 font-mono">{formatAge(w.freshness_days)}</span>
+                        </td>
+                        <td className="text-xs font-mono text-rmpg-300">{stateFromSource(w.source)}</td>
                         <td>
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
