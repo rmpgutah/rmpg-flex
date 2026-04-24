@@ -470,6 +470,19 @@ const timeAgo = (date: string): string => {
   return `${days}d ago`;
 };
 
+// Filter chip used in the Warrants tab list filter bar
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider border ${active ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-transparent text-rmpg-300 border-rmpg-600 hover:border-rmpg-400'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function WarrantsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -1723,6 +1736,33 @@ export default function WarrantsPage() {
                   <option value="scraper">Scraped</option>
                 </select>
               </div>
+            </div>
+
+            {/* Filter chips bar (Phase 1) */}
+            <div className="flex flex-wrap gap-1.5 px-3 py-2 border-b border-[#222222] bg-surface-sunken">
+              <FilterChip active={!anyFilterActive} onClick={clearAllFilters}>All</FilterChip>
+              <FilterChip active={filterPriority} onClick={() => { setFilterPriority(v => !v); setPage(1); }}>High priority</FilterChip>
+              <FilterChip active={filterSinceWeek} onClick={() => { setFilterSinceWeek(v => !v); setPage(1); }}>New this week</FilterChip>
+              <FilterChip active={filterMatches} onClick={() => { setFilterMatches(v => !v); setPage(1); }}>Matches our person</FilterChip>
+              <select
+                value={filterStateChip}
+                onChange={(e) => { setFilterStateChip(e.target.value); setPage(1); }}
+                className="select-dark text-xs"
+                style={{ minHeight: 26 }}
+              >
+                <option value="">By state</option>
+                <option value="UT">UT</option>
+                <option value="NV">NV</option>
+                <option value="WY">WY</option>
+                <option value="CO">CO</option>
+                <option value="CA">CA</option>
+                <option value="TX">TX</option>
+                <option value="AZ">AZ</option>
+                <option value="NM">NM</option>
+                <option value="ID">ID</option>
+              </select>
+              <FilterChip active={filterFederal} onClick={() => { setFilterFederal(v => !v); setPage(1); }}>Federal only</FilterChip>
+              <FilterChip active={filterArchivedChip} onClick={() => { setFilterArchivedChip(v => !v); setPage(1); }}>Show archived</FilterChip>
             </div>
 
             {/* Person filter indicator */}
