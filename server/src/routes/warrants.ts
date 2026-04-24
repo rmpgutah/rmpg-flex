@@ -1217,6 +1217,64 @@ router.put('/scrapers/:source_key', requireRole('admin', 'manager'), (req: Reque
   }
 });
 
+// ── Phase 1 bulk endpoints ─────────────────────────────────
+// Placed BEFORE /:id so the literal paths don't collide with the
+// greedy parameterized route.
+
+// POST /api/warrants/bulk-archive — archive up to 500 warrants by id
+router.post('/bulk-archive', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    ensureWarrantReviewColumns(db);
+    const ids = Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [];
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array', code: 'WARRANT_IDS_REQUIRED' });
+      return;
+    }
+    if (ids.length > 500) {
+      res.status(400).json({ error: 'Bulk operations limited to 500 warrants per request', code: 'BULK_LIMIT_EXCEEDED' });
+      return;
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const now = localNow();
+    const userId = req.user!.userId;
+    const result = db
+      .prepare(`UPDATE warrants SET archived_at = ?, archived_by = ? WHERE id IN (${placeholders}) AND archived_at IS NULL`)
+      .run(now, userId, ...ids);
+    res.json({ archived: result.changes, skipped: ids.length - result.changes });
+  } catch (err: any) {
+    console.error('[warrants] bulk-archive error:', err?.message);
+    res.status(500).json({ error: 'Bulk archive failed', code: 'BULK_ARCHIVE_ERROR' });
+  }
+});
+
+// POST /api/warrants/bulk-review — mark up to 500 warrants reviewed by current user
+router.post('/bulk-review', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    ensureWarrantReviewColumns(db);
+    const ids = Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [];
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array', code: 'WARRANT_IDS_REQUIRED' });
+      return;
+    }
+    if (ids.length > 500) {
+      res.status(400).json({ error: 'Bulk operations limited to 500 warrants per request', code: 'BULK_LIMIT_EXCEEDED' });
+      return;
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const now = localNow();
+    const userId = req.user!.userId;
+    const result = db
+      .prepare(`UPDATE warrants SET reviewed_at = ?, reviewed_by = ? WHERE id IN (${placeholders})`)
+      .run(now, userId, ...ids);
+    res.json({ reviewed: result.changes });
+  } catch (err: any) {
+    console.error('[warrants] bulk-review error:', err?.message);
+    res.status(500).json({ error: 'Bulk review failed', code: 'BULK_REVIEW_ERROR' });
+  }
+});
+
 // GET /api/warrants/:id - Get single warrant with details
 router.get('/:id', (req: Request, res: Response) => {
   try {

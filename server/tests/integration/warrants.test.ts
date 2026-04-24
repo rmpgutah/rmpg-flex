@@ -283,6 +283,7 @@ describe('GET /api/warrants — Phase 1 filters & computed fields', () => {
     expect(ids).toContain(highId);
     expect(ids).not.toContain(lowId);
     expect(ids).not.toContain(midId);
+    // Every returned row has priority_score >= 70 (or null rows are filtered out).
     for (const w of res.body.data) {
       expect(w.priority_score).not.toBeNull();
       expect(w.priority_score).toBeGreaterThanOrEqual(70);
@@ -383,5 +384,41 @@ describe('GET /api/warrants/:id detail extensions', () => {
     expect(res.body.rmpg_encounters).toEqual([]);
     expect(res.body.known_associates).toEqual([]);
     expect(res.body.known_vehicles).toEqual([]);
+  });
+});
+
+describe('POST /api/warrants/bulk-archive', () => {
+  it('archives all non-archived ids', async () => {
+    const ids = [seedWarrant({}), seedWarrant({}), seedWarrant({})];
+    const res = await authPost('/api/warrants/bulk-archive').send({ warrant_ids: ids }).expect(200);
+    expect(res.body.archived).toBe(3);
+    expect(res.body.skipped).toBe(0);
+  });
+
+  it('skips already-archived', async () => {
+    const a = seedWarrant({ archived_at: '2026-01-01' });
+    const b = seedWarrant({});
+    const res = await authPost('/api/warrants/bulk-archive').send({ warrant_ids: [a, b] }).expect(200);
+    expect(res.body.archived).toBe(1);
+    expect(res.body.skipped).toBe(1);
+  });
+
+  it('rejects empty array', async () => {
+    await authPost('/api/warrants/bulk-archive').send({ warrant_ids: [] }).expect(400);
+  });
+
+  it('rejects > 500 ids', async () => {
+    const ids = Array.from({ length: 501 }, (_, i) => i + 1);
+    await authPost('/api/warrants/bulk-archive').send({ warrant_ids: ids }).expect(400);
+  });
+});
+
+describe('POST /api/warrants/bulk-review', () => {
+  it('sets reviewed_at on all ids', async () => {
+    const ids = [seedWarrant({}), seedWarrant({})];
+    const res = await authPost('/api/warrants/bulk-review').send({ warrant_ids: ids }).expect(200);
+    expect(res.body.reviewed).toBe(2);
+    const row = db.prepare('SELECT reviewed_at FROM warrants WHERE id=?').get(ids[0]) as any;
+    expect(row.reviewed_at).toBeTruthy();
   });
 });
