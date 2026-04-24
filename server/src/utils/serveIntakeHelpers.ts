@@ -437,7 +437,11 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const allText = [fieldSheet, infoSheet, courtDocket].filter(Boolean).join('\n\n');
 
   const info = parseInfoSheetLabels(infoSheet);
-  const attorney = extractAttorneyBlock(courtDocket);
+  // Attorney: try court docket first (most structured), then all text
+  let attorney = extractAttorneyBlock(courtDocket);
+  if (!attorney.name && allText) {
+    attorney = extractAttorneyBlock(allText);
+  }
 
   // ── Defendant name extraction (multi-source fallback) ──
   // Priority: Field Sheet "Party to Serve" → Info Sheet "Recipient" → Info Sheet "Defendant" label
@@ -473,11 +477,13 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     dob,
   };
 
-  // ── Address extraction (multi-pattern fallback) ──
-  // Try standard "123 Street, City, ST 84123" → then "Address:" label → then any ZIP-terminated line
+  // ── Address extraction (exhaustive multi-source) ──
+  // Priority: Field Sheet (most reliable) → Info Sheet label → any doc with standard address format
   const addrMatch = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/)
-    || infoSheet.match(/(?:Address|Service Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i)
-    || allText.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,\s*(?:UT|Utah|CO|AZ|NV|ID|WY|NM)\s*\d{5})/i);
+    || fieldSheet.match(/(?:Address|Serve at|Service Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i)
+    || infoSheet.match(/(?:Address|Service Address|Recipient Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i)
+    || courtDocket.match(/(?:resid(?:es|ing)|located|address)[:\s]+(\d+\s+\w[^\n]{5,80},\s*[A-Za-z .]+,?\s*[A-Z]{2}\s*\d{5})/i)
+    || allText.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,\s*(?:UT|Utah|CO|AZ|NV|ID|WY|NM|CA|TX|FL)\s*\d{5})/i);
   const address = addrMatch ? addrMatch[1].trim() : '';
   const addressParts = parseAddressParts(address);
 
@@ -519,8 +525,13 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     || '').trim();
   const primaryDoc = primaryDocToken(documents);
   const serviceType = deriveServiceType(primaryDoc);
-  const bilingual = /bilingual/i.test(documents);
-  const documentPages = parseInt((infoSheet.match(/(\d+)\s*pages/i)?.[1] || '0'), 10);
+  const bilingual = /bilingual/i.test(documents) || /bilingual/i.test(allText);
+  const documentPages = parseInt((
+    infoSheet.match(/(\d+)\s*pages?/i)?.[1]
+    || fieldSheet.match(/(\d+)\s*pages?/i)?.[1]
+    || allText.match(/(?:total|document)\s*(?:of\s+)?(\d+)\s*pages?/i)?.[1]
+    || '0'
+  ), 10);
 
   // ── Instructions extraction (multiple fallback patterns) ──
   const instrMatch = fieldSheet.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n|$)/i)
@@ -544,25 +555,53 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     || infoSheet.match(/Deadline[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || '');
 
-  // Signed + response deadline from docket URCP 4 text
-  const signedDate = (courtDocket.match(/DATED\s+([A-Z][a-z]+\s+\d{1,2},\s*\d{4})/)?.[1] || '').replace(/,\s*$/, '');
-  const responseDeadlineDays = parseInt((courtDocket.match(/[Ww]ithin\s+(\d+)\s+days\s+after\s+service/)?.[1] || '21'), 10);
+  // Signed/filed date — multiple patterns across all docs
+  const signedDate = (
+    courtDocket.match(/DATED\s+([A-Z][a-z]+\s+\d{1,2},\s*\d{4})/)?.[1]
+    || courtDocket.match(/Filed[:\s]+([A-Z][a-z]+\s+\d{1,2},?\s*\d{4})/i)?.[1]
+    || courtDocket.match(/(?:Signed|Entered|Issued)[:\s]+(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+    || infoSheet.match(/Filed[:\s]+([^\n]{5,30})/i)?.[1]
+    || info.filed
+    || ''
+  ).replace(/,\s*$/, '').trim();
 
-  // Service windows (merged across all docs)
+  // Response deadline — try multiple phrasings
+  const responseDeadlineDays = parseInt((
+    courtDocket.match(/[Ww]ithin\s+(\d+)\s+(?:calendar\s+)?days?\s+(?:after|of|from)\s+service/)?.[1]
+    || courtDocket.match(/(\d+)\s+days?\s+to\s+(?:answer|respond|appear)/i)?.[1]
+    || '21'
+  ), 10);
+
+  // Service windows — broad matching across all docs
   const windows: string[] = [];
-  if (/6AM-9AM|6am.*9am/i.test(allText)) windows.push('6AM-9AM');
-  if (/9AM-6PM|9am.*6pm/i.test(allText)) windows.push('9AM-6PM');
-  if (/6PM-9PM|6pm.*9pm/i.test(allText)) windows.push('6PM-9PM');
-  if (/weekend/i.test(allText)) windows.push('WEEKEND REQUIRED');
+  if (/6\s*(?:AM|am|a\.m\.?)[\s-]*9\s*(?:AM|am|a\.m\.?)|(?:early\s+)?morning/i.test(allText)) windows.push('6AM-9AM');
+  if (/9\s*(?:AM|am|a\.m\.?)[\s-]*6\s*(?:PM|pm|p\.m\.?)|(?:business|daytime|day\s*time)/i.test(allText)) windows.push('9AM-6PM');
+  if (/6\s*(?:PM|pm|p\.m\.?)[\s-]*9\s*(?:PM|pm|p\.m\.?)|evening|after\s*(?:5|6)\s*(?:pm|p\.m\.?)/i.test(allText)) windows.push('6PM-9PM');
+  if (/weekend|saturday|sunday/i.test(allText)) windows.push('WEEKEND REQUIRED');
+  if (/24\s*(?:hour|hr)|any\s*time/i.test(allText)) { windows.length = 0; windows.push('24HR — ANY TIME'); }
   const serviceWindows = windows.join(', ');
 
   const serviceRulesSummary = summarizeRules(instructions);
   const jobActivity = parseJobActivity(infoSheet);
-  const courtCaseNumber = (courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1] || '').trim();
+  // Court case number — try multiple patterns across all docs
+  const courtCaseNumber = (
+    courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1]
+    || courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1]
+    || courtDocket.match(/(?:No\.|Docket)\s*:?\s*([A-Z0-9]{2,}-\d{2,}[-A-Z0-9]*)/i)?.[1]
+    || infoSheet.match(/Case[:\s]+([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1]
+    || (info as any).case
+    || ''
+  ).trim();
+
+  // County — try info sheet first, then court docket header
+  const county = info.county
+    || (courtDocket.match(/(?:IN AND FOR\s+)?(\w+)\s+COUNTY/i)?.[1] || '')
+    || '';
+
   const vendorFingerprint = info.createdBy || (fieldSheet.match(/(ICU\s+Investigations[^,\n]*)/i)?.[1] || '');
 
   return {
-    defendant, address, addressParts, plaintiff, court, courtAddress, county: info.county,
+    defendant, address, addressParts, plaintiff, court, courtAddress, county,
     attorney, documents, primaryDoc, serviceType, instructions,
     jobNumber, clientJobNumber, dueDate, signedDate, responseDeadlineDays, clerkPhone,
     documentPages, bilingual, orderingClientRule, serviceWindows, serviceRulesSummary,
@@ -572,11 +611,18 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
 
 function summarizeRules(instructions: string): string {
   const bits: string[] = [];
-  if (/sub-?serve.*?occupant\s*16\+/i.test(instructions)) bits.push('SUB-SERVE OK TO OCCUPANT 16+');
-  if (/personal.*?place\s+of\s+employment|personal.*?POE/i.test(instructions)) bits.push('PERSONAL SERVICE ONLY AT PLACE OF EMPLOYMENT');
-  if (/call.*?phone|call.*?status/i.test(instructions)) bits.push('CALL CLIENT WITH STATUS AFTER EACH ATTEMPT');
-  if (/hospitals?.*?churches?.*?jails?/i.test(instructions)) bits.push('NEVER SERVE AT: HOSPITALS, CHURCHES, JAILS');
-  if (/BK\s*case\s*#/i.test(instructions)) bits.push('IF SUBJECT PRESENTS A BK CASE # -> STOP, DO NOT SERVE');
+  if (/sub-?serve.*?occupant\s*16\+|substitute.*?service/i.test(instructions)) bits.push('SUB-SERVE OK TO OCCUPANT 16+');
+  if (/personal\s+service\s+only|personal.*?place\s+of\s+employment|personal.*?POE/i.test(instructions)) bits.push('PERSONAL SERVICE ONLY');
+  if (/call.*?(?:phone|client|status)|notify.*?(?:client|attorney)/i.test(instructions)) bits.push('CALL CLIENT WITH STATUS AFTER EACH ATTEMPT');
+  if (/hospitals?.*?churches?.*?jails?|do\s+not\s+serve\s+at/i.test(instructions)) bits.push('RESTRICTED SERVICE LOCATIONS');
+  if (/BK\s*case\s*#|bankruptcy/i.test(instructions)) bits.push('IF SUBJECT HAS BANKRUPTCY -> STOP, DO NOT SERVE');
+  if (/rush|urgent|expedit|asap|immediate/i.test(instructions)) bits.push('RUSH SERVICE REQUESTED');
+  if (/skip\s*trace|locate|find/i.test(instructions)) bits.push('SKIP TRACE IF NOT AT ADDRESS');
+  if (/photo|photograph|picture/i.test(instructions)) bits.push('PHOTO OF SERVICE REQUIRED');
+  if (/gps|coordinate|pin\s*drop/i.test(instructions)) bits.push('GPS VERIFICATION REQUIRED');
+  if (/leave.*?door|post.*?door|nail.*?door|tape.*?door/i.test(instructions)) bits.push('NAIL & MAIL / DOOR SERVICE AUTHORIZED');
+  if (/certified\s*mail|registered\s*mail/i.test(instructions)) bits.push('CERTIFIED MAIL BACKUP');
+  if (/do\s+not\s+(?:leave|post)|no\s+(?:posting|leaving)/i.test(instructions)) bits.push('DO NOT POST OR LEAVE DOCUMENTS');
   return bits.join('. ') + (bits.length ? '.' : '');
 }
 
