@@ -112,17 +112,37 @@ export function displayStatus(status: string): string {
 export interface PdfBranding {
   report_header_text: string;
   report_subheader_text: string;
-  primary_color: string;     // hex — used for case-number box & accents
-  accent_color: string;      // hex — used for separator lines & subtitles
-  header_bg_color: string;   // hex — used for header/footer bars
+  primary_color: string;           // hex — case-number box & accents
+  accent_color: string;            // hex — separator lines & subtitles
+  header_bg_color: string;         // hex — header/footer bars
+  section_accent_color?: string;   // hex — gold accent strip on section headers
+  font_profile?: 'helvetica' | 'courier' | 'times';
+  report_footer_text?: string;
+  show_field_underlines?: string;  // '1' or '0'
+  show_geography_strip?: string;   // '1' or '0'
+  content_density?: 'compact' | 'standard' | 'relaxed';
+  show_classification_bar?: string;
+  default_classification?: string;
+  show_confidential_watermark?: string;
+  watermark_text?: string;
 }
 
 export const DEFAULT_PDF_BRANDING: PdfBranding = {
-  report_header_text: 'RMPG SECURITY SERVICES',
-  report_subheader_text: 'PRIVATE SECURITY',
+  report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+  report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
   primary_color: '#888888',
-  accent_color: '#888888',
-  header_bg_color: '#f0f0f0',
+  accent_color: '#d4a017',
+  header_bg_color: '#232832',
+  section_accent_color: '#d4a017',
+  font_profile: 'helvetica',
+  report_footer_text: '',
+  show_field_underlines: '1',
+  show_geography_strip: '1',
+  content_density: 'standard',
+  show_classification_bar: '1',
+  default_classification: 'LES',
+  show_confidential_watermark: '0',
+  watermark_text: 'CONFIDENTIAL',
 };
 
 /** Fetch branding settings from admin config API (gracefully falls back to defaults) */
@@ -535,9 +555,11 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Gold left-accent strip (brand identity anchor)
+  // Left-accent strip (brand color — configurable via Admin > Branding)
   const accentW = BORDER.ACCENT_SECTION;
-  doc.setFillColor(...COLOR.ACCENT_GOLD);
+  const sectionAccentRgb = activeBranding.section_accent_color
+    ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+  doc.setFillColor(sectionAccentRgb[0], sectionAccentRgb[1], sectionAccentRgb[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
 
   // Section header bar (dark charcoal) — offset by accent strip width
@@ -574,8 +596,10 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
     doc.setPage(currentPage);
   }
 
-  // Bottom rule — subtle gold-tinted line marking section end
-  doc.setDrawColor(...COLOR.ACCENT_GOLD);
+  // Bottom rule — section accent color line marking section end
+  const closeAccentRgb = activeBranding.section_accent_color
+    ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+  doc.setDrawColor(closeAccentRgb[0], closeAccentRgb[1], closeAccentRgb[2]);
   doc.setLineWidth(0.3);
   doc.line(LAYOUT.PAGE_MARGIN, contentEndY + padding, LAYOUT.PAGE_MARGIN + cw, contentEndY + padding);
 
@@ -657,11 +681,14 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
     lineY += lineStep;
   }
 
-  // Field underline — subtle rule beneath the value for typewriter-form look
-  const underlineY = y + labelH + boxH;
-  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
-  doc.setLineWidth(BORDER.FIELD_UNDERLINE);
-  doc.line(x + innerPad, underlineY, x + width - innerPad, underlineY);
+  // Field underline — subtle rule beneath the value (configurable via Admin > Branding)
+  const showUnderlines = activeBranding.show_field_underlines !== '0';
+  if (showUnderlines) {
+    const underlineY = y + labelH + boxH;
+    doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+    doc.setLineWidth(BORDER.FIELD_UNDERLINE);
+    doc.line(x + innerPad, underlineY, x + width - innerPad, underlineY);
+  }
 
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1128,12 +1155,14 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Footer accent line (gold, matches section headers)
+  // Footer accent line (section accent color, matches section headers)
   const SAFE_PRINT_EDGE_BOTTOM = 8;
   const textY = pageHeight - SAFE_PRINT_EDGE_BOTTOM;
   const SAFE_PRINT_EDGE_SIDE = 8;
   const accentLineY = textY - 3;
-  doc.setDrawColor(...COLOR.ACCENT_GOLD);
+  const footerAccentRgb = activeBranding.section_accent_color
+    ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+  doc.setDrawColor(footerAccentRgb[0], footerAccentRgb[1], footerAccentRgb[2]);
   doc.setLineWidth(BORDER.ACCENT_FOOTER);
   doc.line(SAFE_PRINT_EDGE_SIDE, accentLineY, pageWidth - SAFE_PRINT_EDGE_SIDE, accentLineY);
 
