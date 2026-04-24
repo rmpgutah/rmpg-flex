@@ -27,7 +27,6 @@ interface UploadedFile {
 interface ParsedData {
   defendant: { first: string; middle: string; last: string; dob: string };
   address: string;
-  address: string;
   addressParts: { building: string; floor: string; suite: string; street: string; city: string; state: string; zip: string };
   plaintiff: string;
   court: string;
@@ -51,6 +50,7 @@ interface ParsedData {
   serviceRulesSummary: string;
   courtCaseNumber: string;
   vendorFingerprint: string;
+  jobActivity: { when: string; action: string; detail: string }[];
 }
 
 interface ParseResponse {
@@ -438,7 +438,7 @@ export default function ServeIntakePage() {
                     {f.status === 'extracted' ? (
                       <CheckCircle className="w-3.5 h-3.5 text-green-500" />
                     ) : (
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Extraction may be incomplete" />
+                      <span title="Extraction may be incomplete"><AlertTriangle className="w-3.5 h-3.5 text-amber-500" /></span>
                     )}
                     <span className="text-[9px] text-rmpg-500">{f.text.length.toLocaleString()} chars</span>
                     <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedPreview(expandedPreview === i ? null : i); }}
