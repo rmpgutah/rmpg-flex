@@ -41,6 +41,14 @@
       })();
     </script>
     <style>
+      /* Reset default body margin BEFORE the bundled Tailwind preflight loads.
+         Without this, the 8px default body margin lets <html>'s background
+         (set to THEME_CHROME_COLORS in the boot script above — #000000 in
+         dark mode) show through as a visible gutter around the pre-splash,
+         since html chrome and body backgrounds are intentionally different
+         colors (#000000 vs #0a0a0a in dark mode). */
+      html, body { margin: 0; padding: 0; }
+
       /* Theme-aware pre-splash background — must be in <head> so it's parsed
          before the pre-splash <div> paints. The boot script above has already
          added theme-dark / theme-light classes to <html>, so the correct rule
