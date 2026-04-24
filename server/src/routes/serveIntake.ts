@@ -202,27 +202,7 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     }
 
     res.json({
-      parsed: {
-        defendant: parsed.defendant,
-        address: parsed.address,
-        addressParts: parsed.addressParts,
-        plaintiff: parsed.plaintiff,
-        court: parsed.court,
-        courtAddress: parsed.courtAddress,
-        county: parsed.county,
-        attorney: parsed.attorney,
-        documents: parsed.documents,
-        primaryDoc: parsed.primaryDoc,
-        serviceType: parsed.serviceType,
-        instructions: parsed.instructions,
-        jobNumber: parsed.jobNumber,
-        clientJobNumber: parsed.clientJobNumber,
-        dueDate: parsed.dueDate,
-        signedDate: parsed.signedDate,
-        serviceWindows: parsed.serviceWindows,
-        serviceRulesSummary: parsed.serviceRulesSummary,
-        courtCaseNumber: parsed.courtCaseNumber,
-      },
+      parsed,  // Return full ParseOutput — client renders all fields for review/editing
       detectedTypes: {
         fieldSheet: !!fieldSheet,
         courtDocket: !!courtDocket,
@@ -277,7 +257,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     const parsed: ParseOutput = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
 
-    // Apply user overrides from review step (if provided)
+    // Apply ALL user overrides from review step
     if (overrides) {
       if (overrides.defendant) {
         if (overrides.defendant.first) parsed.defendant.first = overrides.defendant.first;
@@ -289,11 +269,31 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         (parsed as any).address = overrides.address;
         (parsed as any).addressParts = parseAddressParts(overrides.address);
       }
-      if (overrides.plaintiff) parsed.plaintiff = overrides.plaintiff;
-      if (overrides.dueDate) (parsed as any).dueDate = overrides.dueDate;
-      if (overrides.instructions) parsed.instructions = overrides.instructions;
-      if (overrides.court) parsed.court = overrides.court;
-      if (overrides.jobNumber) parsed.jobNumber = overrides.jobNumber;
+      if (overrides.plaintiff !== undefined) parsed.plaintiff = overrides.plaintiff;
+      if (overrides.dueDate !== undefined) (parsed as any).dueDate = overrides.dueDate;
+      if (overrides.instructions !== undefined) parsed.instructions = overrides.instructions;
+      if (overrides.court !== undefined) parsed.court = overrides.court;
+      if (overrides.courtAddress !== undefined) parsed.courtAddress = overrides.courtAddress;
+      if (overrides.county !== undefined) (parsed as any).county = overrides.county;
+      if (overrides.courtCaseNumber !== undefined) parsed.courtCaseNumber = overrides.courtCaseNumber;
+      if (overrides.jobNumber !== undefined) parsed.jobNumber = overrides.jobNumber;
+      if (overrides.clientJobNumber !== undefined) parsed.clientJobNumber = overrides.clientJobNumber;
+      if (overrides.documents !== undefined) (parsed as any).documents = overrides.documents;
+      if (overrides.serviceType !== undefined) (parsed as any).serviceType = overrides.serviceType;
+      if (overrides.serviceWindows !== undefined) (parsed as any).serviceWindows = overrides.serviceWindows;
+      if (overrides.signedDate !== undefined) parsed.signedDate = overrides.signedDate;
+      if (overrides.responseDeadlineDays !== undefined) parsed.responseDeadlineDays = parseInt(overrides.responseDeadlineDays, 10) || 21;
+      if (overrides.clerkPhone !== undefined) parsed.clerkPhone = overrides.clerkPhone;
+      if (overrides.documentPages !== undefined) parsed.documentPages = parseInt(overrides.documentPages, 10) || 0;
+      if (overrides.bilingual !== undefined) parsed.bilingual = !!overrides.bilingual;
+      if (overrides.attorney) {
+        if (overrides.attorney.name !== undefined) parsed.attorney.name = overrides.attorney.name;
+        if (overrides.attorney.firm !== undefined) parsed.attorney.firm = overrides.attorney.firm;
+        if (overrides.attorney.barNumber !== undefined) parsed.attorney.barNumber = overrides.attorney.barNumber;
+        if (overrides.attorney.tel !== undefined) parsed.attorney.tel = overrides.attorney.tel;
+        if (overrides.attorney.email !== undefined) parsed.attorney.email = overrides.attorney.email;
+        if (overrides.attorney.fax !== undefined) parsed.attorney.fax = overrides.attorney.fax;
+      }
     }
 
     if (!parsed.defendant.last) {
