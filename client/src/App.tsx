@@ -88,6 +88,7 @@ const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
+const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -214,6 +215,8 @@ function AppRoutes() {
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/mobile" element={<ProtectedRoute><RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary></ProtectedRoute>} />
+          {/* QR-scoped PSO mobile page — own auth flow, no ProtectedRoute wrapper */}
+          <Route path="/m/cfs/:id" element={<RouteErrorBoundary><MobilePsoCfsPage /></RouteErrorBoundary>} />
 
           {/* Protected routes with Layout */}
           <Route
@@ -226,7 +229,6 @@ function AppRoutes() {
             <Route path="/" element={<HomeRedirect>{window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />}</HomeRedirect>} />
             <Route path="/dispatch" element={<DispatchPage />} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
-            <Route path="/map-v2" element={<Navigate to="/map" replace />} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />

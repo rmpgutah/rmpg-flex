@@ -464,58 +464,70 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     if (parsed.serviceWindows) descLines.push(`SERVICE WINDOWS: ${parsed.serviceWindows}`);
     const description = descLines.join('\n');
 
+    const tagSet: string[] = ['civil_process', 'process_service'];
+    if (parsed.bilingual) tagSet.push('bilingual');
+    if (parsed.primaryDoc) tagSet.push(parsed.primaryDoc.toLowerCase());
+    const tagsJson = JSON.stringify(tagSet);
+
+    const pso72hrDeadline = parsed.dueDate
+      ? (() => { const [mm, dd, yyyy] = parsed.dueDate.split('/'); return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')} 23:59:59`; })()
+      : null;
+
     const callResult = db.prepare(`
       INSERT INTO calls_for_service (
-        call_number, case_number, incident_type, priority, status,
+        call_number, case_number, incident_type, priority, priority_score, status,
         caller_name, caller_phone, caller_relationship, caller_address,
-        location_address, location_building, location_floor, location_room,
+        location_address, location_building, location_floor, location_room, cross_street,
         property_id, latitude, longitude,
-        weather_conditions, lighting_conditions,
+        weather_conditions, lighting_conditions, scene_safety,
         sector_id, zone_id, beat_id, zone_beat, dispatch_code,
         sector_name, zone_name, beat_name,
-        description, notes, source, dispatcher_id,
-        subject_description,
+        description, notes, source, dispatcher_id, received_at,
+        subject_description, vehicle_description,
+        num_subjects, num_victims, direction_of_travel,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
-        pso_attempt_number, pso_service_windows,
+        pso_attempt_number, pso_service_windows, pso_72hr_deadline,
         process_service_type, process_served_to, process_served_address,
         process_attempts, client_id, contract_id, case_id,
-        secondary_type, contact_method,
+        secondary_type, contact_method, tags,
         created_at, updated_at
       ) VALUES (
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?,
-        ?,
         ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?,
         ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?,
+        ?, ?, ?,
         ?, ?
       )
     `).run(
-      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request', 'P4', 'pending',
+      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request', 'P4', 4, 'pending',
       callerName, callerPhone || null, 'client', callerAddress || null,
-      parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || null,
+      parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || null, null,
       propertyId, latitude, longitude,
-      weatherConditions || null, lightingConditions || null,
+      weatherConditions || null, lightingConditions || null, 'STANDARD',
       sectorCode || null, zoneCode || null, beatCode || null, beatCode || null, dispatchCode || null,
       sectorName || null, zoneName || null, beatName || null,
-      description, notesJson, 'intake', userId,
-      subjectDesc,
-      parsed.attorney.name || callerName, parsed.attorney.tel || null, requestorEmail,
+      description, notesJson, 'intake', userId, now,
+      subjectDesc, 'N/A',
+      1, 1, 'STATIONARY',
+      callerName, callerPhone || null, requestorEmail,
       parsed.serviceType, billingCode, parsed.jobNumber || null,
-      1, parsed.serviceWindows || null,
+      0, parsed.serviceWindows || null, pso72hrDeadline,
       parsed.primaryDoc || null, fullName, parsed.address || null,
       0, clientId, parsed.jobNumber || null, caseId,
-      parsed.primaryDoc || 'DOCUMENTS', 'email',
+      parsed.primaryDoc || 'DOCUMENTS', 'email', tagsJson,
       now, now,
     );
     const callId = Number(callResult.lastInsertRowid);
@@ -604,9 +616,9 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       call_number: callNumber,
       case_id: caseId,
       case_number: caseNumber,
-      defendant_id: defendantId,
-      plaintiff_id: plaintiffId,
-      attorney_id: attorneyId,
+      defendant_person_id: defendantId,
+      plaintiff_person_id: plaintiffId,
+      attorney_person_id: attorneyId,
       property_id: propertyId,
       serve_queue_id: serveQueueId,
       serve_attempt_ids: attemptIds,
@@ -618,7 +630,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       weather: weatherConditions || null,
       lighting: lightingConditions || null,
       warnings,
-      parsed: {
+      extracted: {
         defendant: parsed.defendant,
         address: parsed.address,
         plaintiff: parsed.plaintiff,
@@ -629,7 +641,13 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         jobNumber: parsed.jobNumber,
         clientJobNumber: parsed.clientJobNumber,
         dueDate: parsed.dueDate,
-        attorney: { name: parsed.attorney.name, bar: parsed.attorney.barNumber, email: parsed.attorney.email },
+        attorney: {
+          name: parsed.attorney.name,
+          firm: parsed.attorney.firm,
+          barNumber: parsed.attorney.barNumber,
+          tel: parsed.attorney.tel,
+          email: parsed.attorney.email,
+        },
       },
     });
   } catch (err: any) {
