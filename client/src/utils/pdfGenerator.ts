@@ -685,18 +685,18 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   }
 
   // Field underline — subtle rule beneath the value (configurable via Admin > Branding)
+  const fieldBottomY = y + labelH + boxH;
   const showUnderlines = activeBranding.show_field_underlines !== '0';
   if (showUnderlines) {
-    const underlineY = y + labelH + boxH;
     doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
     doc.setLineWidth(BORDER.FIELD_UNDERLINE);
-    doc.line(x + innerPad, underlineY, x + width - innerPad, underlineY);
+    doc.line(x + innerPad, fieldBottomY, x + width - innerPad, fieldBottomY);
   }
 
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return underlineY + 0.6; // underline + row gap
+  return fieldBottomY + 0.6; // field bottom + row gap
 }
 
 /**
