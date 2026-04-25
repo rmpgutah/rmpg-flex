@@ -605,20 +605,49 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     attorney = extractAttorneyBlock(allText);
   }
 
-  // ── Defendant name extraction (multi-source fallback) ──
-  const ptsMatch = fieldSheet.match(/Party to Serve[:\s]+([^\n]+)/i)
-    || infoSheet.match(/Recipient[:\s]+([^\n]+)/i)
-    || courtDocket.match(/(?:vs?\.?|versus)\s*\n?\s*([A-Z][A-Za-z ,.'-]+?)(?:\s*,\s*(?:an individual|Defendant|et al))/i)
-    || courtDocket.match(/Defendant[:\s]+([^\n]+)/i);
-  let rawPartyName = (ptsMatch?.[1] || info.defendant || '')
+  // ── Defendant name extraction (structured ICU field sheet parsing) ──
+  // ICU field sheets have a VERY specific layout:
+  //   Party to Serve:  <NAME>
+  //   Server:          <officer>        Fee:
+  // The name appears RIGHT AFTER "Party to Serve:" on the same line.
+  // pdftotext -layout preserves this but sometimes bleeds column data.
+
+  // Strategy 1: Field sheet "Party to Serve:" — most authoritative
+  let rawPartyName = '';
+  const ptsMatch = fieldSheet.match(/Party to Serve[:\s]+([^\n]+)/i);
+  if (ptsMatch) {
+    rawPartyName = ptsMatch[1]
+      .replace(/\s{3,}.*$/, '')  // Trim anything after 3+ spaces (column bleed from "Due:", "Fee:", etc.)
+      .replace(/,\s*an\s+individual.*$/i, '')
+      .replace(/,?\s*(?:a\s+business.*|Defendant|et al\.?)$/i, '')
+      .trim();
+  }
+  // Strategy 2: Info sheet "Recipient:" label
+  if (!rawPartyName) {
+    const isMatch = infoSheet.match(/Recipient[:\s]+([^\n]+)/i);
+    if (isMatch) rawPartyName = isMatch[1].replace(/\s{3,}.*$/, '').trim();
+  }
+  // Strategy 3: Info sheet parsed labels
+  if (!rawPartyName && info.defendant) {
+    rawPartyName = info.defendant;
+  }
+  // Strategy 4: Court docket caption "v. NAME, Defendant"
+  if (!rawPartyName) {
+    const cdMatch = courtDocket.match(/(?:vs?\.?|versus)\s*\n?\s*([A-Z][A-Za-z ,.'-]+?)(?:\s*,\s*(?:an individual|Defendant|et al))/i)
+      || courtDocket.match(/Defendant[:\s]+([^\n]+)/i);
+    if (cdMatch) rawPartyName = cdMatch[1].trim();
+  }
+  // Clean the extracted name
+  rawPartyName = rawPartyName
     .replace(/,\s*an\s+individual.*$/i, '')
     .replace(/,?\s*(?:Defendant|et al\.?)$/i, '')
-    .replace(/^\s*Recipient[:\s]*/i, '')  // Strip "Recipient:" prefix that sometimes bleeds in
+    .replace(/^\s*(?:Recipient|Party to Serve)[:\s]*/i, '')
+    .replace(/\s+(?:aka|a\.k\.a|dba|d\.b\.a)\.?\s+.*$/i, '')
+    .replace(/-\s+/g, '-')  // Rejoin hyphenated names: "Campbell- Ryce" → "Campbell-Ryce"
+    .replace(/\s{2,}/g, ' ')  // Collapse multiple spaces
     .trim();
-  // Strip trailing noise: "aka", "dba", court case numbers
-  rawPartyName = rawPartyName.replace(/\s+(?:aka|a\.k\.a|dba|d\.b\.a)\.?\s+.*$/i, '').trim();
-  // Rejoin hyphenated names split by pdftotext: "Campbell- Ryce" → "Campbell-Ryce"
-  rawPartyName = rawPartyName.replace(/-\s+/g, '-');
+
+  // Smart name splitting — handle "Jamal Campbell-Ryce" correctly
   const nameParts = rawPartyName.split(/\s+/).filter(Boolean);
 
   // DOB extraction — try field sheet, info sheet, AND court docket
@@ -636,28 +665,65 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
       dob = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     }
   }
-  const defendant = {
-    first: nameParts[0] || '',
-    middle: nameParts.length >= 3 ? nameParts.slice(1, -1).join(' ') : '',
-    last: nameParts[nameParts.length - 1] || '',
-    dob,
-  };
+  // Name splitting rules:
+  // 1 part:  first="" last="NAME"
+  // 2 parts: first="FIRST" last="LAST"
+  // 3+ parts: first="FIRST" middle="MIDDLE..." last="LAST"
+  // BUT: if last part contains a hyphen, it's a compound last name
+  // AND: if last 2 parts look like "De La" + "Valle", combine as last name
+  let defFirst = '', defMiddle = '', defLast = '';
+  if (nameParts.length === 0) {
+    defLast = rawPartyName; // Fallback: use entire raw name
+  } else if (nameParts.length === 1) {
+    defLast = nameParts[0];
+  } else if (nameParts.length === 2) {
+    defFirst = nameParts[0];
+    defLast = nameParts[1];
+  } else {
+    defFirst = nameParts[0];
+    // Check if the name has a compound last name pattern
+    const lastTwo = nameParts.slice(-2).join(' ');
+    const compoundPrefixes = ['de', 'del', 'de la', 'van', 'von', 'el', 'al', 'bin', 'ibn', 'mac', 'mc', 'o\'', 'st', 'san', 'santa'];
+    const secondToLast = nameParts[nameParts.length - 2].toLowerCase();
+    if (compoundPrefixes.includes(secondToLast) || nameParts[nameParts.length - 1].includes('-')) {
+      // Compound last name — take last 2 parts as last name
+      defMiddle = nameParts.slice(1, -2).join(' ');
+      defLast = lastTwo;
+    } else {
+      defMiddle = nameParts.slice(1, -1).join(' ');
+      defLast = nameParts[nameParts.length - 1];
+    }
+  }
+  const defendant = { first: defFirst, middle: defMiddle, last: defLast, dob };
 
   // ── Address extraction — FIELD SHEET IS AUTHORITATIVE ──
-  // The field sheet "Address" block is the service address. Court docket addresses
-  // are often the COURT's address (e.g., Vista, CA) not the defendant's residence.
-  // Only fall back to court docket for "residing at" patterns that clearly reference the defendant.
+  // ICU Field Sheet layout:
+  //   Address
+  //   6504 Ipswich Way, Herriman, UT 84096        Jamal Campbell-Ryce, an individual
+  // The address is LEFT-aligned, the name is RIGHT-aligned on the same line.
+  // pdftotext -layout preserves this — we need to grab only the LEFT part (the address).
+
   let address = '';
-  // 1. Field sheet — look for "Address" label followed by a line with a street address
-  const fsAddrBlock = fieldSheet.match(/Address\s*\n([^\n]+)/i);
-  if (fsAddrBlock) {
-    const candidate = fsAddrBlock[1].trim();
-    // Must start with a number (street address) — reject names like "Jamal Campbell-Ryce"
-    if (/^\d+\s+\w/.test(candidate)) address = candidate;
+  // 1. Field sheet — "Address" label on its own line, next line has the actual address
+  const fsLines = fieldSheet.split(/\r?\n/);
+  const addrLabelIdx = fsLines.findIndex(l => /^\s*Address\s*$/i.test(l.trim()));
+  if (addrLabelIdx >= 0 && addrLabelIdx + 1 < fsLines.length) {
+    const nextLine = fsLines[addrLabelIdx + 1];
+    // Split on 3+ spaces to separate left (address) from right (name)
+    const leftPart = nextLine.split(/\s{3,}/)[0].trim();
+    if (/^\d+\s+\w/.test(leftPart) && /\d{5}/.test(leftPart)) {
+      address = leftPart;
+    } else if (/^\d+\s+\w/.test(leftPart)) {
+      // Address without ZIP — check if next part of the same line has city/state/zip
+      const fullLine = nextLine.trim();
+      const addrMatch = fullLine.match(/^(\d+[^,]+,\s*[A-Za-z .]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/);
+      if (addrMatch) address = addrMatch[1].trim();
+      else address = leftPart; // Use what we have
+    }
   }
-  // 2. Field sheet — standard address pattern anywhere
+  // 2. Field sheet — standard address pattern anywhere (fallback)
   if (!address) {
-    const fsAddr = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*(?:UT|Utah|CO|AZ|NV|ID|WY|NM|CA|TX|FL|IL|NY)\s*\d{5}(?:-\d{4})?)/i);
+    const fsAddr = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*(?:UT|Utah|CO|AZ|NV|ID|WY|NM|CA|TX|FL|IL|NY|OH|PA|GA|NC|MI|WA|OR)\s*\d{5}(?:-\d{4})?)/i);
     if (fsAddr) address = fsAddr[1].trim();
   }
   // 3. Info sheet "Address" / "Recipient Address" label
@@ -665,17 +731,24 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     const isAddr = infoSheet.match(/(?:Address|Service Address|Recipient Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i);
     if (isAddr) address = isAddr[1].trim();
   }
-  // 4. Court docket — ONLY "residing at" / "resides at" (defendant address, not court address)
+  // 4. Info sheet — look for address in the Recipient section
+  if (!address) {
+    const isBlock = infoSheet.match(/(\d+\s+[A-Za-z][^\n]*?\d{5})/);
+    if (isBlock) address = isBlock[1].trim();
+  }
+  // 5. Court docket — ONLY "residing at" / "resides at" (defendant address, NOT court address)
   if (!address) {
     const cdAddr = courtDocket.match(/(?:resid(?:es|ing)\s+at|located\s+at)[:\s]+(\d+\s+\w[^\n]{5,80},\s*[A-Za-z .]+,?\s*[A-Z]{2}\s*\d{5})/i);
     if (cdAddr) address = cdAddr[1].trim();
   }
+  // Final cleanup — strip trailing name bleed from right-aligned text
+  address = address.replace(/\s{3,}.*$/, '').trim();
   const addressParts = parseAddressParts(address);
 
   // ── Plaintiff extraction (multi-source) ──
-  let plaintiff = info.plaintiff;
+  // Priority: field sheet structured → info sheet → court docket caption
+  let plaintiff = fsPlaintiff || info.plaintiff;
   if (!plaintiff) {
-    // Standard docket caption: "NAME,\n  Plaintiff,"
     const m = courtDocket.match(/([A-Z][^\n]{5,200}?),\s*\n\s*Plaintiff/i)
       || courtDocket.match(/([A-Z][^\n]{3,200}?)\s*,?\s*Plaintiff/i);
     if (m) plaintiff = m[1].replace(/\s+/g, ' ').trim();
@@ -700,7 +773,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     /(JUSTICE\s+COURT[^,\n]*)/i,
     /(SMALL\s+CLAIMS\s+COURT[^,\n]*)/i,
   ];
-  let court = info.court;
+  let court = fsCourt || info.court;
   if (!court) {
     for (const re of courtPatterns) {
       const m = courtDocket.match(re);
@@ -764,15 +837,29 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const instructions = instrMatch ? instrMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : '';
   const orderingClientRule = instructions.split('.')[0].trim() + (instructions ? '.' : '');
 
-  // ── Job numbers (ICU Job + client subordinate job#) ──
-  // Format: "Job: 15753566 (788691G)" — job# is digits, client# may have letters
-  const jobMatch = fieldSheet.match(/Job[:\s#]+(\d+)\s*\(([A-Z0-9]+)\)/i)
+  // ── ICU Field Sheet header parsing (structured) ──
+  // The header has a very specific layout:
+  //   Job:  15753566 (788691G)     Due:  04/30/2026
+  //   Party to Serve:  NAME
+  //   Server:  Christopher Zamora   Fee:  ____
+  //   Case  26CU014094N    Plaintiff  Gilberto Rocha
+  //   Court  North County Regional Center   Defendant  Real Salt Lake...
+
+  // Job number from field sheet header
+  const jobMatch = fieldSheet.match(/Job[:\s]+(\d+)\s*\(([A-Z0-9]+)\)/i)
     || fieldSheet.match(/(\d{7,})\s*\(([A-Z0-9]{5,})\)/i)
     || infoSheet.match(/JOB[:\s#]+(\d+)/i);
   const jobNumber = jobMatch?.[1] || '';
   const clientJobNumber = jobMatch?.[2]
     || (courtDocket.match(/\*S\d+(\d{6})\*/)?.[1] || '')
     || (courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1] || '');
+
+  // Field sheet structured labels: Case, Court, Plaintiff, Defendant, Documents
+  // These are in a table-like layout that pdftotext renders with spacing
+  const fsCase = fieldSheet.match(/Case\s{2,}([^\s](?:[^\n]*?))\s{2,}Plaintiff/i)?.[1]?.trim() || '';
+  const fsPlaintiff = fieldSheet.match(/Plaintiff\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
+  const fsCourt = fieldSheet.match(/Court\s{2,}([^\s](?:[^\n]*?))\s{2,}Defendant/i)?.[1]?.trim() || '';
+  const fsDefendant = fieldSheet.match(/Defendant\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
 
   // Due date — field sheet, info sheet, or any "Due:" mention
   const dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
@@ -810,8 +897,9 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const jobActivity = parseJobActivity(infoSheet);
   // Court case number — try multiple patterns across all docs
   const courtCaseNumber = (
-    courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1]
-    || courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1]
+    fsCase  // Field sheet "Case  26CU014094N" — most reliable for ICU format
+    || courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1]
+    || courtDocket.match(/(?:Civil\s+Action|Case)\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?[:\-]?\d+[-A-Z0-9]*)/i)?.[1]
     || courtDocket.match(/(?:No\.|Docket)\s*:?\s*([A-Z0-9]{2,}-\d{2,}[-A-Z0-9]*)/i)?.[1]
     || infoSheet.match(/Case[:\s]+([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1]
     || (info as any).case
