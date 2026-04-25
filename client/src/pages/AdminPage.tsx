@@ -28,6 +28,7 @@ import {
   Plug,
   ClipboardList,
   Brain,
+  Volume2,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -50,6 +51,7 @@ import AdminAnnouncementsTab from './admin/AdminAnnouncementsTab';
 import AdminRetentionTab from './admin/AdminRetentionTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
+import AdminAlertSoundsTab from './admin/AdminAlertSoundsTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
 import AdminSessionsTab from './admin/AdminSessionsTab';
 import AdminTrainingTab from './admin/AdminTrainingTab';
@@ -231,7 +233,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'alert_sounds' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -245,7 +247,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'alert_sounds', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -653,6 +655,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
+        { id: 'alert_sounds', label: 'Alert Sounds', icon: Volume2 },
         { id: 'radio', label: 'Radio Config', icon: Radio },
       ],
     },
@@ -894,6 +897,14 @@ export default function AdminPage() {
         {activeTab === 'notif_rules' && (
           <AdminNotifRulesTab
             users={users}
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'alert_sounds' && (
+          <AdminAlertSoundsTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
