@@ -3431,6 +3431,25 @@ function migrateSchema(): void {
     db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
   } catch { /* ignore */ }
 
+  // ── Document Folders (desktop-style file browser hierarchy) ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS document_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        parent_id INTEGER REFERENCES document_folders(id) ON DELETE CASCADE,
+        folder_path TEXT NOT NULL,
+        entity_type TEXT,
+        entity_id INTEGER,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        UNIQUE(folder_path)
+      )
+    `).run();
+  } catch { /* already exists */ }
+  addCol('attachments', 'folder_id', 'INTEGER');
+
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');  // legacy
   addCol('citations', 'sector_id', 'TEXT');
