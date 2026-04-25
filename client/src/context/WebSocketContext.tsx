@@ -3,6 +3,14 @@ import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
 import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import {
+  announceGpsGap,
+  announceGpsRecovered,
+  announcePursuitSpeed,
+  announceBeatBreach,
+} from '../utils/voiceAlerts';
+import { flashAlert, flashSeverityFor } from '../utils/alertFlash';
+import { isAlertSoundEnabled } from '../utils/alertSoundPrefs';
 import { registerRules } from '../utils/dispatcherRules/registry';
 import { EVENT_RULES } from '../utils/dispatcherRules/events';
 import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
@@ -167,36 +175,87 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // Play alert tone for high-priority calls (P1/P2)
+          // Play alert tone for high-priority calls (P1/P2).
+          // Honors per-category mute (dispatchers can silence P2 while
+          // keeping P1) and adds visual flash so muted-but-watching
+          // dispatchers still see the high-pri call land.
           if ((message.type as string) === 'calls:created' || (message.type as string) === 'calls:updated') {
             const payload = (message as any).data || (message as any).call || message;
             const priority = payload?.priority;
-            if (priority === 'P1' || priority === 'P2') {
+            if (priority === 'P1' && isAlertSoundEnabled('p1_call')) {
+              flashAlert('critical');
               try {
                 const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.type = priority === 'P1' ? 'square' : 'triangle';
-                osc.frequency.setValueAtTime(priority === 'P1' ? 880 : 660, ctx.currentTime);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
                 gain.gain.setValueAtTime(0.15, ctx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.5);
-                if (priority === 'P1') {
-                  const osc2 = ctx.createOscillator();
-                  const gain2 = ctx.createGain();
-                  osc2.connect(gain2);
-                  gain2.connect(ctx.destination);
-                  osc2.type = 'square';
-                  osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
-                  gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.15);
-                  gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-                  osc2.start(ctx.currentTime + 0.15);
-                  osc2.stop(ctx.currentTime + 0.6);
-                }
+                osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.connect(gain2); gain2.connect(ctx.destination);
+                osc2.type = 'square';
+                osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
+                gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.15);
+                gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+                osc2.start(ctx.currentTime + 0.15); osc2.stop(ctx.currentTime + 0.6);
               } catch { /* Audio not available */ }
+            } else if (priority === 'P2' && isAlertSoundEnabled('p2_call')) {
+              flashAlert('warning');
+              try {
+                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(660, ctx.currentTime);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+              } catch { /* Audio not available */ }
+            }
+          }
+
+          // ── Server-broadcast 'alert' events fan-out to audio + voice ──
+          // broadcastAlert(...) on the server sends { type: 'alert', data: { type: 'gps:gap'|'gps:recovered'|'speed:alert'|..., severity, unit, ... } }.
+          // Each event maps to one of the new dispatch tones / TTS announcers.
+          // Sound mute toggle is enforced inside playToneAsync, so we don't
+          // need to gate here.
+          if ((message.type as string) === 'alert') {
+            const a = (message as any).data || {};
+            const eventType = String(a.type || '');
+            try {
+              if (eventType === 'gps:gap') {
+                const sev = a.severity === 'critical' ? 'critical' : 'warning';
+                const cat = sev === 'critical' ? 'gps_gap_critical' : 'gps_gap_warning';
+                if (isAlertSoundEnabled(cat)) {
+                  announceGpsGap(sev, a.unit, a.officer_name, a.gap_minutes);
+                  flashAlert(flashSeverityFor(eventType, sev));
+                }
+              } else if (eventType === 'gps:recovered') {
+                if (isAlertSoundEnabled('gps_recovered')) announceGpsRecovered(a.unit);
+              } else if (eventType === 'speed:alert') {
+                const isPursuit = typeof a.speed_mph === 'number' && a.speed_mph >= 100;
+                const cat = isPursuit ? 'pursuit_speed' : 'speed_alert';
+                if (isAlertSoundEnabled(cat)) {
+                  if (isPursuit) announcePursuitSpeed(a.unit, a.speed_mph, a.officer_name);
+                  flashAlert(flashSeverityFor(eventType, a.severity, a.speed_mph));
+                }
+              } else if (eventType === 'unit_outside_beat' || eventType === 'beat:breach') {
+                if (isAlertSoundEnabled('beat_breach')) {
+                  announceBeatBreach(a.unit, a.expected_beat, a.actual_beat);
+                }
+              } else if (eventType === 'panic') {
+                // Panic flash always shows even if a misguided dispatcher
+                // muted the audio — visual cue can't be silenced because
+                // the safety risk of missing a panic outweighs ergonomics.
+                flashAlert('critical');
+              }
+            } catch (err) {
+              console.error('[WS] alert audio dispatch error:', err);
             }
           }
 

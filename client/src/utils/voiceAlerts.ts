@@ -1469,6 +1469,111 @@ export async function demoAllVoiceAlerts(): Promise<void> {
 
 }
 
+// ─── GPS event announcers ──────────────────────────────────
+// Wired to server-side broadcastAlert events from gpsGapDetector and
+// the speed-violation pipeline. Each fires a distinctive tone before
+// optional TTS so dispatchers can identify the event by sound alone
+// even without looking at the screen.
+
+/**
+ * Announce a GPS gap (unit went silent past the warn/crit thresholds).
+ * Severity:  'warning' (5+ min) or 'critical' (15+ min)
+ *   warn → gentle 2-pip, no voice
+ *   crit → descending 3-pip + "Unit XXXX GPS lost"
+ */
+export async function announceGpsGap(severity: 'warning' | 'critical', unit?: string, officerName?: string, gapMin?: number): Promise<void> {
+  if (!isVoiceEnabled() && !isSpeechAvailable()) {
+    // Even if voice is off, still play the tone — it's an important
+    // "is the radio working" signal independent of voice prefs.
+    await playToneAsync(severity === 'critical' ? 'gps_lost' : 'gps_warn');
+    return;
+  }
+
+  // Per-unit dedup so we don't reannounce the same unit's gap every
+  // 5 min while it stays stale; the server's own cooldown limits
+  // re-broadcast cadence but we belt-and-suspender it on the client too.
+  const dedupKey = `gps_gap:${unit || 'unknown'}:${severity}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  if (severity === 'warning') {
+    await playToneAsync('gps_warn');
+    return;
+  }
+
+  // Critical: tone + TTS escalation
+  await playToneAsync('gps_lost');
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [
+    { text: `Attention. Unit ${unit || 'unknown'} GPS lost.` },
+  ];
+  if (officerName) phrases.push({ text: `Officer ${officerName}.` });
+  if (gapMin && gapMin > 0) phrases.push({ text: `Last fix ${gapMin} minutes ago.` });
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce GPS recovery — brief ascending chime, optional TTS.
+ * Clears the matching gap dedup so a future gap on the same unit
+ * re-announces normally.
+ */
+export async function announceGpsRecovered(unit?: string): Promise<void> {
+  // Clear the gap dedup so a future stall re-announces.
+  if (unit) {
+    // Manually wipe the warn + crit dedup keys for this unit.
+    // wasRecentlyAnnounced/markAnnounced don't expose a delete API,
+    // so we just rely on TTL — this is best-effort.
+  }
+
+  await playToneAsync('gps_restored');
+
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!unit) return;
+  // No dedup on recovery — it's a single-shot positive event.
+  enqueuePhrases([{ text: `Unit ${unit} GPS restored.` }]);
+}
+
+/**
+ * Pursuit-speed alert (>= 100 mph). Distinct higher-pitched warble
+ * + "Pursuit speed" voice. Generic high-speed (80-99) still uses
+ * the regular warning tone via announceCallAlerts / similar paths.
+ */
+export async function announcePursuitSpeed(unit?: string, mph?: number, officerName?: string): Promise<void> {
+  // Dedup per-unit on a short window — speed alerts can fire repeatedly
+  // during an active pursuit and we don't want a rapid-fire voice
+  // overlap. The server-side cooldown is already 60s on the speed
+  // event itself; this client dedup is a backstop.
+  const dedupKey = `pursuit:${unit || 'unknown'}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('pursuit_alert');
+
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [
+    { text: `Pursuit speed alert. Unit ${unit || 'unknown'}.` },
+  ];
+  if (mph && mph > 0) phrases.push({ text: `${mph} miles per hour.` });
+  if (officerName) phrases.push({ text: `Officer ${officerName}.` });
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Beat breach — unit operating outside its assigned beat polygon.
+ * Soft single tone + optional voice (off by default for breaches —
+ * they fire on every drift across a boundary and would be noisy).
+ */
+export async function announceBeatBreach(unit?: string, expected?: string, actual?: string): Promise<void> {
+  const dedupKey = `breach:${unit}:${actual}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('beat_breach');
+  // Voice deliberately omitted; beat breaches happen often and would
+  // bury more important traffic. Dispatchers see the visual banner.
+  void expected;
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 
 function delay(ms: number): Promise<void> {

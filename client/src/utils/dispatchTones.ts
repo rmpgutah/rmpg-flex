@@ -6,7 +6,8 @@
 // Respects the user's sound toggle (localStorage 'rmpg-sound').
 // ============================================================
 
-type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert' | 'chirp' | 'double_chirp' | 'descending' | 'p1_alert' | 'panic_continuous';
+type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert' | 'chirp' | 'double_chirp' | 'descending' | 'p1_alert' | 'panic_continuous'
+  | 'gps_warn' | 'gps_lost' | 'gps_restored' | 'pursuit_alert' | 'beat_breach' | 'ack';
 
 let audioCtx: AudioContext | null = null;
 
@@ -199,6 +200,97 @@ const PROFILES: Record<ToneType, ToneProfile> = {
       { freq: 800,  start: 0.40, dur: 0.10 },
       { freq: 1200, start: 0.52, dur: 0.10 },
       { freq: 800,  start: 0.64, dur: 0.10 },
+    ],
+  },
+
+  // ── GPS Warn: 5-min staleness gentle 2-pip ───────────────────
+  // Two soft sine pips at A5 (880 Hz), 100ms each, 200ms apart.
+  // Calm but distinct — communicates "something went idle"
+  // without pulling attention from active dispatch traffic.
+  // Fires on gps:gap warning (5+ min OwnTracks silence).
+  gps_warn: {
+    type: 'sine',
+    gain: 0.20,
+    steps: [
+      { freq: 880, start: 0,    dur: 0.10 },
+      { freq: 880, start: 0.30, dur: 0.10 },
+    ],
+  },
+
+  // ── GPS Lost: 15-min critical gap, 3-pip descending ──────────
+  // E6 → C6 → A5 (1318 → 1046 → 880 Hz), each 180ms, 30ms gap.
+  // Descending = "loss / fall" — opposite of the ascending
+  // restoration tone. Higher gain than gps_warn; designed to cut
+  // through ambient noise so the dispatcher acts within seconds.
+  // Pairs with TTS announcement "Unit XXXX GPS lost".
+  gps_lost: {
+    type: 'sine',
+    gain: 0.32,
+    steps: [
+      { freq: 1318, start: 0,    dur: 0.18 },
+      { freq: 1046, start: 0.21, dur: 0.18 },
+      { freq: 880,  start: 0.42, dur: 0.22 },
+    ],
+  },
+
+  // ── GPS Restored: 2-pip ascending recovery chime ─────────────
+  // C6 → E6 (1046 → 1318 Hz), each 90ms. Rising = "recovery".
+  // Brief and friendly — confirms the missing unit reported again.
+  gps_restored: {
+    type: 'sine',
+    gain: 0.22,
+    steps: [
+      { freq: 1046, start: 0,    dur: 0.09 },
+      { freq: 1318, start: 0.11, dur: 0.12 },
+    ],
+  },
+
+  // ── Pursuit Alert: 100+ mph escalation ───────────────────────
+  // Aggressive APX-style warble at higher pitch (1200 / 1600 Hz)
+  // for 1.6s. Distinguishable from regular speed alerts by the
+  // higher frequency band and longer duration. Reserved for
+  // pursuit-speed (>= 100 mph) events. Gain matches alarm tier.
+  pursuit_alert: {
+    type: 'sine',
+    gain: 0.34,
+    steps: [
+      { freq: 1200, start: 0,    dur: 0.10 },
+      { freq: 1600, start: 0.11, dur: 0.10 },
+      { freq: 1200, start: 0.22, dur: 0.10 },
+      { freq: 1600, start: 0.33, dur: 0.10 },
+      { freq: 1200, start: 0.44, dur: 0.10 },
+      { freq: 1600, start: 0.55, dur: 0.10 },
+      { freq: 1200, start: 0.66, dur: 0.10 },
+      { freq: 1600, start: 0.77, dur: 0.10 },
+      { freq: 1200, start: 0.88, dur: 0.10 },
+      { freq: 1600, start: 0.99, dur: 0.10 },
+      { freq: 1200, start: 1.10, dur: 0.10 },
+      { freq: 1600, start: 1.21, dur: 0.10 },
+      { freq: 1200, start: 1.32, dur: 0.10 },
+      { freq: 1600, start: 1.43, dur: 0.10 },
+    ],
+  },
+
+  // ── Beat Breach: Single distinctive notch tone ───────────────
+  // Triangle wave at 660 Hz for 200ms — softer than sine, evokes
+  // the "boundary touched" feel without urgency. For unit_outside_beat.
+  beat_breach: {
+    type: 'triangle',
+    gain: 0.22,
+    steps: [
+      { freq: 660, start: 0,    dur: 0.20 },
+    ],
+  },
+
+  // ── Ack: Brief acknowledgment chip ───────────────────────────
+  // Short 1500 Hz pip, 40ms — confirms a dispatcher action
+  // (alert dismissed, click-to-acknowledge). Inaudible if
+  // preceded by another tone; intended as tactile feedback.
+  ack: {
+    type: 'sine',
+    gain: 0.14,
+    steps: [
+      { freq: 1500, start: 0, dur: 0.04 },
     ],
   },
 
