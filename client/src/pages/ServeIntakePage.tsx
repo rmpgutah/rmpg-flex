@@ -579,7 +579,7 @@ export default function ServeIntakePage() {
                 {previewLat && previewLng && (
                   <a href={`https://maps.google.com/?q=${previewLat},${previewLng}`} target="_blank" rel="noopener noreferrer"
                     className="text-[9px] text-brand-400 hover:underline mt-1 inline-flex items-center gap-1">
-                    <Navigation className="w-3 h-3" /> Verify on Google Maps →
+                    <MapPin className="w-3 h-3" /> Verify on Google Maps →
                   </a>
                 )}
               </div>
