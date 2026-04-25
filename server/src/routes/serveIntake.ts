@@ -17,6 +17,7 @@ import { geocodeAddress } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import {
   parseAllDocuments,
+  parseAddressParts,
   buildNotesNarrative,
   computeDiligenceSchedule,
   classifyEntityType,
