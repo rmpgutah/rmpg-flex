@@ -1,3 +1,161 @@
+// ═══════════════════════════════════════════════════════════════
+// Universal Data Scanner — format-agnostic extraction across ANY document
+// Scans ALL text for data points using pattern libraries, returns
+// candidates with confidence scores. The main parser uses these as
+// fallbacks when format-specific extraction fails.
+// ═══════════════════════════════════════════════════════════════
+
+interface ScanCandidate { value: string; confidence: number; source: string }
+
+/** Scan all text for person names — returns candidates sorted by confidence */
+export function scanForNames(text: string): ScanCandidate[] {
+  if (!text) return [];
+  const candidates: ScanCandidate[] = [];
+  const seen = new Set<string>();
+  const add = (value: string, confidence: number, source: string) => {
+    const key = value.toLowerCase().trim();
+    if (key.length < 3 || seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ value: value.trim(), confidence, source });
+  };
+
+  // "Party to Serve:" / "Serve to:" / "Recipient:" labels
+  for (const m of text.matchAll(/(?:Party to Serve|Serve to|Recipient|Serve)[:\s]+([A-Z][A-Za-z .'-]+(?:\s+[A-Za-z .'-]+){0,4})/gi)) {
+    add(m[1].replace(/\s{3,}.*$/, '').replace(/,\s*an\s+individual.*$/i, '').trim(), 95, 'label');
+  }
+  // "v. NAME," or "vs. NAME, Defendant"
+  for (const m of text.matchAll(/(?:vs?\.?|versus)\s+([A-Z][A-Za-z ,.'-]+?)(?:\s*,\s*(?:an individual|Defendant|et al))/gi)) {
+    add(m[1].trim(), 85, 'caption');
+  }
+  // "Defendant NAME" or "Defendant: NAME"
+  for (const m of text.matchAll(/Defendant[:\s]+([A-Z][A-Za-z .'-]+?)(?:\s*,|\s*$)/gim)) {
+    add(m[1].trim(), 80, 'defendant-label');
+  }
+  // "TO: NAME" (subpoena format)
+  for (const m of text.matchAll(/^To[:\s]+([A-Z][A-Za-z .'-]+?)$/gim)) {
+    add(m[1].trim(), 75, 'to-label');
+  }
+  return candidates.sort((a, b) => b.confidence - a.confidence);
+}
+
+/** Scan all text for US addresses — returns candidates sorted by confidence */
+export function scanForAddresses(text: string): ScanCandidate[] {
+  if (!text) return [];
+  const candidates: ScanCandidate[] = [];
+  const seen = new Set<string>();
+  const states = 'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY';
+  const add = (value: string, confidence: number, source: string) => {
+    const key = value.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (key.length < 10 || seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ value: value.replace(/\s+/g, ' ').trim(), confidence, source });
+  };
+
+  // Full address with ZIP: "1234 Street Name, City, ST 84123"
+  const fullAddrRe = new RegExp(`(\\d+\\s+[A-Za-z][^\\n]{5,60},\\s*[A-Za-z .]+,\\s*(?:${states})\\s*\\d{5}(?:-\\d{4})?)`, 'gi');
+  for (const m of text.matchAll(fullAddrRe)) {
+    add(m[1], 90, 'full-address');
+  }
+  // Labeled: "Address: ..." or "Service Address: ..."
+  for (const m of text.matchAll(/(?:Address|Service Address|Recipient Address|Serve at)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/gi)) {
+    add(m[1], 95, 'labeled-address');
+  }
+  // "residing at" / "located at" — defendant's address in court docs
+  for (const m of text.matchAll(/(?:resid(?:es|ing)|located)\s+at[:\s]+(\d+\s+\w[^\n]{5,80}\d{5})/gi)) {
+    add(m[1], 85, 'residing-at');
+  }
+  return candidates.sort((a, b) => b.confidence - a.confidence);
+}
+
+/** Scan all text for phone numbers */
+export function scanForPhones(text: string): ScanCandidate[] {
+  if (!text) return [];
+  const candidates: ScanCandidate[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(/\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/g)) {
+    const phone = `(${m[1]}) ${m[2]}-${m[3]}`;
+    const digits = m[1] + m[2] + m[3];
+    if (!seen.has(digits)) {
+      seen.add(digits);
+      // Check context for confidence
+      const ctx = text.substring(Math.max(0, (m.index || 0) - 30), (m.index || 0) + m[0].length + 10).toLowerCase();
+      const confidence = /tel|phone|call|fax|clerk/i.test(ctx) ? 90 : 60;
+      const source = /clerk/i.test(ctx) ? 'clerk' : /fax/i.test(ctx) ? 'fax' : /tel|phone/i.test(ctx) ? 'phone' : 'unlabeled';
+      candidates.push({ value: phone, confidence, source });
+    }
+  }
+  return candidates.sort((a, b) => b.confidence - a.confidence);
+}
+
+/** Scan all text for email addresses */
+export function scanForEmails(text: string): ScanCandidate[] {
+  if (!text) return [];
+  const candidates: ScanCandidate[] = [];
+  for (const m of text.matchAll(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/g)) {
+    candidates.push({ value: m[1], confidence: 90, source: 'email-pattern' });
+  }
+  return candidates;
+}
+
+/** Scan all text for dates */
+export function scanForDates(text: string): ScanCandidate[] {
+  if (!text) return [];
+  const candidates: ScanCandidate[] = [];
+  const seen = new Set<string>();
+  // MM/DD/YYYY
+  for (const m of text.matchAll(/(\d{1,2}\/\d{1,2}\/\d{4})/g)) {
+    if (!seen.has(m[1])) { seen.add(m[1]); const ctx = text.substring(Math.max(0, (m.index||0)-20), (m.index||0)).toLowerCase(); const src = /due/i.test(ctx) ? 'due-date' : /filed|signed|dated/i.test(ctx) ? 'filed-date' : 'date'; candidates.push({ value: m[1], confidence: /due/i.test(ctx) ? 95 : 70, source: src }); }
+  }
+  // "Month DD, YYYY"
+  for (const m of text.matchAll(/([A-Z][a-z]+\s+\d{1,2},?\s*\d{4})/g)) {
+    if (!seen.has(m[1])) { seen.add(m[1]); candidates.push({ value: m[1], confidence: 75, source: 'written-date' }); }
+  }
+  return candidates.sort((a, b) => b.confidence - a.confidence);
+}
+
+/** Scan for case numbers */
+export function scanForCaseNumbers(text: string): ScanCandidate[] {
+  if (!text) return [];
+  const candidates: ScanCandidate[] = [];
+  const seen = new Set<string>();
+  const patterns = [
+    /(?:Case|Civil)\s+(?:No\.?|Number|#|Action No\.?)[:\s]*([A-Z0-9][\w:.-]+\d)/gi,
+    /(\d{2}[A-Z]{2}\d{6,}[A-Z]?)/g,  // California: 26CU014094N
+    /(\d:[:\-]\d{2}-[a-z]{2}-\d{4,})/gi, // Federal: 1:25-cv-00947
+    /Civil\s+No\.\s*([A-Z0-9][\w.-]+)/gi,
+  ];
+  for (const re of patterns) {
+    for (const m of text.matchAll(re)) {
+      const val = (m[1] || m[0]).trim();
+      if (val.length >= 5 && !seen.has(val.toUpperCase())) {
+        seen.add(val.toUpperCase());
+        candidates.push({ value: val, confidence: 85, source: 'case-number-pattern' });
+      }
+    }
+  }
+  return candidates.sort((a, b) => b.confidence - a.confidence);
+}
+
+/** Scan for court names */
+export function scanForCourts(text: string): ScanCandidate[] {
+  if (!text) return [];
+  const candidates: ScanCandidate[] = [];
+  const patterns = [
+    /UNITED\s+STATES\s+DISTRICT\s+COURT[^\n]*/gi,
+    /((?:FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^\n]*)/gi,
+    /(?:SUPERIOR|CIRCUIT|DISTRICT|JUSTICE|MUNICIPAL)\s+COURT[^\n]*/gi,
+    /((?:North|South|East|West|Central)\s+\w+\s+(?:Regional|Division|Branch)\s+\w*)/gi,
+  ];
+  for (const re of patterns) {
+    for (const m of text.matchAll(re)) {
+      candidates.push({ value: (m[1] || m[0]).trim(), confidence: 85, source: 'court-pattern' });
+    }
+  }
+  return candidates;
+}
+
+// ═══════════════════════════════════════════════════════════════
+
 export interface AddressParts {
   building: string;
   floor: string;
@@ -913,8 +1071,92 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
 
   const vendorFingerprint = info.createdBy || (fieldSheet.match(/(ICU\s+Investigations[^,\n]*)/i)?.[1] || '');
 
+  // ═══════════════════════════════════════════════════════════
+  // UNIVERSAL SCANNER FALLBACKS — fill any gaps left by format-specific extraction
+  // These run across ALL document text and pick the highest-confidence candidates
+  // only when the primary extraction returned empty.
+  // ═══════════════════════════════════════════════════════════
+
+  // Defendant name — fallback to universal name scanner
+  if (!defendant.first && !defendant.last) {
+    const nameCandidates = scanForNames(allText);
+    if (nameCandidates.length > 0) {
+      const best = nameCandidates[0].value.replace(/,\s*an\s+individual.*$/i, '').replace(/-\s+/g, '-').trim();
+      const parts = best.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        defendant.first = parts[0];
+        defendant.last = parts[parts.length - 1];
+        defendant.middle = parts.length >= 3 ? parts.slice(1, -1).join(' ') : '';
+      } else if (parts.length === 1) {
+        defendant.last = parts[0];
+      }
+    }
+  }
+
+  // Address — fallback to universal address scanner
+  if (!address) {
+    const addrCandidates = scanForAddresses(allText);
+    if (addrCandidates.length > 0) {
+      address = addrCandidates[0].value;
+    }
+  }
+
+  // Plaintiff — fallback
+  if (!plaintiff) {
+    const pMatch = allText.match(/Plaintiff[:\s]+([A-Z][A-Za-z .'-]+?)(?:\s*,|\s*$)/im);
+    if (pMatch) plaintiff = pMatch[1].trim();
+  }
+
+  // Court — fallback to universal court scanner
+  if (!court) {
+    const courtCandidates = scanForCourts(allText);
+    if (courtCandidates.length > 0) court = courtCandidates[0].value;
+  }
+
+  // Court case number — fallback to universal scanner
+  if (!courtCaseNumber) {
+    const caseCandidates = scanForCaseNumbers(allText);
+    if (caseCandidates.length > 0) {
+      // Avoid picking up job numbers (7+ digits, no letters)
+      const filtered = caseCandidates.filter(c => !/^\d{7,}$/.test(c.value));
+      if (filtered.length > 0) courtCaseNumber = filtered[0].value;
+    }
+  }
+
+  // Due date — fallback
+  if (!dueDate) {
+    const dateCandidates = scanForDates(allText);
+    const dueDateCandidate = dateCandidates.find(d => d.source === 'due-date');
+    if (dueDateCandidate) dueDate = dueDateCandidate.value;
+  }
+
+  // Attorney — fallback to universal email/phone scan
+  if (!attorney.name) {
+    // Look for "Esq." pattern anywhere
+    const esqMatch = allText.match(/([A-Z][A-Za-z .]+\s+Esq\.?)/);
+    if (esqMatch) {
+      attorney.name = esqMatch[1].trim();
+      // Grab nearby phone/email
+      const nearby = allText.substring(Math.max(0, (esqMatch.index || 0) - 50), (esqMatch.index || 0) + 200);
+      const emailCandidates = scanForEmails(nearby);
+      if (emailCandidates.length > 0) attorney.email = emailCandidates[0].value;
+      const phoneCandidates = scanForPhones(nearby);
+      if (phoneCandidates.length > 0) attorney.tel = phoneCandidates[0].value.replace(/\D/g, '');
+    }
+  }
+
+  // Clerk phone — fallback
+  if (!clerkPhone) {
+    const phoneCandidates = scanForPhones(allText);
+    const clerkCandidate = phoneCandidates.find(p => p.source === 'clerk');
+    if (clerkCandidate) clerkPhone = clerkCandidate.value;
+  }
+
+  // Recompute address parts if address changed via fallback
+  const finalAddressParts = address !== addressParts.street ? parseAddressParts(address) : addressParts;
+
   return {
-    defendant, address, addressParts, plaintiff, court, courtAddress, county,
+    defendant, address, addressParts: finalAddressParts, plaintiff, court, courtAddress, county,
     attorney, documents, primaryDoc, serviceType, instructions,
     jobNumber, clientJobNumber, dueDate, signedDate, responseDeadlineDays, clerkPhone,
     documentPages, bilingual, orderingClientRule, serviceWindows, serviceRulesSummary,
