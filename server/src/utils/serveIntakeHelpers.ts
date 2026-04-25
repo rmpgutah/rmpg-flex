@@ -370,59 +370,144 @@ export interface NotesEntry {
 
 export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   const up = (s: string) => (s || '').toUpperCase();
-
-  // CASE line
   const clauses = (i.documents || '').split(/\s*;\s*/).map(s => s.trim()).filter(Boolean);
   const docCount = clauses.length;
   const docList = clauses.map(c => c.toUpperCase().replace(/\s+AND\s+/g, ' + ')).join(' + ');
-  const caseParts = [
-    `PLAINTIFF: ${up(i.plaintiff)}`,
-    `CASE #${i.clientJobNumber}`,
-    `${docCount} DOCS (${docList}), ${i.documentPages} PAGES${i.bilingual ? ', BILINGUAL' : ''}`,
-    `SIGNED/FILED: ${up(i.signedDate)}`,
-    `RESPONSE DEADLINE: ${i.responseDeadlineDays} DAYS AFTER SERVICE`,
-  ];
-  const caseLine = `CASE -- ${caseParts.join(' | ')}`;
 
-  // COURT line
-  const courtLine = `COURT -- ${up(i.court)} | ${up(i.courtAddress)}${i.clerkPhone ? ` | CLERK: ${i.clerkPhone}` : ''}`;
+  // ═══════════════════════════════════════════════════════════
+  // NOTE 1: 🚨 OFFICER ALERT ESSENTIALS (quick-scan at the door)
+  // ═══════════════════════════════════════════════════════════
+  const alertLines: string[] = [];
+  alertLines.push('🚨 OFFICER ALERT ESSENTIALS');
+  alertLines.push('═'.repeat(50));
+  alertLines.push(`SERVICE TYPE: ${up(i.orderingClientRule).split('.')[0] || 'PROCESS SERVICE'}`);
+  alertLines.push(`SERVE TO: NAMED DEFENDANT ONLY — ${i.bilingual ? 'BILINGUAL DOCS' : 'ENGLISH ONLY'}`);
+  alertLines.push(`DUE: ${i.dueDate || 'NO DEADLINE'}${i.daysRemaining > 0 ? ` (${i.daysRemaining} DAYS REMAINING)` : i.daysRemaining === 0 ? ' ⚠️ DUE TODAY' : ''}`);
+  if (i.serviceRulesSummary) {
+    alertLines.push('');
+    alertLines.push('⚠️ RESTRICTIONS:');
+    i.serviceRulesSummary.split('. ').filter(Boolean).forEach(r => {
+      alertLines.push(`  • ${r.endsWith('.') ? r : r + '.'}`);
+    });
+  }
+  if (i.serviceWindows) alertLines.push(`\nSERVICE WINDOWS: ${up(i.serviceWindows)}`);
+  alertLines.push(`\nDOCUMENTS: ${docCount} DOC${docCount !== 1 ? 'S' : ''} (${i.documentPages} PAGES) — ${docList}`);
+  const alertNote = alertLines.join('\n');
 
-  // ATTORNEY line
-  const attyParts: string[] = [];
-  attyParts.push(`${up(i.attorney.name)} (${up(i.attorney.firm)}) BAR#${i.attorney.barNumber}`);
-  const attyAddr = [i.attorney.addressLine1, i.attorney.addressLine2].filter(Boolean).map(up).join(', ');
-  if (attyAddr) attyParts.push(attyAddr);
-  if (i.attorney.tel) attyParts.push(`TEL: ${i.attorney.tel}`);
-  if (i.attorney.fax) attyParts.push(`FAX: ${i.attorney.fax}`);
-  if (i.attorney.email) attyParts.push(`EMAIL: ${up(i.attorney.email)}`);
-  const attorneyLine = `ATTORNEY -- ${attyParts.join(' | ')}`;
+  // ═══════════════════════════════════════════════════════════
+  // NOTE 2: 📋 RECOMMENDED DILIGENCE SCHEDULE
+  // ═══════════════════════════════════════════════════════════
+  const schedLines: string[] = [];
+  schedLines.push('📋 RECOMMENDED DILIGENCE SCHEDULE');
+  schedLines.push('═'.repeat(50));
+  schedLines.push(`DEADLINE: ${i.dueDate || 'NONE'} | DAYS REMAINING: ${i.daysRemaining}`);
+  schedLines.push(`WINDOWS: ${up(i.serviceWindows) || 'STANDARD (6AM-9AM, 9AM-6PM, 6PM-9PM)'}`);
+  schedLines.push('');
+  if (i.recommendedAttempts.length > 0) {
+    schedLines.push('PLANNED ATTEMPTS:');
+    i.recommendedAttempts.forEach((a, idx) => {
+      schedLines.push(`  ATTEMPT ${idx + 1}: ${a.label}${a.weekend ? ' [WEEKEND]' : ''}`);
+    });
+  } else {
+    schedLines.push('NO AUTOMATED SCHEDULE — deadline may be in the past or not set.');
+    schedLines.push('MANUALLY PLAN 3 ATTEMPTS ON 3 DIFFERENT DAYS:');
+    schedLines.push('  1. Morning attempt (before 10:00 AM)');
+    schedLines.push('  2. Afternoon attempt (10:00 AM - 5:00 PM)');
+    schedLines.push('  3. Evening attempt (after 4:00 PM)');
+  }
+  schedLines.push('');
+  schedLines.push('AFTER EACH ATTEMPT: Log result in serve queue. If sub-served, notify client IMMEDIATELY.');
+  const schedNote = schedLines.join('\n');
 
-  // SERVICE RULES
-  const serviceRulesLine = `SERVICE RULES -- ${up(i.serviceRulesSummary)}`;
+  // ═══════════════════════════════════════════════════════════
+  // NOTE 3: 📂 CASE DETAILS (legal reference)
+  // ═══════════════════════════════════════════════════════════
+  const caseLines: string[] = [];
+  caseLines.push('📂 CASE DETAILS');
+  caseLines.push('═'.repeat(50));
+  caseLines.push(`CASE #: ${i.clientJobNumber || 'N/A'}`);
+  caseLines.push(`PLAINTIFF: ${up(i.plaintiff)}`);
+  caseLines.push(`DOCUMENTS: ${docList}`);
+  caseLines.push(`PAGES: ${i.documentPages}${i.bilingual ? ' (BILINGUAL)' : ''}`);
+  caseLines.push(`SIGNED/FILED: ${up(i.signedDate) || 'N/A'}`);
+  caseLines.push(`RESPONSE DEADLINE: ${i.responseDeadlineDays} DAYS AFTER SERVICE`);
+  caseLines.push('');
+  caseLines.push(`COURT: ${up(i.court)}`);
+  if (i.courtAddress) caseLines.push(`COURT ADDRESS: ${up(i.courtAddress)}`);
+  if (i.clerkPhone) caseLines.push(`CLERK PHONE: ${i.clerkPhone}`);
+  caseLines.push('');
+  if (i.attorney.name) {
+    caseLines.push(`ATTORNEY: ${up(i.attorney.name)}`);
+    if (i.attorney.firm) caseLines.push(`FIRM: ${up(i.attorney.firm)}`);
+    if (i.attorney.barNumber) caseLines.push(`BAR #: ${i.attorney.barNumber}`);
+    const attyAddr = [i.attorney.addressLine1, i.attorney.addressLine2].filter(Boolean).join(', ');
+    if (attyAddr) caseLines.push(`ADDRESS: ${up(attyAddr)}`);
+    if (i.attorney.tel) caseLines.push(`PHONE: ${i.attorney.tel}`);
+    if (i.attorney.email) caseLines.push(`EMAIL: ${i.attorney.email}`);
+  }
+  const caseNote = caseLines.join('\n');
 
-  // SCHEDULE
-  const scheduleLine = `SCHEDULE -- WINDOWS: ${up(i.serviceWindows)} | DUE: ${i.dueDate} | DAYS REMAINING: ${i.daysRemaining}`;
+  // ═══════════════════════════════════════════════════════════
+  // NOTE 4: ☕ CASE SUMMARY (the "tea spill" — plain English brief)
+  // ═══════════════════════════════════════════════════════════
+  const teaLines: string[] = [];
+  teaLines.push('☕ CASE SUMMARY');
+  teaLines.push('═'.repeat(50));
+  // Build a human-readable summary of what this case is about
+  const plaintiffShort = (i.plaintiff || 'The plaintiff').split(',')[0].trim();
+  const serviceDesc = (i.orderingClientRule || '').replace(/\.$/, '').trim();
+  const docDesc = clauses.length > 0
+    ? clauses.map(c => c.toLowerCase()).join(' and ')
+    : 'legal documents';
+  teaLines.push(`${plaintiffShort} is suing and needs ${docDesc} served.`);
+  teaLines.push('');
+  teaLines.push(`The defendant needs to be personally served at their residence.`);
+  if (i.dueDate) {
+    teaLines.push(`Service must be completed by ${i.dueDate} (${i.daysRemaining} days from now).`);
+  }
+  if (i.responseDeadlineDays) {
+    teaLines.push(`Once served, the defendant has ${i.responseDeadlineDays} days to respond to the court.`);
+  }
+  teaLines.push('');
+  // Service approach summary
+  if (/personal\s+(?:service\s+)?only/i.test(i.instructionsVerbatim)) {
+    teaLines.push('⚠️ PERSONAL SERVICE ONLY — cannot leave with another person on first attempts.');
+  }
+  if (/sub-?serve/i.test(i.instructionsVerbatim)) {
+    teaLines.push('After diligence (3 attempts on different days/times), sub-service to a competent adult (18+) at the residence or workplace is allowed.');
+  }
+  if (/notify.*?immediately|please notify/i.test(i.instructionsVerbatim)) {
+    teaLines.push('📞 If sub-served: CALL THE CLIENT IMMEDIATELY so they can mail an additional copy.');
+  }
+  if (i.court) {
+    teaLines.push(`\nThis case is filed in ${i.court}.`);
+  }
+  teaLines.push(`\n[Auto-generated ${i.timestamp}]`);
+  const teaNote = teaLines.join('\n');
 
-  // RECOMMENDED SCHEDULE
-  const recLines = i.recommendedAttempts.map((a, idx) => `  ${idx + 1}. ${a.label}${a.weekend ? ' [WEEKEND]' : ''}`).join('\n');
-  const recommendedLine = `RECOMMENDED SCHEDULE --\n${recLines}`;
-
-  // CLIENT HISTORY
-  const historyLines = i.jobActivity.map(e => `  ${e.when} -- ${e.action}${e.detail ? ': ' + e.detail : ''}`).join('\n');
-  const clientHistoryLine = `CLIENT HISTORY --\n${historyLines}`;
-
-  // INSTRUCTIONS
-  const instructionsLine = `INSTRUCTIONS (VERBATIM) -- ${i.instructionsVerbatim}\n\n[Generated ${i.timestamp}]`;
+  // ═══════════════════════════════════════════════════════════
+  // NOTE 5: 🕐 CLIENT HISTORY + INSTRUCTIONS (reference)
+  // ═══════════════════════════════════════════════════════════
+  const refLines: string[] = [];
+  refLines.push('🕐 CLIENT HISTORY & INSTRUCTIONS');
+  refLines.push('═'.repeat(50));
+  if (i.jobActivity.length > 0) {
+    refLines.push('JOB ACTIVITY:');
+    i.jobActivity.forEach(e => {
+      refLines.push(`  ${e.when} — ${e.action}${e.detail ? ': ' + e.detail : ''}`);
+    });
+    refLines.push('');
+  }
+  refLines.push('VERBATIM INSTRUCTIONS:');
+  refLines.push(i.instructionsVerbatim || '(none provided)');
+  const refNote = refLines.join('\n');
 
   return [
-    { text: caseLine },
-    { text: courtLine },
-    { text: attorneyLine },
-    { text: serviceRulesLine },
-    { text: scheduleLine },
-    { text: recommendedLine },
-    { text: clientHistoryLine },
-    { text: instructionsLine },
+    { text: alertNote },
+    { text: schedNote },
+    { text: caseNote },
+    { text: teaNote },
+    { text: refNote },
   ];
 }
 
