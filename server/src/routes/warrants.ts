@@ -9,6 +9,7 @@ import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, search
 import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
 import { paramStr } from '../utils/reqHelpers';
 import { ensureWarrantReviewColumns, ensureWarrantIndexes } from '../utils/warrantHelpers';
+import { pollMultiStateLive, type LivePollCriteria } from '../utils/liveWarrantPoller';
 
 const router = Router();
 
@@ -2730,6 +2731,54 @@ router.post('/national-search', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('National search error:', error);
     res.status(500).json({ error: 'Failed to search national warrants', code: 'NATIONAL_SEARCH_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// POST /api/warrants/live-poll
+// ────────────────────────────────────────────────────────────
+// Unified multi-state live poll — queries Utah API, FBI API, and the
+// local 7k+ scraped_warrants cache in parallel, then scores each result
+// by name + DOB + age + sex against the supplied criteria.
+//
+// Request body:
+//   { first_name, last_name, dob?, sex?, age? }
+//
+// Response:
+//   {
+//     results: [{ source, match_score, match_tier, match_details, … }],
+//     sources: [{ source, status, raw_count, matched_count, error? }],
+//     total_ms
+//   }
+//
+// Score < 30 ('weak') is dropped server-side so dispatchers never see
+// surname-only collisions.  Tiers: strong ≥90, likely ≥60, potential ≥30.
+// ════════════════════════════════════════════════════════════
+router.post('/live-poll', async (req: Request, res: Response) => {
+  try {
+    const { first_name, last_name, dob, sex, age } = req.body ?? {};
+    if (typeof first_name !== 'string' || !first_name.trim()) {
+      res.status(400).json({ error: 'first_name is required', code: 'FIRST_NAME_REQUIRED' });
+      return;
+    }
+    if (typeof last_name !== 'string' || !last_name.trim()) {
+      res.status(400).json({ error: 'last_name is required', code: 'LAST_NAME_REQUIRED' });
+      return;
+    }
+
+    const criteria: LivePollCriteria = {
+      first_name: first_name.trim(),
+      last_name: last_name.trim(),
+      dob: typeof dob === 'string' && dob.trim() ? dob.trim() : null,
+      sex: typeof sex === 'string' && sex.trim() ? sex.trim() : null,
+      age: typeof age === 'number' && Number.isFinite(age) ? age : null,
+    };
+
+    const summary = await pollMultiStateLive(criteria);
+    res.json(summary);
+  } catch (err: any) {
+    console.error('Live poll error:', err);
+    res.status(500).json({ error: 'Live poll failed', code: 'LIVE_POLL_ERROR' });
   }
 });
 
