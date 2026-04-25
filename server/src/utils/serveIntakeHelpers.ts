@@ -508,15 +508,19 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   }
 
   // ── Defendant name extraction (multi-source fallback) ──
-  // Priority: Field Sheet "Party to Serve" → Info Sheet "Recipient" → Info Sheet "Defendant" label
-  //         → Court Docket caption "vs" line → Court Docket "Defendant" keyword
   const ptsMatch = fieldSheet.match(/Party to Serve[:\s]+([^\n]+)/i)
     || infoSheet.match(/Recipient[:\s]+([^\n]+)/i)
     || courtDocket.match(/(?:vs?\.?|versus)\s*\n?\s*([A-Z][A-Za-z ,.'-]+?)(?:\s*,\s*(?:an individual|Defendant|et al))/i)
     || courtDocket.match(/Defendant[:\s]+([^\n]+)/i);
-  let rawPartyName = (ptsMatch?.[1] || info.defendant || '').replace(/,\s*an\s+individual.*$/i, '').replace(/,?\s*(?:Defendant|et al\.?)$/i, '').trim();
+  let rawPartyName = (ptsMatch?.[1] || info.defendant || '')
+    .replace(/,\s*an\s+individual.*$/i, '')
+    .replace(/,?\s*(?:Defendant|et al\.?)$/i, '')
+    .replace(/^\s*Recipient[:\s]*/i, '')  // Strip "Recipient:" prefix that sometimes bleeds in
+    .trim();
   // Strip trailing noise: "aka", "dba", court case numbers
   rawPartyName = rawPartyName.replace(/\s+(?:aka|a\.k\.a|dba|d\.b\.a)\.?\s+.*$/i, '').trim();
+  // Rejoin hyphenated names split by pdftotext: "Campbell- Ryce" → "Campbell-Ryce"
+  rawPartyName = rawPartyName.replace(/-\s+/g, '-');
   const nameParts = rawPartyName.split(/\s+/).filter(Boolean);
 
   // DOB extraction — try field sheet, info sheet, AND court docket
@@ -541,14 +545,33 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     dob,
   };
 
-  // ── Address extraction (exhaustive multi-source) ──
-  // Priority: Field Sheet (most reliable) → Info Sheet label → any doc with standard address format
-  const addrMatch = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/)
-    || fieldSheet.match(/(?:Address|Serve at|Service Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i)
-    || infoSheet.match(/(?:Address|Service Address|Recipient Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i)
-    || courtDocket.match(/(?:resid(?:es|ing)|located|address)[:\s]+(\d+\s+\w[^\n]{5,80},\s*[A-Za-z .]+,?\s*[A-Z]{2}\s*\d{5})/i)
-    || allText.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,\s*(?:UT|Utah|CO|AZ|NV|ID|WY|NM|CA|TX|FL)\s*\d{5})/i);
-  const address = addrMatch ? addrMatch[1].trim() : '';
+  // ── Address extraction — FIELD SHEET IS AUTHORITATIVE ──
+  // The field sheet "Address" block is the service address. Court docket addresses
+  // are often the COURT's address (e.g., Vista, CA) not the defendant's residence.
+  // Only fall back to court docket for "residing at" patterns that clearly reference the defendant.
+  let address = '';
+  // 1. Field sheet — look for "Address" label followed by a line with a street address
+  const fsAddrBlock = fieldSheet.match(/Address\s*\n([^\n]+)/i);
+  if (fsAddrBlock) {
+    const candidate = fsAddrBlock[1].trim();
+    // Must start with a number (street address) — reject names like "Jamal Campbell-Ryce"
+    if (/^\d+\s+\w/.test(candidate)) address = candidate;
+  }
+  // 2. Field sheet — standard address pattern anywhere
+  if (!address) {
+    const fsAddr = fieldSheet.match(/(\d+\s+[A-Za-z][^\n]*?,\s*[A-Za-z .]+,\s*(?:UT|Utah|CO|AZ|NV|ID|WY|NM|CA|TX|FL|IL|NY)\s*\d{5}(?:-\d{4})?)/i);
+    if (fsAddr) address = fsAddr[1].trim();
+  }
+  // 3. Info sheet "Address" / "Recipient Address" label
+  if (!address) {
+    const isAddr = infoSheet.match(/(?:Address|Service Address|Recipient Address)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/i);
+    if (isAddr) address = isAddr[1].trim();
+  }
+  // 4. Court docket — ONLY "residing at" / "resides at" (defendant address, not court address)
+  if (!address) {
+    const cdAddr = courtDocket.match(/(?:resid(?:es|ing)\s+at|located\s+at)[:\s]+(\d+\s+\w[^\n]{5,80},\s*[A-Za-z .]+,?\s*[A-Z]{2}\s*\d{5})/i);
+    if (cdAddr) address = cdAddr[1].trim();
+  }
   const addressParts = parseAddressParts(address);
 
   // ── Plaintiff extraction (multi-source) ──
@@ -559,8 +582,13 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
       || courtDocket.match(/([A-Z][^\n]{3,200}?)\s*,?\s*Plaintiff/i);
     if (m) plaintiff = m[1].replace(/\s+/g, ' ').trim();
   }
-  // Strip trailing comma/period from plaintiff name
-  plaintiff = (plaintiff || '').replace(/[,.\s]+$/, '').trim();
+  // Clean plaintiff: strip trailing comma/period, file metadata bleed, document references
+  plaintiff = (plaintiff || '')
+    .replace(/[,.\s]+$/, '')
+    .replace(/\s+\d{6,}[A-Z]?\.\d+\.\w+\.pdf.*$/i, '')  // Strip "788691A.3318805.Complaint.pdf..." bleed
+    .replace(/\s+\(\d+(\.\d+)?\s*(KB|MB|GB)\).*$/i, '')  // Strip "(809 KB) Jason..." file size bleed
+    .replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4}.*$/i, '')     // Strip trailing dates
+    .trim();
 
   // ── Court extraction (broader matching — captures full jurisdiction) ──
   const courtPatterns = [
@@ -609,9 +637,10 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const primaryDoc = primaryDocToken(documents);
   const serviceType = deriveServiceType(primaryDoc);
   const bilingual = /bilingual/i.test(documents) || /bilingual/i.test(allText);
+  // Document pages — info sheet "Docs to Be Served  XX pages" is most reliable
   const documentPages = parseInt((
-    infoSheet.match(/(\d+)\s*pages?/i)?.[1]
-    || fieldSheet.match(/(\d+)\s*pages?/i)?.[1]
+    infoSheet.match(/(\d{2,})\s*pages?/i)?.[1]      // "26 pages" in info sheet sidebar
+    || fieldSheet.match(/(\d{2,})\s*pages?/i)?.[1]
     || allText.match(/(?:total|document)\s*(?:of\s+)?(\d+)\s*pages?/i)?.[1]
     || '0'
   ), 10);
