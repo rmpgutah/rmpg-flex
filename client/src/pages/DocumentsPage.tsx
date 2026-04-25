@@ -3,6 +3,8 @@ import {
   FolderOpen, File, ChevronRight, Plus, Trash2, Edit2, Download,
   ArrowLeft, Loader2, Upload, X, FolderPlus, Home, Search, Eye,
   Info, FileText, HardDrive, Clock, User, Hash, Shield, Film, Image, Music,
+  Grid3X3, List, ArrowUpDown, CheckSquare, Square, Copy, Move,
+  BarChart3, Filter,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -45,8 +47,17 @@ export default function DocumentsPage() {
   const [renameValue, setRenameValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [infoFile, setInfoFile] = useState<FileItem | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'date' | 'type'>('name');
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [dragOver, setDragOver] = useState(false);
+  const [filterType, setFilterType] = useState<string | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
+  const dropZoneRef = React.useRef<HTMLDivElement>(null);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+
+  // Clear selection when navigating
+  useEffect(() => { setSelectedFiles(new Set()); }, [currentFolderId]);
 
   const handleFileUpload = async (fileList: FileList) => {
     if (!fileList.length) return;
@@ -143,6 +154,64 @@ export default function DocumentsPage() {
     return `${(bytes / 1048576).toFixed(1)} MB`;
   };
 
+  // File delete
+  const deleteFile = async (file: FileItem) => {
+    if (!confirm(`Delete "${file.original_name}"? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/uploads/${file.file_id}`, { method: 'DELETE' });
+      fetchContents(currentFolderId);
+      addToast('File deleted', 'success');
+      setSelectedFiles(prev => { const n = new Set(prev); n.delete(file.file_id); return n; });
+    } catch (err: any) { addToast(err.message || 'Failed to delete', 'error'); }
+  };
+
+  // Bulk delete
+  const bulkDelete = async () => {
+    if (selectedFiles.size === 0) return;
+    if (!confirm(`Delete ${selectedFiles.size} selected file${selectedFiles.size > 1 ? 's' : ''}?`)) return;
+    let count = 0;
+    for (const fid of selectedFiles) {
+      try { await apiFetch(`/uploads/${fid}`, { method: 'DELETE' }); count++; } catch { /* continue */ }
+    }
+    setSelectedFiles(new Set());
+    fetchContents(currentFolderId);
+    addToast(`${count} file${count > 1 ? 's' : ''} deleted`, 'success');
+  };
+
+  // Toggle file selection
+  const toggleSelect = (fileId: string) => {
+    setSelectedFiles(prev => {
+      const n = new Set(prev);
+      if (n.has(fileId)) n.delete(fileId); else n.add(fileId);
+      return n;
+    });
+  };
+  const selectAll = () => {
+    if (selectedFiles.size === filteredFiles.length) setSelectedFiles(new Set());
+    else setSelectedFiles(new Set(filteredFiles.map(f => f.file_id)));
+  };
+
+  // Drag and drop onto file area
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); };
+  const handleDragLeave = () => setDragOver(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); setDragOver(false);
+    if (e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files);
+  };
+
+  // Storage stats
+  const storageStats = React.useMemo(() => {
+    const totalSize = files.reduce((sum, f) => sum + f.file_size, 0);
+    const byType: Record<string, { count: number; size: number }> = {};
+    files.forEach(f => {
+      const cat = f.mime_type?.startsWith('image/') ? 'Images' : f.mime_type?.startsWith('video/') ? 'Videos' : f.mime_type?.startsWith('audio/') ? 'Audio' : f.mime_type === 'application/pdf' ? 'PDFs' : 'Other';
+      if (!byType[cat]) byType[cat] = { count: 0, size: 0 };
+      byType[cat].count++;
+      byType[cat].size += f.file_size;
+    });
+    return { totalSize, totalFiles: files.length, byType };
+  }, [files]);
+
   const getFileIcon = (mime: string) => {
     if (mime?.startsWith('image/')) return '🖼️';
     if (mime === 'application/pdf') return '📄';
@@ -159,10 +228,29 @@ export default function DocumentsPage() {
     return mime === 'application/pdf' || mime?.startsWith('image/') || mime?.startsWith('video/') || mime?.startsWith('audio/');
   };
 
-  // Filter
+  // Filter + sort
   const q = searchQuery.toLowerCase();
   const filteredFolders = q ? folders.filter(f => f.name.toLowerCase().includes(q)) : folders;
-  const filteredFiles = q ? files.filter(f => f.original_name.toLowerCase().includes(q)) : files;
+  const filteredFiles = React.useMemo(() => {
+    let list = q ? files.filter(f => f.original_name.toLowerCase().includes(q)) : [...files];
+    // Type filter
+    if (filterType) {
+      list = list.filter(f => {
+        if (filterType === 'pdf') return f.mime_type === 'application/pdf';
+        if (filterType === 'image') return f.mime_type?.startsWith('image/');
+        if (filterType === 'video') return f.mime_type?.startsWith('video/');
+        if (filterType === 'audio') return f.mime_type?.startsWith('audio/');
+        if (filterType === 'doc') return f.mime_type?.includes('word') || f.mime_type?.includes('document');
+        return true;
+      });
+    }
+    // Sort
+    if (sortBy === 'name') list.sort((a, b) => a.original_name.localeCompare(b.original_name));
+    else if (sortBy === 'size') list.sort((a, b) => b.file_size - a.file_size);
+    else if (sortBy === 'date') list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    else if (sortBy === 'type') list.sort((a, b) => (a.mime_type || '').localeCompare(b.mime_type || ''));
+    return list;
+  }, [files, q, filterType, sortBy]);
 
   return (
     <div className="h-full flex flex-col">
@@ -209,12 +297,67 @@ export default function DocumentsPage() {
         </div>
       </div>
 
+      {/* Toolbar: view toggle + sort + filter + bulk actions + stats */}
+      <div className="px-4 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-2 text-[9px] flex-wrap">
+        {/* View toggle */}
+        <button type="button" onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+          className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-white transition-colors" title={viewMode === 'list' ? 'Grid view' : 'List view'}>
+          {viewMode === 'list' ? <Grid3X3 className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
+        </button>
+        <span className="w-px h-3 bg-rmpg-700" />
+        {/* Sort */}
+        <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
+        {(['name', 'size', 'date', 'type'] as const).map(s => (
+          <button key={s} type="button" onClick={() => setSortBy(s)}
+            className={`px-1.5 py-0.5 font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+        <span className="w-px h-3 bg-rmpg-700" />
+        {/* Type filter */}
+        <Filter className="w-3 h-3 text-rmpg-500" />
+        {[{ key: null, label: 'All' }, { key: 'pdf', label: 'PDF' }, { key: 'image', label: 'Image' }, { key: 'video', label: 'Video' }, { key: 'audio', label: 'Audio' }, { key: 'doc', label: 'Doc' }].map(f => (
+          <button key={f.key || 'all'} type="button" onClick={() => setFilterType(f.key)}
+            className={`px-1.5 py-0.5 font-medium border transition-all ${filterType === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300'}`}>
+            {f.label}
+          </button>
+        ))}
+        {/* Bulk actions */}
+        {selectedFiles.size > 0 && (
+          <>
+            <span className="w-px h-3 bg-rmpg-700 ml-1" />
+            <span className="text-brand-400 font-bold">{selectedFiles.size} selected</span>
+            <button type="button" onClick={bulkDelete} className="px-1.5 py-0.5 text-red-400 hover:text-red-300 border border-red-700/50 hover:bg-red-900/20 font-medium">
+              <Trash2 className="w-3 h-3 inline mr-0.5" /> Delete
+            </button>
+          </>
+        )}
+        {/* Storage stats (right) */}
+        <div className="ml-auto flex items-center gap-3 text-rmpg-500">
+          {files.length > 0 && (
+            <>
+              <span><strong className="text-rmpg-300">{storageStats.totalFiles}</strong> files</span>
+              <span><strong className="text-rmpg-300">{formatSize(storageStats.totalSize)}</strong> total</span>
+              {Object.entries(storageStats.byType).slice(0, 3).map(([type, { count }]) => (
+                <span key={type} className="hidden lg:inline">{type}: {count}</span>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4">
+      <div ref={dropZoneRef} className={`flex-1 overflow-auto p-4 transition-colors ${dragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}
+        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+        {dragOver && (
+          <div className="flex items-center justify-center py-8 mb-4 border-2 border-dashed border-brand-500/50 bg-brand-900/5 text-brand-400 text-sm font-bold">
+            <Upload className="w-5 h-5 mr-2" /> Drop files here to upload
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-rmpg-400" /></div>
         ) : (
-          <div className="space-y-1">
+          <div className={viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : 'space-y-1'}>
             {/* Back button */}
             {currentFolderId && (
               <button type="button"
@@ -261,15 +404,47 @@ export default function DocumentsPage() {
               </div>
             ))}
 
+            {/* Select all (list view only) */}
+            {viewMode === 'list' && filteredFiles.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1 text-[9px] text-rmpg-500">
+                <button type="button" onClick={selectAll} className="flex items-center gap-1 hover:text-rmpg-300">
+                  {selectedFiles.size === filteredFiles.length ? <CheckSquare className="w-3 h-3 text-brand-400" /> : <Square className="w-3 h-3" />}
+                  {selectedFiles.size === filteredFiles.length ? 'Deselect all' : 'Select all'}
+                </button>
+                <span className="text-rmpg-600">|</span>
+                <span>{filteredFiles.length} file{filteredFiles.length !== 1 ? 's' : ''}</span>
+              </div>
+            )}
+
             {/* Files */}
-            {filteredFiles.map(file => (
+            {filteredFiles.map(file => viewMode === 'grid' ? (
+              /* ── GRID VIEW ── */
               <div key={file.file_id}
-                className="flex items-center gap-3 px-3 py-2 hover:bg-rmpg-700/20 transition-colors border-b border-rmpg-800/20"
+                className={`panel-beveled p-3 flex flex-col items-center gap-2 cursor-pointer hover:bg-rmpg-700/30 transition-colors relative group ${selectedFiles.has(file.file_id) ? 'ring-1 ring-brand-500/50 bg-brand-900/10' : ''}`}
+                onClick={() => toggleSelect(file.file_id)}
               >
+                <span className="text-3xl">{getFileIcon(file.mime_type)}</span>
+                <span className="text-[10px] text-rmpg-200 text-center truncate w-full font-medium">{file.original_name}</span>
+                <span className="text-[8px] text-rmpg-500">{formatSize(file.file_size)}</span>
+                {/* Hover actions */}
+                <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                  <button type="button" onClick={() => setInfoFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400"><Info className="w-3 h-3" /></button>
+                  <a href={authedImageUrl(`/api/uploads/${file.file_id}/download`)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-green-400"><Download className="w-3 h-3" /></a>
+                  {isAdmin && <button type="button" onClick={() => deleteFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
+                </div>
+              </div>
+            ) : (
+              /* ── LIST VIEW ── */
+              <div key={file.file_id}
+                className={`flex items-center gap-3 px-3 py-2 hover:bg-rmpg-700/20 transition-colors border-b border-rmpg-800/20 ${selectedFiles.has(file.file_id) ? 'bg-brand-900/10' : ''}`}
+              >
+                <button type="button" onClick={() => toggleSelect(file.file_id)} className="flex-shrink-0 text-rmpg-500 hover:text-brand-400">
+                  {selectedFiles.has(file.file_id) ? <CheckSquare className="w-4 h-4 text-brand-400" /> : <Square className="w-4 h-4" />}
+                </button>
                 <span className="text-lg flex-shrink-0">{getFileIcon(file.mime_type)}</span>
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-rmpg-200 truncate block">{file.original_name}</span>
-                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {new Date(file.created_at).toLocaleDateString()}</span>
+                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {new Date(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button type="button" onClick={() => setInfoFile(file)}
@@ -286,6 +461,12 @@ export default function DocumentsPage() {
                     className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-green-400 transition-colors" title="Download">
                     <Download className="w-3 h-3" />
                   </a>
+                  {isAdmin && (
+                    <button type="button" onClick={() => deleteFile(file)}
+                      className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
