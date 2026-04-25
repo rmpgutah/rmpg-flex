@@ -230,8 +230,37 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       }
     }
 
+    // ── Confidence scoring — rate extraction quality per field ──
+    const confidence: Record<string, { score: number; source: string }> = {};
+    const rate = (field: string, value: string | undefined | null, preferredSource: string, fallbackSource?: string) => {
+      if (!value) { confidence[field] = { score: 0, source: 'not found' }; return; }
+      // Higher score = more likely correct
+      if (preferredSource === 'field_sheet') confidence[field] = { score: 95, source: 'Field Sheet (structured)' };
+      else if (preferredSource === 'info_sheet') confidence[field] = { score: 85, source: 'Info Sheet (labeled)' };
+      else if (preferredSource === 'court_docket') confidence[field] = { score: 80, source: 'Court Docket (pattern)' };
+      else if (preferredSource === 'scanner') confidence[field] = { score: 60, source: 'Universal Scanner (fallback)' };
+      else confidence[field] = { score: 70, source: fallbackSource || 'extracted' };
+    };
+
+    rate('defendant', parsed.defendant.first || parsed.defendant.last, fieldSheet && /Party to Serve/i.test(fieldSheet) ? 'field_sheet' : infoSheet && /Recipient/i.test(infoSheet) ? 'info_sheet' : 'court_docket');
+    rate('address', parsed.address, fieldSheet && parsed.address && fieldSheet.includes(parsed.address.split(',')[0]) ? 'field_sheet' : 'scanner');
+    rate('plaintiff', parsed.plaintiff, fieldSheet && /Plaintiff/i.test(fieldSheet) && parsed.plaintiff ? 'field_sheet' : infoSheet && /Plaintiff/i.test(infoSheet) ? 'info_sheet' : 'court_docket');
+    rate('court', parsed.court, fieldSheet && /Court/i.test(fieldSheet) && parsed.court ? 'field_sheet' : 'court_docket');
+    rate('courtCaseNumber', parsed.courtCaseNumber, fieldSheet && /Case/i.test(fieldSheet) ? 'field_sheet' : 'court_docket');
+    rate('attorney', parsed.attorney.name, parsed.attorney.barNumber ? 'court_docket' : parsed.attorney.name ? 'scanner' : undefined);
+    rate('dueDate', parsed.dueDate, fieldSheet && /Due/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+    rate('instructions', parsed.instructions, fieldSheet && /Instructions/i.test(fieldSheet) ? 'field_sheet' : 'scanner');
+    rate('documents', parsed.documents, fieldSheet && /Documents/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+    rate('jobNumber', parsed.jobNumber, fieldSheet && /Job/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+
+    // Overall confidence = average of all non-zero scores
+    const scores = Object.values(confidence).filter(c => c.score > 0).map(c => c.score);
+    const overallConfidence = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
     res.json({
       parsed,
+      confidence,
+      overallConfidence,
       detectedTypes: {
         fieldSheet: !!fieldSheet,
         courtDocket: courtDocketParts.length > 0,

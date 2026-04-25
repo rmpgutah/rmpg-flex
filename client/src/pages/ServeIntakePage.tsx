@@ -83,6 +83,17 @@ type Step = 'upload' | 'review' | 'complete';
 
 // IMPORTANT: FieldRow must be defined OUTSIDE the component to prevent
 // React from recreating it on every render (which unmounts the input and kills focus).
+// Confidence badge — inline indicator showing extraction quality per field
+function ConfidenceBadge({ score, source }: { score: number; source: string }) {
+  if (score <= 0) return null;
+  const color = score >= 80 ? 'text-green-400 bg-green-900/20 border-green-700/40' : score >= 60 ? 'text-amber-400 bg-amber-900/20 border-amber-700/40' : 'text-red-400 bg-red-900/20 border-red-700/40';
+  return (
+    <span className={`ml-1 px-1 py-0 text-[7px] font-bold border ${color}`} title={`${score}% confidence — ${source}`}>
+      {score}%
+    </span>
+  );
+}
+
 function FieldRow({ label, icon: Icon, value, onChange, placeholder, multiline }: {
   label: string; icon: React.ElementType; value: string;
   onChange: (v: string) => void; placeholder?: string; multiline?: boolean;
@@ -157,9 +168,50 @@ export default function ServeIntakePage() {
   const [previewLng, setPreviewLng] = useState('');
   const [geocodeFailed, setGeocodeFailed] = useState(false);
   const [expandedPreview, setExpandedPreview] = useState<number | null>(null);
+  // Confidence scores from parse
+  const [confidence, setConfidence] = useState<Record<string, { score: number; source: string }>>({});
+  const [overallConfidence, setOverallConfidence] = useState(0);
+  // Google Maps autocomplete
+  const addressAutocompleteRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
+  // Initialize Google Maps Places Autocomplete on the address field
+  useEffect(() => {
+    if (step !== 'review' || !addressAutocompleteRef.current) return;
+    const g = (window as any).google;
+    if (!g?.maps?.places) return;
+    const autocomplete = new g.maps.places.Autocomplete(addressAutocompleteRef.current, {
+      types: ['address'],
+      componentRestrictions: { country: 'us' },
+      fields: ['formatted_address', 'geometry', 'address_components'],
+    });
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (place.formatted_address) {
+        setEditAddress(place.formatted_address);
+      }
+      if (place.geometry?.location) {
+        setPreviewLat(String(place.geometry.location.lat()));
+        setPreviewLng(String(place.geometry.location.lng()));
+        setGeocodeFailed(false);
+      }
+      // Parse address components
+      if (place.address_components) {
+        const get = (type: string) => place.address_components.find((c: any) => c.types.includes(type))?.long_name || '';
+        const getShort = (type: string) => place.address_components.find((c: any) => c.types.includes(type))?.short_name || '';
+        setEditAddressParts(prev => ({
+          ...prev,
+          building: get('street_number'),
+          city: get('locality') || get('sublocality'),
+          state: getShort('administrative_area_level_1'),
+          zip: get('postal_code'),
+          suite: prev.suite,
+        }));
+      }
+    });
+  }, [step]);
 
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
     try {
@@ -244,6 +296,9 @@ export default function ServeIntakePage() {
       setEditDocPages(String(p.documentPages || '0'));
       setEditBilingual(!!p.bilingual);
       setEditAttorney({ name: p.attorney?.name || '', firm: p.attorney?.firm || '', barNumber: p.attorney?.barNumber || '', tel: p.attorney?.tel || '', email: p.attorney?.email || '', fax: p.attorney?.fax || '' });
+      // Confidence scores
+      setConfidence((resp as any).confidence || {});
+      setOverallConfidence((resp as any).overallConfidence || 0);
       // Geocode preview from parse response
       if ((resp as any).geocode) {
         setPreviewLat(String((resp as any).geocode.latitude));
@@ -540,6 +595,42 @@ export default function ServeIntakePage() {
             </div>
           )}
 
+          {/* ── Confidence Score Panel ── */}
+          {overallConfidence > 0 && (
+            <div className="panel-beveled p-3 bg-surface-sunken">
+              <div className="flex items-center gap-3 mb-2">
+                <div className={`text-2xl font-bold font-mono tabular-nums ${overallConfidence >= 80 ? 'text-green-400' : overallConfidence >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {overallConfidence}%
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-white uppercase">Extraction Confidence</div>
+                  <div className="text-[9px] text-rmpg-400">
+                    {overallConfidence >= 80 ? 'High — most fields extracted from structured sources' :
+                     overallConfidence >= 60 ? 'Medium — some fields from fallback patterns, verify before submitting' :
+                     'Low — many fields from universal scanner, manual review strongly recommended'}
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div className="flex-1 ml-2">
+                  <div className="h-2 bg-rmpg-800 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${overallConfidence >= 80 ? 'bg-green-500' : overallConfidence >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${overallConfidence}%` }} />
+                  </div>
+                </div>
+              </div>
+              {/* Per-field confidence breakdown */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-1 text-[9px]">
+                {Object.entries(confidence).map(([field, { score, source }]) => (
+                  <div key={field} className="flex items-center gap-1 px-1.5 py-0.5 bg-rmpg-800/50">
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-amber-500' : score > 0 ? 'bg-red-500' : 'bg-rmpg-600'}`} />
+                    <span className="text-rmpg-400 truncate">{field}</span>
+                    <span className={`ml-auto font-bold ${score >= 80 ? 'text-green-400' : score >= 60 ? 'text-amber-400' : score > 0 ? 'text-red-400' : 'text-rmpg-600'}`}>{score}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Row 1: Defendant + Address ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="panel-beveled p-4 space-y-3">
@@ -554,7 +645,16 @@ export default function ServeIntakePage() {
 
             <div className="panel-beveled p-4 space-y-3">
               <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Service Address</h3>
-              <FieldRow label="Full Address" icon={MapPin} value={editAddress} onChange={setEditAddress} placeholder="5245 South College Drive, Murray, UT 84123" />
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase flex items-center gap-1 mb-1">
+                  <MapPin className="w-3 h-3" /> Full Address
+                  {confidence.address && <ConfidenceBadge score={confidence.address.score} source={confidence.address.source} />}
+                </label>
+                <input ref={addressAutocompleteRef} className="input-dark text-xs w-full" value={editAddress}
+                  onChange={e => setEditAddress(e.target.value)}
+                  placeholder="Start typing address — Google Maps will suggest matches..." />
+                <p className="text-[8px] text-rmpg-600 mt-0.5">Google Maps autocomplete active — type to search. Selecting a result auto-fills coordinates.</p>
+              </div>
               <div className="grid grid-cols-4 gap-2">
                 <FieldRow label="Building #" icon={Building2} value={editAddressParts.building} onChange={v => setEditAddressParts(p => ({ ...p, building: v }))} placeholder="5245" />
                 <FieldRow label="Suite/Apt" icon={Building2} value={editAddressParts.suite} onChange={v => setEditAddressParts(p => ({ ...p, suite: v }))} placeholder="Apt 4B" />
