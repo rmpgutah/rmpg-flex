@@ -204,36 +204,38 @@ describe('buildNotesNarrative', () => {
     timestamp: '2026-04-19 07:30:12',
   };
 
-  it('produces 8 entries in the documented order', () => {
+  // Note: buildNotesNarrative was rewritten to a 5-section emoji-headed format.
+  // Tests below assert the current shape (alert / schedule / case / summary / reference).
+  it('produces 5 emoji-headed sections in order', () => {
     const notes = buildNotesNarrative(input);
-    expect(notes).toHaveLength(8);
-    expect(notes[0].text).toMatch(/^CASE --/);
-    expect(notes[1].text).toMatch(/^COURT --/);
-    expect(notes[2].text).toMatch(/^ATTORNEY --/);
-    expect(notes[3].text).toMatch(/^SERVICE RULES --/);
-    expect(notes[4].text).toMatch(/^SCHEDULE --/);
-    expect(notes[5].text).toMatch(/^RECOMMENDED SCHEDULE --/);
-    expect(notes[6].text).toMatch(/^CLIENT HISTORY --/);
-    expect(notes[7].text).toMatch(/^INSTRUCTIONS \(VERBATIM\) --/);
+    expect(notes).toHaveLength(5);
+    expect(notes[0].text).toMatch(/^🚨 OFFICER ALERT ESSENTIALS/);
+    expect(notes[1].text).toMatch(/^📋 RECOMMENDED DILIGENCE SCHEDULE/);
+    expect(notes[2].text).toMatch(/^📂 CASE DETAILS/);
+    expect(notes[3].text).toMatch(/^☕ CASE SUMMARY/);
+    expect(notes[4].text).toMatch(/^🕐 CLIENT HISTORY & INSTRUCTIONS/);
   });
 
-  it('CASE line contains pipe-delimited plaintiff/client/case#/documents/signed/deadline', () => {
+  it('CASE DETAILS section contains plaintiff, case #, documents, signed date, deadline', () => {
     const notes = buildNotesNarrative(input);
-    const caseText = notes[0].text;
+    const caseText = notes[2].text;
     expect(caseText).toContain('PLAINTIFF: CAPITAL ONE');
-    expect(caseText).toContain('CASE #633570');
-    expect(caseText).toContain('2 DOCS');
-    expect(caseText).toContain('11 PAGES');
-    expect(caseText).toContain('BILINGUAL');
+    expect(caseText).toContain('CASE #: 633570');
+    expect(caseText).toContain('SUMMONS + COMPLAINT'); // from docList
+    expect(caseText).toContain('PAGES: 11');
+    expect(caseText).toContain('(BILINGUAL)');
     expect(caseText).toContain('SIGNED/FILED: MARCH 25, 2026');
     expect(caseText).toContain('RESPONSE DEADLINE: 21 DAYS AFTER SERVICE');
   });
 
-  it('ATTORNEY line uses Firm parenthetical + BAR#', () => {
+  it('ATTORNEY block in CASE DETAILS includes name, firm, bar #, address, phone, email', () => {
     const notes = buildNotesNarrative(input);
-    expect(notes[2].text).toContain('HEATHER VALERGA (GUGLIELMO & ASSOCIATES) BAR#14431');
-    expect(notes[2].text).toContain('PO BOX 41688, TUCSON, AZ 85717');
-    expect(notes[2].text).toContain('TEL: (877)325-5700');
-    expect(notes[2].text).toContain('EMAIL: UTAH@GUGLIELMOLAW.COM');
+    const caseText = notes[2].text;
+    expect(caseText).toContain('ATTORNEY: HEATHER VALERGA');
+    expect(caseText).toContain('FIRM: GUGLIELMO & ASSOCIATES');
+    expect(caseText).toContain('BAR #: 14431');
+    expect(caseText).toContain('ADDRESS: PO BOX 41688, TUCSON, AZ 85717');
+    expect(caseText).toContain('PHONE: (877)325-5700');
+    expect(caseText).toContain('EMAIL: Utah@guglielmolaw.com');
   });
 });
