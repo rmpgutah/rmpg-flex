@@ -149,6 +149,8 @@ export function mapDbCall(row: any): CallForService {
     updated_at: row.updated_at || '',
     // Visit history (PSO calls — attached by GET /calls/:id and redispatch)
     visit_history: row.visit_history || undefined,
+    // Pinned-to-top flag (sticky at top of dispatcher's call list)
+    pinned: row.pinned ? 1 : 0,
   };
 }
 

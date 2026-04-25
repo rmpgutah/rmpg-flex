@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 router.use(authenticateToken);
@@ -129,7 +130,7 @@ router.post('/folders', requireRole('admin', 'manager', 'supervisor', 'dispatche
 router.put('/folders/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     const { name } = req.body;
     if (!name) { res.status(400).json({ error: 'New name required' }); return; }
 
@@ -157,7 +158,7 @@ router.put('/folders/:id', requireRole('admin', 'manager', 'supervisor'), (req: 
 router.delete('/folders/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
 
     // Unlink files from this folder (don't delete the actual files)
     db.prepare('UPDATE attachments SET folder_id = NULL WHERE folder_id = ?').run(id);
@@ -180,7 +181,7 @@ router.delete('/folders/:id', requireRole('admin', 'manager'), (req: Request, re
 router.post('/folders/:id/move-file', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const folderId = parseInt(req.params.id, 10);
+    const folderId = parseInt(paramStr(req.params.id), 10);
     const { file_id } = req.body;
     if (!file_id) { res.status(400).json({ error: 'file_id required' }); return; }
 

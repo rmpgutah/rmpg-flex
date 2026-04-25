@@ -903,6 +903,15 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   address = address.replace(/\s{3,}.*$/, '').trim();
   const addressParts = parseAddressParts(address);
 
+  // Field sheet structured labels: Case, Court, Plaintiff, Defendant, Documents
+  // These are in a table-like layout that pdftotext renders with spacing.
+  // Hoisted above plaintiff/court extraction (which references fsPlaintiff/fsCourt).
+  const fsCase = fieldSheet.match(/Case\s{2,}([^\s](?:[^\n]*?))\s{2,}Plaintiff/i)?.[1]?.trim() || '';
+  const fsPlaintiff = fieldSheet.match(/Plaintiff\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
+  const fsCourt = fieldSheet.match(/Court\s{2,}([^\s](?:[^\n]*?))\s{2,}Defendant/i)?.[1]?.trim() || '';
+  const fsDefendant = fieldSheet.match(/Defendant\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
+  void fsDefendant; // reserved for future name-conflict checks
+
   // ── Plaintiff extraction (multi-source) ──
   // Priority: field sheet structured → info sheet → court docket caption
   let plaintiff = fsPlaintiff || info.plaintiff;
@@ -957,7 +966,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     || (courtDocket.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,?\s*(?:UT|Utah|IL|CA|TX|NY|FL|AZ|CO|NV|WA|OR)\s*,?\s*\d{5})/i)?.[1] || '');
   const clerkMatch = courtDocket.match(/(?:call|contact)\s+(?:the\s+)?clerk[\s\S]*?(?:at\s*)?\(?(\d{3})\)?\s*[-.\s]?(\d{3})[-.\s]?(\d{4})/i)
     || courtDocket.match(/Clerk[:\s]*\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/i);
-  const clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
+  let clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
 
   // ── Documents list (field sheet → info sheet → court docket) ──
   let documents = (fieldSheet.match(/Documents[:\s]+([^\n]+)/i)?.[1]
@@ -1012,15 +1021,10 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     || (courtDocket.match(/\*S\d+(\d{6})\*/)?.[1] || '')
     || (courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1] || '');
 
-  // Field sheet structured labels: Case, Court, Plaintiff, Defendant, Documents
-  // These are in a table-like layout that pdftotext renders with spacing
-  const fsCase = fieldSheet.match(/Case\s{2,}([^\s](?:[^\n]*?))\s{2,}Plaintiff/i)?.[1]?.trim() || '';
-  const fsPlaintiff = fieldSheet.match(/Plaintiff\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
-  const fsCourt = fieldSheet.match(/Court\s{2,}([^\s](?:[^\n]*?))\s{2,}Defendant/i)?.[1]?.trim() || '';
-  const fsDefendant = fieldSheet.match(/Defendant\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
+  // (Field sheet structured labels hoisted earlier — see fsCase/fsPlaintiff/fsCourt above.)
 
   // Due date — field sheet, info sheet, or any "Due:" mention
-  const dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+  let dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || infoSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || infoSheet.match(/Deadline[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || '');
@@ -1054,7 +1058,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const serviceRulesSummary = summarizeRules(instructions);
   const jobActivity = parseJobActivity(infoSheet);
   // Court case number — try multiple patterns across all docs
-  const courtCaseNumber = (
+  let courtCaseNumber = (
     fsCase  // Field sheet "Case  26CU014094N" — most reliable for ICU format
     || courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1]
     || courtDocket.match(/(?:Civil\s+Action|Case)\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?[:\-]?\d+[-A-Z0-9]*)/i)?.[1]

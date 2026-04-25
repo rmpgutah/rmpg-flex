@@ -247,7 +247,7 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     rate('plaintiff', parsed.plaintiff, fieldSheet && /Plaintiff/i.test(fieldSheet) && parsed.plaintiff ? 'field_sheet' : infoSheet && /Plaintiff/i.test(infoSheet) ? 'info_sheet' : 'court_docket');
     rate('court', parsed.court, fieldSheet && /Court/i.test(fieldSheet) && parsed.court ? 'field_sheet' : 'court_docket');
     rate('courtCaseNumber', parsed.courtCaseNumber, fieldSheet && /Case/i.test(fieldSheet) ? 'field_sheet' : 'court_docket');
-    rate('attorney', parsed.attorney.name, parsed.attorney.barNumber ? 'court_docket' : parsed.attorney.name ? 'scanner' : undefined);
+    rate('attorney', parsed.attorney.name, parsed.attorney.barNumber ? 'court_docket' : parsed.attorney.name ? 'scanner' : '');
     rate('dueDate', parsed.dueDate, fieldSheet && /Due/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
     rate('instructions', parsed.instructions, fieldSheet && /Instructions/i.test(fieldSheet) ? 'field_sheet' : 'scanner');
     rate('documents', parsed.documents, fieldSheet && /Documents/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
