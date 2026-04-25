@@ -17,9 +17,11 @@ import { geocodeAddress } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import {
   parseAllDocuments,
+  parseAddressParts,
   buildNotesNarrative,
   computeDiligenceSchedule,
   classifyEntityType,
+  parseAddressParts,
   type ParseOutput,
 } from '../utils/serveIntakeHelpers';
 import { execFile } from 'child_process';
@@ -44,6 +46,19 @@ function getLogger(req: Request): { warn: (...a: any[]) => void; error: (...a: a
   return (req as any).log || { warn: console.warn.bind(console), error: console.error.bind(console), info: console.info.bind(console) };
 }
 
+function utcOffsetHoursForZone(date: Date, timeZone: string): number {
+  const part = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'shortOffset',
+  }).formatToParts(date).find(p => p.type === 'timeZoneName')?.value ?? '';
+  const m = part.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  const hours = parseInt(m[2], 10);
+  const minutes = parseInt(m[3] || '0', 10);
+  return sign * (hours + minutes / 60);
+}
+
 // ── PDF binary → text (pdftotext) ───────────────────────────
 router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   const chunks: Buffer[] = [];
@@ -55,20 +70,28 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
       const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
       const tmpPdf = join(tmpDir, 'input.pdf');
       writeFileSync(tmpPdf, body);
+      // Try both pdftotext modes and pick the one with more useful content
+      let layoutText = '';
+      let rawText = '';
       try {
-        const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
-        res.json({ text: stdout, length: stdout.length });
-      } catch {
-        try {
-          const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
-          res.json({ text: stdout, length: stdout.length });
-        } catch {
-          res.json({ text: '', length: 0 });
-        }
-      } finally {
-        try { unlinkSync(tmpPdf); } catch {}
-        try { unlinkSync(tmpDir); } catch {}
-      }
+        const r1 = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
+        layoutText = r1.stdout || '';
+      } catch { /* layout mode failed */ }
+      try {
+        const r2 = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
+        rawText = r2.stdout || '';
+      } catch { /* raw mode failed */ }
+
+      // Pick the better result:
+      // - Layout mode preserves column structure (good for ICU field sheets)
+      // - Raw mode avoids column bleed (good for court dockets)
+      // - Use layout if it has structured labels, otherwise use the longer one
+      const hasStructuredLabels = /Party to Serve|Instructions|Documents|Plaintiff|Defendant/i.test(layoutText);
+      const text = hasStructuredLabels ? layoutText : (layoutText.length >= rawText.length ? layoutText : rawText);
+      // Cleanup temp files
+      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+      try { require('fs').rmdirSync(tmpDir); } catch { /* ignore */ }
+      res.json({ text, length: text.length });
     } catch {
       res.status(500).json({ error: 'Text extraction failed', text: '' });
     }
@@ -132,6 +155,127 @@ function nextCaseNumber(db: ReturnType<typeof getDb>): string {
   return `CV-${year}-${String(seq).padStart(5, '0')}`;
 }
 
+// ── Parse-only preview (no record creation) ─────────────────
+// Returns extracted data for review/editing before committing to DB.
+// Client calls this first, lets user correct mistakes, then POSTs /intake with overrides.
+router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const { documents } = req.body;
+    if (!documents || !Array.isArray(documents) || documents.length === 0) {
+      res.status(400).json({ error: 'documents array required' });
+      return;
+    }
+
+    // Multiple court dockets are common (Summons + Complaint + Exhibits).
+    // Concatenate all court_docket texts so the parser sees the full packet.
+    let fieldSheet = '';
+    const courtDocketParts: string[] = [];
+    let infoSheet = '';
+    for (const d of documents) {
+      const txt = (d?.text || '') as string;
+      if (!txt) continue;
+      let kind = d.type as string | undefined;
+      if (!kind || kind === 'unknown') kind = detectDocType(txt);
+      if (kind === 'court_filing') kind = 'court_docket';
+      if (kind === 'info_page') kind = 'info_sheet';
+      if (kind === 'field_sheet') { if (!fieldSheet) fieldSheet = txt; }
+      else if (kind === 'court_docket') { courtDocketParts.push(txt); }
+      else if (kind === 'info_sheet') { if (!infoSheet) infoSheet = txt; }
+      else {
+        if (!fieldSheet) fieldSheet = txt;
+        else if (courtDocketParts.length === 0) courtDocketParts.push(txt);
+        else if (!infoSheet) infoSheet = txt;
+        else courtDocketParts.push(txt); // additional unknown docs → treat as court material
+      }
+    }
+    const courtDocket = courtDocketParts.join('\n\n--- DOCUMENT SEPARATOR ---\n\n');
+
+    const parsed = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
+
+    // Check for duplicate defendant
+    const db = getDb();
+    let duplicateWarning: string | null = null;
+    if (parsed.defendant.last) {
+      const existing = db.prepare(
+        "SELECT id, first_name, last_name FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1"
+      ).get(parsed.defendant.first, parsed.defendant.last) as any;
+      if (existing) {
+        duplicateWarning = `Person "${existing.first_name} ${existing.last_name}" already exists (ID: ${existing.id}). Record will be updated, not duplicated.`;
+      }
+    }
+
+    // Check for active serve on same address
+    let activeServeWarning: string | null = null;
+    if (parsed.address) {
+      const activeSQ = db.prepare(
+        "SELECT id, recipient_name FROM serve_queue WHERE recipient_address = ? AND status IN ('pending', 'in_progress') LIMIT 1"
+      ).get(parsed.address) as any;
+      if (activeSQ) {
+        activeServeWarning = `Active serve already exists at this address for "${activeSQ.recipient_name}" (Queue #${activeSQ.id}).`;
+      }
+    }
+
+    // Geocode during parse so the review step can show/fix coordinates
+    let geocodeResult: { latitude: number; longitude: number } | null = null;
+    let geocodeWarning: string | null = null;
+    if (parsed.address) {
+      try {
+        const geo = await geocodeAddress(parsed.address);
+        if (geo) {
+          geocodeResult = { latitude: geo.latitude, longitude: geo.longitude };
+        } else {
+          geocodeWarning = `Geocoding returned no result for "${parsed.address}" — please verify the address or enter coordinates manually.`;
+        }
+      } catch {
+        geocodeWarning = `Geocoding failed for "${parsed.address}" — enter coordinates manually if map placement is needed.`;
+      }
+    }
+
+    // ── Confidence scoring — rate extraction quality per field ──
+    const confidence: Record<string, { score: number; source: string }> = {};
+    const rate = (field: string, value: string | undefined | null, preferredSource: string, fallbackSource?: string) => {
+      if (!value) { confidence[field] = { score: 0, source: 'not found' }; return; }
+      // Higher score = more likely correct
+      if (preferredSource === 'field_sheet') confidence[field] = { score: 95, source: 'Field Sheet (structured)' };
+      else if (preferredSource === 'info_sheet') confidence[field] = { score: 85, source: 'Info Sheet (labeled)' };
+      else if (preferredSource === 'court_docket') confidence[field] = { score: 80, source: 'Court Docket (pattern)' };
+      else if (preferredSource === 'scanner') confidence[field] = { score: 60, source: 'Universal Scanner (fallback)' };
+      else confidence[field] = { score: 70, source: fallbackSource || 'extracted' };
+    };
+
+    rate('defendant', parsed.defendant.first || parsed.defendant.last, fieldSheet && /Party to Serve/i.test(fieldSheet) ? 'field_sheet' : infoSheet && /Recipient/i.test(infoSheet) ? 'info_sheet' : 'court_docket');
+    rate('address', parsed.address, fieldSheet && parsed.address && fieldSheet.includes(parsed.address.split(',')[0]) ? 'field_sheet' : 'scanner');
+    rate('plaintiff', parsed.plaintiff, fieldSheet && /Plaintiff/i.test(fieldSheet) && parsed.plaintiff ? 'field_sheet' : infoSheet && /Plaintiff/i.test(infoSheet) ? 'info_sheet' : 'court_docket');
+    rate('court', parsed.court, fieldSheet && /Court/i.test(fieldSheet) && parsed.court ? 'field_sheet' : 'court_docket');
+    rate('courtCaseNumber', parsed.courtCaseNumber, fieldSheet && /Case/i.test(fieldSheet) ? 'field_sheet' : 'court_docket');
+    rate('attorney', parsed.attorney.name, parsed.attorney.barNumber ? 'court_docket' : parsed.attorney.name ? 'scanner' : undefined);
+    rate('dueDate', parsed.dueDate, fieldSheet && /Due/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+    rate('instructions', parsed.instructions, fieldSheet && /Instructions/i.test(fieldSheet) ? 'field_sheet' : 'scanner');
+    rate('documents', parsed.documents, fieldSheet && /Documents/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+    rate('jobNumber', parsed.jobNumber, fieldSheet && /Job/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+
+    // Overall confidence = average of all non-zero scores
+    const scores = Object.values(confidence).filter(c => c.score > 0).map(c => c.score);
+    const overallConfidence = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+    res.json({
+      parsed,
+      confidence,
+      overallConfidence,
+      detectedTypes: {
+        fieldSheet: !!fieldSheet,
+        courtDocket: courtDocketParts.length > 0,
+        courtDocketCount: courtDocketParts.length,
+        infoSheet: !!infoSheet,
+      },
+      geocode: geocodeResult,
+      warnings: [duplicateWarning, activeServeWarning, geocodeWarning].filter(Boolean),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Parse failed: ' + (err?.message || 'Unknown error') });
+  }
+});
+
 // ── Main intake ──────────────────────────────────────────────
 router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
   const log = getLogger(req);
@@ -141,45 +285,93 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const userId = req.user!.userId as number;
     const now = localNow();
 
-    const { documents } = req.body;
+    const { documents, overrides } = req.body;
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       res.status(400).json({ error: 'documents array required with at least one document' });
       return;
     }
+    // overrides: optional user corrections from the review step
+    // { defendant?: {first,middle,last,dob}, address?, plaintiff?, dueDate?, instructions? }
 
-    // Bin each document by type (explicit > auto-detect)
+    // Bin documents by type — multiple court dockets are concatenated
     let fieldSheet = '';
-    let courtDocket = '';
+    const courtDocketParts: string[] = [];
     let infoSheet = '';
     for (const d of documents) {
       const txt = (d?.text || '') as string;
       if (!txt) continue;
       let kind = d.type as string | undefined;
       if (!kind || kind === 'unknown') kind = detectDocType(txt);
-      // Accept legacy "court_filing" / "info_page" aliases from older clients
       if (kind === 'court_filing') kind = 'court_docket';
       if (kind === 'info_page') kind = 'info_sheet';
-      if (kind === 'field_sheet' && !fieldSheet) fieldSheet = txt;
-      else if (kind === 'court_docket' && !courtDocket) courtDocket = txt;
-      else if (kind === 'info_sheet' && !infoSheet) infoSheet = txt;
+      if (kind === 'field_sheet') { if (!fieldSheet) fieldSheet = txt; }
+      else if (kind === 'court_docket') { courtDocketParts.push(txt); }
+      else if (kind === 'info_sheet') { if (!infoSheet) infoSheet = txt; }
       else {
-        // Unknown — fall back to whatever slot is empty
         if (!fieldSheet) fieldSheet = txt;
-        else if (!courtDocket) courtDocket = txt;
+        else if (courtDocketParts.length === 0) courtDocketParts.push(txt);
         else if (!infoSheet) infoSheet = txt;
+        else courtDocketParts.push(txt);
       }
     }
+    const courtDocket = courtDocketParts.join('\n\n--- DOCUMENT SEPARATOR ---\n\n');
 
     const parsed: ParseOutput = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
+
+    // Apply ALL user overrides from review step
+    if (overrides) {
+      if (overrides.defendant) {
+        if (overrides.defendant.first) parsed.defendant.first = overrides.defendant.first;
+        if (overrides.defendant.middle !== undefined) parsed.defendant.middle = overrides.defendant.middle;
+        if (overrides.defendant.last) parsed.defendant.last = overrides.defendant.last;
+        if (overrides.defendant.dob) parsed.defendant.dob = overrides.defendant.dob;
+      }
+      if (overrides.address) {
+        (parsed as any).address = overrides.address;
+        (parsed as any).addressParts = parseAddressParts(overrides.address);
+      }
+      if (overrides.plaintiff !== undefined) parsed.plaintiff = overrides.plaintiff;
+      if (overrides.dueDate !== undefined) (parsed as any).dueDate = overrides.dueDate;
+      if (overrides.instructions !== undefined) parsed.instructions = overrides.instructions;
+      if (overrides.court !== undefined) parsed.court = overrides.court;
+      if (overrides.courtAddress !== undefined) parsed.courtAddress = overrides.courtAddress;
+      if (overrides.county !== undefined) (parsed as any).county = overrides.county;
+      if (overrides.courtCaseNumber !== undefined) parsed.courtCaseNumber = overrides.courtCaseNumber;
+      if (overrides.jobNumber !== undefined) parsed.jobNumber = overrides.jobNumber;
+      if (overrides.clientJobNumber !== undefined) parsed.clientJobNumber = overrides.clientJobNumber;
+      if (overrides.documents !== undefined) (parsed as any).documents = overrides.documents;
+      if (overrides.serviceType !== undefined) (parsed as any).serviceType = overrides.serviceType;
+      if (overrides.serviceWindows !== undefined) (parsed as any).serviceWindows = overrides.serviceWindows;
+      if (overrides.signedDate !== undefined) parsed.signedDate = overrides.signedDate;
+      if (overrides.responseDeadlineDays !== undefined) parsed.responseDeadlineDays = parseInt(overrides.responseDeadlineDays, 10) || 21;
+      if (overrides.clerkPhone !== undefined) parsed.clerkPhone = overrides.clerkPhone;
+      if (overrides.documentPages !== undefined) parsed.documentPages = parseInt(overrides.documentPages, 10) || 0;
+      if (overrides.bilingual !== undefined) parsed.bilingual = !!overrides.bilingual;
+      if (overrides.attorney) {
+        if (overrides.attorney.name !== undefined) parsed.attorney.name = overrides.attorney.name;
+        if (overrides.attorney.firm !== undefined) parsed.attorney.firm = overrides.attorney.firm;
+        if (overrides.attorney.barNumber !== undefined) parsed.attorney.barNumber = overrides.attorney.barNumber;
+        if (overrides.attorney.tel !== undefined) parsed.attorney.tel = overrides.attorney.tel;
+        if (overrides.attorney.email !== undefined) parsed.attorney.email = overrides.attorney.email;
+        if (overrides.attorney.fax !== undefined) parsed.attorney.fax = overrides.attorney.fax;
+      }
+    }
 
     if (!parsed.defendant.last) {
       res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
       return;
     }
 
-    // ── Vendor lookup via fingerprint (clients table) ────────
+    // ── Client lookup (user-selected > vendor fingerprint > name match > fallback)
     let vendorClient: any = null;
-    if (parsed.vendorFingerprint) {
+    // If user explicitly selected a client in the review step, use that
+    if (overrides?.client_id) {
+      vendorClient = db.prepare(
+        "SELECT id, name, billing_code, requestor_email, caller_phone, address FROM clients WHERE id = ? LIMIT 1"
+      ).get(overrides.client_id);
+    }
+    // Otherwise auto-detect from document fingerprint
+    if (!vendorClient && parsed.vendorFingerprint) {
       vendorClient = db.prepare(
         "SELECT id, name, billing_code, requestor_email, caller_phone, address FROM clients WHERE vendor_fingerprint = ? LIMIT 1"
       ).get(parsed.vendorFingerprint);
@@ -190,7 +382,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       ).get('%ICU Investigations%');
     }
     if (!vendorClient) {
-      warnings.push(`Vendor fingerprint "${parsed.vendorFingerprint}" not found in clients; using client_id=1 fallback`);
+      warnings.push(`No client matched — using fallback (client_id=1)`);
     }
     const clientId: number = vendorClient?.id ?? 1;
     const callerName: string = vendorClient?.name || 'Process Service Client';
@@ -249,11 +441,14 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       });
     }
 
-    // ── Property (lastname-residence name) ───────────────────
+    // ── Property (named by street address, not defendant name) ──
     let propertyId: number | null = null;
     if (parsed.address) {
       const ap = parsed.addressParts;
-      const propName = `${parsed.defendant.last} Residence — ${ap.building || (parsed.address.split(',')[0] || '').trim()}`;
+      // Use the street address as property name (e.g. "5245 SOUTH COLLEGE DRIVE")
+      // NOT "Lastname Residence — Building#" which is meaningless for dispatch
+      const streetPart = (parsed.address.split(',')[0] || '').trim().toUpperCase();
+      const propName = streetPart || `${ap.building} ${ap.street}`.trim() || parsed.address;
       const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(parsed.address) as any;
       if (existingProp) {
         propertyId = existingProp.id;
@@ -280,15 +475,16 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       }
     }
 
-    // ── Geocode + beat lookup ───────────────────────────────
-    let latitude: number | null = null;
-    let longitude: number | null = null;
-    if (parsed.address) {
+    // ── Geocode + beat lookup (user override takes priority) ──
+    let latitude: number | null = overrides?.latitude != null ? parseFloat(overrides.latitude) || null : null;
+    let longitude: number | null = overrides?.longitude != null ? parseFloat(overrides.longitude) || null : null;
+    // Only geocode if user didn't manually provide coordinates
+    if (!latitude && !longitude && parsed.address) {
       try {
         const geo = await geocodeAddress(parsed.address);
         if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
         else {
-          warnings.push('Geocoding returned no result');
+          warnings.push('Geocoding returned no result — map placement may be inaccurate');
           log.warn({ address: parsed.address }, 'geocodeAddress returned null');
         }
       } catch (err) {
@@ -383,7 +579,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       const m = parsed.dueDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
       if (m) dueDateObj = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10), 23, 59, 59);
     }
-    const schedule = dueDateObj ? computeDiligenceSchedule(dueDateObj, new Date()) : [];
+    const utahOffsetHours = utcOffsetHoursForZone(new Date(), 'America/Denver');
+    const schedule = dueDateObj ? computeDiligenceSchedule(dueDateObj, new Date(), utahOffsetHours) : [];
     if (parsed.dueDate && schedule.length === 0) warnings.push('Diligence schedule empty (due date may be in the past)');
 
     const daysRemaining = dueDateObj ? Math.max(0, Math.ceil((dueDateObj.getTime() - Date.now()) / 86_400_000)) : 0;
@@ -447,21 +644,37 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       text: n.text,
       timestamp: now,
     }));
+    // Append additional dispatcher notes if provided
+    if (overrides?.additionalNotes) {
+      notesWrapped.push({
+        id: String(tsBase + notesWrapped.length),
+        author: 'Dispatcher',
+        text: `DISPATCHER NOTE -- ${overrides.additionalNotes}`,
+        timestamp: now,
+      });
+    }
     const notesJson = JSON.stringify(notesWrapped);
 
     // ── CFS call ─────────────────────────────────────────────
     const callNumber = nextCallNumber(db);
     const fullName = `${parsed.defendant.first}${parsed.defendant.middle ? ' ' + parsed.defendant.middle : ''} ${parsed.defendant.last}`.trim();
-    const subjectDesc = `${fullName}${parsed.defendant.dob ? ', DOB ' + parsed.defendant.dob : ''}`;
+    const subjectDesc = [
+      fullName,
+      parsed.defendant.dob ? `DOB ${parsed.defendant.dob}` : null,
+      parsed.address ? `AT ${parsed.address}` : null,
+    ].filter(Boolean).join(', ');
+    // ── Structured description (consistent format regardless of source docs) ──
     const descLines: string[] = [];
     descLines.push(`SERVE ${parsed.primaryDoc || 'DOCUMENTS'} TO ${fullName.toUpperCase()}`);
-    if (parsed.address) descLines.push(`AT ${parsed.address.toUpperCase()}`);
-    if (parsed.dueDate) descLines.push(`DUE: ${parsed.dueDate}`);
+    descLines.push(`AT ${(parsed.address || 'ADDRESS UNKNOWN').toUpperCase()}`);
+    descLines.push(`CASE: ${parsed.courtCaseNumber || parsed.clientJobNumber || 'N/A'} | PLAINTIFF: ${(parsed.plaintiff || 'N/A').toUpperCase()}`);
+    descLines.push(`DUE: ${parsed.dueDate || 'NO DEADLINE'} | TYPE: ${parsed.serviceType || 'PROCESS SERVICE'}`);
     if (parsed.instructions) {
-      const trimmed = parsed.instructions.length > 400 ? parsed.instructions.slice(0, 400) + '...' : parsed.instructions;
+      const trimmed = parsed.instructions.length > 300 ? parsed.instructions.slice(0, 300) + '...' : parsed.instructions;
       descLines.push(`INSTRUCTIONS: ${trimmed}`);
     }
-    if (parsed.serviceWindows) descLines.push(`SERVICE WINDOWS: ${parsed.serviceWindows}`);
+    if (parsed.serviceWindows) descLines.push(`WINDOWS: ${parsed.serviceWindows}`);
+    if (parsed.attorney.name) descLines.push(`ATTORNEY: ${parsed.attorney.name.toUpperCase()}${parsed.attorney.tel ? ' | ' + parsed.attorney.tel : ''}`);
     const description = descLines.join('\n');
 
     const tagSet: string[] = ['civil_process', 'process_service'];
@@ -512,7 +725,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         ?, ?
       )
     `).run(
-      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request', 'P4', 4, 'pending',
+      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request',
+      overrides?.priority || 'P4', ({'P1':1,'P2':2,'P3':3,'P4':4} as any)[overrides?.priority || 'P4'] || 4, 'pending',
       callerName, callerPhone || null, 'client', callerAddress || null,
       parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || null, null,
       propertyId, latitude, longitude,
@@ -610,6 +824,22 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     }));
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 
+    // ── Auto-create document folder: Year > Month > "JobNumber - DefendantLast" ──
+    let documentFolderId: number | null = null;
+    try {
+      const { ensureIntakeFolderPath } = await import('./documentFolders');
+      documentFolderId = ensureIntakeFolderPath(db, userId, parsed.jobNumber, parsed.defendant.last, now);
+      // Link any files already attached to this call into the folder
+      if (documentFolderId) {
+        db.prepare('UPDATE attachments SET folder_id = ? WHERE entity_type = ? AND entity_id = ? AND folder_id IS NULL')
+          .run(documentFolderId, 'call', callId);
+        db.prepare('UPDATE attachments SET folder_id = ? WHERE entity_type = ? AND entity_id = ? AND folder_id IS NULL')
+          .run(documentFolderId, 'case', caseId);
+      }
+    } catch (err) {
+      log.warn({ err }, 'document folder creation failed (non-fatal)');
+    }
+
     res.json({
       success: true,
       call_id: callId,
@@ -622,6 +852,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       property_id: propertyId,
       serve_queue_id: serveQueueId,
       serve_attempt_ids: attemptIds,
+      document_folder_id: documentFolderId,
       client_id: clientId,
       latitude, longitude,
       sector_code: sectorCode || null,

@@ -2483,6 +2483,26 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_to_created ON trespass_orders(created_at)`);
   } catch { /* table already exists */ }
 
+  // ── PSO QR Tokens (mobile quick-login for field PSOs) ──
+  try {
+    db.prepare(`CREATE TABLE IF NOT EXISTS pso_qr_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      scans_used INTEGER NOT NULL DEFAULT 0,
+      max_scans INTEGER NOT NULL DEFAULT 5,
+      admin_override INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      expires_at TEXT,
+      last_scanned_at TEXT,
+      last_scanned_by INTEGER,
+      revoked_at TEXT
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pso_qr_token ON pso_qr_tokens(token)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pso_qr_call ON pso_qr_tokens(call_id)`).run();
+  } catch { /* table already exists */ }
+
   // ── FIX CORRUPTED DATA — undo HTML entity encoding of quotes/apostrophes ──
   // The old sanitize middleware was encoding ' → &#x27; and " → &quot; in stored data
   const corruptionTables = ['persons', 'incidents', 'warrants', 'calls_for_service', 'bolos', 'vehicles_records', 'properties', 'clients'];
@@ -3410,6 +3430,60 @@ function migrateSchema(): void {
     db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror').run();
     db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
   } catch { /* ignore */ }
+
+  // ── Businesses table ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS businesses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        dba_name TEXT,
+        business_type TEXT,
+        ein TEXT,
+        license_number TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT,
+        zip TEXT,
+        phone TEXT,
+        email TEXT,
+        website TEXT,
+        owner_name TEXT,
+        owner_phone TEXT,
+        contact_name TEXT,
+        contact_phone TEXT,
+        contact_email TEXT,
+        industry TEXT,
+        employee_count TEXT,
+        annual_revenue TEXT,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        flags TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )
+    `).run();
+  } catch { /* already exists */ }
+
+  // ── Document Folders (desktop-style file browser hierarchy) ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS document_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        parent_id INTEGER REFERENCES document_folders(id) ON DELETE CASCADE,
+        folder_path TEXT NOT NULL,
+        entity_type TEXT,
+        entity_id INTEGER,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        UNIQUE(folder_path)
+      )
+    `).run();
+  } catch { /* already exists */ }
+  addCol('attachments', 'folder_id', 'INTEGER');
 
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');  // legacy
@@ -5388,8 +5462,15 @@ function migrateSchema(): void {
     s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
   }
 
-  // Enable ALL warrant scraper sources — circuit breaker auto-disables sources that fail 5 times
-  db.prepare("UPDATE warrant_scraper_config SET enabled = 1 WHERE enabled = 0 AND source_type != 'search_form'").run();
+  // Audit 2026-04-24: REMOVED the blind bulk re-enable of every disabled
+  // source. That UPDATE was undoing per-source auto-disable decisions made
+  // by the HTTP 404 handler in multiStateWarrantScraper.ts. Sources whose
+  // pages had been permanently removed were auto-disabled, re-enabled on
+  // every boot, scraped, 404'd, auto-disabled, re-enabled ad infinitum.
+  // Result: ~700+ failing runs per 24h, wasted bandwidth, polluted
+  // warrant_scraper_runs table, noise in logs. Let per-source auto-disable
+  // decisions stick. Users can re-enable a source manually via the admin
+  // scrapers tab if a page comes back online.
   // ── Radio transcripts — audio recording columns ──
   addCol("radio_transcripts", "audio_file", "TEXT");
   addCol("radio_transcripts", "file_size", "INTEGER");

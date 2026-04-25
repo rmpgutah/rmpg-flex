@@ -1905,37 +1905,6 @@ function section14(ctx: GuideContext): void {
   );
 }
 
-function section15(ctx: GuideContext): void {
-  title(ctx, '15. Map V2 (OpenLayers, Beta)');
-
-  paragraph(ctx,
-    'Map V2 is a parallel map surface at /map-v2 built on OpenLayers and the offline CartoDB raster tile cache. It runs read-only alongside the production Google Maps page at /map and exists so the team can iterate on a non-Google tile stack without risking the live dispatch map. Production dispatch continues to use /map — do NOT direct officers to V2 for live operations yet.',
-  );
-
-  drawMapV2ArchDiagram(ctx);
-
-  h2(ctx, 'What V2 Shows Today');
-  bullet(ctx, 'Base map: CartoDB dark_matter raster tiles (same ones the offline cache already holds).');
-  bullet(ctx, 'Beat polygons: all 719 features from beat.geojson, colored by parent sector.');
-  bullet(ctx, 'Live units and calls: pulled from /dispatch/units and /dispatch/calls?limit=200, refreshed on WebSocket unit_update and dispatch_update events (debounced).');
-  bullet(ctx, 'Click a unit or call marker for a popup with ID, status, and location — same data as the /map hover cards.');
-
-  h2(ctx, 'What V2 Cannot Do Yet');
-  bullet(ctx, 'No drag-to-dispatch. Clicking a unit onto a call has no effect.');
-  bullet(ctx, 'No drawing tools (route planning, perimeter, search grid).');
-  bullet(ctx, 'No status changes from the map — use the roster.');
-  bullet(ctx, 'No GPS breadcrumb playback.');
-
-  paragraph(ctx,
-    'Feature parity is tracked in the OpenLayers migration plan (docs/plans/2026-04-19-openlayers-migration-phase1.md). Until Phase 4 lands, all write paths stay on /map.',
-  );
-
-  calloutBox(ctx, 'Coordinate Gotcha',
-    'Google Maps accepts {lat, lng} objects. OpenLayers wants [lng, lat] arrays in EPSG:3857. If you are debugging V2 and coordinates are in the wrong hemisphere, check that you are calling fromLonLat([lng, lat]) with LNG FIRST.',
-    'info',
-  );
-}
-
 function section16(ctx: GuideContext): void {
   title(ctx, '16. Field Interviews');
 
@@ -2959,82 +2928,6 @@ function drawMapLayerStackDiagram(ctx: GuideContext): void {
 
   ctx.y = y + h + 8;
   dCaption(ctx, 'Fig. 12-1 — Map layer stack on /map. Interaction layer is always on top.');
-}
-
-/**
- * Fig. 15-1 — Map V2 architecture. Three-column diagram: data sources
- * on the left, OpenLayers pipeline in the middle, rendered output
- * on the right. Shows how V2 reuses the same /api endpoints as /map
- * but swaps the rendering engine.
- */
-function drawMapV2ArchDiagram(ctx: GuideContext): void {
-  ensureSpace(ctx, 220);
-  const d = ctx.doc;
-  const x = PAGE.MARGIN;
-  const y = ctx.y;
-  const w = PAGE.W - PAGE.MARGIN * 2;
-  const h = 200;
-
-  dFrame(d, x, y, w, h);
-
-  const colW = (w - 40) / 3;
-  const colX = [x + 10, x + 10 + colW + 10, x + 10 + 2 * (colW + 10)];
-
-  d.setFont('helvetica', 'bold');
-  d.setFontSize(8);
-  d.setTextColor(COLOR.ACCENT);
-  d.text('DATA SOURCES', colX[0] + colW / 2, y + 16, { align: 'center' });
-  d.text('OPENLAYERS PIPELINE', colX[1] + colW / 2, y + 16, { align: 'center' });
-  d.text('RENDERED OUTPUT', colX[2] + colW / 2, y + 16, { align: 'center' });
-
-  // Left column: data sources
-  const sources = [
-    '/tiles/{z}/{x}/{y}.png\n(CartoDB cache)',
-    '/geojson/beat.geojson\n(719 features)',
-    '/dispatch/units\n(poll + WS)',
-    '/dispatch/calls\n(poll + WS)',
-  ];
-  for (let i = 0; i < sources.length; i++) {
-    dBox(d, colX[0], y + 30 + i * 36, colW, 30, sources[i], {
-      fill: '#0d1a2b', stroke: '#2563eb', textColor: '#93c5fd', fontSize: 7,
-    });
-  }
-
-  // Middle column: pipeline stages
-  const stages = [
-    'VectorSource\n(reproject 4326->3857)',
-    'Style fn\n(sector-color)',
-    'VectorLayer<Feature>\n(mount to map)',
-    'Debounced refetch\n(WS events)',
-  ];
-  for (let i = 0; i < stages.length; i++) {
-    dBox(d, colX[1], y + 30 + i * 36, colW, 30, stages[i], {
-      fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 7,
-    });
-  }
-
-  // Right column: output
-  const outputs = [
-    'Dark basemap\n(raster layer)',
-    'Beat polygons\n(colored fills)',
-    'Unit dots\n(clickable popups)',
-    'Call markers\n(priority icons)',
-  ];
-  for (let i = 0; i < outputs.length; i++) {
-    dBox(d, colX[2], y + 30 + i * 36, colW, 30, outputs[i], {
-      fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 7,
-    });
-  }
-
-  // Arrows between columns
-  for (let i = 0; i < 4; i++) {
-    const ry = y + 30 + i * 36 + 15;
-    dArrow(d, colX[0] + colW + 2, ry, colX[1] - 2, ry);
-    dArrow(d, colX[1] + colW + 2, ry, colX[2] - 2, ry);
-  }
-
-  ctx.y = y + h + 8;
-  dCaption(ctx, 'Fig. 15-1 — Map V2 architecture. Same data sources as /map, different rendering engine.');
 }
 
 /**

@@ -18,6 +18,11 @@ import {
   CreditCard,
   Archive,
   RotateCcw,
+  ArrowUpDown,
+  Filter,
+  Users,
+  Gavel,
+  Navigation,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -458,6 +463,43 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
 
+  // ── Local sort + filter state ──
+  const [sortBy, setSortBy] = useState<'name' | 'dob' | 'newest'>('name');
+  const [filterFlag, setFilterFlag] = useState<string | null>(null);
+
+  // Sort + filter the already-filtered persons
+  const displayPersons = React.useMemo(() => {
+    let list = [...filteredPersons];
+    // Apply flag filter
+    if (filterFlag) {
+      list = list.filter(p => {
+        if (filterFlag === 'warrant') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('warrant') : false);
+        if (filterFlag === 'sex_offender') return p.is_sex_offender;
+        if (filterFlag === 'veteran') return p.is_veteran;
+        if (filterFlag === 'gang') return !!(p as any).gang_affiliation && !['none', '0', 'n/a'].includes(String((p as any).gang_affiliation).toLowerCase());
+        if (filterFlag === 'bolo') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('bolo') : false);
+        return true;
+      });
+    }
+    // Sort
+    if (sortBy === 'name') {
+      list.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '') || (a.first_name || '').localeCompare(b.first_name || ''));
+    } else if (sortBy === 'dob') {
+      list.sort((a, b) => (a.date_of_birth || '').localeCompare(b.date_of_birth || ''));
+    } else if (sortBy === 'newest') {
+      list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    }
+    return list;
+  }, [filteredPersons, sortBy, filterFlag]);
+
+  // Stats
+  const stats = React.useMemo(() => ({
+    total: filteredPersons.length,
+    withWarrants: filteredPersons.filter(p => p.flags.some(f => typeof f === 'string' && f.toLowerCase().includes('warrant'))).length,
+    sexOffenders: filteredPersons.filter(p => p.is_sex_offender).length,
+    veterans: filteredPersons.filter(p => p.is_veteran).length,
+  }), [filteredPersons]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
@@ -496,9 +538,47 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         </div>
       </div>
 
+      {/* Stats Bar */}
+      <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
+        <span className="text-rmpg-400 flex items-center gap-1"><Users className="w-3 h-3" /> <strong className="text-white">{stats.total}</strong> Records</span>
+        {stats.withWarrants > 0 && <span className="text-red-400 flex items-center gap-1"><Gavel className="w-3 h-3" /> <strong>{stats.withWarrants}</strong> Warrants</span>}
+        {stats.sexOffenders > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.sexOffenders}</strong> RSO</span>}
+        {stats.veterans > 0 && <span className="text-green-400 flex items-center gap-1"><Shield className="w-3 h-3" /> <strong>{stats.veterans}</strong> Veterans</span>}
+
+        {/* Sort */}
+        <div className="ml-auto flex items-center gap-1">
+          <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
+          {(['name', 'dob', 'newest'] as const).map(s => (
+            <button key={s} type="button" onClick={() => setSortBy(s)}
+              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+              {s === 'name' ? 'A-Z' : s === 'dob' ? 'DOB' : 'Newest'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filter Chips */}
+      <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1.5 text-[9px] flex-wrap">
+        <Filter className="w-3 h-3 text-rmpg-500" />
+        {[
+          { key: null, label: 'All' },
+          { key: 'warrant', label: 'Wanted' },
+          { key: 'sex_offender', label: 'RSO' },
+          { key: 'veteran', label: 'Veteran' },
+          { key: 'gang', label: 'Gang' },
+          { key: 'bolo', label: 'BOLO' },
+        ].map(f => (
+          <button key={f.key || 'all'} type="button" onClick={() => setFilterFlag(f.key)}
+            className={`px-2 py-0.5 font-medium border transition-all ${filterFlag === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300 hover:border-rmpg-500'}`}>
+            {f.label}
+          </button>
+        ))}
+        {filterFlag && <span className="text-rmpg-500 ml-1">({displayPersons.length} match{displayPersons.length !== 1 ? 'es' : ''})</span>}
+      </div>
+
       {/* Person List */}
       <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Person records">
-        {filteredPersons.length === 0 && (
+        {displayPersons.length === 0 && (
           <div className="text-center py-16">
             <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
             <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
@@ -507,7 +587,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             </p>
           </div>
         )}
-        {filteredPersons.map((person, idx) => (
+        {displayPersons.map((person, idx) => (
           <div
             key={person.id}
             role="listitem"
@@ -588,6 +668,27 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   </div>
                 )}
                 <div className="flex items-center gap-1">
+                  {/* Quick actions */}
+                  {person.phone && (
+                    <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title={`Call ${formatPhoneDisplay(person.phone)}`}>
+                      <Phone className="w-3 h-3" />
+                    </a>
+                  )}
+                  {person.email && (
+                    <a href={`mailto:${person.email}`} onClick={e => e.stopPropagation()}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-blue-400 transition-colors" title={`Email ${person.email}`}>
+                      <Mail className="w-3 h-3" />
+                    </a>
+                  )}
+                  {person.address && (
+                    <a href={`https://maps.google.com/?q=${encodeURIComponent(person.address + (person.city ? ', ' + person.city : '') + (person.state ? ', ' + person.state : ''))}`}
+                      target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Navigate to address">
+                      <Navigation className="w-3 h-3" />
+                    </a>
+                  )}
+                  <span className="w-px h-3 bg-rmpg-700 mx-0.5" />
                   {(!showArchived || user?.role === 'admin') && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}

@@ -354,8 +354,8 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - **Shift Plans**: `shift_plans`, `shift_swap_requests`
 - **Notification Rules**: `notification_rules` for custom alert automation
 
-### Map V2 (OpenLayers) — RETIRED 2026-04-22
-The OpenLayers parallel map surface at `/map-v2` was removed. `/map` is back to being the single Google Maps surface. `/map-v2` now 302-redirects to `/map` for any stale bookmarks. The `ol` dependency remains in `client/package.json` as unused weight; remove it on the next `npm install` pass. Dead code: `section15()` + `drawMapV2ArchDiagram()` in `dispatchGuidePdfGenerator.ts` (no longer referenced from the TOC). Original Phase 1 plan at `docs/plans/2026-04-19-openlayers-migration-phase1.md` is abandoned.
+### Maps — Google Maps is the sole map surface
+`/map` is the single production map, backed by the Google Maps JS API with offline CartoDB raster tile fallback. **Do not reintroduce OpenLayers or a parallel `/map-v2` surface.** A parallel OpenLayers map (`/map-v2`) was attempted and retired; all traces were removed 2026-04-23 (route, redirect, `ol` dependency, PDF guide section 15, migration plan). The stale iOS PWA plans (`docs/plans/2026-04-20-ios-mobile-pwa-enhancement-*.md`) still reference non-existent `map-v2` hooks and need Google-Maps-based replacements before execution.
 
 ## Common Gotchas
 

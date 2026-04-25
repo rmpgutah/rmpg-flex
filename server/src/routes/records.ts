@@ -646,7 +646,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', (req: Request, res: Response) => {
+router.delete('/persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -1035,7 +1035,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', (req: Request, res: Response) => {
+router.delete('/vehicles/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1369,6 +1369,72 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// BUSINESSES CRUD
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/businesses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const archived = req.query.archived === 'true';
+    const rows = db.prepare(`SELECT * FROM businesses WHERE is_active = ? ORDER BY name`).all(archived ? 0 : 1);
+    res.json(rows);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load businesses' });
+  }
+});
+
+router.get('/businesses/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.params.id);
+    if (!row) { res.status(404).json({ error: 'Business not found' }); return; }
+    res.json(row);
+  } catch { res.status(500).json({ error: 'Failed to get business' }); }
+});
+
+router.post('/businesses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes } = req.body;
+    if (!name) { res.status(400).json({ error: 'Business name required' }); return; }
+    const now = localNow();
+    const result = db.prepare(`INSERT INTO businesses (name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      name, dba_name || null, business_type || null, ein || null, license_number || null,
+      address || null, city || null, state || null, zip || null,
+      phone || null, email || null, website || null,
+      owner_name || null, owner_phone || null, contact_name || null, contact_phone || null, contact_email || null,
+      industry || null, employee_count || null, annual_revenue || null, notes || null, now, now);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to create business: ' + err.message }); }
+});
+
+router.put('/businesses/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    const fields = ['name', 'dba_name', 'business_type', 'ein', 'license_number', 'address', 'city', 'state', 'zip', 'phone', 'email', 'website', 'owner_name', 'owner_phone', 'contact_name', 'contact_phone', 'contact_email', 'industry', 'employee_count', 'annual_revenue', 'notes', 'status'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    updates.push('updated_at = ?'); values.push(localNow()); values.push(id);
+    db.prepare(`UPDATE businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to update business: ' + err.message }); }
+});
+
+router.delete('/businesses/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM businesses WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete business' }); }
+});
+
 // GET /api/records/evidence - List all evidence with incident info
 router.get('/evidence', (req: Request, res: Response) => {
   try {
@@ -1500,7 +1566,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', (req: Request, res: Response) => {
+router.delete('/evidence/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -2231,7 +2297,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', (req: Request, res: Response) => {
+router.delete('/properties/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -2486,7 +2552,7 @@ router.post('/links', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', (req: Request, res: Response) => {
+router.delete('/links/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -2714,7 +2780,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
@@ -2871,7 +2937,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', (req: Request, res: Response) => {
+router.delete('/client-persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -4011,10 +4077,13 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id/associates/:linkId - Remove associate link
-router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) => {
+router.delete('/persons/:id/associates/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.linkId);
+    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.linkId)), `Removed associate from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Remove associate error:', error);
@@ -4146,7 +4215,7 @@ router.post('/persons/:id/aliases', (req: Request, res: Response) => {
   } catch (error: any) { console.error('Create alias error:', error); res.status(500).json({ error: 'Failed to create alias', code: 'CREATE_ALIAS_ERROR' }); }
 });
 
-router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => {
+router.delete('/persons/:id/aliases/:aliasId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     ensurePersonAliasesTable(db);
@@ -4168,17 +4237,6 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
 // silent error in the try/catch at module load. The real schema lives in
 // database.ts and is used by the handlers above.
 
-
-router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;
-    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
-    db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.assocId);
-    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.assocId)), `Removed associate from person #${paramStr(req.params.id)}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('Delete associate error:', error); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_ASSOCIATE_ERROR' }); }
-});
 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 3: Last Known Address Tracking

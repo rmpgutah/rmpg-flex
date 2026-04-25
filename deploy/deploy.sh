@@ -17,6 +17,13 @@ VPS_USER="root"
 APP_DIR="/opt/rmpg-flex"
 DOMAIN="rmpgutah.us"
 
+# Deploy-lock acquisition lives further down (see "Acquiring deploy lock..." block)
+# and uses an ownership-checked EXIT trap. The earlier duplicate implementation
+# was removed 2026-04-24 — its unconditional `rm -f` on EXIT clobbered sibling
+# locks, turning concurrent deploys into a lock-churn storm where every attempt
+# failed with BUSY while no code actually shipped. See memory:
+# project_deploy_sh_lock_race_bug.md.
+
 # Get the project root (parent of deploy/)
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
