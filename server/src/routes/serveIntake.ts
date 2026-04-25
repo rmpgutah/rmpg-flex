@@ -205,15 +205,32 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       }
     }
 
+    // Geocode during parse so the review step can show/fix coordinates
+    let geocodeResult: { latitude: number; longitude: number } | null = null;
+    let geocodeWarning: string | null = null;
+    if (parsed.address) {
+      try {
+        const geo = await geocodeAddress(parsed.address);
+        if (geo) {
+          geocodeResult = { latitude: geo.latitude, longitude: geo.longitude };
+        } else {
+          geocodeWarning = `Geocoding returned no result for "${parsed.address}" — please verify the address or enter coordinates manually.`;
+        }
+      } catch {
+        geocodeWarning = `Geocoding failed for "${parsed.address}" — enter coordinates manually if map placement is needed.`;
+      }
+    }
+
     res.json({
-      parsed,  // Return full ParseOutput — client renders all fields for review/editing
+      parsed,
       detectedTypes: {
         fieldSheet: !!fieldSheet,
         courtDocket: courtDocketParts.length > 0,
         courtDocketCount: courtDocketParts.length,
         infoSheet: !!infoSheet,
       },
-      warnings: [duplicateWarning, activeServeWarning].filter(Boolean),
+      geocode: geocodeResult,
+      warnings: [duplicateWarning, activeServeWarning, geocodeWarning].filter(Boolean),
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Parse failed: ' + (err?.message || 'Unknown error') });
@@ -385,11 +402,14 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       });
     }
 
-    // ── Property (lastname-residence name) ───────────────────
+    // ── Property (named by street address, not defendant name) ──
     let propertyId: number | null = null;
     if (parsed.address) {
       const ap = parsed.addressParts;
-      const propName = `${parsed.defendant.last} Residence — ${ap.building || (parsed.address.split(',')[0] || '').trim()}`;
+      // Use the street address as property name (e.g. "5245 SOUTH COLLEGE DRIVE")
+      // NOT "Lastname Residence — Building#" which is meaningless for dispatch
+      const streetPart = (parsed.address.split(',')[0] || '').trim().toUpperCase();
+      const propName = streetPart || `${ap.building} ${ap.street}`.trim() || parsed.address;
       const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(parsed.address) as any;
       if (existingProp) {
         propertyId = existingProp.id;
@@ -416,15 +436,16 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       }
     }
 
-    // ── Geocode + beat lookup ───────────────────────────────
-    let latitude: number | null = null;
-    let longitude: number | null = null;
-    if (parsed.address) {
+    // ── Geocode + beat lookup (user override takes priority) ──
+    let latitude: number | null = overrides?.latitude != null ? parseFloat(overrides.latitude) || null : null;
+    let longitude: number | null = overrides?.longitude != null ? parseFloat(overrides.longitude) || null : null;
+    // Only geocode if user didn't manually provide coordinates
+    if (!latitude && !longitude && parsed.address) {
       try {
         const geo = await geocodeAddress(parsed.address);
         if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
         else {
-          warnings.push('Geocoding returned no result');
+          warnings.push('Geocoding returned no result — map placement may be inaccurate');
           log.warn({ address: parsed.address }, 'geocodeAddress returned null');
         }
       } catch (err) {
