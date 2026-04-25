@@ -42,7 +42,47 @@ export default function DocumentsPage() {
   const [newFolderName, setNewFolderName] = useState('');
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+
+  const handleFileUpload = async (fileList: FileList) => {
+    if (!fileList.length) return;
+    setUploading(true);
+    const token = localStorage.getItem('rmpg_token');
+    let successCount = 0;
+    for (const file of Array.from(fileList)) {
+      const formData = new FormData();
+      formData.append('files', file);
+      if (currentFolderId) {
+        formData.append('entity_type', 'document_folder');
+        formData.append('entity_id', String(currentFolderId));
+      }
+      try {
+        const resp = await fetch('/api/uploads', {
+          method: 'POST',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          body: formData,
+        });
+        if (resp.ok) {
+          const results = await resp.json();
+          // Link the uploaded file to the current folder
+          if (currentFolderId && results?.[0]?.file_id) {
+            await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
+              method: 'POST',
+              body: JSON.stringify({ file_id: results[0].file_id }),
+            }).catch(() => {});
+          }
+          successCount++;
+        }
+      } catch { /* continue with next file */ }
+    }
+    setUploading(false);
+    if (successCount > 0) {
+      addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
+      fetchContents(currentFolderId);
+    }
+  };
 
   const fetchContents = useCallback(async (folderId: number | null) => {
     setLoading(true);
@@ -104,9 +144,17 @@ export default function DocumentsPage() {
   const getFileIcon = (mime: string) => {
     if (mime?.startsWith('image/')) return '🖼️';
     if (mime === 'application/pdf') return '📄';
+    if (mime?.startsWith('video/')) return '🎬';
+    if (mime?.startsWith('audio/')) return '🎵';
     if (mime?.includes('word') || mime?.includes('document')) return '📝';
     if (mime?.includes('sheet') || mime?.includes('excel')) return '📊';
+    if (mime?.includes('zip') || mime?.includes('compressed')) return '📦';
+    if (mime?.includes('text/')) return '📃';
     return '📎';
+  };
+
+  const canPreview = (mime: string) => {
+    return mime === 'application/pdf' || mime?.startsWith('image/') || mime?.startsWith('video/') || mime?.startsWith('audio/');
   };
 
   // Filter
@@ -117,8 +165,14 @@ export default function DocumentsPage() {
   return (
     <div className="h-full flex flex-col">
       <PanelTitleBar title="DOCUMENTS / UPLOAD RECORDS" icon={FolderOpen}>
+        <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={uploading} className="toolbar-btn toolbar-btn-primary">
+          {uploading ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Upload style={{ width: 10, height: 10 }} />}
+          {uploading ? 'Uploading...' : 'Upload Files'}
+        </button>
+        <input ref={uploadInputRef} type="file" multiple className="hidden"
+          onChange={e => { if (e.target.files) handleFileUpload(e.target.files); e.target.value = ''; }} />
         {isAdmin && (
-          <button type="button" onClick={() => setShowNewFolder(true)} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => setShowNewFolder(true)} className="toolbar-btn">
             <FolderPlus style={{ width: 10, height: 10 }} /> New Folder
           </button>
         )}
@@ -216,7 +270,7 @@ export default function DocumentsPage() {
                   <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {new Date(file.created_at).toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  {file.mime_type === 'application/pdf' && (
+                  {canPreview(file.mime_type) && (
                     <a href={authedImageUrl(`/api/uploads/${file.file_id}`)} target="_blank" rel="noopener noreferrer"
                       className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors" title="View">
                       <Eye className="w-3 h-3" />
