@@ -511,20 +511,33 @@ export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   ];
 }
 
-export function deriveServiceType(primaryToken: string): string {
-  const t = (primaryToken || '').toUpperCase();
-  if (t.includes('SUBPOENA')) return 'SUBPOENA SERVICE';
-  if (t.includes('UNLAWFUL DETAINER') || t.includes('EVICTION')) return 'EVICTION SERVICE';
-  if (t.includes('SUMMONS')) return 'SUMMONS SERVICE';
-  if (t.includes('COMPLAINT')) return 'COMPLAINT SERVICE';
+export function deriveServiceType(primaryToken: string, fullDocuments?: string): string {
+  // Check full documents string first (more context), then primary token
+  const full = ((fullDocuments || '') + ' ' + (primaryToken || '')).toUpperCase();
+  if (full.includes('SUBPOENA')) return 'SUBPOENA SERVICE';
+  if (full.includes('SUMMONS')) return 'SUMMONS SERVICE';
+  if (full.includes('UNLAWFUL DETAINER') || full.includes('EVICTION')) return 'EVICTION SERVICE';
+  if (full.includes('COMPLAINT')) return 'COMPLAINT SERVICE';
+  if (full.includes('NOTICE') && full.includes('DEPOSITION')) return 'SUBPOENA SERVICE';
+  if (full.includes('RESTRAINING') || full.includes('PROTECTIVE ORDER')) return 'RESTRAINING ORDER SERVICE';
+  if (full.includes('WRIT')) return 'WRIT SERVICE';
   return 'PROCESS SERVICE';
 }
 
 export function primaryDocToken(documents: string): string {
   if (!documents) return '';
+  const upper = documents.toUpperCase();
+  // Check for known document types in the full string — don't rely on first word
+  if (upper.includes('SUBPOENA')) return 'SUBPOENA';
+  if (upper.includes('SUMMONS')) return 'SUMMONS';
+  if (upper.includes('COMPLAINT')) return 'COMPLAINT';
+  if (upper.includes('EVICTION') || upper.includes('UNLAWFUL DETAINER')) return 'EVICTION';
+  if (upper.includes('DEPOSITION')) return 'SUBPOENA';
+  if (upper.includes('RESTRAINING') || upper.includes('PROTECTIVE ORDER')) return 'RESTRAINING ORDER';
+  if (upper.includes('WRIT')) return 'WRIT';
+  // Fallback: first word
   const firstClause = documents.split(/[;,]/)[0].trim();
-  const firstToken = firstClause.split(/\s+and\s+/i)[0].trim();
-  const word = firstToken.split(/\s+/)[0] || '';
+  const word = firstClause.split(/\s+/)[0] || '';
   return word.toUpperCase();
 }
 
@@ -716,11 +729,25 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
 
   // ── Documents list (field sheet → info sheet → court docket) ──
-  const documents = (fieldSheet.match(/Documents[:\s]+([^\n]+)/i)?.[1]
+  let documents = (fieldSheet.match(/Documents[:\s]+([^\n]+)/i)?.[1]
     || infoSheet.match(/Documents?[:\s]+([^\n]+)/i)?.[1]
     || '').trim();
+  // Clean file IDs that bleed into the documents field from pdftotext:
+  // "788691G.3318900.SUMMONS3.pdf,788691A.3318805.Complaint.pdf,..." → just the doc names
+  if (/\d{6,}\.\d+\.\w+\.pdf/i.test(documents)) {
+    // Extract human-readable document names from the file IDs
+    const fileNames = documents.match(/\d+\.(\w+)\.pdf/gi);
+    if (fileNames) {
+      const cleaned = fileNames
+        .map(f => f.replace(/^\d+\./, '').replace(/\.pdf$/i, '').replace(/\d+$/, '').replace(/[._]/g, ' ').trim())
+        .filter(Boolean)
+        .map(n => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase());
+      const unique = [...new Set(cleaned)];
+      if (unique.length > 0) documents = unique.join('; ');
+    }
+  }
   const primaryDoc = primaryDocToken(documents);
-  const serviceType = deriveServiceType(primaryDoc);
+  const serviceType = deriveServiceType(primaryDoc, documents);
   const bilingual = /bilingual/i.test(documents) || /bilingual/i.test(allText);
   // Document pages — info sheet "Docs to Be Served  XX pages" is most reliable
   const documentPages = parseInt((
@@ -738,13 +765,14 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const orderingClientRule = instructions.split('.')[0].trim() + (instructions ? '.' : '');
 
   // ── Job numbers (ICU Job + client subordinate job#) ──
-  const jobMatch = fieldSheet.match(/Job[:\s#]+(\d+)\s*\((\d+)\)/i)
-    || fieldSheet.match(/(\d{7,})\s*\((\d{5,})\)/)
+  // Format: "Job: 15753566 (788691G)" — job# is digits, client# may have letters
+  const jobMatch = fieldSheet.match(/Job[:\s#]+(\d+)\s*\(([A-Z0-9]+)\)/i)
+    || fieldSheet.match(/(\d{7,})\s*\(([A-Z0-9]{5,})\)/i)
     || infoSheet.match(/JOB[:\s#]+(\d+)/i);
   const jobNumber = jobMatch?.[1] || '';
   const clientJobNumber = jobMatch?.[2]
     || (courtDocket.match(/\*S\d+(\d{6})\*/)?.[1] || '')
-    || (courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+)/i)?.[1] || '');
+    || (courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1] || '');
 
   // Due date — field sheet, info sheet, or any "Due:" mention
   const dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
